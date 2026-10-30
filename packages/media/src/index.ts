@@ -2,9 +2,26 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import type { Dir, Dirent } from "node:fs";
+import {
+  constants as fsConstants,
+  createReadStream,
+  createWriteStream,
+} from "node:fs";
 import { createRequire } from "node:module";
-import { lstat, mkdir, readdir, realpath, stat } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  opendir,
+  realpath,
+  rm,
+  stat,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   basename,
   dirname,
@@ -16,12 +33,18 @@ import {
   sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assetDisplayDimensions, type MediaAsset } from "@openfilm/core";
+import {
+  ApplicationError,
+  assetDisplayDimensions,
+  type MediaAsset,
+} from "@openfilm/core";
 import type {
   MediaCandidate as SourceCandidate,
   MediaMetadata,
   MediaSourceAdapter,
+  MediaSourceAdapterV2,
   OperationOptions,
+  SourceInput,
 } from "@openfilm/plugin-sdk";
 import { resolveTimestamp } from "@openfilm/metadata";
 import { probeColor, previewIssue, hdrToneMapFilter } from "./color.js";
@@ -34,6 +57,12 @@ export {
 export interface MediaCandidate extends SourceCandidate {
   path: string;
 }
+type FilesystemSourceInput = {
+  uri?: string;
+  path?: string;
+  type?: SourceInput["type"];
+  options?: Record<string, unknown>;
+};
 export interface ProcessOptions {
   signal?: AbortSignal;
   maxOutputBytes?: number;
@@ -44,6 +73,16 @@ export interface ProcessOptions {
 export interface ProcessOutput {
   stdout: Buffer;
   stderr: string;
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+  const relativePath = relative(root, candidate);
+  return (
+    relativePath !== "" &&
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${sep}`) &&
+    !isAbsolute(relativePath)
+  );
 }
 
 export function abortError(): Error {
@@ -179,9 +218,11 @@ export function isSupportedMediaFile(path: string): boolean {
   return supported.has(extname(path).toLowerCase());
 }
 
-export class FilesystemSource implements MediaSourceAdapter {
+export class FilesystemSource
+  implements MediaSourceAdapter, MediaSourceAdapterV2
+{
   readonly id = "openfilm.filesystem";
-  supports(input: string | { uri?: string; path?: string }): boolean {
+  supports(input: string | FilesystemSourceInput): boolean {
     return (
       typeof input === "string" ||
       typeof input.path === "string" ||
@@ -190,44 +231,141 @@ export class FilesystemSource implements MediaSourceAdapter {
   }
 
   async *discover(
-    folder: string,
-    signal?: AbortSignal,
+    input: string | FilesystemSourceInput,
+    optionsOrSignal: OperationOptions | AbortSignal = {},
   ): AsyncGenerator<MediaCandidate> {
+    const options =
+      "aborted" in optionsOrSignal
+        ? { signal: optionsOrSignal }
+        : optionsOrSignal;
+    const signal = options.signal;
+    const source = typeof input === "string" ? undefined : input;
+    const sourcePath =
+      typeof input === "string" ? input : (input.path ?? input.uri);
+    if (!sourcePath) throw new Error("Filesystem source requires a path");
     const requestedRoot = resolve(
-      folder.startsWith("file:") ? localPath(folder) : folder,
+      sourcePath.startsWith("file:") ? localPath(sourcePath) : sourcePath,
     );
     const info = await lstat(requestedRoot);
-    if (info.isSymbolicLink() || !info.isDirectory())
-      throw new Error("Import source must be a directory, not a symlink");
-    const root = await realpath(requestedRoot);
-    // Depth first iterator stores directory names, never all source files or decoded media.
-    const pending = [root];
-    while (pending.length) {
+    if (info.isSymbolicLink())
+      throw new Error("Import sources cannot be symlinks");
+    const sourceType = source?.type;
+    if (sourceType === "file" || info.isFile()) {
+      if (!info.isFile() || !isSupportedMediaFile(requestedRoot))
+        throw new Error(
+          "Selected source is not a supported regular media file",
+        );
       checkAbort(signal);
-      const directory = pending.pop()!;
-      const entries = await readdir(directory, { withFileTypes: true });
-      entries.sort((a, b) => a.name.localeCompare(b.name));
-      for (const entry of entries) {
+      yield {
+        path: requestedRoot,
+        uri: pathToFileURL(requestedRoot).href,
+        name: basename(requestedRoot),
+        relativePath: basename(requestedRoot),
+        size: info.size,
+        modifiedAt: info.mtime.toISOString(),
+      };
+      return;
+    }
+    if (!info.isDirectory())
+      throw new Error("Import source must be a regular file or directory");
+    const root = await realpath(requestedRoot);
+    const recursive =
+      typeof input === "string" || source?.options?.recursive !== false;
+    const stack: Array<{
+      directory: Dir;
+      iterator: AsyncIterator<Dirent>;
+      path: string;
+      depth: number;
+    }> = [];
+    const openDirectory = async (path: string, depth: number) => {
+      if (depth > 128)
+        throw new Error(
+          "Filesystem source nesting exceeds the safe depth limit",
+        );
+      const directory = await opendir(path, { bufferSize: 32 });
+      stack.push({
+        directory,
+        iterator: directory[Symbol.asyncIterator](),
+        path,
+        depth,
+      });
+    };
+    try {
+      await openDirectory(root, 0);
+      while (stack.length) {
         checkAbort(signal);
-        const path = join(directory, entry.name);
-        if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) pending.push(path);
-        else if (entry.isFile() && isSupportedMediaFile(entry.name)) {
-          yield { path, uri: pathToFileURL(path).href, name: entry.name };
+        const current = stack.at(-1)!;
+        const next = await current.iterator.next();
+        if (next.done) {
+          stack.pop();
+          await current.directory.close().catch(() => undefined);
+          continue;
         }
+        const entry = next.value;
+        const path = join(current.path, entry.name);
+        const relativePath = relative(root, path).split(sep).join("/");
+        if (entry.isSymbolicLink()) {
+          options.onSkipped?.({ reason: "symlink", relativePath });
+          continue;
+        }
+        if (entry.isDirectory()) {
+          if (recursive) {
+            const directoryInfo = await lstat(path);
+            if (
+              directoryInfo.isSymbolicLink() ||
+              !directoryInfo.isDirectory()
+            ) {
+              options.onSkipped?.({ reason: "symlink", relativePath });
+              continue;
+            }
+            const actual = await realpath(path);
+            if (!isPathInside(root, actual)) {
+              options.onSkipped?.({ reason: "outside-root", relativePath });
+              continue;
+            }
+            await openDirectory(path, current.depth + 1);
+          }
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const fileInfo = await lstat(path);
+        if (fileInfo.isSymbolicLink() || !fileInfo.isFile()) {
+          options.onSkipped?.({ reason: "symlink", relativePath });
+          continue;
+        }
+        if (!isSupportedMediaFile(path)) {
+          options.onSkipped?.({ reason: "unsupported", relativePath });
+          continue;
+        }
+        const actual = await realpath(path);
+        if (!isPathInside(root, actual)) {
+          options.onSkipped?.({ reason: "outside-root", relativePath });
+          continue;
+        }
+        yield {
+          path,
+          uri: pathToFileURL(path).href,
+          name: entry.name,
+          relativePath,
+          size: fileInfo.size,
+          modifiedAt: fileInfo.mtime.toISOString(),
+        };
       }
+    } finally {
+      await Promise.all(
+        stack.map(async ({ directory }) =>
+          directory.close().catch(() => undefined),
+        ),
+      );
     }
   }
 
   async scan(
-    input: string | { uri?: string; path?: string },
+    input: string | FilesystemSourceInput,
     options: OperationOptions = {},
   ): Promise<MediaCandidate[]> {
-    const folder =
-      typeof input === "string" ? input : (input.path ?? input.uri);
-    if (!folder) throw new Error("Filesystem source requires a path");
     const result: MediaCandidate[] = [];
-    for await (const candidate of this.discover(folder, options.signal)) {
+    for await (const candidate of this.discover(input, options)) {
       result.push(candidate);
       options.onProgress?.(result.length / (result.length + 1));
     }
@@ -611,6 +749,182 @@ export async function createThumbnail(
     ],
     { signal },
   );
+}
+
+export interface RepresentativeFrameBytes {
+  bytes: Uint8Array;
+  mimeType: "image/jpeg";
+  width: 640;
+  height: 360;
+}
+
+/** Deterministic, bounded JPEG sample for review providers; never returns a URI. */
+export async function extractRepresentativeFrame(
+  asset: MediaAsset,
+  sourceTimeSeconds: number,
+  signal?: AbortSignal,
+): Promise<RepresentativeFrameBytes> {
+  return (
+    await extractRepresentativeFrames(asset, [sourceTimeSeconds], signal)
+  )[0]!;
+}
+
+/** One private verified source snapshot for at most three bounded samples. */
+export async function extractRepresentativeFrames(
+  asset: MediaAsset,
+  sourceTimes: readonly number[],
+  signal?: AbortSignal,
+): Promise<RepresentativeFrameBytes[]> {
+  if (
+    asset.mediaType === "audio" ||
+    !sourceTimes.length ||
+    sourceTimes.length > 3 ||
+    sourceTimes.some((time) => !Number.isFinite(time) || time < 0)
+  )
+    throw new Error(
+      "Representative frames require a visual asset and nonnegative source time.",
+    );
+  if (
+    asset.duration !== undefined &&
+    sourceTimes.some((time) => time > asset.duration!)
+  )
+    throw new Error(
+      "Representative frame time is outside the source duration.",
+    );
+  const path = localPath(asset.uri);
+  const selected = await lstat(path);
+  if (selected.isSymbolicLink() || !selected.isFile())
+    throw new Error(
+      "Representative frame source must be a regular local file.",
+    );
+  const handle = await open(
+    path,
+    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+  );
+  let temporary: string | undefined;
+  try {
+    signal?.throwIfAborted();
+    const info = await handle.stat();
+    if (!info.isFile() || !Number.isSafeInteger(info.size))
+      throw new Error(
+        "Representative frame source must be a regular local file.",
+      );
+    temporary = await mkdtemp(join(tmpdir(), "openfilm-verified-sample-"));
+    const extension = extname(path).toLowerCase();
+    const snapshot = join(
+      temporary,
+      `source${/^\.[a-z0-9]{1,12}$/u.test(extension) ? extension : ".media"}`,
+    );
+    const hash = createHash("sha256");
+    let copied = 0;
+    const meter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        copied += chunk.byteLength;
+        if (copied > info.size)
+          return callback(
+            new ApplicationError(
+              "source.changed",
+              "Representative source changed during verification.",
+              409,
+            ),
+          );
+        hash.update(chunk);
+        callback(null, chunk);
+      },
+    });
+    await pipeline(
+      handle.createReadStream({ autoClose: false }),
+      meter,
+      createWriteStream(snapshot, { flags: "wx", mode: 0o600 }),
+      { signal },
+    );
+    const sourceHash = hash.digest("hex");
+    if (
+      copied !== info.size ||
+      (asset.contentHash !== undefined && sourceHash !== asset.contentHash)
+    )
+      throw new ApplicationError(
+        "source.changed",
+        "Representative source bytes do not match the verified manifest.",
+        409,
+      );
+    signal?.throwIfAborted();
+    const verifiedAsset = { ...asset, uri: pathToFileURL(snapshot).href };
+    const frames: RepresentativeFrameBytes[] = [];
+    for (const time of sourceTimes) {
+      signal?.throwIfAborted();
+      frames.push(
+        await sampleVerifiedFrame(verifiedAsset, snapshot, time, signal),
+      );
+    }
+    signal?.throwIfAborted();
+    return frames;
+  } finally {
+    try {
+      await handle.close();
+    } finally {
+      if (temporary) await rm(temporary, { recursive: true, force: true });
+    }
+  }
+}
+
+async function sampleVerifiedFrame(
+  asset: MediaAsset,
+  path: string,
+  sourceTimeSeconds: number,
+  signal?: AbortSignal,
+): Promise<RepresentativeFrameBytes> {
+  const filters = await previewVideoFilters(asset, signal);
+  const args = [
+    "-v",
+    "error",
+    "-nostdin",
+    "-threads",
+    "1",
+    "-filter_threads",
+    "1",
+    ...(await localMediaInputOptions(path, signal)),
+    "-i",
+    path,
+    ...(asset.mediaType === "image" || sourceTimeSeconds === 0
+      ? []
+      : ["-ss", sourceTimeSeconds.toFixed(6)]),
+    "-frames:v",
+    "1",
+    "-vf",
+    [
+      ...filters,
+      "scale=640:360:force_original_aspect_ratio=decrease",
+      "pad=640:360:(ow-iw)/2:(oh-ih)/2:black",
+    ].join(","),
+    "-q:v",
+    "5",
+    "-f",
+    "image2pipe",
+    "-vcodec",
+    "mjpeg",
+    "pipe:1",
+  ];
+  const result = await runProcess("ffmpeg", args, {
+    signal,
+    timeoutMs: 120_000,
+    maxOutputBytes: 512 * 1024,
+  });
+  if (
+    result.stdout.length < 4 ||
+    result.stdout[0] !== 0xff ||
+    result.stdout[1] !== 0xd8 ||
+    result.stdout[2] !== 0xff
+  )
+    throw new Error(
+      "FFmpeg did not produce a valid bounded JPEG representative frame.",
+    );
+  return {
+    bytes: new Uint8Array(result.stdout),
+    mimeType: "image/jpeg",
+    width: 640,
+    height: 360,
+  };
 }
 
 export async function createProxy(

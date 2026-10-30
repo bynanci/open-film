@@ -24,3 +24,4 @@ export * from "./story-plan.js";
 export * from "./pipeline.js";
 export * from "./creative-variants.js";
 export * from "./multi-source.js";
+export * from "./travel.js";

@@ -1020,6 +1020,76 @@ label.ui-language {
   font-size: var(--of-font-caption);
   font-variant-numeric: tabular-nums;
 }
+.import-scan-results {
+  display: grid;
+  gap: var(--of-space-3);
+  margin-top: var(--of-space-4);
+  padding: var(--of-space-4);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-md);
+  background: var(--of-surface-2);
+}
+.import-scan-counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--of-space-2);
+}
+.import-scan-counts strong {
+  flex: 1 1 100%;
+  color: var(--of-text-primary);
+}
+.import-scan-counts span {
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: var(--of-text-secondary);
+  background: var(--of-surface-1);
+  font-size: var(--of-font-caption);
+  font-variant-numeric: tabular-nums;
+}
+.import-scan-source {
+  width: min(100%, 480px);
+}
+.import-scan-list {
+  display: grid;
+  gap: var(--of-space-1);
+  max-height: 280px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.import-scan-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--of-space-3);
+  min-width: 0;
+  padding: var(--of-space-2) var(--of-space-3);
+  border-radius: var(--of-radius-sm);
+  background: var(--of-surface-1);
+}
+.import-occurrence-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--of-space-2);
+  min-width: 0;
+  color: var(--of-text-primary);
+}
+.import-occurrence-check input {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  accent-color: var(--of-accent);
+}
+.import-occurrence-check span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--of-text-primary);
+}
+.import-scan-list small {
+  color: var(--of-text-secondary);
+  white-space: nowrap;
+}
 .import-empty {
   padding: var(--of-space-5);
   border: 1px solid var(--of-border-subtle);
@@ -1119,6 +1189,193 @@ label.ui-language {
   align-items: center;
   gap: var(--of-space-2);
   padding-top: var(--of-space-1);
+}
+.import-seal-progress,
+.import-seal-result {
+  display: grid;
+  gap: var(--of-space-2);
+  margin-top: var(--of-space-3);
+  padding: var(--of-space-3);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-md);
+  background: var(--of-surface-1);
+}
+.import-seal-progress p,
+.import-seal-result p {
+  margin: 0;
+}
+.import-seal-progress progress {
+  width: 100%;
+}
+.import-seal-result.success {
+  border-color: color-mix(in srgb, var(--of-success) 42%, transparent);
+  color: var(--of-success);
+}
+.import-seal-result.warning {
+  border-color: color-mix(in srgb, var(--of-warning) 42%, transparent);
+  color: var(--of-warning);
+}
+.import-seal-result p,
+.import-seal-result small {
+  color: var(--of-text-secondary);
+}
+
+.import-analysis {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  margin-block-start: var(--space-4, 1rem);
+  padding: var(--space-4, 1rem);
+  border: 1px solid var(--color-border-subtle, rgb(127 127 127 / 24%));
+  border-radius: var(--radius-md, 0.75rem);
+  background: var(--color-surface-secondary, rgb(127 127 127 / 6%));
+}
+
+.import-analysis-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 0.5rem);
+}
+
+.import-travel-context {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  min-inline-size: 0;
+  padding: var(--space-3, 0.75rem);
+  border: 1px solid var(--color-border-subtle, rgb(127 127 127 / 24%));
+  border-radius: var(--radius-sm, 0.5rem);
+  background: var(--color-surface-primary, rgb(127 127 127 / 3%));
+}
+
+.import-visual-context,
+.import-visual-fields {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  min-inline-size: 0;
+}
+
+.import-visual-context {
+  padding: var(--space-3, 0.75rem);
+  border: 1px solid var(--color-border-subtle, rgb(127 127 127 / 24%));
+  border-radius: var(--radius-sm, 0.5rem);
+  background: var(--color-surface-primary, rgb(127 127 127 / 3%));
+}
+
+.import-visual-fields > label:not(.import-analysis-scope) {
+  display: grid;
+  gap: var(--space-1, 0.25rem);
+  min-inline-size: 0;
+}
+
+.import-visual-fields select {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.import-travel-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  align-items: end;
+  gap: var(--space-3, 0.75rem);
+  min-inline-size: 0;
+}
+
+.import-travel-fields label {
+  display: grid;
+  gap: var(--space-1, 0.25rem);
+  min-inline-size: 0;
+}
+
+.import-travel-fields input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.import-travel-fields input[type="file"] {
+  font-size: var(--of-font-caption, 0.875rem);
+}
+
+.import-analysis-results {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  max-block-size: 14rem;
+  overflow: auto;
+  padding-inline-start: 1.25rem;
+}
+
+.import-analysis-review {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  min-inline-size: 0;
+  padding-block-start: var(--space-3, 0.75rem);
+  border-block-start: 1px solid
+    var(--color-border-subtle, rgb(127 127 127 / 24%));
+}
+
+.import-analysis-review > label {
+  display: grid;
+  gap: var(--space-1, 0.25rem);
+  min-inline-size: 0;
+}
+
+.import-analysis-review input,
+.import-analysis-review select {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.import-review-result {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 0.5rem);
+  min-inline-size: 0;
+}
+
+.import-review-result input {
+  flex: 0 0 auto;
+  inline-size: auto;
+  margin-block-start: 0.2em;
+}
+
+.import-review-result span {
+  display: grid;
+  gap: var(--space-1, 0.25rem);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-review-pagination,
+.import-review-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  min-inline-size: 0;
+}
+
+.import-review-range > input {
+  min-inline-size: 0;
+  flex: 1 1 0;
+}
+
+.import-review-pagination > span {
+  flex: 1 1 auto;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.import-analysis-results li {
+  display: grid;
+  gap: var(--space-1, 0.25rem);
+  min-inline-size: 0;
+}
+
+.import-analysis-results li span {
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary, currentColor);
 }
 .import-source-pagination > span {
   color: var(--of-text-secondary);

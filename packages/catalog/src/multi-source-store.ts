@@ -1,8 +1,1664 @@
 // Modified by OpenFilm contributors on 2026-10-25. See LICENSE and NOTICE.
 import type { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
+import type {
+  AnalysisEvidenceResult,
+  AnalysisRun,
+  AnalysisRunStatus,
+  AssetContentVersion,
+  CatalogSourceSelection,
+  ContentIdentity,
+  ExpectedManifest,
+  ExpectedManifestEntry,
+  FileOccurrence,
+  ImportBatch,
+  ImportBatchStatus,
+  ReviewDecision,
+  VerifiedManifest,
+} from "@openfilm/core";
+import {
+  canTransitionAnalysisRun,
+  canTransitionImportBatch,
+} from "@openfilm/core";
+import {
+  TRAVEL_CONTEXT_LIMITS,
+  validateTravelContext,
+  validateVisualSampling,
+} from "@openfilm/core";
 
 export type CatalogTablePolicy =
   "portable-semantic" | "local-operational" | "cache";
+
+export interface CatalogOccurrenceMembership {
+  occurrence: FileOccurrence;
+  included: boolean;
+}
+
+export interface CatalogOccurrencePage {
+  items: CatalogOccurrenceMembership[];
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export interface CatalogVerifiedManifestEntry {
+  occurrenceId: string;
+  status: "verified" | "failed" | "excluded";
+  bindingId?: string;
+  assetId?: string;
+  contentHash?: string;
+  contextRevision?: string;
+  code?: string;
+}
+
+export interface CatalogVerifiedManifestBase {
+  id: string;
+  expectedManifestId: string;
+  createdAt: string;
+}
+
+export function fingerprintReviewResults(
+  run: Pick<AnalysisRun, "id" | "manifestId">,
+  results: readonly AnalysisEvidenceResult[],
+  targetIds: readonly string[],
+  decisions: readonly ReviewDecision[] = [],
+): string {
+  const byId = new Map(results.map((result) => [result.id, result]));
+  const selected = [...new Set(targetIds)].sort().map((id) => {
+    const result = byId.get(id);
+    if (!result || result.runId !== run.id)
+      throw new Error("Review target is missing from its fixed analysis run.");
+    return {
+      id: result.id,
+      reviewStatus: result.reviewStatus,
+      evidence: result.evidence,
+      bindingIds: [...result.bindingIds].sort(),
+    };
+  });
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        runId: run.id,
+        manifestId: run.manifestId,
+        results: selected,
+        ...(decisions.some(
+          (decision) =>
+            decision.outcome === "applied" &&
+            decision.targetIds.some((id) => targetIds.includes(id)),
+        )
+          ? {
+              reviewLineage: decisions
+                .filter(
+                  (decision) =>
+                    decision.outcome === "applied" &&
+                    decision.targetIds.some((id) => targetIds.includes(id)),
+                )
+                .map(({ id, operationFingerprint, supersedesDecisionId }) => ({
+                  id,
+                  operationFingerprint,
+                  ...(supersedesDecisionId ? { supersedesDecisionId } : {}),
+                }))
+                .sort((left, right) => left.id.localeCompare(right.id)),
+            }
+          : {}),
+      }),
+    )
+    .digest("hex");
+}
+
+export interface CatalogContentMatch {
+  identity: ContentIdentity;
+  assetId?: string;
+}
+
+function requireText(value: string, label: string, maximum = 16_384): string {
+  if (
+    typeof value !== "string" ||
+    !value.trim() ||
+    value.length > maximum ||
+    [...value].some((character) => character.charCodeAt(0) < 32)
+  )
+    throw new Error(`${label} is invalid.`);
+  return value;
+}
+
+function validRelativePath(value: string): string {
+  const normalized = requireText(value, "Occurrence relative path").replaceAll(
+    "\\",
+    "/",
+  );
+  if (
+    normalized.startsWith("/") ||
+    /^[a-z]:/iu.test(normalized) ||
+    /^[a-z][a-z0-9+.-]*:/iu.test(normalized) ||
+    normalized.split("/").some((part) => !part || part === "." || part === "..")
+  )
+    throw new Error(
+      "Occurrence relative path must remain inside its source root.",
+    );
+  return normalized;
+}
+
+function validLogicalRootId(value: string): string {
+  const root = requireText(value, "Logical root ID", 256);
+  if (!/^[a-z0-9:_-]+$/iu.test(root))
+    throw new Error("Logical root ID must not contain a locator or path.");
+  return root;
+}
+
+/** Durable semantic source discovery; access handles and absolute paths never enter the catalog. */
+export class CatalogMultiSourceStore {
+  constructor(private readonly database: DatabaseSync) {}
+
+  saveSelection(selection: CatalogSourceSelection): void {
+    const safe: CatalogSourceSelection = {
+      id: requireText(selection.id, "Source selection ID", 256),
+      projectId: requireText(selection.projectId, "Source project ID", 512),
+      kind: selection.kind,
+      displayName: requireText(
+        selection.displayName,
+        "Source display name",
+        512,
+      ),
+      logicalRootId: validLogicalRootId(selection.logicalRootId),
+      recursive: selection.recursive,
+      selectionRevision: selection.selectionRevision,
+    };
+    if (
+      !["file", "folder"].includes(safe.kind) ||
+      typeof safe.recursive !== "boolean" ||
+      !Number.isSafeInteger(safe.selectionRevision) ||
+      safe.selectionRevision < 0
+    )
+      throw new Error("Source selection semantics are invalid.");
+    const data = JSON.stringify(safe);
+    this.database
+      .prepare(
+        `INSERT INTO source_selections(
+           id,kind,display_name,logical_root,recursive,selection_revision,data
+         ) VALUES(?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+           kind=excluded.kind,display_name=excluded.display_name,
+           logical_root=excluded.logical_root,recursive=excluded.recursive,
+           selection_revision=excluded.selection_revision,data=excluded.data`,
+      )
+      .run(
+        safe.id,
+        safe.kind,
+        safe.displayName,
+        safe.logicalRootId,
+        Number(safe.recursive),
+        safe.selectionRevision,
+        data,
+      );
+  }
+
+  upsertOccurrence(
+    selectionId: string,
+    occurrence: FileOccurrence,
+    included: boolean,
+  ): void {
+    this.upsertOccurrences(selectionId, [{ occurrence, included }]);
+  }
+
+  upsertOccurrences(
+    selectionId: string,
+    entries: readonly CatalogOccurrenceMembership[],
+  ): void {
+    const safeSelectionId = requireText(
+      selectionId,
+      "Source selection ID",
+      256,
+    );
+    if (entries.length > 1000)
+      throw new Error(
+        "A discovery write batch cannot exceed 1,000 occurrences.",
+      );
+    const safeEntries = entries.map(({ occurrence, included }) => {
+      const safe: FileOccurrence = {
+        id: requireText(occurrence.id, "Occurrence ID", 256),
+        logicalRootId: validLogicalRootId(occurrence.logicalRootId),
+        displayName: requireText(
+          occurrence.displayName,
+          "Occurrence display name",
+          512,
+        ),
+        relativePath: validRelativePath(occurrence.relativePath),
+        fileKind: occurrence.fileKind,
+        ...(occurrence.byteLength === undefined
+          ? {}
+          : { byteLength: occurrence.byteLength }),
+        ...(occurrence.modifiedAt === undefined
+          ? {}
+          : {
+              modifiedAt: requireText(
+                occurrence.modifiedAt,
+                "Modified time",
+                128,
+              ),
+            }),
+        availability: occurrence.availability,
+        scanRevision: occurrence.scanRevision,
+      };
+      if (
+        !["image", "video", "audio", "track", "unsupported"].includes(
+          safe.fileKind,
+        ) ||
+        ![
+          "available",
+          "needs-reselection",
+          "missing",
+          "unreadable",
+          "staged",
+        ].includes(safe.availability) ||
+        (safe.byteLength !== undefined &&
+          (!Number.isSafeInteger(safe.byteLength) || safe.byteLength < 0)) ||
+        !Number.isSafeInteger(safe.scanRevision) ||
+        safe.scanRevision < 0 ||
+        typeof included !== "boolean"
+      )
+        throw new Error("File occurrence semantics are invalid.");
+      return { occurrence: safe, included };
+    });
+
+    const insert = this.database.prepare(
+      `INSERT INTO file_occurrences(
+         id,display_name,relative_path,file_kind,byte_length,modified_at,
+         availability,scan_revision,data
+       ) VALUES(?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         display_name=excluded.display_name,relative_path=excluded.relative_path,
+         file_kind=excluded.file_kind,byte_length=excluded.byte_length,
+         modified_at=excluded.modified_at,availability=excluded.availability,
+         scan_revision=excluded.scan_revision,data=excluded.data`,
+    );
+    const membership = this.database.prepare(
+      `INSERT INTO selection_memberships(
+         selection_id,occurrence_id,relative_path,included,data
+       ) VALUES(?,?,?,?,?)
+       ON CONFLICT(selection_id,occurrence_id) DO UPDATE SET
+         relative_path=excluded.relative_path,data=excluded.data`,
+    );
+    const membershipById = this.database.prepare(
+      `SELECT included FROM selection_memberships
+       WHERE selection_id=? AND occurrence_id=?`,
+    );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const selection = this.database
+        .prepare("SELECT 1 FROM source_selections WHERE id=?")
+        .get(safeSelectionId);
+      if (!selection) throw new Error("Source selection does not exist.");
+      for (const { occurrence, included } of safeEntries) {
+        const existing = this.database
+          .prepare("SELECT data FROM file_occurrences WHERE id=?")
+          .get(occurrence.id);
+        if (existing) {
+          const prior = JSON.parse(
+            String(existing.data),
+          ) as Partial<FileOccurrence>;
+          if (
+            prior.logicalRootId !== occurrence.logicalRootId ||
+            prior.relativePath !== occurrence.relativePath
+          )
+            throw new Error(
+              "Occurrence identity conflicts with saved source evidence.",
+            );
+        }
+        insert.run(
+          occurrence.id,
+          occurrence.displayName,
+          occurrence.relativePath,
+          occurrence.fileKind,
+          occurrence.byteLength ?? null,
+          occurrence.modifiedAt ?? null,
+          occurrence.availability,
+          occurrence.scanRevision,
+          JSON.stringify(occurrence),
+        );
+        const priorMembership = membershipById.get(
+          safeSelectionId,
+          occurrence.id,
+        );
+        const retainedIncluded = priorMembership
+          ? Boolean(priorMembership.included)
+          : included;
+        membership.run(
+          safeSelectionId,
+          occurrence.id,
+          occurrence.relativePath,
+          Number(retainedIncluded),
+          JSON.stringify({
+            selectionId: safeSelectionId,
+            occurrenceId: occurrence.id,
+            relativePath: occurrence.relativePath,
+            included: retainedIncluded,
+            scanRevision: occurrence.scanRevision,
+          }),
+        );
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  setIncluded(
+    selectionId: string,
+    occurrenceId: string,
+    included: boolean,
+  ): void {
+    const selection = requireText(selectionId, "Source selection ID", 256);
+    const occurrence = requireText(occurrenceId, "Occurrence ID", 256);
+    if (typeof included !== "boolean")
+      throw new Error("Inclusion state is invalid.");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.database
+        .prepare(
+          "SELECT data FROM selection_memberships WHERE selection_id=? AND occurrence_id=?",
+        )
+        .get(selection, occurrence);
+      if (!row) throw new Error("Source membership does not exist.");
+      const data = JSON.parse(String(row.data)) as Record<string, unknown>;
+      data.included = included;
+      this.database
+        .prepare(
+          `UPDATE selection_memberships SET included=?,data=?
+           WHERE selection_id=? AND occurrence_id=?`,
+        )
+        .run(Number(included), JSON.stringify(data), selection, occurrence);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  listOccurrences(
+    selectionId: string,
+    options: { offset?: number; limit?: number } = {},
+  ): CatalogOccurrencePage {
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 100;
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 1000
+    )
+      throw new Error("Occurrence page bounds are invalid.");
+    const rows = this.database
+      .prepare(
+        `SELECT occurrence.id,occurrence.data,occurrence.display_name,
+           occurrence.relative_path,occurrence.file_kind,occurrence.byte_length,
+           occurrence.modified_at,occurrence.availability,occurrence.scan_revision,
+           membership.included
+         FROM selection_memberships AS membership
+         JOIN file_occurrences AS occurrence ON occurrence.id=membership.occurrence_id
+         WHERE membership.selection_id=?
+         ORDER BY membership.relative_path,occurrence.id LIMIT ? OFFSET ?`,
+      )
+      .all(selectionId, limit + 1, offset);
+    return {
+      items: rows.slice(0, limit).map((row) => ({
+        occurrence: {
+          id: String(row.id),
+          logicalRootId: String(
+            (JSON.parse(String(row.data)) as { logicalRootId?: unknown })
+              .logicalRootId ?? "",
+          ),
+          displayName: String(row.display_name),
+          relativePath: String(row.relative_path),
+          fileKind: String(row.file_kind) as FileOccurrence["fileKind"],
+          ...(row.byte_length === null
+            ? {}
+            : { byteLength: Number(row.byte_length) }),
+          ...(row.modified_at === null
+            ? {}
+            : { modifiedAt: String(row.modified_at) }),
+          availability: String(
+            row.availability,
+          ) as FileOccurrence["availability"],
+          scanRevision: Number(row.scan_revision),
+        },
+        included: Boolean(row.included),
+      })),
+      offset,
+      limit,
+      hasMore: rows.length > limit,
+    };
+  }
+
+  getOccurrence(
+    selectionId: string,
+    occurrenceId: string,
+  ): CatalogOccurrenceMembership | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT occurrence.id,occurrence.data,occurrence.display_name,
+           occurrence.relative_path,occurrence.file_kind,occurrence.byte_length,
+           occurrence.modified_at,occurrence.availability,occurrence.scan_revision,
+           membership.included
+         FROM selection_memberships AS membership
+         JOIN file_occurrences AS occurrence ON occurrence.id=membership.occurrence_id
+         WHERE membership.selection_id=? AND membership.occurrence_id=?`,
+      )
+      .get(
+        requireText(selectionId, "Source selection ID", 256),
+        requireText(occurrenceId, "Occurrence ID", 256),
+      );
+    if (!row) return undefined;
+    return {
+      occurrence: {
+        id: String(row.id),
+        logicalRootId: String(
+          (JSON.parse(String(row.data)) as { logicalRootId?: unknown })
+            .logicalRootId ?? "",
+        ),
+        displayName: String(row.display_name),
+        relativePath: String(row.relative_path),
+        fileKind: String(row.file_kind) as FileOccurrence["fileKind"],
+        ...(row.byte_length === null
+          ? {}
+          : { byteLength: Number(row.byte_length) }),
+        ...(row.modified_at === null
+          ? {}
+          : { modifiedAt: String(row.modified_at) }),
+        availability: String(
+          row.availability,
+        ) as FileOccurrence["availability"],
+        scanRevision: Number(row.scan_revision),
+      },
+      included: Boolean(row.included),
+    };
+  }
+
+  nextScanRevision(selectionId: string): number {
+    const selection = requireText(selectionId, "Source selection ID", 256);
+    const row = this.database
+      .prepare(
+        `SELECT COALESCE(MAX(occurrence.scan_revision),0) AS revision
+         FROM selection_memberships AS membership
+         JOIN file_occurrences AS occurrence ON occurrence.id=membership.occurrence_id
+         WHERE membership.selection_id=?`,
+      )
+      .get(selection);
+    const next = Number(row?.revision ?? 0) + 1;
+    if (!Number.isSafeInteger(next))
+      throw new Error("Source scan revision exceeds the supported range.");
+    return next;
+  }
+
+  markUnseenOccurrencesMissing(
+    selectionId: string,
+    scanRevision: number,
+  ): number {
+    const selection = requireText(selectionId, "Source selection ID", 256);
+    if (!Number.isSafeInteger(scanRevision) || scanRevision < 1)
+      throw new Error("Source scan revision is invalid.");
+    const rowsQuery = this.database.prepare(
+      `SELECT membership.occurrence_id,membership.data AS membership_data,
+         occurrence.display_name,occurrence.relative_path,occurrence.file_kind,
+         occurrence.byte_length,occurrence.modified_at,occurrence.availability,
+         occurrence.scan_revision,occurrence.data AS occurrence_data
+       FROM selection_memberships AS membership
+       JOIN file_occurrences AS occurrence ON occurrence.id=membership.occurrence_id
+       WHERE membership.selection_id=?`,
+    );
+    const membershipOther = this.database.prepare(
+      `SELECT included FROM selection_memberships
+       WHERE occurrence_id=? AND selection_id<>?`,
+    );
+    const update = this.database.prepare(
+      `UPDATE file_occurrences SET availability='missing',data=? WHERE id=?`,
+    );
+    let missing = 0;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const rows = rowsQuery.all(selection);
+      for (const row of rows) {
+        const membership = JSON.parse(String(row.membership_data)) as {
+          scanRevision?: unknown;
+        };
+        const lastSeen =
+          typeof membership.scanRevision === "number"
+            ? membership.scanRevision
+            : 0;
+        if (lastSeen >= scanRevision || row.availability === "missing")
+          continue;
+        const otherSelectionHasOccurrence = membershipOther
+          .all(String(row.occurrence_id), selection)
+          .some((other) => Boolean(other.included));
+        if (otherSelectionHasOccurrence) continue;
+        const occurrence = JSON.parse(String(row.occurrence_data)) as Record<
+          string,
+          unknown
+        >;
+        occurrence.availability = "missing";
+        update.run(JSON.stringify(occurrence), String(row.occurrence_id));
+        missing++;
+      }
+      this.database.exec("COMMIT");
+      return missing;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  createImportBatch(batch: ImportBatch, expected: ExpectedManifest): void {
+    if (
+      batch.status !== "sealing" ||
+      batch.expectedManifestId !== expected.id ||
+      expected.batchId !== batch.id ||
+      expected.revision !== batch.draftRevision
+    )
+      throw new Error("Import batch and expected manifest do not match.");
+    const safeBatch: ImportBatch = {
+      id: requireText(batch.id, "Import batch ID", 256),
+      projectId: requireText(batch.projectId, "Import project ID", 512),
+      draftRevision: batch.draftRevision,
+      scopeMode: batch.scopeMode,
+      status: batch.status,
+      expectedManifestId: requireText(expected.id, "Expected manifest ID", 256),
+      createdAt: requireText(
+        batch.createdAt,
+        "Import batch creation time",
+        128,
+      ),
+    };
+    if (
+      !Number.isSafeInteger(safeBatch.draftRevision) ||
+      safeBatch.draftRevision < 0 ||
+      !["selected-sources", "project-catalog"].includes(safeBatch.scopeMode) ||
+      expected.entries.length < 1 ||
+      expected.entries.length > 100_000
+    )
+      throw new Error("Import batch bounds or scope are invalid.");
+    const safeExpected: ExpectedManifest = {
+      id: safeBatch.expectedManifestId,
+      batchId: safeBatch.id,
+      revision: safeBatch.draftRevision,
+      selectionHash: requireText(
+        expected.selectionHash,
+        "Selection fingerprint",
+        64,
+      ),
+      entries: expected.entries.map((entry) => {
+        const safe: ExpectedManifestEntry = {
+          occurrenceId: requireText(
+            entry.occurrenceId,
+            "Expected occurrence ID",
+            256,
+          ),
+          relativePath: validRelativePath(entry.relativePath),
+          included: entry.included,
+          ...(entry.expectedByteLength === undefined
+            ? {}
+            : { expectedByteLength: entry.expectedByteLength }),
+          ...(entry.expectedModifiedAt === undefined
+            ? {}
+            : {
+                expectedModifiedAt: requireText(
+                  entry.expectedModifiedAt,
+                  "Expected modified time",
+                  128,
+                ),
+              }),
+        };
+        if (
+          typeof safe.included !== "boolean" ||
+          (safe.expectedByteLength !== undefined &&
+            (!Number.isSafeInteger(safe.expectedByteLength) ||
+              safe.expectedByteLength < 0))
+        )
+          throw new Error("Expected manifest entry is invalid.");
+        return safe;
+      }),
+      partialPolicy: expected.partialPolicy,
+      createdAt: requireText(
+        expected.createdAt,
+        "Expected manifest creation time",
+        128,
+      ),
+    };
+    if (
+      !/^[a-f0-9]{64}$/u.test(safeExpected.selectionHash) ||
+      !["require-all", "allow-readable"].includes(safeExpected.partialPolicy) ||
+      new Set(safeExpected.entries.map(({ occurrenceId }) => occurrenceId))
+        .size !== safeExpected.entries.length
+    )
+      throw new Error("Expected manifest semantics are invalid.");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const batchData = JSON.stringify(safeBatch);
+      const expectedData = JSON.stringify({
+        id: safeExpected.id,
+        batchId: safeExpected.batchId,
+        revision: safeExpected.revision,
+        selectionHash: safeExpected.selectionHash,
+        partialPolicy: safeExpected.partialPolicy,
+        createdAt: safeExpected.createdAt,
+      });
+      this.database
+        .prepare(
+          `INSERT INTO import_batches(
+             id,draft_revision,scope_mode,status,created_at,data
+           ) VALUES(?,?,?,?,?,?)`,
+        )
+        .run(
+          safeBatch.id,
+          safeBatch.draftRevision,
+          safeBatch.scopeMode,
+          safeBatch.status,
+          safeBatch.createdAt,
+          batchData,
+        );
+      this.database
+        .prepare(
+          `INSERT INTO expected_manifests(
+             id,batch_id,revision,selection_hash,partial_policy,created_at,data
+           ) VALUES(?,?,?,?,?,?,?)`,
+        )
+        .run(
+          safeExpected.id,
+          safeExpected.batchId,
+          safeExpected.revision,
+          safeExpected.selectionHash,
+          safeExpected.partialPolicy,
+          safeExpected.createdAt,
+          expectedData,
+        );
+      const insertEntry = this.database.prepare(
+        `INSERT INTO expected_manifest_entries(
+           manifest_id,occurrence_id,position,included,data
+         ) VALUES(?,?,?,?,?)`,
+      );
+      safeExpected.entries.forEach((entry, position) => {
+        insertEntry.run(
+          safeExpected.id,
+          entry.occurrenceId,
+          position,
+          Number(entry.included),
+          JSON.stringify({
+            manifestId: safeExpected.id,
+            occurrenceId: entry.occurrenceId,
+            position,
+            included: entry.included,
+            relativePath: entry.relativePath,
+            ...(entry.expectedByteLength === undefined
+              ? {}
+              : { expectedByteLength: entry.expectedByteLength }),
+            ...(entry.expectedModifiedAt === undefined
+              ? {}
+              : { expectedModifiedAt: entry.expectedModifiedAt }),
+          }),
+        );
+      });
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getImportBatch(id: string): ImportBatch | undefined {
+    const row = this.database
+      .prepare("SELECT status,data FROM import_batches WHERE id=?")
+      .get(requireText(id, "Import batch ID", 256));
+    if (!row) return undefined;
+    const value = JSON.parse(String(row.data)) as ImportBatch;
+    return { ...value, status: String(row.status) as ImportBatchStatus };
+  }
+
+  getImportBatchByExpectedId(
+    expectedManifestId: string,
+  ): ImportBatch | undefined {
+    const expectedId = requireText(
+      expectedManifestId,
+      "Expected manifest ID",
+      256,
+    );
+    const row = this.database
+      .prepare(
+        "SELECT id FROM import_batches WHERE id=(SELECT batch_id FROM expected_manifests WHERE id=?)",
+      )
+      .get(expectedId);
+    return row ? this.getImportBatch(String(row.id)) : undefined;
+  }
+
+  finishImportBatch(id: string, status: ImportBatchStatus): void {
+    const batchId = requireText(id, "Import batch ID", 256);
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.database
+        .prepare("SELECT status,data FROM import_batches WHERE id=?")
+        .get(batchId);
+      if (!row) throw new Error("Import batch does not exist.");
+      const current = String(row.status) as ImportBatchStatus;
+      if (!canTransitionImportBatch(current, status))
+        throw new Error(
+          `Import batch cannot transition from ${current} to ${status}.`,
+        );
+      const data = JSON.parse(String(row.data)) as Record<string, unknown>;
+      data.status = status;
+      this.database
+        .prepare("UPDATE import_batches SET status=?,data=? WHERE id=?")
+        .run(status, JSON.stringify(data), batchId);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  recoverInterruptedImportBatches(staleBefore: string): number {
+    const cutoff = requireText(staleBefore, "Import recovery cutoff", 128);
+    if (!Number.isFinite(Date.parse(cutoff)))
+      throw new Error("Import recovery cutoff must be a valid timestamp.");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const rows = this.database
+        .prepare(
+          "SELECT id,data FROM import_batches WHERE status='sealing' AND created_at<?",
+        )
+        .all(cutoff);
+      const update = this.database.prepare(
+        "UPDATE import_batches SET status='failed',data=? WHERE id=? AND status='sealing'",
+      );
+      for (const row of rows) {
+        const data = JSON.parse(String(row.data)) as Record<string, unknown>;
+        data.status = "failed";
+        update.run(JSON.stringify(data), String(row.id));
+      }
+      this.database.exec("COMMIT");
+      return rows.length;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getExpectedManifest(id: string): ExpectedManifest | undefined {
+    const manifestId = requireText(id, "Expected manifest ID", 256);
+    const row = this.database
+      .prepare("SELECT data FROM expected_manifests WHERE id=?")
+      .get(manifestId);
+    if (!row) return undefined;
+    const value = JSON.parse(String(row.data)) as Omit<
+      ExpectedManifest,
+      "entries"
+    >;
+    const entries = this.database
+      .prepare(
+        `SELECT occurrence_id,included,data FROM expected_manifest_entries
+         WHERE manifest_id=? ORDER BY position`,
+      )
+      .all(manifestId)
+      .map((entry) => {
+        const data = JSON.parse(String(entry.data)) as Record<string, unknown>;
+        return {
+          occurrenceId: String(entry.occurrence_id),
+          relativePath: validRelativePath(String(data.relativePath ?? "")),
+          included: Boolean(entry.included),
+          ...(data.expectedByteLength === undefined
+            ? {}
+            : { expectedByteLength: Number(data.expectedByteLength) }),
+          ...(data.expectedModifiedAt === undefined
+            ? {}
+            : { expectedModifiedAt: String(data.expectedModifiedAt) }),
+        } satisfies ExpectedManifestEntry;
+      });
+    return { ...value, entries };
+  }
+
+  saveContentIdentity(identity: ContentIdentity): ContentIdentity {
+    const safe: ContentIdentity = {
+      id: requireText(identity.id, "Content identity ID", 256),
+      hashAlgorithm: "sha256",
+      fullHash: identity.fullHash,
+      byteLength: identity.byteLength,
+      mediaKind: identity.mediaKind,
+    };
+    if (
+      !/^[a-f0-9]{64}$/u.test(safe.fullHash) ||
+      !Number.isSafeInteger(safe.byteLength) ||
+      safe.byteLength < 0 ||
+      !["image", "video", "audio", "track"].includes(safe.mediaKind)
+    )
+      throw new Error("Full content identity is invalid.");
+    this.database
+      .prepare(
+        `INSERT INTO content_identities(
+           id,hash_algorithm,full_hash,byte_length,media_kind,data
+         ) VALUES(?,?,?,?,?,?)
+         ON CONFLICT(hash_algorithm,full_hash,byte_length) DO NOTHING`,
+      )
+      .run(
+        safe.id,
+        safe.hashAlgorithm,
+        safe.fullHash,
+        safe.byteLength,
+        safe.mediaKind,
+        JSON.stringify(safe),
+      );
+    const row = this.database
+      .prepare(
+        `SELECT id,hash_algorithm,full_hash,byte_length,media_kind
+         FROM content_identities WHERE hash_algorithm=? AND full_hash=? AND byte_length=?`,
+      )
+      .get(safe.hashAlgorithm, safe.fullHash, safe.byteLength);
+    if (!row || row.media_kind !== safe.mediaKind)
+      throw new Error(
+        "Content identity conflicts with an existing media kind.",
+      );
+    return {
+      id: String(row.id),
+      hashAlgorithm: "sha256",
+      fullHash: String(row.full_hash),
+      byteLength: Number(row.byte_length),
+      mediaKind: String(row.media_kind) as ContentIdentity["mediaKind"],
+    };
+  }
+
+  findContentIdentity(
+    fullHash: string,
+    byteLength: number,
+  ): CatalogContentMatch | undefined {
+    if (
+      !/^[a-f0-9]{64}$/u.test(fullHash) ||
+      !Number.isSafeInteger(byteLength) ||
+      byteLength < 0
+    )
+      throw new Error("Full content identity lookup is invalid.");
+    const row = this.database
+      .prepare(
+        `SELECT identity.id,identity.hash_algorithm,identity.full_hash,
+           identity.byte_length,identity.media_kind,binding.asset_id
+         FROM content_identities AS identity
+         LEFT JOIN asset_content_versions AS binding ON binding.content_id=identity.id
+         WHERE identity.hash_algorithm='sha256' AND identity.full_hash=?
+           AND identity.byte_length=? ORDER BY binding.id LIMIT 1`,
+      )
+      .get(fullHash, byteLength);
+    if (!row) return undefined;
+    return {
+      identity: {
+        id: String(row.id),
+        hashAlgorithm: "sha256",
+        fullHash: String(row.full_hash),
+        byteLength: Number(row.byte_length),
+        mediaKind: String(row.media_kind) as ContentIdentity["mediaKind"],
+      },
+      ...(row.asset_id === null ? {} : { assetId: String(row.asset_id) }),
+    };
+  }
+
+  saveAssetContentVersion(binding: AssetContentVersion): AssetContentVersion {
+    const safe: AssetContentVersion = {
+      id: requireText(binding.id, "Asset content version ID", 256),
+      assetId: requireText(binding.assetId, "Asset ID", 256),
+      occurrenceId: requireText(binding.occurrenceId, "Occurrence ID", 256),
+      contentId: requireText(binding.contentId, "Content identity ID", 256),
+      contextRevision: requireText(
+        binding.contextRevision,
+        "Context revision",
+        256,
+      ),
+      descriptorSnapshotId: requireText(
+        binding.descriptorSnapshotId,
+        "Descriptor snapshot ID",
+        256,
+      ),
+    };
+    this.database
+      .prepare(
+        `INSERT INTO asset_content_versions(
+           id,asset_id,occurrence_id,content_id,context_revision,
+           descriptor_snapshot_id,data
+         ) VALUES(?,?,?,?,?,?,?)
+         ON CONFLICT(asset_id,occurrence_id,content_id,context_revision) DO NOTHING`,
+      )
+      .run(
+        safe.id,
+        safe.assetId,
+        safe.occurrenceId,
+        safe.contentId,
+        safe.contextRevision,
+        safe.descriptorSnapshotId,
+        JSON.stringify(safe),
+      );
+    const row = this.database
+      .prepare(
+        `SELECT id,asset_id,occurrence_id,content_id,context_revision,descriptor_snapshot_id
+         FROM asset_content_versions
+         WHERE asset_id=? AND occurrence_id=? AND content_id=? AND context_revision=?`,
+      )
+      .get(
+        safe.assetId,
+        safe.occurrenceId,
+        safe.contentId,
+        safe.contextRevision,
+      );
+    if (!row) throw new Error("Asset content version was not saved.");
+    return {
+      id: String(row.id),
+      assetId: String(row.asset_id),
+      occurrenceId: String(row.occurrence_id),
+      contentId: String(row.content_id),
+      contextRevision: String(row.context_revision),
+      descriptorSnapshotId: String(row.descriptor_snapshot_id),
+    };
+  }
+
+  createVerifiedManifest(
+    base: CatalogVerifiedManifestBase,
+    entries: readonly CatalogVerifiedManifestEntry[],
+  ): void {
+    const id = requireText(base.id, "Verified manifest ID", 256);
+    const expectedManifestId = requireText(
+      base.expectedManifestId,
+      "Expected manifest ID",
+      256,
+    );
+    const createdAt = requireText(
+      base.createdAt,
+      "Verified manifest creation time",
+      128,
+    );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      if (
+        this.database
+          .prepare("SELECT 1 FROM verified_manifests WHERE id=?")
+          .get(id)
+      )
+        throw new Error("Verified manifest already exists and is immutable.");
+      const expectedRows = this.database
+        .prepare(
+          `SELECT occurrence_id,included FROM expected_manifest_entries
+           WHERE manifest_id=? ORDER BY position`,
+        )
+        .all(expectedManifestId);
+      if (!expectedRows.length || expectedRows.length !== entries.length)
+        throw new Error("Verified manifest must resolve every expected entry.");
+      this.database
+        .prepare(
+          `INSERT INTO verified_manifests(id,expected_manifest_id,created_at,data)
+           VALUES(?,?,?,?)`,
+        )
+        .run(
+          id,
+          expectedManifestId,
+          createdAt,
+          JSON.stringify({ id, expectedManifestId, createdAt }),
+        );
+      const insert = this.database.prepare(
+        `INSERT INTO verified_manifest_entries(
+           manifest_id,position,occurrence_id,binding_id,status,data
+         ) VALUES(?,?,?,?,?,?)`,
+      );
+      entries.forEach((entry, position) => {
+        const expected = expectedRows[position]!;
+        if (
+          entry.occurrenceId !== String(expected.occurrence_id) ||
+          (!expected.included && entry.status !== "excluded") ||
+          (expected.included && entry.status === "excluded")
+        )
+          throw new Error(
+            "Verified manifest entries do not match the expected scope.",
+          );
+        const data: Record<string, unknown> = {};
+        if (entry.status === "verified") {
+          if (
+            !entry.bindingId ||
+            !entry.assetId ||
+            !entry.contentHash ||
+            !entry.contextRevision
+          )
+            throw new Error("Verified member identity is incomplete.");
+          const binding = this.database
+            .prepare(
+              `SELECT binding.asset_id,binding.occurrence_id,binding.context_revision,
+                 identity.full_hash
+               FROM asset_content_versions AS binding
+               JOIN content_identities AS identity ON identity.id=binding.content_id
+               WHERE binding.id=?`,
+            )
+            .get(entry.bindingId);
+          if (
+            !binding ||
+            binding.asset_id !== entry.assetId ||
+            binding.occurrence_id !== entry.occurrenceId ||
+            binding.context_revision !== entry.contextRevision ||
+            binding.full_hash !== entry.contentHash
+          )
+            throw new Error(
+              "Verified member does not match its sealed content binding.",
+            );
+          Object.assign(data, {
+            assetId: entry.assetId,
+            contentHash: entry.contentHash,
+            contextRevision: entry.contextRevision,
+          });
+        } else if (entry.status === "failed") {
+          if (
+            !entry.code ||
+            entry.code.length > 128 ||
+            !/^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+$/u.test(entry.code)
+          )
+            throw new Error("Verified failure code is invalid.");
+          data.code = entry.code;
+        } else if (entry.status !== "excluded") {
+          throw new Error("Verified manifest status is invalid.");
+        }
+        insert.run(
+          id,
+          position,
+          entry.occurrenceId,
+          entry.status === "verified" ? entry.bindingId! : null,
+          entry.status,
+          JSON.stringify(data),
+        );
+      });
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getVerifiedManifest(id: string): VerifiedManifest | undefined {
+    const manifestId = requireText(id, "Verified manifest ID", 256);
+    const row = this.database
+      .prepare(
+        "SELECT expected_manifest_id,created_at FROM verified_manifests WHERE id=?",
+      )
+      .get(manifestId);
+    if (!row) return undefined;
+    const members: VerifiedManifest["members"] = [];
+    const failures: VerifiedManifest["failures"] = [];
+    const excludedOccurrenceIds: string[] = [];
+    for (const entry of this.database
+      .prepare(
+        `SELECT entry.occurrence_id,entry.binding_id,entry.status,entry.data,
+           binding.asset_id,binding.context_revision,identity.full_hash
+         FROM verified_manifest_entries AS entry
+         LEFT JOIN asset_content_versions AS binding ON binding.id=entry.binding_id
+         LEFT JOIN content_identities AS identity ON identity.id=binding.content_id
+         WHERE entry.manifest_id=? ORDER BY entry.position`,
+      )
+      .all(manifestId)) {
+      const data = JSON.parse(String(entry.data)) as Record<string, unknown>;
+      if (entry.status === "verified")
+        members.push({
+          bindingId: String(entry.binding_id),
+          assetId: String(entry.asset_id ?? data.assetId),
+          contentHash: String(entry.full_hash ?? data.contentHash),
+          contextRevision: String(
+            entry.context_revision ?? data.contextRevision,
+          ),
+        });
+      else if (entry.status === "failed")
+        failures.push({
+          occurrenceId: String(entry.occurrence_id),
+          code: String(data.code),
+        });
+      else excludedOccurrenceIds.push(String(entry.occurrence_id));
+    }
+    return {
+      id: manifestId,
+      expectedManifestId: String(row.expected_manifest_id),
+      members,
+      failures,
+      excludedOccurrenceIds,
+      createdAt: String(row.created_at),
+    };
+  }
+
+  getVerifiedManifestByExpectedId(
+    expectedManifestId: string,
+  ): VerifiedManifest | undefined {
+    const expectedId = requireText(
+      expectedManifestId,
+      "Expected manifest ID",
+      256,
+    );
+    const row = this.database
+      .prepare("SELECT id FROM verified_manifests WHERE expected_manifest_id=?")
+      .get(expectedId);
+    return row ? this.getVerifiedManifest(String(row.id)) : undefined;
+  }
+
+  createAnalysisRun(run: AnalysisRun): AnalysisRun {
+    const safe = this.validateAnalysisRun(run);
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = this.database
+        .prepare("SELECT data FROM analysis_runs WHERE id=?")
+        .get(safe.id);
+      if (existing) {
+        const prior = JSON.parse(String(existing.data)) as AnalysisRun;
+        if (JSON.stringify(prior) !== JSON.stringify(safe))
+          throw new Error(
+            "Analysis run identity conflicts with immutable inputs.",
+          );
+        this.database.exec("COMMIT");
+        return prior;
+      }
+      this.database
+        .prepare(
+          `INSERT INTO analysis_runs(
+           id,manifest_id,scope_mode,algorithm_version,taxonomy_version,
+           config_hash,status,created_at,data
+         ) VALUES(?,?,?,?,?,?,?,?,?)`,
+        )
+        .run(
+          safe.id,
+          safe.manifestId,
+          safe.scopeMode,
+          safe.algorithmVersion,
+          safe.taxonomyVersion,
+          safe.configHash,
+          safe.status,
+          safe.createdAt,
+          JSON.stringify(safe),
+        );
+      this.database.exec("COMMIT");
+      return safe;
+    } catch (error) {
+      if (this.database.isTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getAnalysisRun(id: string): AnalysisRun | undefined {
+    const row = this.database
+      .prepare("SELECT data,status FROM analysis_runs WHERE id=?")
+      .get(requireText(id, "Analysis run ID", 256));
+    if (!row) return undefined;
+    return {
+      ...(JSON.parse(String(row.data)) as AnalysisRun),
+      status: String(row.status) as AnalysisRunStatus,
+    };
+  }
+
+  listAnalysisRuns(
+    options: { offset?: number; limit?: number } = {},
+  ): AnalysisRun[] {
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 100;
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 500
+    )
+      throw new Error("Analysis run page bounds are invalid.");
+    return this.database
+      .prepare(
+        "SELECT data,status FROM analysis_runs ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
+      )
+      .all(limit, offset)
+      .map((row) => ({
+        ...(JSON.parse(String(row.data)) as AnalysisRun),
+        status: String(row.status) as AnalysisRunStatus,
+      }));
+  }
+
+  transitionAnalysisRun(id: string, status: AnalysisRunStatus): AnalysisRun {
+    const runId = requireText(id, "Analysis run ID", 256);
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.database
+        .prepare("SELECT status,data FROM analysis_runs WHERE id=?")
+        .get(runId);
+      if (!row) throw new Error("Analysis run does not exist.");
+      const from = String(row.status) as AnalysisRunStatus;
+      if (!canTransitionAnalysisRun(from, status))
+        throw new Error(
+          `Analysis run cannot transition from ${from} to ${status}.`,
+        );
+      const run = JSON.parse(String(row.data)) as AnalysisRun;
+      run.status = status;
+      this.database
+        .prepare("UPDATE analysis_runs SET status=?,data=? WHERE id=?")
+        .run(status, JSON.stringify(run), runId);
+      this.database.exec("COMMIT");
+      return run;
+    } catch (error) {
+      if (this.database.isTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  saveAnalysisResults(
+    runId: string,
+    results: readonly AnalysisEvidenceResult[],
+    assertPublication?: () => void,
+  ): void {
+    const safeRunId = requireText(runId, "Analysis run ID", 256);
+    if (!results.length || results.length > 50_000)
+      throw new Error("Analysis result count is invalid.");
+    const safeResults = results.map((result) => ({
+      id: requireText(result.id, "Analysis result ID", 256),
+      runId: requireText(result.runId, "Analysis result run ID", 256),
+      kind: result.kind,
+      reviewStatus: result.reviewStatus,
+      evidence: this.validateAnalysisEvidence(result.evidence),
+      bindingIds: result.bindingIds.map((bindingId) =>
+        requireText(bindingId, "Analysis result binding ID", 256),
+      ),
+    }));
+    if (
+      new Set(safeResults.map(({ id }) => id)).size !== safeResults.length ||
+      safeResults.some(
+        (result) =>
+          result.runId !== safeRunId ||
+          !["event", "duplicate", "observation"].includes(result.kind) ||
+          result.reviewStatus !== "pending" ||
+          result.bindingIds.length < 1 ||
+          result.bindingIds.length > 50_000 ||
+          new Set(result.bindingIds).size !== result.bindingIds.length,
+      )
+    )
+      throw new Error("Analysis result semantics are invalid.");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      assertPublication?.();
+      const runRow = this.database
+        .prepare("SELECT status,data FROM analysis_runs WHERE id=?")
+        .get(safeRunId);
+      if (!runRow || runRow.status !== "running")
+        throw new Error(
+          "Analysis results can only be published by a running operation.",
+        );
+      const run = JSON.parse(String(runRow.data)) as AnalysisRun;
+      const inputBindings = new Set(run.inputBindingIds);
+      if (
+        safeResults.some((result) =>
+          result.bindingIds.some((id) => !inputBindings.has(id)),
+        )
+      )
+        throw new Error(
+          "Analysis result references a binding outside its fixed input.",
+        );
+      if (
+        this.database
+          .prepare("SELECT 1 FROM analysis_results WHERE run_id=? LIMIT 1")
+          .get(safeRunId)
+      )
+        throw new Error("Analysis results are immutable once published.");
+      const insertResult = this.database.prepare(
+        "INSERT INTO analysis_results(id,run_id,kind,review_status,data) VALUES(?,?,?,?,?)",
+      );
+      const insertMember = this.database.prepare(
+        "INSERT INTO analysis_result_members(result_id,binding_id,position,data) VALUES(?,?,?,?)",
+      );
+      for (const result of safeResults) {
+        insertResult.run(
+          result.id,
+          result.runId,
+          result.kind,
+          result.reviewStatus,
+          JSON.stringify({ evidence: result.evidence }),
+        );
+        result.bindingIds.forEach((bindingId, position) =>
+          insertMember.run(
+            result.id,
+            bindingId,
+            position,
+            JSON.stringify({ resultId: result.id, bindingId, position }),
+          ),
+        );
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      if (this.database.isTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getAnalysisResults(runId: string): AnalysisEvidenceResult[] {
+    const safeRunId = requireText(runId, "Analysis run ID", 256);
+    return this.database
+      .prepare(
+        "SELECT id,run_id,kind,review_status,data FROM analysis_results WHERE run_id=? ORDER BY id",
+      )
+      .all(safeRunId)
+      .map((row) => {
+        const data = JSON.parse(String(row.data)) as { evidence: unknown };
+        const bindingIds = this.database
+          .prepare(
+            "SELECT binding_id FROM analysis_result_members WHERE result_id=? ORDER BY position",
+          )
+          .all(String(row.id))
+          .map(({ binding_id }) => String(binding_id));
+        return {
+          id: String(row.id),
+          runId: String(row.run_id),
+          kind: String(row.kind) as AnalysisEvidenceResult["kind"],
+          reviewStatus: String(
+            row.review_status,
+          ) as AnalysisEvidenceResult["reviewStatus"],
+          evidence: data.evidence,
+          bindingIds,
+        };
+      });
+  }
+
+  saveReviewDecision(decision: ReviewDecision): ReviewDecision {
+    const safeId = requireText(decision.id, "Review decision ID", 256);
+    const safeRunId = requireText(
+      decision.baseRunId,
+      "Review base run ID",
+      256,
+    );
+    const safeProjectId = requireText(
+      decision.projectId,
+      "Review project ID",
+      512,
+    );
+    const safeManifestId = requireText(
+      decision.manifestId,
+      "Review manifest ID",
+      256,
+    );
+    const safeFingerprint = requireText(
+      decision.beforeFingerprint,
+      "Review fingerprint",
+      64,
+    );
+    const operationFingerprint = requireText(
+      decision.operationFingerprint,
+      "Review operation fingerprint",
+      64,
+    );
+    const baseResultIds = decision.baseResultIds.map((id) =>
+      requireText(id, "Review base result ID", 256),
+    );
+    const targetIds = decision.targetIds.map((id) =>
+      requireText(id, "Review target ID", 256),
+    );
+    const operation = portableReviewOperation(decision.operation);
+    const createdAt = requireText(
+      decision.createdAt,
+      "Review decision time",
+      128,
+    );
+    if (
+      decision.schemaVersion !== 1 ||
+      !/^[a-f0-9]{64}$/u.test(safeFingerprint) ||
+      !/^[a-f0-9]{64}$/u.test(operationFingerprint) ||
+      !Number.isFinite(Date.parse(createdAt)) ||
+      !["applied", "conflicted", "superseded"].includes(decision.outcome) ||
+      !baseResultIds.length ||
+      baseResultIds.length > 1000 ||
+      !targetIds.length ||
+      targetIds.length > 1000 ||
+      new Set(baseResultIds).size !== baseResultIds.length ||
+      new Set(targetIds).size !== targetIds.length ||
+      targetIds.some((id) => !baseResultIds.includes(id))
+    )
+      throw new Error("Review decision semantics are invalid.");
+    const safe: ReviewDecision = {
+      schemaVersion: 1,
+      id: safeId,
+      projectId: safeProjectId,
+      baseRunId: safeRunId,
+      baseResultIds: [...baseResultIds].sort(),
+      targetIds: [...targetIds].sort(),
+      operation: operation as ReviewDecision["operation"],
+      operationFingerprint,
+      beforeFingerprint: safeFingerprint,
+      manifestId: safeManifestId,
+      ...(decision.storyRevision === undefined
+        ? {}
+        : {
+            storyRevision: requireText(
+              decision.storyRevision,
+              "Review story revision",
+              64,
+            ),
+          }),
+      ...(decision.supersedesDecisionId === undefined
+        ? {}
+        : {
+            supersedesDecisionId: requireText(
+              decision.supersedesDecisionId,
+              "Superseded review decision ID",
+              256,
+            ),
+          }),
+      outcome: decision.outcome,
+      createdAt,
+    };
+    if (
+      createHash("sha256")
+        .update(JSON.stringify(safe.operation))
+        .digest("hex") !== safe.operationFingerprint
+    )
+      throw new Error(
+        "Review operation fingerprint does not match its typed operation.",
+      );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = this.database
+        .prepare("SELECT data FROM review_decisions WHERE id=?")
+        .get(safe.id);
+      if (existing) {
+        const prior = JSON.parse(String(existing.data)) as ReviewDecision;
+        if (JSON.stringify(prior) !== JSON.stringify(safe))
+          throw new Error(
+            "A review decision ID cannot be reused for different content.",
+          );
+        this.database.exec("COMMIT");
+        return prior;
+      }
+      const runRow = this.database
+        .prepare("SELECT data FROM analysis_runs WHERE id=?")
+        .get(safe.baseRunId);
+      if (!runRow) throw new Error("Review base analysis run does not exist.");
+      const run = JSON.parse(String(runRow.data)) as AnalysisRun;
+      if (
+        run.projectId !== safe.projectId ||
+        run.manifestId !== safe.manifestId
+      )
+        throw new Error(
+          "Review decision does not match its immutable project and manifest scope.",
+        );
+      if (
+        safe.baseResultIds.length !== safe.targetIds.length ||
+        safe.baseResultIds.some((id) => !safe.targetIds.includes(id))
+      )
+        throw new Error(
+          "Review decision base and target result lineage must match exactly.",
+        );
+      const results = this.getAnalysisResults(safe.baseRunId);
+      const actualFingerprint = fingerprintReviewResults(
+        run,
+        results,
+        safe.targetIds,
+        this.listReviewDecisions(safe.baseRunId),
+      );
+      const selected = results.filter((result) =>
+        safe.targetIds.includes(result.id),
+      );
+      if (selected.length !== safe.targetIds.length)
+        throw new Error(
+          "Review decision references a result outside its base run.",
+        );
+      if (safe.supersedesDecisionId) {
+        const prior = this.database
+          .prepare("SELECT base_run_id FROM review_decisions WHERE id=?")
+          .get(safe.supersedesDecisionId);
+        if (!prior || String(prior.base_run_id) !== safe.baseRunId)
+          throw new Error(
+            "A superseded review decision must belong to the same base run.",
+          );
+      }
+      const actualOperationFingerprint = createHash("sha256")
+        .update(JSON.stringify(safe.operation))
+        .digest("hex");
+      if (
+        safe.outcome === "applied" &&
+        (actualFingerprint !== safe.beforeFingerprint ||
+          actualOperationFingerprint !== safe.operationFingerprint ||
+          selected.some(
+            (result) =>
+              result.reviewStatus !== "pending" &&
+              !(
+                safe.operation.kind === "adopt-story" &&
+                result.reviewStatus === "accepted"
+              ),
+          ))
+      )
+        throw new Error(
+          "Review preconditions changed; submit a conflicted decision instead.",
+        );
+      if (safe.outcome === "applied") {
+        const status =
+          safe.operation.kind === "reject-results" ? "rejected" : "accepted";
+        const update = this.database.prepare(
+          safe.operation.kind === "adopt-story"
+            ? "UPDATE analysis_results SET review_status=? WHERE id=? AND run_id=? AND review_status IN ('pending','accepted')"
+            : "UPDATE analysis_results SET review_status=? WHERE id=? AND run_id=? AND review_status='pending'",
+        );
+        for (const id of safe.targetIds) {
+          const result = update.run(status, id, safe.baseRunId);
+          if (result.changes !== 1)
+            throw new Error(
+              "Review target status changed during decision commit.",
+            );
+        }
+      }
+      this.database
+        .prepare(
+          "INSERT INTO review_decisions(id,base_run_id,before_fingerprint,outcome,created_at,data) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          safe.id,
+          safe.baseRunId,
+          safe.beforeFingerprint,
+          safe.outcome,
+          safe.createdAt,
+          JSON.stringify(safe),
+        );
+      this.database.exec("COMMIT");
+      return safe;
+    } catch (error) {
+      if (this.database.isTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getReviewDecision(id: string): ReviewDecision | undefined {
+    const safeId = requireText(id, "Review decision ID", 256);
+    const row = this.database
+      .prepare("SELECT data FROM review_decisions WHERE id=?")
+      .get(safeId);
+    return row
+      ? structuredClone(JSON.parse(String(row.data)) as ReviewDecision)
+      : undefined;
+  }
+
+  listReviewDecisions(runId: string): ReviewDecision[] {
+    const safeRunId = requireText(runId, "Review base run ID", 256);
+    return this.database
+      .prepare(
+        "SELECT data FROM review_decisions WHERE base_run_id=? ORDER BY created_at,id",
+      )
+      .all(safeRunId)
+      .map(({ data }) => JSON.parse(String(data)) as ReviewDecision);
+  }
+
+  private validateAnalysisRun(run: AnalysisRun): AnalysisRun {
+    const safe: AnalysisRun = {
+      id: requireText(run.id, "Analysis run ID", 256),
+      projectId: requireText(run.projectId, "Analysis project ID", 512),
+      manifestId: requireText(run.manifestId, "Analysis manifest ID", 256),
+      scopeMode: run.scopeMode,
+      algorithmVersion: requireText(
+        run.algorithmVersion,
+        "Analysis algorithm version",
+        128,
+      ),
+      taxonomyVersion: requireText(
+        run.taxonomyVersion,
+        "Analysis taxonomy version",
+        128,
+      ),
+      configHash: requireText(run.configHash, "Analysis config hash", 64),
+      inputFingerprint: requireText(
+        run.inputFingerprint,
+        "Analysis input fingerprint",
+        64,
+      ),
+      inputBindingIds: run.inputBindingIds.map((bindingId) =>
+        requireText(bindingId, "Analysis input binding ID", 256),
+      ),
+      ...(run.travelContext === undefined
+        ? {}
+        : { travelContext: validateTravelContext(run.travelContext) }),
+      ...(run.visualSampling === undefined
+        ? {}
+        : { visualSampling: validateVisualSampling(run.visualSampling) }),
+      ...(run.projectCatalogRevision === undefined
+        ? {}
+        : {
+            projectCatalogRevision: requireText(
+              run.projectCatalogRevision,
+              "Project catalog revision",
+              64,
+            ),
+          }),
+      status: run.status,
+      createdAt: requireText(run.createdAt, "Analysis run creation time", 128),
+    };
+    if (
+      !["selected-sources", "project-catalog"].includes(safe.scopeMode) ||
+      ![
+        "queued",
+        "running",
+        "completed",
+        "partial",
+        "failed",
+        "cancelled",
+      ].includes(safe.status) ||
+      !/^[a-f0-9]{64}$/u.test(safe.configHash) ||
+      !/^[a-f0-9]{64}$/u.test(safe.inputFingerprint) ||
+      (safe.projectCatalogRevision !== undefined &&
+        !/^[a-f0-9]{64}$/u.test(safe.projectCatalogRevision)) ||
+      !Number.isFinite(Date.parse(safe.createdAt)) ||
+      !safe.inputBindingIds.length ||
+      safe.inputBindingIds.length > 50_000 ||
+      new Set(safe.inputBindingIds).size !== safe.inputBindingIds.length
+    )
+      throw new Error("Analysis run semantics are invalid.");
+    return safe;
+  }
+
+  private validateAnalysisEvidence(value: unknown): Record<string, unknown> {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype
+    )
+      throw new Error("Analysis evidence must be a plain object.");
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 100)
+      throw new Error("Analysis evidence exceeds its field limit.");
+    const safe = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+    if (JSON.stringify(safe).length > 64 * 1024)
+      throw new Error("Analysis evidence exceeds its size limit.");
+    return safe;
+  }
+}
 
 /**
  * Every durable table is classified explicitly. Tests compare this registry to
@@ -296,6 +1952,79 @@ function portableData(value: Record<string, unknown>): string {
   return JSON.stringify(value);
 }
 
+/** Rebuild semantic travel fields before validating legacy/untrusted catalog JSON. */
+function portableTravelContext(value: unknown) {
+  const pick = (
+    value: unknown,
+    fields: readonly string[],
+  ): Record<string, unknown> => {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Portable travel context must contain typed objects.");
+    const raw = value as Record<string, unknown>;
+    return Object.fromEntries(
+      fields
+        .filter((key) => raw[key] !== undefined)
+        .map((key) => [key, raw[key]]),
+    );
+  };
+  const list = (
+    value: unknown,
+    maximum: number,
+    project: (item: unknown) => unknown,
+  ): unknown[] => {
+    if (!Array.isArray(value) || value.length > maximum)
+      throw new Error("Portable travel collection bounds are invalid.");
+    return value.map(project);
+  };
+  const context = pick(value, [
+    "version",
+    "algorithmVersion",
+    "tracks",
+    "clockMappings",
+    "assignments",
+  ]);
+  context.tracks = list(
+    context.tracks,
+    TRAVEL_CONTEXT_LIMITS.tracks,
+    (value) => {
+      const track = pick(value, ["id", "contentHash", "segments"]);
+      track.segments = list(
+        track.segments,
+        TRAVEL_CONTEXT_LIMITS.segments,
+        (value) => {
+          const segment = pick(value, ["index", "points"]);
+          segment.points = list(
+            segment.points,
+            TRAVEL_CONTEXT_LIMITS.points,
+            (value) =>
+              pick(value, ["latitude", "longitude", "time", "elevationMeters"]),
+          );
+          return segment;
+        },
+      );
+      return track;
+    },
+  );
+  context.clockMappings = list(
+    context.clockMappings,
+    TRAVEL_CONTEXT_LIMITS.mappings,
+    (value) =>
+      pick(value, [
+        "id",
+        "assetIds",
+        "offsetMilliseconds",
+        "timeZone",
+        "source",
+      ]),
+  );
+  context.assignments = list(
+    context.assignments,
+    TRAVEL_CONTEXT_LIMITS.assignments,
+    (value) => pick(value, ["trackId", "assetIds"]),
+  );
+  return validateTravelContext(context);
+}
+
 function requiredSqlValue(
   value: unknown,
 ): string | number | bigint | Uint8Array | null {
@@ -378,11 +2107,13 @@ function optionalPortableNumber(
  * contract and redaction regression instead of copying plugin-shaped JSON.
  */
 const PORTABLE_EVIDENCE_CONTAINERS = new Set([
+  "cameraLocation",
   "context",
   "coordinates",
   "dependencies",
   "evidence",
   "members",
+  "matchedPoint",
   "observations",
   "payload",
   "range",
@@ -391,10 +2122,46 @@ const PORTABLE_EVIDENCE_CONTAINERS = new Set([
   "sourceRanges",
   "suggestions",
   "timeRange",
+  "sourceTimeRange",
+  "providerReceipt",
+  "suggestedLabels",
 ]);
+const PORTABLE_EVIDENCE_IDENTIFIER_ARRAYS = new Set(["assetIds", "labels"]);
+const PORTABLE_EVIDENCE_TEXT = new Set([
+  "kind",
+  "type",
+  "matchKind",
+  "startAt",
+  "endAt",
+]);
+PORTABLE_EVIDENCE_TEXT.add("algorithmVersion");
+PORTABLE_EVIDENCE_TEXT.add("classification");
+PORTABLE_EVIDENCE_TEXT.add("reason");
+PORTABLE_EVIDENCE_TEXT.add("originalCapturedAt");
+PORTABLE_EVIDENCE_TEXT.add("adjustedCapturedAt");
+PORTABLE_EVIDENCE_TEXT.add("clockMappingId");
+PORTABLE_EVIDENCE_TEXT.add("timeZone");
+PORTABLE_EVIDENCE_TEXT.add("trackId");
+PORTABLE_EVIDENCE_TEXT.add("trackContentHash");
+PORTABLE_EVIDENCE_TEXT.add("time");
+PORTABLE_EVIDENCE_TEXT.add("assetId");
+for (const field of [
+  "sampleId",
+  "sampleFingerprint",
+  "sourceHash",
+  "frameHash",
+  "providerId",
+  "execution",
+  "invokedAt",
+  "consentGrantedAt",
+  "status",
+  "label",
+])
+  PORTABLE_EVIDENCE_TEXT.add(field);
 const PORTABLE_EVIDENCE_NUMBERS = new Set([
   "confidence",
   "distance",
+  "distanceMeters",
   "duration",
   "elevation",
   "end",
@@ -404,16 +2171,20 @@ const PORTABLE_EVIDENCE_NUMBERS = new Set([
   "latitude",
   "longitude",
   "position",
+  "radiusKm",
   "score",
+  "speedMetersPerSecond",
   "start",
   "uncertainty",
   "width",
+  "confidence",
 ]);
 const PORTABLE_EVIDENCE_BOOLEANS = new Set([
   "ambiguous",
   "manualReview",
   "needsReview",
   "timezoneUncertain",
+  "manualReviewRequired",
 ]);
 
 function portableEvidenceNumber(field: string, value: unknown): number {
@@ -426,6 +2197,7 @@ function portableEvidenceNumber(field: string, value: unknown): number {
     (field === "longitude" && (value < -180 || value > 180)) ||
     ([
       "distance",
+      "distanceMeters",
       "duration",
       "end",
       "gap",
@@ -435,6 +2207,7 @@ function portableEvidenceNumber(field: string, value: unknown): number {
       "start",
       "uncertainty",
       "width",
+      "speedMetersPerSecond",
     ].includes(field) &&
       value < 0)
   )
@@ -488,6 +2261,25 @@ function sanitizePortableEvidence(
       continue;
     if (PORTABLE_EVIDENCE_NUMBERS.has(field)) {
       result[field] = portableEvidenceNumber(field, item);
+      continue;
+    }
+    if (PORTABLE_EVIDENCE_IDENTIFIER_ARRAYS.has(field)) {
+      const value = optionalPortableStringArray({ [field]: item }, field);
+      if (value) result[field] = value;
+      continue;
+    }
+    if (PORTABLE_EVIDENCE_TEXT.has(field)) {
+      const value = optionalPortableText({ [field]: item }, field, 512);
+      if (
+        value &&
+        ((field !== "startAt" &&
+          field !== "endAt" &&
+          field !== "originalCapturedAt" &&
+          field !== "adjustedCapturedAt" &&
+          field !== "time") ||
+          Number.isFinite(Date.parse(value)))
+      )
+        result[field] = value;
       continue;
     }
     if (PORTABLE_EVIDENCE_BOOLEANS.has(field)) {
@@ -631,7 +2423,8 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
   for (const row of database
     .prepare(
       `SELECT membership.selection_id,membership.occurrence_id,
-        membership.relative_path,membership.included,occurrence.display_name
+        membership.relative_path,membership.included,membership.data,
+        occurrence.display_name
        FROM selection_memberships AS membership
        JOIN file_occurrences AS occurrence ON occurrence.id=membership.occurrence_id`,
     )
@@ -640,6 +2433,8 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
       row.relative_path,
       row.display_name,
     );
+    const original = portableObject(row.data, "selection membership");
+    const scanRevision = optionalPortableNumber(original, "scanRevision");
     membershipUpdate.run(
       relativePath,
       portableData({
@@ -647,6 +2442,7 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         occurrenceId: row.occurrence_id,
         relativePath,
         included: Boolean(row.included),
+        ...(scanRevision === undefined ? {} : { scanRevision }),
       }),
       requiredSqlValue(row.selection_id),
       requiredSqlValue(row.occurrence_id),
@@ -802,7 +2598,43 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         const projectId = optionalPortableText(original, "projectId");
         if (!projectId)
           throw new Error("Portable analysis run projectId is required.");
-        return { projectId };
+        const inputFingerprint = optionalPortableText(
+          original,
+          "inputFingerprint",
+          64,
+        );
+        const inputBindingIds = optionalPortableStringArray(
+          original,
+          "inputBindingIds",
+        );
+        const projectCatalogRevision = optionalPortableText(
+          original,
+          "projectCatalogRevision",
+          64,
+        );
+        if (inputFingerprint && !/^[a-f0-9]{64}$/u.test(inputFingerprint))
+          throw new Error("Portable analysis input fingerprint is invalid.");
+        if (
+          projectCatalogRevision &&
+          !/^[a-f0-9]{64}$/u.test(projectCatalogRevision)
+        )
+          throw new Error("Portable project catalog revision is invalid.");
+        const travelContext =
+          original.travelContext === undefined
+            ? undefined
+            : portableTravelContext(original.travelContext);
+        const visualSampling =
+          original.visualSampling === undefined
+            ? undefined
+            : validateVisualSampling(original.visualSampling);
+        return {
+          projectId,
+          ...(inputFingerprint ? { inputFingerprint } : {}),
+          ...(inputBindingIds ? { inputBindingIds } : {}),
+          ...(projectCatalogRevision ? { projectCatalogRevision } : {}),
+          ...(travelContext ? { travelContext } : {}),
+          ...(visualSampling ? { visualSampling } : {}),
+        };
       },
     },
     {
@@ -863,10 +2695,27 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         result.baseResultIds = baseResultIds;
         result.targetIds = targetIds;
         result.operation = portableReviewOperation(original.operation);
-        for (const field of ["storyRevision", "supersedesDecisionId"]) {
+        for (const field of [
+          "operationFingerprint",
+          "storyRevision",
+          "supersedesDecisionId",
+        ]) {
           const value = optionalPortableText(original, field);
           if (value !== undefined) result[field] = value;
         }
+        if (
+          typeof result.operationFingerprint !== "string" ||
+          !/^[a-f0-9]{64}$/u.test(result.operationFingerprint)
+        )
+          throw new Error("Portable review operation fingerprint is invalid.");
+        if (
+          createHash("sha256")
+            .update(JSON.stringify(result.operation))
+            .digest("hex") !== result.operationFingerprint
+        )
+          throw new Error(
+            "Portable review operation fingerprint does not match its typed operation.",
+          );
         return result;
       },
     },

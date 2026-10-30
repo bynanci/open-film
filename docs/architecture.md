@@ -45,19 +45,59 @@ publishing the live catalog. See
 [multi-source analysis](roadmap/multi-source-analysis.md).
 
 Portable v6 closed-domain records are reconstructed from typed columns and
-validated semantic fields. Because M0/M1 has no producer contract for arbitrary
-analysis text, extensible result payloads currently retain only bounded typed
-numeric/boolean structures; unknown keys and all strings are omitted. Future
-analysis milestones must explicitly admit each semantic string with validation
-and a locator/credential redaction regression. Persistent browser access uses
-requested-key reads and bounded identity checks; an indistinguishable 33rd
-same-name handle fails explicitly before storage rather than creating a duplicate.
+validated semantic fields. Extensible evidence retains only fields admitted by
+producer-specific schemas: event labels and bounded capture metadata, versioned
+travel/GPX facts, and visual sample hashes/labels/receipts. Unknown keys,
+uncontracted strings, local URIs, credentials and encoded image bytes are
+omitted. Review operations are closed typed values and their SHA-256 operation
+fingerprint must match the exact canonical operation in both live storage and
+portable snapshots. Persistent browser access uses requested-key reads and
+bounded identity checks; an indistinguishable 33rd same-name handle fails
+explicitly before storage rather than creating a duplicate.
 
 ImportBatch, AnalysisRun and JobAttempt have independent state machines. A retry
 creates a new attempt against the same immutable manifest; changing selections or
 configuration creates a new batch/run. The legacy Activity `Job` is a UI/API
-projection. Future Desktop, HTTP and CLI adapters call the same application
-orchestration and reject stale project, draft, manifest and owner generations.
+projection. Streaming source adapters use `AsyncIterable` with bounded
+concurrency, progress, cancellation and backpressure; v1 array adapters remain
+behind a bounded compatibility wrapper. Sealing stages browser bytes in a
+project-private area, hashes full content, checks source identity around reads,
+and publishes immutable manifests. Desktop, HTTP and CLI call the same
+application orchestration and reject stale project, draft, manifest, content,
+operation and owner generations.
+
+M4 records explicit manual clock mappings and bounded GPX track assignments in
+the immutable AnalysisRun fingerprint. GPX parsing accepts only a bounded track
+point subset, retains source hashes and segment boundaries, and never fills time
+or location gaps. M5 extracts representative frames through the installed
+FFmpeg adapter; remote VisionSampleProvider calls receive only a bounded image
+sample after destination-scoped consent. Persistent evidence stores source/frame
+hashes, timestamps and provider receipt, never frame bytes. M6 previews and
+accepts allowlisted review operations against result, operation, manifest and
+story fingerprints. Decisions are immutable; conflicting or stale previews are
+recorded without changing result status or StoryGraph, and story adoption is an
+explicit save/reopen-safe operation.
+
+Browser staging receipts bind the exact discovery revision and metadata; a
+rescan invalidates reuse, and a late upload cannot acknowledge an old scan.
+Travel input rejects unknown fields at every nesting level; portable projection
+rebuilds its closed semantic records. Visual sampling streams a private snapshot
+and verifies the sealed full-content hash before decoding or disclosing pixels.
+Up to three frames share that verified snapshot. Its temporary bytes are removed
+on normal, failure and cancellation paths; transient disk work is limited to one
+source at a time. Result publication checks cancellation, attempt/process
+ownership, generation, run status and current input within the SQLite write
+transaction. Status readers preserve live or unverifiable process owners.
+
+Desktop binds review previews to the current form and orders search responses
+within their project/run/query/page. Before acceptance, it retains and verifies
+one bounded project-private local recovery receipt; an ambiguous response or
+reopen requires explicit retry with the same payload. Supersession is opt-in.
+Search projects immutable decision lineage into corrected annotations, merged
+groups and real source ranges. Eligible accepted evidence can then be adopted;
+rejected evidence remains protected. Adoption reuses existing graph node IDs and
+refreshes the owning workspace with stale-response fencing. These review
+annotations do not introduce another timeline representation.
 
 ```mermaid
 flowchart TD

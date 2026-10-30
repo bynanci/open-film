@@ -933,6 +933,18 @@ async function refreshProject(
   connected.value = true;
   return true;
 }
+async function sourceReviewApplied(projectId: string) {
+  if (project.value?.id !== projectId) return;
+  const generation = projectGeneration.value;
+  const owned = () =>
+    project.value?.id === projectId && projectGeneration.value === generation;
+  projectMutationVersion++;
+  try {
+    await refreshProject(owned, projectId);
+  } catch (cause) {
+    if (owned()) error.value = cause;
+  }
+}
 async function reloadAssets(): Promise<boolean> {
   if (!project.value) return false;
   const projectId = project.value.id;
@@ -2265,6 +2277,8 @@ function exportProfileBusy(active: boolean) {
   else if (!active && busy.value === "exportingTimeline") busy.value = "";
 }
 function jobTitle(job: Job): string {
+  if (job.type === "analysis-run")
+    return t(`app.import.analysis.status.${job.status}`);
   if (job.type === "scene-script-review")
     return `${t("scriptReview.jobTitle")} · ${t(`precision.jobStatuses.${job.status}`)}`;
   if (["glossary-review", "language-review"].includes(job.type)) {
@@ -3126,6 +3140,7 @@ onUnmounted(() => {
         @files="importFiles"
         @upload="uploadFiles"
         @cancel="uploadController?.abort()"
+        @reviewed="sourceReviewApplied"
         @error="error = $event"
         @close="importOpen = false"
       />
@@ -3156,6 +3171,7 @@ onUnmounted(() => {
                         'glossary-review',
                         'language-review',
                         'scene-script-review',
+                        'analysis-run',
                       ].includes(job.type)
                     ? 'search'
                     : 'folder'
@@ -3182,17 +3198,19 @@ onUnmounted(() => {
             :aria-label="
               job.type === 'render'
                 ? t('app.activity.previewProgress')
-                : ['transcribe', 'waveform', 'scenes'].includes(job.type)
-                  ? t('precision.analysis')
-                  : [
-                        'glossary-review',
-                        'language-review',
-                        'scene-script-review',
-                      ].includes(job.type)
-                    ? job.type === 'scene-script-review'
-                      ? t('scriptReview.running')
-                      : t('transcript.jobStages.reviewing')
-                    : t('app.activity.importProgress')
+                : job.type === 'analysis-run'
+                  ? t('app.import.analysis.progress')
+                  : ['transcribe', 'waveform', 'scenes'].includes(job.type)
+                    ? t('precision.analysis')
+                    : [
+                          'glossary-review',
+                          'language-review',
+                          'scene-script-review',
+                        ].includes(job.type)
+                      ? job.type === 'scene-script-review'
+                        ? t('scriptReview.running')
+                        : t('transcript.jobStages.reviewing')
+                      : t('app.activity.importProgress')
             "
           />
           <AnalysisJobActions
@@ -3215,18 +3233,20 @@ onUnmounted(() => {
             {{
               cancellingJobs[job.id]
                 ? t("app.activity.cancelling")
-                : [
-                      "transcribe",
-                      "waveform",
-                      "scenes",
-                      "glossary-review",
-                      "language-review",
-                      "scene-script-review",
-                    ].includes(job.type)
-                  ? t("precision.cancel")
-                  : job.type === "render"
-                    ? t("app.activity.cancelRender")
-                    : t("app.activity.cancelImport")
+                : job.type === "analysis-run"
+                  ? t("app.import.analysis.cancel")
+                  : [
+                        "transcribe",
+                        "waveform",
+                        "scenes",
+                        "glossary-review",
+                        "language-review",
+                        "scene-script-review",
+                      ].includes(job.type)
+                    ? t("precision.cancel")
+                    : job.type === "render"
+                      ? t("app.activity.cancelRender")
+                      : t("app.activity.cancelImport")
             }}
           </button>
           <details v-if="job.errors?.length" class="job-errors">

@@ -17,6 +17,10 @@ export type Awaitable<T> = T | Promise<T>;
 export interface OperationOptions {
   signal?: AbortSignal;
   onProgress?: (progress: number) => void;
+  onSkipped?: (notice: {
+    reason: "symlink" | "unsupported" | "outside-root";
+    relativePath?: string;
+  }) => void;
 }
 
 export interface SourceInput {
@@ -32,6 +36,8 @@ export interface MediaCandidate {
   mediaType?: MediaType;
   size?: number;
   modifiedAt?: string;
+  /** Portable path relative to the selected logical root; never an absolute locator. */
+  relativePath?: string;
   sourceId?: string;
   metadata?: Record<string, unknown>;
 }
@@ -51,6 +57,90 @@ export interface MediaSourceAdapter {
     candidate: MediaCandidate,
     options?: OperationOptions,
   ): Promise<MediaMetadata>;
+}
+
+/**
+ * Additive streaming contract. Existing v1 adapters keep their `scan` API;
+ * adapters with large roots should implement this interface so consumers can
+ * apply backpressure without materializing the full candidate list.
+ */
+export interface MediaSourceAdapterV2 {
+  id: string;
+  supports(input: SourceInput): boolean;
+  discover(
+    input: SourceInput,
+    options?: OperationOptions,
+  ): AsyncIterable<MediaCandidate>;
+  extractMetadata(
+    candidate: MediaCandidate,
+    options?: OperationOptions,
+  ): Promise<MediaMetadata>;
+}
+
+export type CompatibleMediaSourceAdapter =
+  MediaSourceAdapter | MediaSourceAdapterV2;
+
+function checkDiscoveryAbort(signal?: AbortSignal): void {
+  if (signal?.aborted)
+    throw Object.assign(new Error("Operation cancelled"), {
+      name: "AbortError",
+    });
+}
+
+function validMediaCandidate(value: unknown): value is MediaCandidate {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Partial<MediaCandidate>;
+  return (
+    typeof candidate.uri === "string" &&
+    candidate.uri.length > 0 &&
+    candidate.uri.length <= 16_384 &&
+    typeof candidate.name === "string" &&
+    candidate.name.length > 0 &&
+    candidate.name.length <= 1024 &&
+    (candidate.relativePath === undefined ||
+      (typeof candidate.relativePath === "string" &&
+        candidate.relativePath.length <= 16_384 &&
+        !candidate.relativePath.startsWith("/") &&
+        !candidate.relativePath.split(/[\\/]/u).includes("..")))
+  );
+}
+
+/**
+ * Present v1 and v2 adapters through one async interface. The v1 compatibility
+ * branch necessarily receives the adapter's array, while v2 remains lazy and
+ * stops requesting items as soon as the consumer applies backpressure.
+ */
+export async function* iterateMediaCandidates(
+  adapter: CompatibleMediaSourceAdapter,
+  input: SourceInput,
+  options: OperationOptions = {},
+): AsyncGenerator<MediaCandidate> {
+  if (!adapter.supports(input))
+    throw new Error(`Source adapter ${adapter.id} does not support this input`);
+  checkDiscoveryAbort(options.signal);
+  const candidates =
+    "discover" in adapter
+      ? adapter.discover(input, options)
+      : await adapter.scan(input, options);
+  if (
+    !candidates ||
+    typeof (candidates as AsyncIterable<unknown>)[Symbol.asyncIterator] !==
+      "function"
+  ) {
+    if (!Array.isArray(candidates))
+      throw new Error(
+        `Source adapter ${adapter.id} returned invalid discovery data`,
+      );
+  }
+  for await (const candidate of candidates as
+    Iterable<unknown> | AsyncIterable<unknown>) {
+    checkDiscoveryAbort(options.signal);
+    if (!validMediaCandidate(candidate))
+      throw new Error(
+        `Source adapter ${adapter.id} returned an invalid media candidate`,
+      );
+    yield candidate;
+  }
 }
 
 export interface TimestampResolution {
@@ -200,6 +290,31 @@ export interface VisionProvider extends AIProviderDescriptor {
   analyze(asset: MediaAsset, options?: OperationOptions): Promise<VisionResult>;
 }
 
+/** A bounded representative frame. This contract intentionally has no media URI or whole asset. */
+export interface VisionSampleInput {
+  sampleId: string;
+  assetId: string;
+  sourceHash: string;
+  sourceTimeRange: { start: number; end: number };
+  width: number;
+  height: number;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  bytes: Uint8Array;
+}
+
+export interface VisionSampleResult {
+  labels: { label: string; confidence: number }[];
+}
+
+/** Separate provider capability: unrestricted VisionProvider is not sample-safe. */
+export interface VisionSampleProvider extends AIProviderDescriptor {
+  kind: "vision-sample";
+  analyzeSample(
+    input: VisionSampleInput,
+    options?: OperationOptions,
+  ): Promise<VisionSampleResult>;
+}
+
 export interface EmbeddingProvider extends AIProviderDescriptor {
   kind: "embedding";
   embed(asset: MediaAsset, options?: OperationOptions): Promise<number[]>;
@@ -295,6 +410,7 @@ export interface MotionGenerationProvider extends AIProviderDescriptor {
 
 export type AIProvider =
   | VisionProvider
+  | VisionSampleProvider
   | EmbeddingProvider
   | TranscriptionProvider
   | LanguageProvider

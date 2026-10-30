@@ -36,6 +36,7 @@ import {
   OpenFilmApplication,
   TimelineEditor,
   TimelineEditorError,
+  parseGpxTrack,
   MediaRelinker,
   MediaRelinkError as RelinkError,
   type TimelineEditInput,
@@ -53,6 +54,14 @@ import {
   type CollectPlanInput,
   type CollectMediaCreateInput,
   type SourceSelectionInput,
+} from "@openfilm/application";
+import type {
+  SourceBatchProgress,
+  SourceBatchSealResult,
+  SourceDiscoveryProgress,
+  SourceDiscoverySummary,
+  SourceAnalysisProgress,
+  SourceAnalysisRunRecord,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -76,6 +85,9 @@ import {
   type ProjectVersionDiff,
   type ProjectVersionRecord,
   type ProjectTimebaseV1,
+  type TravelContextV1,
+  type VisualSamplingV1,
+  type ReviewDecisionOperation,
 } from "@openfilm/core";
 import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
 import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
@@ -88,6 +100,8 @@ import {
 import type {
   LanguageProvider,
   TranscriptionProvider,
+  VisionSampleProvider,
+  RemoteProviderConsent,
 } from "@openfilm/plugin-sdk";
 
 type Body = Record<string, unknown>;
@@ -529,6 +543,25 @@ async function body(
   }
 }
 
+async function readBoundedBytes(
+  request: IncomingMessage,
+  maximumBytes: number,
+): Promise<Buffer> {
+  const declaredLength = Number(request.headers["content-length"]);
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes)
+    throw new HttpError(413, "GPX source exceeds the 5 MiB travel-v1 limit.");
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    if (size > maximumBytes)
+      throw new HttpError(413, "GPX source exceeds the 5 MiB travel-v1 limit.");
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks, size);
+}
+
 async function streamFileContents(
   request: IncomingMessage,
   response: ServerResponse,
@@ -602,6 +635,8 @@ export interface ServerOptions {
   transcriptionProvider?: TranscriptionProvider;
   userDataDirectory?: string;
   languageProvider?: LanguageProvider;
+  /** Trusted host registration only; an HTTP request can never install a provider. */
+  visionSampleProviders?: VisionSampleProvider[];
   /** Bounded lifetime for consented external GraphicScene proposals. */
   graphicSceneAgentProviderTimeoutMs?: number;
 }
@@ -619,6 +654,7 @@ export async function startServer(options: ServerOptions = {}) {
   const runtimeOptions = {
     userDataDirectory: resolveUserDataDirectory(options.userDataDirectory),
     languageProvider: options.languageProvider,
+    visionSampleProviders: options.visionSampleProviders,
   };
   const configure = (application: OpenFilmApplication) => {
     if (options.transcriptionProvider)
@@ -643,16 +679,89 @@ export async function startServer(options: ServerOptions = {}) {
       await OpenFilmApplication.open(resolve(options.project), runtimeOptions),
     );
   const active = new Map<string, AbortController>();
+  const sourceDiscoveryControllers = new Set<AbortController>();
+  const browserDiscoveryControllers = new Map<string, AbortController>();
+  const browserDiscoveryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  const browserStageControllers = new Set<AbortController>();
+  const sourceDiscoveryProgress = new Map<string, SourceDiscoveryProgress>();
+  const sourceBatchControllers = new Map<string, AbortController>();
+  const sourceAnalysisControllers = new Map<string, AbortController>();
+  const sourceAnalysisProgress = new Map<
+    string,
+    {
+      requestId: string;
+      projectId: string;
+      status: "running" | "completed" | "cancelled" | "failed";
+      progress: SourceAnalysisProgress;
+      result?: SourceAnalysisRunRecord;
+    }
+  >();
+  const sourceBatchProgress = new Map<
+    string,
+    {
+      requestId: string;
+      projectId: string;
+      status: "running" | "completed" | "cancelled" | "failed";
+      progress: SourceBatchProgress;
+      result?: SourceBatchSealResult;
+    }
+  >();
   const graphicSceneAgentPreviews = new Set<AbortController>();
+  const hasActiveProjectWork = () =>
+    active.size > 0 ||
+    sourceDiscoveryControllers.size > 0 ||
+    sourceBatchControllers.size > 0 ||
+    sourceAnalysisControllers.size > 0 ||
+    browserStageControllers.size > 0;
+  const expireBrowserDiscovery = (requestId: string, projectId: string) => {
+    const previous = browserDiscoveryTimers.get(requestId);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(
+      () => {
+        const controller = browserDiscoveryControllers.get(requestId);
+        if (!controller || app?.project.id !== projectId) return;
+        app.sourceDiscovery.cancelBrowserScan({ projectId, requestId });
+        sourceDiscoveryProgress.set(requestId, {
+          requestId,
+          projectId,
+          status: "cancelled",
+          summary: {
+            ...(sourceDiscoveryProgress.get(requestId)?.summary ?? {
+              projectId,
+              draftRevision: app.sourceDraft.get().revision,
+              sourcesRequested: 1,
+              sourcesScanned: 0,
+              discovered: 0,
+              supported: 0,
+              possibleDuplicates: 0,
+              skipped: 0,
+              failed: 0,
+              failures: [],
+            }),
+            cancelled: true,
+          },
+        });
+        browserDiscoveryControllers.delete(requestId);
+        sourceDiscoveryControllers.delete(controller);
+        browserDiscoveryTimers.delete(requestId);
+      },
+      10 * 60 * 1000,
+    );
+    timer.unref?.();
+    browserDiscoveryTimers.set(requestId, timer);
+  };
   const cancelGraphicSceneAgentPreviews = () => {
     for (const controller of graphicSceneAgentPreviews) controller.abort();
   };
   const tasks = new Set<Promise<unknown>>();
   const requireIdleProject = () => {
-    if (active.size)
+    if (hasActiveProjectWork())
       throw new HttpError(
         409,
-        "Wait for running jobs before switching or closing this project.",
+        "Wait for running jobs and source scans before switching or closing this project.",
       );
   };
   const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
@@ -777,7 +886,8 @@ export async function startServer(options: ServerOptions = {}) {
         }
         const method = request.method;
         const cancellation =
-          method === "POST" && /^\/api\/jobs\/[^/]+\/cancel$/.test(route);
+          method === "POST" &&
+          /^\/api\/(?:jobs|analysis-runs)\/[^/]+\/cancel$/.test(route);
         const nonMutatingGraphicAgentPreview =
           method === "POST" &&
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
@@ -801,7 +911,7 @@ export async function startServer(options: ServerOptions = {}) {
           route !== "/api/projects/availability"
         ) {
           if (
-            active.size &&
+            hasActiveProjectWork() &&
             [
               "/api/project/create",
               "/api/project/open",
@@ -820,7 +930,7 @@ export async function startServer(options: ServerOptions = {}) {
           application: OpenFilmApplication,
           operation: (signal: AbortSignal) => Promise<T>,
         ): Promise<T> => {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for the active project job before exporting.",
@@ -1042,6 +1152,1007 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
+        if (route === "/api/import-batches/progress" && method === "GET") {
+          const requestId = url.searchParams.get("requestId") ?? "";
+          const state = sourceBatchProgress.get(requestId);
+          if (!state || state.projectId !== application.project.id)
+            throw new HttpError(404, "Import batch progress was not found.");
+          json(response, 200, { state });
+          return;
+        }
+        if (route === "/api/import-batches" && method === "POST") {
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "baseRevision",
+            "requestId",
+            "selectionIds",
+            "partialPolicy",
+          ]);
+          if (
+            typeof data.projectId !== "string" ||
+            typeof data.baseRevision !== "number" ||
+            typeof data.requestId !== "string" ||
+            (data.selectionIds !== undefined &&
+              (!Array.isArray(data.selectionIds) ||
+                data.selectionIds.some((id) => typeof id !== "string"))) ||
+            (data.partialPolicy !== undefined &&
+              data.partialPolicy !== "require-all" &&
+              data.partialPolicy !== "allow-readable")
+          )
+            throw new HttpError(
+              400,
+              "Project, revision, request ID, selections and partial policy are invalid.",
+            );
+          if (hasActiveProjectWork())
+            throw new HttpError(
+              409,
+              "Wait for other project jobs before sealing selected sources.",
+            );
+          const requestId = data.requestId;
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          const abortDisconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          request.once("aborted", abort);
+          response.once("close", abortDisconnected);
+          sourceBatchControllers.set(requestId, controller);
+          while (sourceBatchProgress.size >= 64)
+            sourceBatchProgress.delete(
+              sourceBatchProgress.keys().next().value!,
+            );
+          sourceBatchProgress.set(requestId, {
+            requestId,
+            projectId: data.projectId,
+            status: "running",
+            progress: {
+              batchId: "",
+              stage: "preparing",
+              completed: 0,
+              total: 0,
+              failed: 0,
+              cancelled: false,
+            },
+          });
+          try {
+            const result = await application.sourceBatches.createAndSeal({
+              projectId: data.projectId,
+              baseRevision: data.baseRevision,
+              requestId,
+              ...(Array.isArray(data.selectionIds)
+                ? { selectionIds: data.selectionIds as string[] }
+                : {}),
+              ...(data.partialPolicy === "allow-readable" ||
+              data.partialPolicy === "require-all"
+                ? { partialPolicy: data.partialPolicy }
+                : {}),
+              signal: controller.signal,
+              onProgress: (progress) => {
+                sourceBatchProgress.set(requestId, {
+                  requestId,
+                  projectId: data.projectId as string,
+                  status: "running",
+                  progress,
+                });
+              },
+            });
+            sourceBatchProgress.set(requestId, {
+              requestId,
+              projectId: data.projectId,
+              status: result.status === "cancelled" ? "cancelled" : "completed",
+              progress: {
+                batchId: result.batch.id,
+                stage: "completed",
+                completed: result.expected,
+                total: result.expected,
+                failed: result.failed,
+                cancelled: result.status === "cancelled",
+              },
+              result,
+            });
+            json(response, 200, { result });
+          } catch (error) {
+            const currentProgress = sourceBatchProgress.get(requestId);
+            if (currentProgress)
+              sourceBatchProgress.set(requestId, {
+                ...currentProgress,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+                progress: {
+                  ...currentProgress.progress,
+                  cancelled: controller.signal.aborted,
+                },
+              });
+            throw error;
+          } finally {
+            request.off("aborted", abort);
+            response.off("close", abortDisconnected);
+            sourceBatchControllers.delete(requestId);
+          }
+          return;
+        }
+        if (route === "/api/travel-gpx/parse" && method === "POST") {
+          const trackId = url.searchParams.get("trackId") ?? "";
+          if (!trackId || trackId.length > 256)
+            throw new HttpError(400, "A bounded GPX track ID is required.");
+          if (
+            !["application/gpx+xml", "application/octet-stream"].includes(
+              request.headers["content-type"]?.split(";")[0]?.toLowerCase() ??
+                "",
+            )
+          )
+            throw new HttpError(
+              415,
+              "Send an explicitly selected GPX source as application/gpx+xml.",
+            );
+          const bytes = await readBoundedBytes(request, 5 * 1024 * 1024);
+          try {
+            const track = parseGpxTrack(trackId, bytes);
+            json(response, 200, { track });
+          } catch {
+            throw new HttpError(
+              400,
+              "The selected GPX track is invalid or exceeds travel-v1 bounds.",
+            );
+          }
+          return;
+        }
+        if (
+          route === "/api/analysis/vision-sample-providers" &&
+          method === "GET"
+        ) {
+          json(response, 200, {
+            providers: application.sourceAnalysis.listVisionSampleProviders(),
+          });
+          return;
+        }
+        const sampleProviderConsent =
+          /^\/api\/analysis\/vision-sample-providers\/([^/]+)\/consent$/u.exec(
+            route,
+          );
+        if (sampleProviderConsent && method === "POST") {
+          const providerId = decodeURIComponent(sampleProviderConsent[1]!);
+          const data = await body(request);
+          keys(data, ["acknowledged"]);
+          if (data.acknowledged !== true)
+            throw new HttpError(
+              400,
+              "Explicit acknowledgment of bounded image and metadata disclosure is required.",
+            );
+          const consent: RemoteProviderConsent = {
+            providerId,
+            dataKinds: ["images", "metadata"],
+            grantedAt: new Date().toISOString(),
+          };
+          application.sourceAnalysis.grantVisionSampleConsent(consent);
+          json(response, 200, {
+            providers: application.sourceAnalysis.listVisionSampleProviders(),
+          });
+          return;
+        }
+        if (sampleProviderConsent && method === "DELETE") {
+          application.sourceAnalysis.revokeVisionSampleConsent(
+            decodeURIComponent(sampleProviderConsent[1]!),
+          );
+          json(response, 200, {
+            providers: application.sourceAnalysis.listVisionSampleProviders(),
+          });
+          return;
+        }
+        if (route === "/api/analysis-runs/progress" && method === "GET") {
+          const requestId = url.searchParams.get("requestId") ?? "";
+          const state = sourceAnalysisProgress.get(requestId);
+          if (!state || state.projectId !== application.project.id)
+            throw new HttpError(404, "Analysis progress was not found.");
+          json(response, 200, { state });
+          return;
+        }
+        const analysisReviewRoute =
+          /^\/api\/analysis-runs\/([^/]+)\/review(?:\/(preview|accept))?$/u.exec(
+            route,
+          );
+        if (
+          analysisReviewRoute &&
+          method === "GET" &&
+          !analysisReviewRoute[2]
+        ) {
+          const runId = decodeURIComponent(analysisReviewRoute[1]!);
+          const query = url.searchParams.get("query") ?? "";
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          const limit = Number(url.searchParams.get("limit") ?? 50);
+          const result = application.sourceAnalysisReview.search({
+            runId,
+            query,
+            offset,
+            limit,
+          });
+          json(response, 200, {
+            result,
+            decisions: application.sourceAnalysisReview.decisions(runId),
+          });
+          return;
+        }
+        if (
+          analysisReviewRoute &&
+          method === "POST" &&
+          analysisReviewRoute[2] === "preview"
+        ) {
+          const data = await body(request);
+          keys(data, ["operation"]);
+          if (
+            !data.operation ||
+            typeof data.operation !== "object" ||
+            Array.isArray(data.operation)
+          )
+            throw new HttpError(
+              400,
+              "A typed source-analysis review operation is required.",
+            );
+          json(response, 200, {
+            preview: application.sourceAnalysisReview.preview({
+              runId: decodeURIComponent(analysisReviewRoute[1]!),
+              operation: data.operation as ReviewDecisionOperation,
+            }),
+          });
+          return;
+        }
+        if (
+          analysisReviewRoute &&
+          method === "POST" &&
+          analysisReviewRoute[2] === "accept"
+        ) {
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "operation",
+            "expectedManifestId",
+            "expectedBeforeFingerprint",
+            "expectedOperationFingerprint",
+            "expectedStoryRevision",
+            "requestId",
+            "supersedesDecisionId",
+          ]);
+          if (
+            typeof data.projectId !== "string" ||
+            !data.operation ||
+            typeof data.operation !== "object" ||
+            Array.isArray(data.operation) ||
+            typeof data.expectedManifestId !== "string" ||
+            typeof data.expectedBeforeFingerprint !== "string" ||
+            typeof data.expectedOperationFingerprint !== "string" ||
+            typeof data.requestId !== "string"
+          )
+            throw new HttpError(
+              400,
+              "Review project, operation, preview fingerprints, manifest and request ID are required.",
+            );
+          const decision = await application.sourceAnalysisReview.accept({
+            projectId: data.projectId,
+            runId: decodeURIComponent(analysisReviewRoute[1]!),
+            operation: data.operation as ReviewDecisionOperation,
+            expectedManifestId: data.expectedManifestId,
+            expectedBeforeFingerprint: data.expectedBeforeFingerprint,
+            expectedOperationFingerprint: data.expectedOperationFingerprint,
+            ...(typeof data.expectedStoryRevision === "string"
+              ? { expectedStoryRevision: data.expectedStoryRevision }
+              : {}),
+            requestId: data.requestId,
+            ...(typeof data.supersedesDecisionId === "string"
+              ? { supersedesDecisionId: data.supersedesDecisionId }
+              : {}),
+          });
+          json(response, 200, { decision });
+          return;
+        }
+        if (route === "/api/analysis-runs" && method === "POST") {
+          const data = await body(request, 12 * 1024 * 1024);
+          keys(data, [
+            "projectId",
+            "verifiedManifestId",
+            "scopeMode",
+            "confirmProjectCatalog",
+            "requestId",
+            "travelContext",
+            "visualSampling",
+          ]);
+          if (
+            typeof data.projectId !== "string" ||
+            typeof data.verifiedManifestId !== "string" ||
+            (data.scopeMode !== "selected-sources" &&
+              data.scopeMode !== "project-catalog") ||
+            (data.confirmProjectCatalog !== undefined &&
+              typeof data.confirmProjectCatalog !== "boolean") ||
+            typeof data.requestId !== "string"
+          )
+            throw new HttpError(
+              400,
+              "Analysis project, verified manifest, scope and request ID are required.",
+            );
+          if (hasActiveProjectWork())
+            throw new HttpError(
+              409,
+              "Wait for other project operations before starting common analysis.",
+            );
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          const abortDisconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          const requestId = data.requestId;
+          request.once("aborted", abort);
+          response.once("close", abortDisconnected);
+          sourceAnalysisControllers.set(requestId, controller);
+          while (sourceAnalysisProgress.size >= 64)
+            sourceAnalysisProgress.delete(
+              sourceAnalysisProgress.keys().next().value!,
+            );
+          sourceAnalysisProgress.set(requestId, {
+            requestId,
+            projectId: data.projectId,
+            status: "running",
+            progress: { runId: "", stage: "queued", completed: 0, total: 0 },
+          });
+          try {
+            const result = await application.sourceAnalysis.createRun({
+              projectId: data.projectId,
+              verifiedManifestId: data.verifiedManifestId,
+              scopeMode: data.scopeMode,
+              ...(data.confirmProjectCatalog === true
+                ? { confirmProjectCatalog: true }
+                : {}),
+              ...(data.travelContext === undefined
+                ? {}
+                : { travelContext: data.travelContext as TravelContextV1 }),
+              ...(data.visualSampling === undefined
+                ? {}
+                : { visualSampling: data.visualSampling as VisualSamplingV1 }),
+              requestId,
+              signal: controller.signal,
+              onProgress: (progress) =>
+                sourceAnalysisProgress.set(requestId, {
+                  requestId,
+                  projectId: data.projectId as string,
+                  status:
+                    progress.stage === "completed"
+                      ? "completed"
+                      : progress.stage === "cancelled"
+                        ? "cancelled"
+                        : progress.stage === "failed"
+                          ? "failed"
+                          : "running",
+                  progress,
+                }),
+            });
+            sourceAnalysisProgress.set(requestId, {
+              requestId,
+              projectId: data.projectId,
+              status:
+                result.run.status === "cancelled"
+                  ? "cancelled"
+                  : result.run.status === "failed"
+                    ? "failed"
+                    : "completed",
+              progress: {
+                runId: result.run.id,
+                stage:
+                  result.run.status === "completed"
+                    ? "completed"
+                    : result.run.status === "cancelled"
+                      ? "cancelled"
+                      : "failed",
+                completed:
+                  result.run.status === "completed" ? result.results.length : 0,
+                total: result.results.length,
+              },
+              result,
+            });
+            json(response, 200, { result });
+          } catch (error) {
+            const currentProgress = sourceAnalysisProgress.get(requestId);
+            if (currentProgress)
+              sourceAnalysisProgress.set(requestId, {
+                ...currentProgress,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+              });
+            throw error;
+          } finally {
+            request.off("aborted", abort);
+            response.off("close", abortDisconnected);
+            sourceAnalysisControllers.delete(requestId);
+          }
+          return;
+        }
+        const analysisRunAction =
+          /^\/api\/analysis-runs\/([^/]+)(?:\/(cancel|retry))?$/u.exec(route);
+        if (analysisRunAction && method === "GET" && !analysisRunAction[2]) {
+          const result = application.sourceAnalysis.getRun(
+            decodeURIComponent(analysisRunAction[1]!),
+          );
+          json(response, 200, { result });
+          return;
+        }
+        if (
+          analysisRunAction &&
+          method === "POST" &&
+          analysisRunAction[2] === "cancel"
+        ) {
+          const data = await body(request);
+          keys(data, ["projectId"]);
+          if (typeof data.projectId !== "string")
+            throw new HttpError(400, "Project ID is required.");
+          application.sourceAnalysis.cancelRun({
+            projectId: data.projectId,
+            runId: decodeURIComponent(analysisRunAction[1]!),
+          });
+          json(response, 200, { ok: true });
+          return;
+        }
+        if (
+          analysisRunAction &&
+          method === "POST" &&
+          analysisRunAction[2] === "retry"
+        ) {
+          const data = await body(request);
+          keys(data, ["projectId", "requestId"]);
+          if (
+            typeof data.projectId !== "string" ||
+            typeof data.requestId !== "string"
+          )
+            throw new HttpError(400, "Project ID and request ID are required.");
+          if (hasActiveProjectWork())
+            throw new HttpError(
+              409,
+              "Wait for other project operations before retrying common analysis.",
+            );
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          const abortDisconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          const requestId = data.requestId;
+          request.once("aborted", abort);
+          response.once("close", abortDisconnected);
+          sourceAnalysisControllers.set(requestId, controller);
+          sourceAnalysisProgress.set(requestId, {
+            requestId,
+            projectId: data.projectId,
+            status: "running",
+            progress: {
+              runId: decodeURIComponent(analysisRunAction[1]!),
+              stage: "queued",
+              completed: 0,
+              total: 0,
+            },
+          });
+          try {
+            const result = await application.sourceAnalysis.retryRun({
+              projectId: data.projectId,
+              runId: decodeURIComponent(analysisRunAction[1]!),
+              requestId,
+              signal: controller.signal,
+              onProgress: (progress) =>
+                sourceAnalysisProgress.set(requestId, {
+                  requestId,
+                  projectId: data.projectId as string,
+                  status:
+                    progress.stage === "completed"
+                      ? "completed"
+                      : progress.stage === "cancelled"
+                        ? "cancelled"
+                        : progress.stage === "failed"
+                          ? "failed"
+                          : "running",
+                  progress,
+                }),
+            });
+            sourceAnalysisProgress.set(requestId, {
+              requestId,
+              projectId: data.projectId,
+              status:
+                result.run.status === "cancelled"
+                  ? "cancelled"
+                  : result.run.status === "failed"
+                    ? "failed"
+                    : "completed",
+              progress: {
+                runId: result.run.id,
+                stage:
+                  result.run.status === "completed"
+                    ? "completed"
+                    : result.run.status === "cancelled"
+                      ? "cancelled"
+                      : "failed",
+                completed: result.results.length,
+                total: result.results.length,
+              },
+              result,
+            });
+            json(response, 200, { result });
+          } catch (error) {
+            const currentProgress = sourceAnalysisProgress.get(requestId);
+            if (currentProgress)
+              sourceAnalysisProgress.set(requestId, {
+                ...currentProgress,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+              });
+            throw error;
+          } finally {
+            request.off("aborted", abort);
+            response.off("close", abortDisconnected);
+            sourceAnalysisControllers.delete(requestId);
+          }
+          return;
+        }
+        const batchRoute = /^\/api\/import-batches\/([^/]+)$/u.exec(route);
+        if (batchRoute && method === "GET") {
+          const batch = application.catalog.multiSource.getImportBatch(
+            decodeURIComponent(batchRoute[1]!),
+          );
+          if (!batch || batch.projectId !== application.project.id)
+            throw new HttpError(404, "Import batch was not found.");
+          const expectedManifest =
+            application.catalog.multiSource.getExpectedManifest(
+              batch.expectedManifestId,
+            );
+          const verifiedManifest =
+            application.catalog.multiSource.getVerifiedManifestByExpectedId(
+              batch.expectedManifestId,
+            );
+          json(response, 200, { batch, expectedManifest, verifiedManifest });
+          return;
+        }
+        if (route === "/api/import-draft/scan-progress" && method === "GET") {
+          const requestId = url.searchParams.get("requestId") ?? "";
+          const progress = sourceDiscoveryProgress.get(requestId);
+          if (!progress || progress.projectId !== application.project.id)
+            throw new HttpError(404, "Source scan progress was not found.");
+          json(response, 200, { progress });
+          return;
+        }
+        if (route === "/api/import-draft/scan-readiness" && method === "GET") {
+          json(response, 200, {
+            summary: await application.sourceDiscovery.getReadiness(),
+          });
+          return;
+        }
+        if (
+          route === "/api/import-draft/staged-occurrences" &&
+          method === "GET"
+        ) {
+          const selectionId = url.searchParams.get("selectionId") ?? "";
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          const limit = Number(url.searchParams.get("limit") ?? 500);
+          if (
+            !selectionId ||
+            !Number.isSafeInteger(offset) ||
+            offset < 0 ||
+            !Number.isSafeInteger(limit) ||
+            limit < 1 ||
+            limit > 500
+          )
+            throw new HttpError(
+              400,
+              "Choose a selection and a page limit between 1 and 500.",
+            );
+          const page =
+            await application.sourceBatches.listBrowserStagedOccurrences(
+              selectionId,
+              offset,
+              limit,
+            );
+          json(response, 200, { page });
+          return;
+        }
+        if (route === "/api/import-draft/browser-scan" && method === "POST") {
+          const data = await body(request, 1024 * 1024);
+          keys(data, [
+            "projectId",
+            "baseRevision",
+            "requestId",
+            "selectionId",
+            "phase",
+            "scanRevision",
+            "candidates",
+          ]);
+          if (
+            typeof data.projectId !== "string" ||
+            typeof data.baseRevision !== "number" ||
+            typeof data.requestId !== "string" ||
+            typeof data.selectionId !== "string" ||
+            !["begin", "page", "finish", "cancel"].includes(String(data.phase))
+          )
+            throw new HttpError(
+              400,
+              "Project, revision, selection, request ID and browser scan phase are required.",
+            );
+          const phase = data.phase as "begin" | "page" | "finish" | "cancel";
+          const requestId = data.requestId;
+          const selectionId = data.selectionId;
+          if (phase === "begin") {
+            while (sourceDiscoveryProgress.size >= 64)
+              sourceDiscoveryProgress.delete(
+                sourceDiscoveryProgress.keys().next().value!,
+              );
+            const controller = new AbortController();
+            try {
+              const started =
+                await application.sourceDiscovery.beginBrowserScan({
+                  projectId: data.projectId,
+                  baseRevision: data.baseRevision,
+                  requestId,
+                  selectionId,
+                });
+              sourceDiscoveryControllers.add(controller);
+              browserDiscoveryControllers.set(requestId, controller);
+              sourceDiscoveryProgress.set(requestId, {
+                requestId,
+                projectId: data.projectId,
+                status: "running",
+                summary: started.summary,
+              });
+              expireBrowserDiscovery(requestId, data.projectId);
+              json(response, 200, started);
+            } catch (error) {
+              application.sourceDiscovery.cancelBrowserScan({
+                projectId: data.projectId,
+                requestId,
+              });
+              throw error;
+            }
+            return;
+          }
+          const controller = browserDiscoveryControllers.get(requestId);
+          const progress = sourceDiscoveryProgress.get(requestId);
+          if (!controller || !progress || progress.projectId !== data.projectId)
+            throw new HttpError(
+              409,
+              "The browser source scan is no longer active.",
+              "import.draftStale",
+            );
+          if (phase === "cancel") {
+            application.sourceDiscovery.cancelBrowserScan({
+              projectId: data.projectId,
+              requestId,
+            });
+            sourceDiscoveryProgress.set(requestId, {
+              ...progress,
+              status: "cancelled",
+              summary: { ...progress.summary, cancelled: true },
+            });
+            const timer = browserDiscoveryTimers.get(requestId);
+            if (timer) clearTimeout(timer);
+            browserDiscoveryTimers.delete(requestId);
+            browserDiscoveryControllers.delete(requestId);
+            sourceDiscoveryControllers.delete(controller);
+            json(response, 200, {
+              summary: { ...progress.summary, cancelled: true },
+            });
+            return;
+          }
+          try {
+            if (phase === "page") {
+              if (
+                !Number.isSafeInteger(data.scanRevision) ||
+                !Array.isArray(data.candidates)
+              )
+                throw new HttpError(
+                  400,
+                  "A browser scan page needs a scan revision and candidates.",
+                );
+              for (const candidate of data.candidates) {
+                if (
+                  !candidate ||
+                  typeof candidate !== "object" ||
+                  Array.isArray(candidate)
+                )
+                  throw new HttpError(
+                    400,
+                    "Browser scan candidates must be objects.",
+                  );
+                keys(candidate as Body, [
+                  "relativePath",
+                  "name",
+                  "size",
+                  "modifiedAt",
+                ]);
+                if (
+                  typeof (candidate as Body).relativePath !== "string" ||
+                  typeof (candidate as Body).name !== "string" ||
+                  typeof (candidate as Body).size !== "number" ||
+                  ((candidate as Body).modifiedAt !== undefined &&
+                    typeof (candidate as Body).modifiedAt !== "string")
+                )
+                  throw new HttpError(
+                    400,
+                    "Browser scan candidate fields are invalid.",
+                  );
+              }
+              const summary =
+                await application.sourceDiscovery.appendBrowserScanPage({
+                  projectId: data.projectId,
+                  baseRevision: data.baseRevision,
+                  requestId,
+                  selectionId,
+                  scanRevision: data.scanRevision as number,
+                  candidates: data.candidates as Array<{
+                    relativePath: string;
+                    name: string;
+                    size: number;
+                    modifiedAt?: string;
+                  }>,
+                });
+              sourceDiscoveryProgress.set(requestId, { ...progress, summary });
+              expireBrowserDiscovery(requestId, data.projectId);
+              json(response, 200, { summary });
+            } else {
+              const summary =
+                await application.sourceDiscovery.finishBrowserScan({
+                  projectId: data.projectId,
+                  baseRevision: data.baseRevision,
+                  requestId,
+                  selectionId,
+                  ...(Number.isSafeInteger(data.scanRevision)
+                    ? { scanRevision: data.scanRevision as number }
+                    : {}),
+                });
+              sourceDiscoveryProgress.set(requestId, {
+                ...progress,
+                status: "completed",
+                summary,
+              });
+              const timer = browserDiscoveryTimers.get(requestId);
+              if (timer) clearTimeout(timer);
+              browserDiscoveryTimers.delete(requestId);
+              browserDiscoveryControllers.delete(requestId);
+              sourceDiscoveryControllers.delete(controller);
+              json(response, 200, { summary });
+            }
+          } catch (error) {
+            sourceDiscoveryProgress.set(requestId, {
+              ...progress,
+              status: "failed",
+            });
+            const timer = browserDiscoveryTimers.get(requestId);
+            if (timer) clearTimeout(timer);
+            browserDiscoveryTimers.delete(requestId);
+            browserDiscoveryControllers.delete(requestId);
+            sourceDiscoveryControllers.delete(controller);
+            application.sourceDiscovery.cancelBrowserScan({
+              projectId: data.projectId,
+              requestId,
+            });
+            throw error;
+          }
+          return;
+        }
+        if (route === "/api/import-draft/scan" && method === "POST") {
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "baseRevision",
+            "requestId",
+            "selectionIds",
+          ]);
+          if (
+            data.selectionIds !== undefined &&
+            (!Array.isArray(data.selectionIds) ||
+              data.selectionIds.some((id) => typeof id !== "string"))
+          )
+            throw new HttpError(400, "selectionIds must be a list of IDs.");
+          if (
+            typeof data.projectId !== "string" ||
+            typeof data.baseRevision !== "number" ||
+            typeof data.requestId !== "string"
+          )
+            throw new HttpError(
+              400,
+              "Project, revision and request ID are required.",
+            );
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          const abortDisconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          request.once("aborted", abort);
+          response.once("close", abortDisconnected);
+          sourceDiscoveryControllers.add(controller);
+          while (sourceDiscoveryProgress.size >= 64)
+            sourceDiscoveryProgress.delete(
+              sourceDiscoveryProgress.keys().next().value!,
+            );
+          const initialProgress: SourceDiscoverySummary = {
+            projectId: data.projectId,
+            draftRevision: data.baseRevision,
+            sourcesRequested: Array.isArray(data.selectionIds)
+              ? data.selectionIds.length
+              : application.sourceDraft.get().selections.length,
+            sourcesScanned: 0,
+            discovered: 0,
+            supported: 0,
+            possibleDuplicates: 0,
+            skipped: 0,
+            failed: 0,
+            cancelled: false,
+            failures: [],
+          };
+          sourceDiscoveryProgress.set(data.requestId, {
+            requestId: data.requestId,
+            projectId: data.projectId,
+            status: "running",
+            summary: initialProgress,
+          });
+          try {
+            const summary = await application.sourceDiscovery.scan({
+              projectId: data.projectId,
+              baseRevision: data.baseRevision,
+              requestId: String(data.requestId ?? ""),
+              ...(Array.isArray(data.selectionIds)
+                ? { selectionIds: data.selectionIds as string[] }
+                : {}),
+              signal: controller.signal,
+              onProgress: (latest) => {
+                sourceDiscoveryProgress.set(data.requestId as string, {
+                  requestId: data.requestId as string,
+                  projectId: data.projectId as string,
+                  status: latest.cancelled ? "cancelled" : "running",
+                  summary: latest,
+                });
+              },
+            });
+            sourceDiscoveryProgress.set(data.requestId, {
+              requestId: data.requestId,
+              projectId: data.projectId,
+              status: summary.cancelled ? "cancelled" : "completed",
+              summary,
+            });
+            json(response, 200, { summary });
+          } catch (error) {
+            const currentProgress = sourceDiscoveryProgress.get(data.requestId);
+            if (currentProgress)
+              sourceDiscoveryProgress.set(data.requestId, {
+                ...currentProgress,
+                status: "failed",
+              });
+            throw error;
+          } finally {
+            request.off("aborted", abort);
+            response.off("close", abortDisconnected);
+            sourceDiscoveryControllers.delete(controller);
+          }
+          return;
+        }
+        const browserOccurrenceStageRoute =
+          /^\/api\/import-draft\/occurrences\/([^/]+)\/stage$/u.exec(route);
+        if (browserOccurrenceStageRoute && method === "POST") {
+          errorContext = "import.failed";
+          if (hasActiveProjectWork())
+            throw new HttpError(
+              409,
+              "Wait for running project work before staging browser media.",
+              "jobs.busy",
+            );
+          const selectionId = url.searchParams.get("selectionId") ?? "";
+          const baseRevision = Number(url.searchParams.get("baseRevision"));
+          const occurrenceId = decodeURIComponent(
+            browserOccurrenceStageRoute[1]!,
+          );
+          if (
+            !selectionId ||
+            !Number.isSafeInteger(baseRevision) ||
+            baseRevision < 0
+          )
+            throw new HttpError(
+              400,
+              "A source selection and valid draft revision are required.",
+            );
+          if (
+            !request.headers["content-type"]?.startsWith(
+              "application/octet-stream",
+            )
+          )
+            throw new HttpError(
+              415,
+              "Stage browser media using application/octet-stream.",
+            );
+          const declaredLength = Number(request.headers["content-length"]);
+          if (
+            Number.isFinite(declaredLength) &&
+            declaredLength > maxUploadBytes
+          )
+            throw new HttpError(
+              413,
+              `Media exceeds the ${maxUploadBytes} byte staging limit.`,
+            );
+          const modifiedHeader =
+            request.headers["x-openfilm-source-modified-at"];
+          if (Array.isArray(modifiedHeader))
+            throw new HttpError(
+              400,
+              "The browser source modification time is invalid.",
+            );
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          request.once("aborted", abort);
+          response.once("close", abort);
+          browserStageControllers.add(controller);
+          try {
+            const receipt =
+              await application.sourceBatches.stageBrowserOccurrence({
+                projectId: application.project.id,
+                baseRevision,
+                selectionId,
+                occurrenceId,
+                ...(typeof modifiedHeader === "string"
+                  ? { modifiedAt: modifiedHeader }
+                  : {}),
+                chunks: request.iterator({ destroyOnReturn: false }),
+                signal: controller.signal,
+              });
+            if (controller.signal.aborted)
+              throw new HttpError(
+                409,
+                "Browser source staging was cancelled.",
+                "jobs.notRunning",
+              );
+            json(response, 201, { receipt });
+          } finally {
+            request.off("aborted", abort);
+            response.off("close", abort);
+            browserStageControllers.delete(controller);
+          }
+          return;
+        }
+        if (route === "/api/import-draft/occurrences" && method === "GET") {
+          const selectionId = url.searchParams.get("selectionId") ?? "";
+          const offsetText = url.searchParams.get("offset");
+          const limitText = url.searchParams.get("limit");
+          const offset = offsetText === null ? 0 : Number(offsetText);
+          const limit = limitText === null ? 100 : Number(limitText);
+          if (!Number.isSafeInteger(offset) || offset < 0)
+            throw new HttpError(400, "offset must be a nonnegative integer.");
+          if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
+            throw new HttpError(400, "limit must be between 1 and 500.");
+          json(response, 200, {
+            page: application.catalog.multiSource.listOccurrences(selectionId, {
+              offset,
+              limit,
+            }),
+          });
+          return;
+        }
+        const occurrenceRoute =
+          /^\/api\/import-draft\/occurrences\/([^/]+)$/u.exec(route);
+        if (occurrenceRoute && method === "PATCH") {
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "baseRevision",
+            "requestId",
+            "selectionId",
+            "included",
+          ]);
+          if (
+            typeof data.projectId !== "string" ||
+            typeof data.baseRevision !== "number" ||
+            typeof data.requestId !== "string" ||
+            typeof data.selectionId !== "string" ||
+            typeof data.included !== "boolean"
+          )
+            throw new HttpError(
+              400,
+              "Project, revision, request ID and inclusion state are required.",
+            );
+          const membership = application.sourceBatches.setIncluded({
+            projectId: data.projectId,
+            baseRevision: data.baseRevision,
+            requestId: data.requestId,
+            selectionId: data.selectionId,
+            occurrenceId: decodeURIComponent(occurrenceRoute[1]!),
+            included: data.included,
+          });
+          json(response, 200, { membership });
+          return;
+        }
         if (route === "/api/import-draft" && method === "GET") {
           json(response, 200, { draft: application.sourceDraft.get() });
           return;
@@ -1093,7 +2204,7 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (route === "/api/versions" && method === "POST") {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for project jobs to finish before capturing a version.",
@@ -1140,7 +2251,7 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (versionRoute && method === "DELETE" && !versionRoute[2]) {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for project jobs to finish before deleting a version.",
@@ -1183,7 +2294,7 @@ export async function startServer(options: ServerOptions = {}) {
           method === "POST" &&
           versionRoute[2] === "restore"
         ) {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for project jobs to finish before restoring a version.",
@@ -1211,7 +2322,7 @@ export async function startServer(options: ServerOptions = {}) {
           method === "POST" &&
           (route === "/api/handoff/review" || route === "/api/handoff/export")
         ) {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for running jobs before NLE handoff.",
@@ -1603,7 +2714,7 @@ export async function startServer(options: ServerOptions = {}) {
           work: (options: ReviewOptions) => Promise<Job>,
           initialReservation = true,
         ) => {
-          if (active.size || application.hasActiveJobs)
+          if (hasActiveProjectWork() || application.hasActiveJobs)
             throw new HttpError(
               409,
               "Wait for the current job before starting another review.",
@@ -2179,7 +3290,7 @@ export async function startServer(options: ServerOptions = {}) {
             index = Number(batch[2]);
           if (!Number.isSafeInteger(index))
             throw new HttpError(400, "Invalid review batch index.");
-          if (active.size || application.hasActiveJobs)
+          if (hasActiveProjectWork() || application.hasActiveJobs)
             throw new HttpError(
               409,
               "Wait for the current job before changing review batches.",
@@ -2335,7 +3446,7 @@ export async function startServer(options: ServerOptions = {}) {
           const assetId = decodeURIComponent(intelligence[1]!);
           if (!application.catalog.getAsset(assetId))
             throw new HttpError(404, "Media not found.", "media.notFound");
-          if (active.size || application.hasActiveJobs)
+          if (hasActiveProjectWork() || application.hasActiveJobs)
             throw new HttpError(
               409,
               "Wait for the current job before analyzing another source.",
@@ -2550,7 +3661,7 @@ export async function startServer(options: ServerOptions = {}) {
           (route === "/api/media/relink/plan" ||
             route === "/api/media/relink/apply")
         ) {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for import or rendering to finish before relinking media.",
@@ -2731,7 +3842,7 @@ export async function startServer(options: ServerOptions = {}) {
           ]);
           const requestId = text(data, "requestId");
           if (
-            active.size &&
+            hasActiveProjectWork() &&
             !application.motionGeneration.hasRequest(requestId)
           )
             throw new HttpError(409, "Wait for the active project job.");
@@ -2872,7 +3983,7 @@ export async function startServer(options: ServerOptions = {}) {
             );
             if (text(data, "projectId") !== application.project.id)
               throw new HttpError(409, "Motion project changed.");
-            if (active.size)
+            if (hasActiveProjectWork())
               throw new HttpError(409, "Wait for the active project job.");
             if (action === "accept")
               json(
@@ -2909,7 +4020,7 @@ export async function startServer(options: ServerOptions = {}) {
         const generationMatch =
           /^\/api\/compositions\/([^/]+)\/audio-generation$/.exec(route);
         if (method === "POST" && generationMatch) {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(409, "Wait for the active project job.");
           const data = await body(request);
           keys(data, [
@@ -3013,7 +4124,7 @@ export async function startServer(options: ServerOptions = {}) {
         const audioQualityMatch =
           /^\/api\/compositions\/([^/]+)\/audio-quality$/.exec(route);
         if (method === "POST" && audioQualityMatch) {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(409, "Wait for the active project job.");
           const data = await body(request);
           keys(data, ["clipId", "baseRevision"]);
@@ -3295,7 +4406,7 @@ export async function startServer(options: ServerOptions = {}) {
         }
         if (method === "POST" && route === "/api/import/upload") {
           errorContext = "import.failed";
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for running jobs before adding files.",
@@ -3433,7 +4544,7 @@ export async function startServer(options: ServerOptions = {}) {
                     );
                   return { id, ...upload };
                 });
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(409, "An import is already running.");
           const controller = new AbortController();
           const placeholderId = randomUUID();
@@ -3498,18 +4609,30 @@ export async function startServer(options: ServerOptions = {}) {
         const cancel = /^\/api\/jobs\/([^/]+)\/cancel$/.exec(route);
         if (method === "POST" && cancel) {
           const controller = active.get(decodeURIComponent(cancel[1]!));
-          if (!controller)
+          if (!controller) {
+            const job = application.catalog
+              .listJobs()
+              .find(({ id }) => id === decodeURIComponent(cancel[1]!));
+            if (job?.attempt?.operationKind === "analysis-run") {
+              application.sourceAnalysis.cancelRun({
+                projectId: application.project.id,
+                runId: job.attempt.operationId,
+              });
+              json(response, 200, { ok: true });
+              return;
+            }
             throw new HttpError(
               409,
               "This job is no longer running.",
               "jobs.notRunning",
             );
+          }
           controller.abort();
           json(response, 200, { ok: true });
           return;
         }
         if (method === "POST" && route === "/api/visual-qa") {
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(
               409,
               "Wait for the active project job before starting Visual QA.",
@@ -4295,7 +5418,7 @@ export async function startServer(options: ServerOptions = {}) {
             });
             return;
           }
-          if (active.size)
+          if (hasActiveProjectWork())
             throw new HttpError(409, "Wait for running jobs before rendering.");
           const controller = new AbortController();
           const jobId = randomUUID();
@@ -4453,6 +5576,14 @@ export async function startServer(options: ServerOptions = {}) {
   const close = async () => {
     closing = true;
     cancelGraphicSceneAgentPreviews();
+    for (const timer of browserDiscoveryTimers.values()) clearTimeout(timer);
+    browserDiscoveryTimers.clear();
+    for (const controller of sourceDiscoveryControllers) controller.abort();
+    for (const controller of browserStageControllers) controller.abort();
+    for (const controller of sourceBatchControllers.values())
+      controller.abort();
+    for (const controller of sourceAnalysisControllers.values())
+      controller.abort();
     for (const controller of mediaStreams.keys()) controller.abort();
     const stopped = new Promise<void>((accept) => server.close(() => accept()));
     for (const controller of new Set(active.values())) controller.abort();

@@ -213,6 +213,11 @@ export class SourceDraftService {
     this.path = join(directory, "analysis", "source-draft.json");
   }
 
+  /** Private workspace directory for operational receipts; never serialized in the draft. */
+  get operationalDirectory(): string {
+    return this.directory;
+  }
+
   private empty(): StoredSourceDraft {
     return {
       schemaVersion: 1,

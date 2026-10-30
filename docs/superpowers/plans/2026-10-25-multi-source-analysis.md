@@ -61,45 +61,77 @@ Playwright, FFmpeg/FFprobe.
 
 ### Task 3: M2 streaming discovery and membership
 
-- [ ] Add a v2 `AsyncIterable` source adapter and legacy materializing wrapper.
-- [ ] Persist occurrences and many-to-many selection membership.
-- [ ] Add bounded scanning, recursive policy, symlink rejection, pagination, and
+- [x] Add a v2 `AsyncIterable` source adapter and legacy materializing wrapper.
+- [x] Persist occurrences and many-to-many selection membership.
+- [x] Add bounded scanning, recursive policy, symlink rejection, pagination, and
       a 10,000-item cancellation/backpressure regression.
 
 ### Task 4: M2 staging, identity, and sealing
 
-- [ ] Add private durable staging, lease/orphan recovery, full SHA-256 content
+- [x] Add private durable staging, lease/orphan recovery, full SHA-256 content
       identity, immutable asset content versions, and Expected/Verified Manifests.
-- [ ] Reject absolute/escaping browser paths and distinguish possible from exact
+- [x] Reject absolute/escaping browser paths and distinguish possible from exact
       duplicates.
-- [ ] Verify restart, relink, source-change, partial, and sealing-retry cases.
+- [x] Verify restart, relink, source-change, partial, and sealing-retry cases.
 
 ### Task 5: M3 scoped common analysis
 
-- [ ] Add manifest-scoped run-specific event and duplicate outputs.
-- [ ] Add attempt ownership, cancellation, retry, idempotency, late-result
+- [x] Add manifest-scoped run-specific event and duplicate outputs.
+- [x] Add attempt ownership, cancellation, retry, idempotency, late-result
       fencing, and selected-source/project-catalog scope.
-- [ ] Wire HTTP, CLI, and Desktop to shared application methods while retaining
+- [x] Wire HTTP, CLI, and Desktop to shared application methods while retaining
       legacy endpoints.
 
 ### Task 6: M4 time and GPX evidence
 
-- [ ] Add versioned device clock/context mappings and GPX track assignments.
-- [ ] Preserve unknown/conflicting time, timezone, speed, and track evidence.
-- [ ] Add `travel-v1` fixtures without interpolating across track gaps.
+- [x] Add versioned device clock/context mappings and GPX track assignments.
+- [x] Preserve unknown/conflicting time, timezone, speed, and track evidence.
+- [x] Add `travel-v1` fixtures without interpolating across track gaps.
 
 ### Task 7: M5 sampled visual observations
 
-- [ ] Add deterministic representative-frame evidence and a sample-only vision
+- [x] Add deterministic representative-frame evidence and a sample-only vision
       provider contract.
-- [ ] Add consent, bounded payload, validation, cache invalidation, and unknown
+- [x] Add consent, bounded payload, validation, cache invalidation, and unknown
       classification regressions.
 
 ### Task 8: M6 review, story adoption, and M7 release evidence
 
-- [ ] Add immutable typed decisions with lineage, fingerprints, preconditions,
+- [x] Add immutable typed decisions with lineage, fingerprints, preconditions,
       conflicts, and supersession.
-- [ ] Add merge/split/correct/search/adopt UI and API; no result changes StoryGraph
+- [x] Add merge/split/correct/search/adopt UI and API; no result changes StoryGraph
       before explicit acceptance.
-- [ ] Run every automated gate, record native/workstation manual gates honestly,
-      and complete final branch review.
+- [x] Run every available automated gate, record native/workstation manual gates
+      honestly, and complete final branch review.
+
+### Task 9: M6 review interaction and recovery optimisation
+
+- [x] Fence out-of-order result searches and invalidate previews when any
+      reviewed input, result selection, run or project changes.
+- [x] Reuse the exact acceptance receipt after an ambiguous transport failure;
+      keep the reviewed operation frozen until recovery finishes.
+- [x] Make supersession an explicit choice instead of choosing an unrelated
+      conflicted decision automatically.
+- [x] Reuse existing StoryGraph asset-node IDs during adoption and preserve
+      successful decisions across retry and reopen.
+- [x] Complete focused application/component/browser regressions and the
+      required available gates; retain unequipped workstation gates as open.
+
+### Task 10: final review correctness closure
+
+- [x] Bind reusable browser staging to current discovery metadata and fence
+      uploads completing after a rescan; preserve verified reopen.
+- [x] Reject unknown travel fields at every level and reconstruct closed portable
+      travel records without leaking private sentinels.
+- [x] Keep run/Activity cancellation available during long analysis and abort
+      disconnected discovery without publishing complete readiness.
+- [x] Verify source bytes in a private streaming snapshot before frame extraction
+      or provider disclosure; share one snapshot across up to three samples.
+- [x] Check cancellation, process/attempt ownership, generation, run status and
+      input fingerprint inside result publication; preserve live status readers.
+- [x] Project immutable corrections/groups/ranges for search and subsequent
+      adoption, including decision lineage in preview preconditions.
+- [x] Bound splits to reviewed timed sources and actual duration; support
+      multi-result adoption in Desktop.
+- [x] Finish full available gates after the single review fix pass and record
+      remaining workstation gates.

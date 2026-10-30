@@ -12,6 +12,14 @@ export interface BrowserHandleLike {
   requestPermission?: (options?: { mode?: "read" }) => Promise<PermissionState>;
 }
 
+export interface BrowserFileHandleLike extends BrowserHandleLike {
+  getFile?: () => Promise<File>;
+}
+
+export interface BrowserDirectoryHandleLike extends BrowserHandleLike {
+  values?: () => AsyncIterable<BrowserHandleLike>;
+}
+
 export interface StoredBrowserHandle {
   key: string;
   projectId: string;
@@ -263,6 +271,20 @@ export class BrowserSourceAccessRegistry {
   files(projectId: string, key: string): File[] | undefined {
     const value = this.ephemeral.get(key);
     return value?.projectId === projectId ? [...value.files] : undefined;
+  }
+
+  *fileEntries(projectId: string, key: string): Iterable<File> {
+    const value = this.ephemeral.get(key);
+    if (value?.projectId !== projectId) return;
+    yield* value.files;
+  }
+
+  async persistentHandle(
+    projectId: string,
+    key: string,
+  ): Promise<BrowserHandleLike | undefined> {
+    const record = (await this.backend.getMany(projectId, [key]))[0];
+    return record?.handle;
   }
 
   releaseFiles(projectId: string, key: string): void {

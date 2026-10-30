@@ -2,6 +2,15 @@ import { MotionGenerationService } from "./motion-generation.js";
 export * from "./motion-generation.js";
 import { SourceDraftService } from "./source-draft.js";
 export * from "./source-draft.js";
+import { SourceDiscoveryService } from "./source-discovery.js";
+export * from "./source-discovery.js";
+import { SourceBatchService } from "./source-batches.js";
+export * from "./source-batches.js";
+import { SourceAnalysisService } from "./source-analysis.js";
+export * from "./source-analysis.js";
+import { SourceAnalysisReviewService } from "./source-analysis-review.js";
+export * from "./source-analysis-review.js";
+export * from "./travel-evidence.js";
 
 import { NleHandoffService, type HandoffRequest } from "./nle-handoff.js";
 import type { HandoffOptions } from "@openfilm/exporters";
@@ -9,6 +18,7 @@ import { AudioGenerationService } from "./audio-generation.js";
 import type {
   AudioGenerationProvider,
   MotionGenerationProvider,
+  VisionSampleProvider,
 } from "@openfilm/plugin-sdk";
 export * from "./audio-generation.js";
 import { AudioQualityService } from "./audio-quality.js";
@@ -250,6 +260,8 @@ export type OpenFilmRuntimeOptions = KnowledgeOptions & {
   audioGenerationProvider?: AudioGenerationProvider;
   motionGenerationProvider?: MotionGenerationProvider;
   motionGenerationTimeoutMs?: number;
+  /** Optional sample-only providers. Remote use still requires per-project explicit consent. */
+  visionSampleProviders?: VisionSampleProvider[];
 };
 
 export interface ImportOptions {
@@ -362,6 +374,10 @@ export class OpenFilmApplication {
   readonly pipeline: PipelineService;
   readonly creativeVariants: CreativeVariantService;
   readonly sourceDraft: SourceDraftService;
+  readonly sourceDiscovery: SourceDiscoveryService;
+  readonly sourceBatches: SourceBatchService;
+  readonly sourceAnalysis: SourceAnalysisService;
+  readonly sourceAnalysisReview: SourceAnalysisReviewService;
 
   readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
@@ -385,6 +401,35 @@ export class OpenFilmApplication {
     this.catalog = new ProjectCatalog(directory);
     try {
       this.sourceDraft = new SourceDraftService(directory, project.id);
+      this.sourceDiscovery = new SourceDiscoveryService(
+        this.sourceDraft,
+        this.catalog,
+      );
+      this.sourceBatches = new SourceBatchService(
+        directory,
+        project.id,
+        this.sourceDraft,
+        this.catalog,
+        (files, options) => this.importManagedSources(files, options),
+        () => {
+          this.activeJobs++;
+        },
+        () => {
+          this.activeJobs--;
+        },
+      );
+      this.sourceAnalysis = new SourceAnalysisService(
+        project.id,
+        this.catalog,
+        () => {
+          this.activeJobs++;
+        },
+        () => {
+          this.activeJobs--;
+        },
+        runtime.visionSampleProviders,
+      );
+      this.sourceAnalysisReview = new SourceAnalysisReviewService(this);
       this.versions = new ProjectVersionService(this);
       this.collectMedia = new CollectMediaService(this);
 
@@ -584,6 +629,7 @@ export class OpenFilmApplication {
     }
     try {
       application.repairMediaReferences();
+      application.sourceAnalysis.recoverInterruptedAttempts();
       for (const job of application.catalog.listJobs()) {
         if (
           [
@@ -593,6 +639,7 @@ export class OpenFilmApplication {
             "transcribe",
             "waveform",
             "scenes",
+            "analysis-run",
           ].includes(job.type)
         )
           continue;

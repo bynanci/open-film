@@ -40,7 +40,22 @@ import type {
   PipelineRun,
   PipelineChangeImpactReport,
   SourceDraft,
+  TravelContextV1,
+  TravelTrackV1,
+  VisualSamplingV1,
+  ReviewDecisionOperation,
+  ReviewDecision,
 } from "@openfilm/core";
+
+export interface VisionSampleProviderInfo {
+  id: string;
+  name: string;
+  kind: "vision-sample";
+  execution: "local" | "remote";
+  endpoint?: string;
+  dataKinds: string[];
+  enabled: boolean;
+}
 import type {
   CaptionPublication,
   CaptionSnapshotPage,
@@ -63,6 +78,13 @@ import type {
   ProfileExportArtifact,
   AudioProfileExport,
   SourceSelectionInput,
+  SourceDiscoverySummary,
+  SourceDiscoveryProgress,
+  CatalogOccurrencePage,
+  SourceBatchProgress,
+  SourceBatchSealResult,
+  SourceAnalysisProgress,
+  SourceAnalysisRunRecord,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -97,6 +119,22 @@ export interface VisualQaState {
   /** The server has released this project's cancellation and job lock. */
   active: boolean;
   report?: VisualQaReport;
+}
+
+export interface SourceBatchProgressState {
+  requestId: string;
+  projectId: string;
+  status: "running" | "completed" | "cancelled" | "failed";
+  progress: SourceBatchProgress;
+  result?: SourceBatchSealResult;
+}
+
+export interface SourceAnalysisProgressState {
+  requestId: string;
+  projectId: string;
+  status: "running" | "completed" | "cancelled" | "failed";
+  progress: SourceAnalysisProgress;
+  result?: SourceAnalysisRunRecord;
 }
 
 export interface EditorState extends EditorDocument {
@@ -389,6 +427,83 @@ export const put = <T>(
     body: JSON.stringify(body),
     ...(signal ? { signal } : {}),
   });
+
+function stageBrowserSource(
+  input: {
+    selectionId: string;
+    occurrenceId: string;
+    baseRevision: number;
+    file: File;
+  },
+  signal?: AbortSignal,
+): Promise<{
+  receipt: { occurrenceId: string; contentHash: string; byteLength: number };
+}> {
+  signal?.throwIfAborted();
+  const connection = prefix;
+  const query = new URLSearchParams({
+    selectionId: input.selectionId,
+    baseRevision: String(input.baseRevision),
+  });
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const abort = () => xhr.abort();
+    xhr.open(
+      "POST",
+      `${connection}/import-draft/occurrences/${encodeURIComponent(input.occurrenceId)}/stage?${query}`,
+    );
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader(
+      "X-OpenFilm-Source-Modified-At",
+      new Date(input.file.lastModified || 0).toISOString(),
+    );
+    xhr.onload = () => {
+      cleanup();
+      let body: unknown;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        reject(
+          new ApiError("The private staging receipt is invalid.", xhr.status, {
+            code: "workspace.invalidResponse",
+          }),
+        );
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300)
+        reject(responseError(body, xhr.status));
+      else if (connection !== prefix)
+        reject(new DOMException("The local connection changed.", "AbortError"));
+      else
+        resolve(
+          body as {
+            receipt: {
+              occurrenceId: string;
+              contentHash: string;
+              byteLength: number;
+            };
+          },
+        );
+    };
+    xhr.onerror = () => {
+      cleanup();
+      reject(
+        new ApiError("The local film workspace is unavailable.", 0, {
+          code: "workspace.unavailable",
+        }),
+      );
+    };
+    xhr.onabort = () => {
+      cleanup();
+      reject(
+        new DOMException("Browser source staging cancelled.", "AbortError"),
+      );
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    xhr.send(input.file);
+  });
+}
 export const thumbnailUrl = (id: string): string =>
   `${prefix}/thumbnail/${encodeURIComponent(id)}`;
 export const previewUrl = (version: number): string =>
@@ -945,6 +1060,227 @@ export const api = {
     filmSettings?: Partial<FilmSettings>;
   }) => patch<{ project: OpenFilmProject; path: string }>("/project", input),
   sourceDraft: () => request<{ draft: SourceDraft }>("/import-draft"),
+  sourceDiscoveryReadiness: () =>
+    request<{ summary?: SourceDiscoverySummary }>(
+      "/import-draft/scan-readiness",
+    ),
+  browserStagedOccurrences: (selectionId: string, offset = 0, limit = 500) =>
+    request<{
+      page: {
+        occurrenceIds: string[];
+        offset: number;
+        limit: number;
+        hasMore: boolean;
+      };
+    }>(
+      `/import-draft/staged-occurrences?selectionId=${encodeURIComponent(selectionId)}&offset=${offset}&limit=${limit}`,
+    ),
+  browserSourceScan: (
+    input: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+      selectionId: string;
+      phase: "begin" | "page" | "finish" | "cancel";
+      scanRevision?: number;
+      candidates?: Array<{
+        relativePath: string;
+        name: string;
+        size: number;
+        modifiedAt: string;
+      }>;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ scanRevision?: number; summary: SourceDiscoverySummary }>(
+      "/import-draft/browser-scan",
+      input,
+      signal,
+    ),
+  stageBrowserSource,
+  scanSourceDraft: (
+    input: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+      selectionIds?: string[];
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ summary: SourceDiscoverySummary }>(
+      "/import-draft/scan",
+      input,
+      signal,
+    ),
+  sourceDiscoveryProgress: (requestId: string, signal?: AbortSignal) =>
+    request<{ progress: SourceDiscoveryProgress }>(
+      `/import-draft/scan-progress?requestId=${encodeURIComponent(requestId)}`,
+      signal ? { signal } : undefined,
+    ),
+  sourceOccurrences: (selectionId: string, offset = 0, limit = 100) =>
+    request<{ page: CatalogOccurrencePage }>(
+      `/import-draft/occurrences?selectionId=${encodeURIComponent(selectionId)}&offset=${offset}&limit=${limit}`,
+    ),
+  setSourceOccurrenceIncluded: (
+    occurrenceId: string,
+    input: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+      selectionId: string;
+      included: boolean;
+    },
+  ) =>
+    patch<{
+      membership: {
+        selectionId: string;
+        occurrenceId: string;
+        included: boolean;
+        revision: number;
+      };
+    }>(`/import-draft/occurrences/${encodeURIComponent(occurrenceId)}`, input),
+  createSourceBatch: (
+    input: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+      selectionIds?: string[];
+      partialPolicy?: "require-all" | "allow-readable";
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: SourceBatchSealResult }>("/import-batches", input, signal),
+  sourceBatchProgress: (requestId: string, signal?: AbortSignal) =>
+    request<{ state: SourceBatchProgressState }>(
+      `/import-batches/progress?requestId=${encodeURIComponent(requestId)}`,
+      signal ? { signal } : undefined,
+    ),
+  sourceBatch: (batchId: string) =>
+    request<{
+      batch: import("@openfilm/core").ImportBatch;
+      expectedManifest?: import("@openfilm/core").ExpectedManifest;
+      verifiedManifest?: import("@openfilm/core").VerifiedManifest;
+    }>(`/import-batches/${encodeURIComponent(batchId)}`),
+  createSourceAnalysis: (
+    input: {
+      projectId: string;
+      verifiedManifestId: string;
+      scopeMode: "selected-sources" | "project-catalog";
+      confirmProjectCatalog?: boolean;
+      requestId: string;
+      travelContext?: TravelContextV1;
+      visualSampling?: VisualSamplingV1;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: SourceAnalysisRunRecord }>("/analysis-runs", input, signal),
+  visionSampleProviders: () =>
+    request<{ providers: VisionSampleProviderInfo[] }>(
+      "/analysis/vision-sample-providers",
+    ),
+  grantVisionSampleConsent: (providerId: string) =>
+    post<{ providers: VisionSampleProviderInfo[] }>(
+      `/analysis/vision-sample-providers/${encodeURIComponent(providerId)}/consent`,
+      { acknowledged: true },
+    ),
+  revokeVisionSampleConsent: (providerId: string) =>
+    request<{ providers: VisionSampleProviderInfo[] }>(
+      `/analysis/vision-sample-providers/${encodeURIComponent(providerId)}/consent`,
+      { method: "DELETE" },
+    ),
+  searchSourceAnalysisReview: (
+    runId: string,
+    query = "",
+    offset = 0,
+    limit = 50,
+  ) =>
+    request<{
+      result: {
+        items: import("@openfilm/application").SourceAnalysisReviewItem[];
+        total: number;
+        offset: number;
+        limit: number;
+      };
+      decisions: ReviewDecision[];
+    }>(
+      `/analysis-runs/${encodeURIComponent(runId)}/review?${new URLSearchParams({ query, offset: String(offset), limit: String(limit) })}`,
+    ),
+  previewSourceAnalysisReview: (
+    runId: string,
+    operation: ReviewDecisionOperation,
+  ) =>
+    post<{
+      preview: import("@openfilm/application").SourceAnalysisReviewPreview;
+    }>(`/analysis-runs/${encodeURIComponent(runId)}/review/preview`, {
+      operation,
+    }),
+  acceptSourceAnalysisReview: (
+    runId: string,
+    input: {
+      projectId: string;
+      operation: ReviewDecisionOperation;
+      expectedManifestId: string;
+      expectedBeforeFingerprint: string;
+      expectedOperationFingerprint: string;
+      expectedStoryRevision?: string;
+      requestId: string;
+      supersedesDecisionId?: string;
+    },
+  ) =>
+    post<{ decision: ReviewDecision }>(
+      `/analysis-runs/${encodeURIComponent(runId)}/review/accept`,
+      input,
+    ),
+  parseTravelGpx: async (
+    trackId: string,
+    file: File,
+    signal?: AbortSignal,
+  ): Promise<{ track: TravelTrackV1 }> => {
+    const response = await fetch(
+      `${prefix}/travel-gpx/parse?trackId=${encodeURIComponent(trackId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/gpx+xml" },
+        body: file,
+        ...(signal ? { signal } : {}),
+      },
+    );
+    let result: unknown;
+    try {
+      result = await response.json();
+    } catch {
+      throw new ApiError(
+        "The selected GPX route could not be parsed.",
+        response.status,
+        { code: "media.unsupported" },
+      );
+    }
+    if (!response.ok) throw responseError(result, response.status);
+    return result as { track: TravelTrackV1 };
+  },
+  sourceAnalysisProgress: (requestId: string, signal?: AbortSignal) =>
+    request<{ state: SourceAnalysisProgressState }>(
+      `/analysis-runs/progress?requestId=${encodeURIComponent(requestId)}`,
+      signal ? { signal } : undefined,
+    ),
+  sourceAnalysisRun: (runId: string) =>
+    request<{ result: SourceAnalysisRunRecord }>(
+      `/analysis-runs/${encodeURIComponent(runId)}`,
+    ),
+  cancelSourceAnalysis: (runId: string, projectId: string) =>
+    post<{ ok: true }>(`/analysis-runs/${encodeURIComponent(runId)}/cancel`, {
+      projectId,
+    }),
+  retrySourceAnalysis: (
+    runId: string,
+    input: { projectId: string; requestId: string },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: SourceAnalysisRunRecord }>(
+      `/analysis-runs/${encodeURIComponent(runId)}/retry`,
+      input,
+      signal,
+    ),
   addSourceSelections: (input: {
     projectId: string;
     baseRevision: number;
