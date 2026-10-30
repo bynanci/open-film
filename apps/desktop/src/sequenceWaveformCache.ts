@@ -40,6 +40,7 @@ export class SequenceWaveformCache {
   private generation = 0;
   private disposed = false;
   private values = new Map<string, WaveformCacheEntry>();
+  private visible = new Set<string>();
   private sources = new Map<string, { id: string; contentHash?: string }>();
   private pending = new Map<string, ReadTask>();
   private tasks = new Set<ReadTask>();
@@ -69,7 +70,10 @@ export class SequenceWaveformCache {
   }
 
   get(assetId: string): WaveformCacheEntry | undefined {
-    return this.values.get(assetId);
+    return (
+      this.values.get(assetId) ??
+      (this.pending.has(assetId) ? { assetId, status: "loading" } : undefined)
+    );
   }
   get size() {
     return this.values.size;
@@ -77,9 +81,14 @@ export class SequenceWaveformCache {
 
   load(
     assetIds: readonly string[],
-    options: { refresh?: boolean } = {},
+    options: { refresh?: boolean; visible?: boolean } = {},
   ): Promise<void> {
     if (!this.context || this.disposed) return Promise.resolve();
+    // Only explicit page navigation changes retention; preparation/refresh do not.
+    if (options.visible)
+      this.visible = new Set(
+        [...new Set(assetIds)].filter((id) => this.sources.has(id)).slice(0, 8),
+      );
     const waiting = new Set<Promise<void>>();
     const missing: string[] = [];
     for (const assetId of new Set(assetIds)) {
@@ -132,6 +141,7 @@ export class SequenceWaveformCache {
     this.queue = [];
     this.pending.clear();
     this.values.clear();
+    this.visible.clear();
   }
 
   private current(task: ReadTask) {
@@ -143,11 +153,16 @@ export class SequenceWaveformCache {
   }
 
   private retain(entry: WaveformCacheEntry) {
-    // FIFO is intentional: stable eviction independent of render/access frequency.
+    // Preserve the current page; FIFO among other sources stays independent of
+    // render/access frequency. At most eight visible IDs fit within the 32 limit.
     this.values.delete(entry.assetId);
     this.values.set(entry.assetId, entry);
-    while (this.values.size > 32)
-      this.values.delete(this.values.keys().next().value!);
+    while (this.values.size > 32) {
+      const oldest = [...this.values.keys()].find(
+        (id) => !this.visible.has(id),
+      )!;
+      this.values.delete(oldest);
+    }
   }
 
   private pump() {

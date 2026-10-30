@@ -29,7 +29,7 @@ migration, provider call or changed output policy is introduced.
   existing flush/history/ownership guards. Locks, source bytes, saved edits,
   autosave and reopen remain under their existing owners.
 
-Focused integrated execution passes **72 tests in seven files**, plus
+Initial focused integrated execution passed **72 tests in seven files**, plus
 TypeScript/Vue and i18n checks (2,692 semantic keys). All **seven new Chromium
 cases** pass, including native keyboard seeks, no per-frame reads, preparation,
 stop/retry, project races, reopen and 390px Traditional Chinese/Japanese coarse
@@ -50,6 +50,39 @@ actual candidate-bound report union rather than assuming the old count. Complete
 candidate gates, independent review and main outcomes must be recorded before
 delivery is marked verified. Local Cargo is unavailable; equipped hosted native
 checks remain required.
+
+## Final review correction
+
+The final review reproduced a delayed five-page read sequence that evicted the
+returned first page and left Refresh permanently disabled. Five new deterministic
+regressions first failed: three cache cases and two real Vue-host cases. They
+cover successful and failed first-page reads, all five batches settling, explicit
+refresh recovery, unchanged protected source/Composition data and no frame-driven
+requests. The cache now protects only the current eight sources while keeping
+32 retained entries and two concurrent reads. Other entries retain deterministic
+FIFO eviction. Loading requires a pending task; an absent entry without one has
+a recoverable failed state. Generation and ignored-abort fencing remain intact.
+
+Hosted Verify `41065126742` also exposed a Compare request spy treating the
+waveform-only POST as a mutation. The spy now classifies only POST
+`/api/intelligence/waveforms` as that read and explicitly checks its current
+project, exact payload keys, one-to-eight unique Composition source IDs. All
+other writes still fail the original no-mutation assertion. Original image-node
+identity, controls, saved Composition and source-hash assertions are retained.
+
+Fresh correction checks pass:
+
+- Cache and Vue-host RED→GREEN: **5 intended failures**, then **29/29** passing.
+- Cache, Vue-host and preparation files together: **40/40** passing.
+- Whole `film-looks.spec.ts` and `sequence-waveforms.spec.ts` with Chromium:
+  **17/17** passing (10 film-look cases and seven waveform cases).
+- TypeScript/Vue, ESLint on all five changed source/test files, and formatting.
+- Owned browser servers exited; ports 4310/1420 were confirmed released.
+
+This correction does not certify full candidate CI or workstation gates. A fresh
+scoped review and completed exact-candidate CI remain required. Full Vitest and
+native benchmarks were not rerun in this bounded correction pass. Stable remains
+0.4.0.
 
 ## Actual synthetic MP4
 

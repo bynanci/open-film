@@ -107,6 +107,56 @@ describe("bounded current-source waveform evidence", () => {
     expect(cache.size).toBe(32);
   });
 
+  it.each(["ready", "failed"] as const)(
+    "retains the visible page as %s after five delayed page reads finish",
+    async (status) => {
+      const { cache, calls, finish } = harness();
+      const reads = Array.from({ length: 5 }, (_, page) =>
+        cache.load(ids.slice(page * 8, page * 8 + 8), { visible: true }),
+      );
+      const returned = cache.load(ids.slice(0, 8), { visible: true });
+      expect(calls).toHaveLength(2);
+      for (let index = 0; index < 5; index++) {
+        // Exactly two physical reads can be outstanding, including queued pages.
+        expect(calls.length - index).toBeLessThanOrEqual(2);
+        expect(calls[index]!.projectId).toBe("film");
+        expect(calls[index]!.ids).toEqual(ids.slice(index * 8, index * 8 + 8));
+        if (index === 0 && status === "failed")
+          calls[index]!.result.reject(new Error("Read failed"));
+        else finish(index);
+        await settle();
+        expect(cache.size).toBeLessThanOrEqual(32);
+      }
+      await Promise.all([...reads, returned]);
+      expect(calls).toHaveLength(5);
+      expect(ids.slice(0, 8).map((id) => cache.get(id)?.status)).toEqual(
+        Array(8).fill(status),
+      );
+      const retry = cache.load(ids.slice(0, 8), { refresh: true });
+      expect(calls).toHaveLength(6);
+      finish(5);
+      await retry;
+      expect(cache.size).toBe(32);
+      expect(
+        ids.slice(0, 8).every((id) => cache.get(id)?.status === "ready"),
+      ).toBe(true);
+    },
+  );
+
+  it("reports loading for an evicted pending entry only while its read exists", async () => {
+    const { cache, calls, finish } = harness();
+    const read = cache.load(ids.slice(0, 40));
+    expect(cache.size).toBe(32);
+    expect(cache.get(ids[0]!)?.status).toBe("loading");
+    for (let index = 0; index < 5; index++) {
+      finish(index);
+      await settle();
+    }
+    await read;
+    expect(calls).toHaveLength(5);
+    expect(cache.get(ids[0]!)).toBeUndefined();
+  });
+
   it.each([
     "project",
     "composition",

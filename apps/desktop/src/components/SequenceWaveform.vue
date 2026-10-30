@@ -172,7 +172,7 @@ const pageSources = computed(() => {
       status:
         status && status !== "available"
           ? "unavailable"
-          : (entry?.status ?? "loading"),
+          : (entry?.status ?? "failed"),
       clipLocked: visibleTracks.value.some((track) =>
         track.clips.some(({ clip }) => clip.assetId === id && clip.locked),
       ),
@@ -207,7 +207,8 @@ watch(
 watch(
   [owner, pageSourceIds],
   () => {
-    if (!disposed && props.active) void cache.load(pageSourceIds.value);
+    if (!disposed && props.active)
+      void cache.load(pageSourceIds.value, { visible: true });
   },
   { immediate: true, flush: "sync" },
 );
@@ -244,7 +245,7 @@ const tracks = computed(() => {
         let status =
           sourceStatus && sourceStatus !== "available"
             ? "unavailable"
-            : (entry?.status ?? "loading");
+            : (entry?.status ?? "failed");
         let path = "";
         if (status === "ready" && entry?.status === "ready") {
           try {

@@ -20,10 +20,12 @@ afterEach(() =>
 );
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => {
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
     resolve = yes;
+    reject = no;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 const asset: core.MediaAsset = {
   id: "pulse",
@@ -318,4 +320,87 @@ describe("derived Record waveform view", () => {
     expect(view.slider().props.min).toBe(0);
     expect(view.slider().props.max).toBe(699);
   });
+
+  it.each(["ready", "failed"] as const)(
+    "keeps the returned page %s and refresh usable after delayed background pages finish",
+    async (status) => {
+      const assets = Array.from({ length: 40 }, (_, index) => ({
+        ...asset,
+        id: `source-${index}`,
+        uri: `file:///source-${index}.mp4`,
+      }));
+      const cut: core.Composition = {
+        id: "cut",
+        storyId: "story",
+        duration: 40,
+        tracks: [
+          {
+            id: "audio",
+            type: "audio",
+            clips: assets.map((item, index) => ({
+              id: `clip-${index}`,
+              assetId: item.id,
+              timelineStart: index,
+              timelineDuration: 1,
+              locked: true,
+            })),
+          },
+        ],
+      };
+      const view = mount({ assets, composition: cut, maxFrame: 399 });
+      const before = JSON.stringify({
+        assets: view.props.assets,
+        composition: view.props.composition,
+      });
+      click(view.button("fit"));
+      await vue.nextTick();
+      for (let page = 0; page < 4; page++) {
+        click(view.button("nextSources"));
+        await vue.nextTick();
+      }
+      for (let page = 0; page < 4; page++) {
+        click(view.button("previousSources"));
+        await vue.nextTick();
+      }
+      expect(view.reads).toHaveLength(2);
+      expect(view.button("refresh").props.disabled).toBe(true);
+      for (let index = 0; index < 5; index++) {
+        expect(view.reads.length - index).toBeLessThanOrEqual(2);
+        expect(view.reads[index]!.projectId).toBe("film");
+        expect(view.reads[index]!.ids).toEqual(
+          assets.slice(index * 8, index * 8 + 8).map((item) => item.id),
+        );
+        if (index === 0 && status === "failed") {
+          view.reads[index]!.result.reject(new Error("Read failed"));
+          await settle();
+        } else await view.finish(index);
+      }
+      expect(view.reads).toHaveLength(5);
+      const rows = view.all().filter((node) => node.tag === "li");
+      expect(rows.map((node) => node.props["data-asset-id"])).toEqual(
+        assets.slice(0, 8).map((item) => item.id),
+      );
+      expect(rows.map((node) => node.props["data-source-status"])).toEqual(
+        Array(8).fill(status),
+      );
+      expect(view.paths()).toHaveLength(status === "ready" ? 8 : 0);
+      expect(view.button("refresh").props.disabled).toBe(false);
+      for (let frame = 1; frame < 40; frame++) {
+        view.props.frame = frame;
+        await vue.nextTick();
+      }
+      expect(view.reads).toHaveLength(5);
+      click(view.button("refresh"));
+      expect(view.reads).toHaveLength(6);
+      await view.finish(5);
+      expect(view.paths()).toHaveLength(8);
+      expect(view.button("refresh").props.disabled).toBe(false);
+      expect(
+        JSON.stringify({
+          assets: view.props.assets,
+          composition: view.props.composition,
+        }),
+      ).toBe(before);
+    },
+  );
 });
