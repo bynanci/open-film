@@ -252,3 +252,43 @@ operation-specific source-lock regression, full exact-head CI, scoped review or
 workstation gates. Its logs and byte-bound correction package are retained under
 the ignored User Pin integration evidence directory; no full-suite, hosted or
 physical-hardware pass is claimed for this correction checkpoint.
+
+## Operation-specific Library source locks (2026-10-30)
+
+Actual hosted browser failures exposed the new generic pin precheck rejecting
+existing primary clip-local editing on Library-locked media. The established
+Cut Desk contract allows trim, speed and volume on an unlocked primary clip;
+the existing photo workflow also permits duration, transform and transition.
+Its split, presentation, identity replacement and overlay rules remain separate.
+
+The new full-owner/source precheck now applies only to explicit pin set/release
+and Unlock & Re-solve. It retains clip, primary, paired, graphic-node and graphic
+source checks. Ordinary commands use the unchanged raw operation owners: all
+clip locks, all overlay-source edits, presentation primary/paired sources,
+split, identity deletion/replacement and typed Look/primary conflicts still
+reject. The automatic allocator and whole pinned-payload proof are unchanged.
+
+Tests reproduce eight failures: six public-editor operation families, a real
+HTTP six-command staged edit and the core primary-source trim. The corrected
+three-file selection passes74 tests. One newly introduced pin test had itself
+incorrectly required all source-locked primary trims to fail; it now requires
+explicit pin release to remain blocked and proves that the allowed trim creates
+the exact occurrence pin. Its original clip-lock and authoritative-clock
+assertions remain. Separate automatic placement passes33 existing cases.
+
+Application coverage retains one Undo entry, exact replay, Redo, autosave and
+reopen without catalog mutation. Real HTTP coverage uses generated synthetic
+PNG/MP4 sources, checks all six edited values and occurrence identities, and
+requires original source bytes and catalog state to remain identical. Split,
+presentation/motion/layout, replacement/deletion and explicit pin operations
+remain rejected with unchanged full editor/disk state. Clip and overlay-source
+negative cases also preserve project, catalog and history state. Complete
+exact-head hosted gates, scoped correction review and workstation gates remain
+separate requirements.
+
+The expanded combined producer and legacy-operation regression passes all26
+files /452 tests, with no skipped or pending assertions. The separate automatic
+placement33 cases remain unchanged and pass. TypeScript/Vue, full ESLint, full
+Prettier,2,909 semantic locale keys and135 English documentation mirrors pass.
+This remains focused regression evidence; complete hosted browser/media gates
+and independent scoped review are still required before merge.

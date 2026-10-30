@@ -257,10 +257,29 @@ describe("user pin mutation policy", () => {
       applyTimelineCommand(
         doc(),
         locked,
-        { type: "trim", clipId: "a", sourceIn: 1, sourceOut: 2 },
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "a" },
+          pinned: false,
+        },
         context,
       ),
     ).toThrow(/locked/iu);
+    const after = applyTimelineCommand(
+      doc(),
+      locked,
+      { type: "trim", clipId: "a", sourceIn: 1, sourceOut: 2 },
+      context,
+    );
+    expect(clip(after)).toMatchObject({
+      sourceIn: 1,
+      sourceOut: 2,
+      userOverrides: {
+        version: 1,
+        isUserPinned: true,
+        lockedAttributes: ["inOutRange", "timing"],
+      },
+    });
   });
   it("direct audio insertion pins its new owner", () => {
     const audio = { ...assets[0]!, id: "audio", mediaType: "audio" as const };
