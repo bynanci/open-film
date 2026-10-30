@@ -61,8 +61,11 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         checks plus typecheck/i18n pass), whole-project/Collect retention and
         independent short-gap/origin clock proof. Actual Record/WAV PCM and seam
         error are zero in two focused browser cases; eight negative controls
-        reject. Final exact-candidate gates and whole-branch review remain open;
-        this checkbox stays unchecked. See the [guide](docs/audio-policy.md) and
+        reject. The complete frozen pre-correction candidate passes5436/5436
+        tests in408files; first whole review found one rounded handoff-endpoint
+        mismatch, now covered by native/bake neighbor and real-publication tests.
+        Final scoped review/browser/hosted gates remain open; this checkbox stays
+        unchecked. See the [guide](docs/audio-policy.md) and
         [measured evidence](docs/validation-audio-policy.md).
   - [x] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
         quota/eviction, rebuild and health UI through the existing generator.

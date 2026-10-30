@@ -1,5 +1,10 @@
 import { expect, it } from "vitest";
-import type { Composition, MediaAsset } from "@openfilm/core";
+import {
+  resolveAudioInterval,
+  validateComposition,
+  type Composition,
+  type MediaAsset,
+} from "@openfilm/core";
 import {
   createHandoffPlan,
   exportTimeline,
@@ -83,3 +88,64 @@ it("classifies independent timing honestly and allows an explicit full-mix bake"
   ).toMatchObject({ disposition: "baked" });
   expect(baked.bakeAudio).toBe(true);
 });
+
+function boundaryComposition(sourceOutSample: number, speed = 3): Composition {
+  const value = structuredClone(composition),
+    clip = value.tracks[0]!.clips[0]!;
+  value.duration = 1;
+  clip.timelineStart = 0;
+  clip.timelineDuration = 1;
+  clip.sourceIn = 0;
+  clip.sourceOut = 3;
+  clip.transform = { speed };
+  clip.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 0,
+    sourceInSample: 0,
+    sourceOutSample,
+  };
+  return value;
+}
+for (const bakeAudio of [false, true]) {
+  it.each([144000, 144001])(
+    `retains the canonical end sample at sourceOut=%s in handoff (bakeAudio=${bakeAudio})`,
+    (sourceOutSample) => {
+      const value = boundaryComposition(sourceOutSample),
+        before = structuredClone(value),
+        clip = value.tracks[0]!.clips[0]!;
+      validateComposition(value, { assetIds: ["a"] });
+      expect(resolveAudioInterval(clip, assets[0]!, 1).endSample).toBe(48000);
+      const result = createHandoffPlan(value, 30, { bakeAudio });
+      expect(
+        result.items.find((item) => item.feature === "audioTiming"),
+      ).toEqual(
+        expect.objectContaining({
+          startFrame: 0,
+          endFrame: 30,
+          disposition: bakeAudio ? "baked" : "metadata-only",
+        }),
+      );
+      expect(value).toEqual(before);
+      expect(clip.audioTiming!.sourceOutSample).toBe(sourceOutSample);
+    },
+  );
+  it.each([
+    [144002, 3],
+    [144001, 2.9999],
+  ])(
+    `rejects a genuine canonical overrun at sourceOut=%s speed=%s in handoff (bakeAudio=${bakeAudio})`,
+    (sourceOutSample, speed) => {
+      const value = boundaryComposition(sourceOutSample!, speed);
+      expect(() => validateComposition(value, { assetIds: ["a"] })).toThrow(
+        /bounds/,
+      );
+      expect(() =>
+        resolveAudioInterval(value.tracks[0]!.clips[0]!, assets[0]!, 1),
+      ).toThrow(/bounds/);
+      expect(() => createHandoffPlan(value, 30, { bakeAudio })).toThrow(
+        /bounds/,
+      );
+    },
+  );
+}

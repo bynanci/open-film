@@ -1,6 +1,7 @@
 import {
   AUDIO_PROJECT_SCHEMA_VERSION,
   validateAudioTiming,
+  resolveAudioTimingRange,
 } from "./audio-policy.js";
 import {
   PINNED_PROJECT_SCHEMA_VERSION,
@@ -1263,19 +1264,19 @@ function composition(
         const speed = Number(
           (clip.transform as Record<string, unknown> | undefined)?.speed ?? 1,
         );
-        const samples = Math.round(
-          (timing.sourceOutSample - timing.sourceInSample) / speed,
-        );
-        if (
-          !Number.isSafeInteger(samples) ||
-          samples <= 0 ||
-          !Number.isSafeInteger(timing.timelineStartSample + samples) ||
-          timing.timelineStartSample + samples > Math.round(duration * 48000)
-        )
+        let samples: number;
+        try {
+          samples = resolveAudioTimingRange(
+            timing,
+            speed,
+            duration,
+          ).lengthSamples;
+        } catch {
           fail(
             `${clipPath}.audioTiming`,
             "independent sound exceeds composition bounds",
           );
+        }
         soundDuration = samples / 48000;
       }
       optional(clip, "titlePresetSnapshot", clipPath, (value) =>

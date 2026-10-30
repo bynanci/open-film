@@ -152,6 +152,36 @@ export function validateAudioTiming(value: unknown): AudioTimingV1 {
     sourceOutSample,
   };
 }
+/** Shared canonical arithmetic; actual decoded source availability is checked separately. */
+export function resolveAudioTimingRange(
+  value: unknown,
+  speed: number,
+  compositionDuration: number,
+): {
+  timing: AudioTimingV1;
+  lengthSamples: number;
+  endSample: number;
+} {
+  const timing = validateAudioTiming(value);
+  if (!Number.isFinite(speed) || speed <= 0)
+    fail("audioTiming", "speed must be positive and finite");
+  const lengthSamples = sample(
+      Math.round((timing.sourceOutSample - timing.sourceInSample) / speed),
+      "audioTiming.length",
+    ),
+    endSample = sample(
+      timing.timelineStartSample + lengthSamples,
+      "audioTiming.end",
+    );
+  if (
+    !lengthSamples ||
+    !Number.isFinite(compositionDuration) ||
+    compositionDuration <= 0 ||
+    endSample > Math.round(compositionDuration * AUDIO_SAMPLE_RATE)
+  )
+    fail("audioTiming", "sound exceeds composition bounds");
+  return { timing, lengthSamples, endSample };
+}
 export function validateEmbeddedAudioPolicy(
   value: unknown,
 ): EmbeddedAudioPolicyV1 {
@@ -333,22 +363,12 @@ export function resolveAudioInterval(
   }
   const descriptor = Object.getOwnPropertyDescriptor(clip, "audioTiming")!;
   if (!("value" in descriptor)) fail("audioTiming", "expected own JSON data");
-  const timing = validateAudioTiming(descriptor.value),
-    speed = clip.transform?.speed ?? 1;
-  if (!Number.isFinite(speed) || speed <= 0)
-    fail("audioTiming", "speed must be positive and finite");
-  const length = sample(
-      Math.round((timing.sourceOutSample - timing.sourceInSample) / speed),
-      "audioTiming.length",
-    ),
-    endSample = sample(timing.timelineStartSample + length, "audioTiming.end");
-  if (
-    !length ||
-    !Number.isFinite(compositionDuration) ||
-    compositionDuration <= 0 ||
-    endSample > Math.round(compositionDuration * AUDIO_SAMPLE_RATE)
-  )
-    fail("audioTiming", "sound exceeds composition bounds");
+  const speed = clip.transform?.speed ?? 1,
+    { timing, lengthSamples, endSample } = resolveAudioTimingRange(
+      descriptor.value,
+      speed,
+      compositionDuration,
+    );
   if (timing.sourceOutSample > audioSourceEndSample(asset))
     fail(
       "audioTiming",
@@ -363,7 +383,7 @@ export function resolveAudioInterval(
     sourceInSeconds: timing.sourceInSample / AUDIO_SAMPLE_RATE,
     sourceOutSeconds: timing.sourceOutSample / AUDIO_SAMPLE_RATE,
     speed,
-    automationDurationSeconds: length / AUDIO_SAMPLE_RATE,
+    automationDurationSeconds: lengthSamples / AUDIO_SAMPLE_RATE,
   };
 }
 export function audioTimingFromHandles(

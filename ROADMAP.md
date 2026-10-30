@@ -33,8 +33,10 @@ and [validation](docs/validation-sequence-waveforms.md).
 D3B1's candidate now carries strict independent sound timing, one shared
 render/Record PCM mix, editing controls and exact project/Collect retention.
 Actual browser Record/WAV capture has zero PCM and seam error at normal play
-and an arbitrary seek; adversarial timing/mix/cache controls reject. Final
-candidate gates and independent review remain open. D3B2 coverage persistence
+and an arbitrary seek; adversarial timing/mix/cache controls reject. The complete
+frozen pre-correction gate passes5436tests. First whole review's bounded handoff
+sample-rounding issue now has native/bake boundary and actual publication
+regressions; final scoped/browser/hosted verification remains open. D3B2 coverage persistence
 remains a separate, unchecked task. See the [guide](docs/audio-policy.md) and
 [validation](docs/validation-audio-policy.md).
 

@@ -9,7 +9,7 @@ import {
   resolvePrimaryColor,
   isPrimaryColorActive,
   assertPrimaryColorSettings,
-  validateAudioTiming,
+  resolveAudioTimingRange,
   type Composition,
 } from "@openfilm/core";
 export type HandoffMode = "preserve-editability" | "preserve-visual-fidelity";
@@ -322,19 +322,16 @@ export function createHandoffPlan(
           "Envelope/ducking remains exact metadata unless full mix is selected",
         );
       if (clip.audioTiming) {
-        const timing = validateAudioTiming(clip.audioTiming),
-          speed = clip.transform?.speed ?? 1,
-          first = timing.timelineStartSample / 48000,
-          last =
-            first +
-            (timing.sourceOutSample - timing.sourceInSample) / (48000 * speed);
-        if (!Number.isFinite(last) || speed <= 0 || last > composition.duration)
-          throw new Error("Independent sound exceeds handoff bounds");
+        const { timing, endSample } = resolveAudioTimingRange(
+          clip.audioTiming,
+          clip.transform?.speed ?? 1,
+          composition.duration,
+        );
         add(
           clip.id,
           "audioTiming",
-          first,
-          last,
+          timing.timelineStartSample / 48000,
+          endSample / 48000,
           "audio",
           "Independent sound timing is exact OpenFilm metadata; recreate manually or select the full audio mix",
         );

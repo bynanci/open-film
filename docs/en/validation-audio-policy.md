@@ -8,7 +8,7 @@ fences). Pin dependency `094e4dc` is integrated separately; its fresh review is
 coordinator-owned and must not be inferred from integration.
 
 Toolchain used here: Node 24.19.0, pnpm 11.19.0, FFmpeg/FFprobe 7.1.5 Debian,
-Playwright 1.63.0 and its Chromium. All sources are local synthetic files. No
+Playwright 1.63.0 with Chromium 151.0.7922.173 (`/usr/bin/chromium`). All sources are local synthetic files. No
 provider, private-media upload or original-source overwrite is involved.
 
 ## Measured gates
@@ -112,7 +112,7 @@ failed gate, not completion evidence. The complete failing groups were:
 - Locked Look HTTP:1 case returned generic400 before the existing typed409
   lock/count validator. Shared Pin/field-owner correction is coordinator-owned.
 - NLE handoff:1 case lacked `opentimelineio` on default Python PATH. The pinned
-  installed OTIO0.18.1 environment runs that same case successfully unchanged.
+  installed OTIO 0.18.1 environment runs that same case successfully unchanged.
 - Soundtrack controls, compatibility locale and synthetic docs fixture:1 case
   each. Restored ordinary-audio exclusion and the always-visible Add start field,
   placed selected role/start controls with their actual selected owner, added
@@ -184,3 +184,51 @@ paired positive case. The complete six-file producer/audio gate passes72/72.
 The symbol remains package internal; no client origin field or alternate writer
 is introduced. Pin's subsequent lock-compatibility correction and final combined
 full gate remain coordinator-owned dependencies.
+
+## Complete candidate verification — d5d7510
+
+At clean `d5d75107ea9f556ff2237b899d9d885b5ffd920c`, unchanged `pnpm test`
+passes **5436/5436 tests in 408/408 files**, with zero failures or skips, in 611.06s.
+The environment prepends the installed pinned OTIO 0.18.1 interpreter. Source
+files remained frozen throughout the run; all 118 review-receipt hashes matched
+afterward, and the normal 4310/1420 ports were closed before releasing the lease.
+The complete log SHA-256 is
+`4811e50dd9773de5f008294b442c127d45c12c421110e5e8ffd7d6a99dd6c32d`.
+Synthetic native-benchmark failure-injection events in that log are exercised
+negative controls, not failed test conclusions. This is the exact pre-review-fix
+candidate; later corrected-source verification is recorded separately below.
+
+## Independent review correction — canonical handoff endpoint
+
+The first whole-feature review found one bounded compatibility defect: at
+speed 3, a source sample interval `[0,144001)` has a rounded canonical length 48000
+and is valid at the end of a one-second film. Handoff instead compared an
+unrounded floating duration and rejected both metadata/native and full-audio
+bake paths. The two public handoff regression cases first failed unchanged;
+neighboring 144000 was accepted and true overruns 144002 and speed 2.9999 remained
+rejected.
+
+`resolveAudioTimingRange` now owns the strict integer sample arithmetic used by
+Composition validation, audio interval resolution and handoff. Actual decoded
+source availability stays a separate required media check. No epsilon, clamp,
+schema migration or saved-clock rewrite is introduced. The initial complete
+core/schema/exporter gate passes 32/32.
+
+Two real application handoffs also pass. The native path preserves the complete
+synthetic MP4 source byte-for-byte and exact original timing metadata; it does
+not claim to render a reference or recreate the effect in a foreign editor.
+The explicit audio bake decodes 30 reference frames and exactly 48000 nonsilent
+stereo 24-bit PCM samples. Both preserve the original project bytes and source
+hashes. Optional synthetic evidence includes both published handoff directories
+and hashes of the five executing code/test files. Fresh scoped review, final
+browser and hosted candidate gates remain open until actually recorded.
+
+The complete post-correction regression run passes **393/393 tests in 25 files**
+in 102.90s, including all exporter suites and all 65 NLE handoff cases. The run
+has no skips or deselections. TypeScript/Vue typecheck and the production build
+pass; the existing build warning for chunks over 500 kB remains visible.
+`pnpm test:interchange` passes all 18 official OpenTimelineIO 0.18.1 tests,
+source hashes/bounds, missing-URL rejection and the synthetic relocation gate.
+Actual Resolve import and physical workstation validation remain unverified.
+The final corrected commit still requires fresh scoped review and hosted gates;
+the earlier 5436-test full result is kept bound to its exact original SHA.
