@@ -278,7 +278,7 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D7B crosswalk: the released-0.4.0 GLib gate and M7E installer checkboxes remain
   authoritative for remediation **and** reachability re-audit, audited runtime,
   signing/notarization, clean-machine install, update, rollback and uninstall.
-- [ ] D8: add a strict local data-only preset registry without enabling project
+- [x] D8: add a strict local data-only preset registry without enabling project
       JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
   - [x] Independently inspected threat/compatibility design and parent-approved
         single-JSON schema, bounds, immutable snapshots and authored StoryPlan
@@ -292,8 +292,8 @@ The published stable remains v0.4.0; release follows verified exit conditions.
   - [x] Focused155 tests, three real Chromium journeys, synthetic strength/seek
         negative controls and exact relocated decoded hashes. See
         [validation](docs/validation-local-presets.md).
-  - [ ] Fresh independent review, parent-coordinated full integration/hosted
-        gates and independent PR/merge; physical workstation gates stay open.
+  - [x] Fresh whole/scoped review and complete exact-head hosted gates;
+        PR76 head285f9f6 merged asd36e365. Physical workstation gates stay open.
 
 Before product-code changes, D2B transition semantics, D3A2 analysis evidence,
 D3B1 audio semantics, D3B2 Story coverage, D4 transcript ripple, D5A photo
@@ -592,15 +592,16 @@ not retroactively rename completed project capabilities.
         312 browser cases and exact-head hosted gates. Actual MP4/SRT/VTT,
         recovery and physical-workstation limits are in
         [validation](docs/validation-title-finishing.md).
-  - [ ] D7A: complete reproducible cross-platform render QA.
+  - [x] D7A: complete reproducible cross-platform render QA.
     - [x] Share licensed immutable font/tool provenance, explicit test-font root,
           exact metric units/comparators and real decoded failure controls;
           bounded local receipt of 117 samples and 10 controls. [Evidence](docs/validation-render-qa.md).
     - [x] Add three-OS current-candidate/run/attempt report validation while
           preserving full Verify/browser/native and Windows recovery selection.
-    - [ ] Demonstrate actual Ubuntu/Windows/macOS ARM64 pinned-tool admission,
-          complete exact-head automated gates and fresh independent final review.
-          Local FFmpeg7.1.5 and synthetic schema fixtures do not close this gate.
+    - [x] Demonstrate actual Ubuntu/Windows/macOS ARM64 pinned-tool admission,
+          all117measurements/10decodedcontrols/17outputs plus19finishingcases
+          perOS; independent reviews and complete exact-head gates pass. PR78
+          headfff6270 merged as6cdaa4f. Native/physical release gates stay open.
 
 The candidate for each milestone requires its complete exact-head automated gate
 before merge. Synthetic media proves bounded behavior only; it does not certify
@@ -1404,3 +1405,8 @@ validation records retain their original branch identities and historical runs.
       preserve exact raster assertions and stale-revision guards. Fresh scoped review,
       103 focused cases and two actual browser journeys pass; final hosted gates
       remain required before merge.
+
+- [x] Repair the measured-color reactive command boundary and adapt existing
+      browser journeys to explicit Pin release; all eight affected journeys retain
+      their exact target/source/history/render assertions and pass at7d562ea.
+      Final correction review and full hosted gates remain open.

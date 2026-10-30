@@ -9,14 +9,20 @@ second feature queue.
 
 ## Current verified foundation
 
-Main `d5a286ed9250872e8eb9b1c3e40adb926f913d34` includes PR69's Windows
-repairs, PR71's isolated complete browser verification, PR72's saved-Sequence
-waveforms, PR73's documentation recovery and PR74/75's photo/title finishing.
-Issues66–68 are closed. The exact D5B candidate passed4819unit/integration tests
-and312browser cases; merged-main Verify41084911055, Windows41084911048 and
-Pages41084911207 all pass. Historical validation receipts retain their original
-source identities. D8, primary color, render QA, User Pins and later owners remain
-separate unmerged candidates until their own exact gates pass.
+Main `6cdaa4fa46f83c2b41ffc4ee34eee586134a8532` now also contains D8 local presets (#76),
+D5C primary correction (#77) and D7A reproducible render QA (#78). Exact heads
+285f9f6,1dbef72 andfff6270 each passed their complete required hosted gates and
+independent whole/scoped review. The final D7 candidate additionally passed actual
+Ubuntu/Windows/macOS ARM64117measurements/10decodednegativecontrols/17outputs,
+plus19finishingcases on each OS and aggregate admission.
+
+Earlier PR69/71/72/73/74/75 and issues66–68 retain their original evidence. Main
+post-merge Verify/Windows/Pages and the new Render QA are running; earlier merged
+main or PR results are not relabeled as results for this new main SHA. User Pins
+and later owners remain separate candidates until their exact gates pass. The
+historical unreproduced Windows font observation remains in validation; current
+strict assertions and synthetic evidence capture are retained, with no claimed
+causal repair or hardware certification.
 
 ## Delivery owners and remaining scope
 
@@ -26,18 +32,18 @@ separate unmerged candidates until their own exact gates pass.
 | D1        | Multi-source discovery, manifests, analysis and explicit adoption implemented | Retain source/privacy/revision protections; workstation observations remain separate                                          |
 | D2A       | StoryPlan and Scene Direction review                                          | Typed-evidence continuity and advisory emotion guidance; unavailable shot language remains manual review                      |
 | D2B       | Existing crossfade                                                            | Bounded adjacent-scene preview and shared Dip-to-Black/White semantics                                                        |
-| D3A1      | Source peaks and rational/source-range resolvers                              | Saved-Sequence projection, bounded preparation/read cache, safe seeking and actual decoded pulse evidence                     |
+| D3A1      | Saved-Sequence waveforms, bounded cache and decoded pulse evidence            | PR72 merged; retain privacy/source-clock/seek protections and manual workstation limits                                       |
 | D3A2      | Generic snap primitive                                                        | Source-bound rhythm evidence and explicit bounded snap proposals with uncertainty                                             |
 | D3B1      | Composition audio/automation                                                  | Versioned J/L audio policy and shared preview/render mix semantics                                                            |
-| D3B2      | Multi-visual Story scenes                                                     | Reviewed visual coverage using D3B1 receipts and no double mix                                                                |
+| D3B2      | Multi-visual Story scenes                                                     | Reviewed coverage using the shared B1 mix plan plus its own durable receipts; no double mix                                   |
 | D4        | Immutable transcripts and native captions                                     | Reliable-timing-only compound ripple with explicit cross-track retime/conflicts                                               |
-| D5A       | Photo focal/layout/protection and fixed motion                                | Direct focal control, versioned bounded Bezier and shared ambient preparation                                                 |
-| D5B       | Measured raster, native captions and text export                              | Independent bilingual typography, bounded finishing, run-aware font evidence and Monitor parity                               |
-| D5C       | HDR conversion and Film Looks                                                 | Primary correction before looks and measured, explicitly accepted color suggestions                                           |
+| D5A       | Direct focal, versioned Bezier/ambient and protected photo presentation       | PR74 merged; retain physical display and other declared manual boundaries                                                     |
+| D5B       | Independent bilingual runs, measured finishing and font/Collect evidence      | PR75 merged; retain hardware/native/manual typography boundaries                                                              |
+| D5C       | Primary correction before Film Looks and reviewed statistical Auto Match      | PR77 merged; calibrated display and native/NLE guarantees remain separate                                                     |
 | D6A/D6B   | Managed proxies and reviewed derived Collect implemented                      | Preserve provenance/quotas/quality disclosures; cross-drive workstation evidence remains                                      |
-| D7A       | Synthetic media and Windows tool/font pins                                    | Shared metric policy, deliberate failure controls and focused OS evidence                                                     |
+| D7A       | Three-OS pinned render QA, shared metrics and real decoded controls           | PR78 merged; physical workstation and installer evidence remain separate                                                      |
 | D7B/M7E   | Runtime staging, owned service and candidate packaging                        | Compatible GLib remediation, complete runtime/license closure and installer evidence                                          |
-| D8        | Strict scene validators and built-in presets                                  | Local bounded data-only registry, immutable snapshots and safe authored application                                           |
+| D8        | Local bounded declarative presets and immutable accepted snapshots            | PR76 merged; rights authenticity/manual checks and executable plugins remain separate                                         |
 | Cut Desk  | Source/Record, exact transport, history and contextual controls               | Remaining approved Precision gestures, responsive workspace, track/audio and finishing semantics under their existing owners  |
 
 Each increment first reconciles actual source and prior evidence, writes its

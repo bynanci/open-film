@@ -348,7 +348,14 @@ test("native text controls preserve defaults, history and reopen across photo, m
     before.tracks[0]!.clips.slice(1),
   );
   const { titleStyle: _savedStyle, ...savedPhoto } = saved.tracks[0]!.clips[0]!;
-  expect(savedPhoto).toEqual(before.tracks[0]!.clips[0]);
+  expect(savedPhoto).toEqual({
+    ...before.tracks[0]!.clips[0],
+    userOverrides: {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+    },
+  });
   expect(
     (await request.post(`${base}/api/project/close`, { data: {} })).ok(),
   ).toBe(true);
@@ -586,7 +593,14 @@ test("pull-out works on original framing and survives history and reopening with
   const saved = (await editor(request)).composition;
   expect(saved.duration).toBe(before.duration);
   const { motion: _motion, ...photo } = saved.tracks[0]!.clips[0]!;
-  expect(photo).toEqual(before.tracks[0]!.clips[0]);
+  expect(photo).toEqual({
+    ...before.tracks[0]!.clips[0],
+    userOverrides: {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["motionPreset", "timing"],
+    },
+  });
   expect(saved.tracks[0]!.clips.slice(1)).toEqual(
     before.tracks[0]!.clips.slice(1),
   );

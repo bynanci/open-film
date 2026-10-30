@@ -171,6 +171,15 @@ async function saved(page: Page) {
   await expect(page.locator(".editor-save-state")).toHaveText("Saved");
 }
 
+async function releaseManualPin(page: Page, id: string) {
+  await page.locator(`#clip-${id}`).click();
+  const pin = page.getByTestId("clip-user-pin");
+  await expect(pin).toHaveAttribute("aria-pressed", "true");
+  await pin.click();
+  await expect(pin).toHaveAttribute("aria-pressed", "false");
+  await saved(page);
+}
+
 async function field(page: Page, label: string, value: string) {
   await page.getByLabel(label, { exact: true }).fill(value);
   await page.getByLabel(label, { exact: true }).press("Tab");
@@ -428,6 +437,10 @@ test("edits, protects, shortens, renders and reopens an actual two-beat film", a
       .map((clip) => clip.id),
   ).toEqual(["opening-motion", "opening-photo"]);
 
+  // The next Source trims intentionally ripple this photo. Release the direct
+  // reorder pin before those edits rather than first creating a protected gap.
+  await releaseManualPin(page, "opening-photo");
+
   await page.locator("#clip-opening-motion").click();
   await field(page, "Source in", "0.5");
   await field(page, "Source out", "2.5");
@@ -527,6 +540,7 @@ test("edits, protects, shortens, renders and reopens an actual two-beat film", a
     clips(beforeRegeneration).filter((clip) => clip.beatId === "opening"),
   );
 
+  await releaseManualPin(page, "ending-photo");
   await openAdvancedTools(page);
   await page
     .getByRole("button", { name: "Fit to target", exact: true })
@@ -824,6 +838,7 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   await page.locator(".ui-language select").selectOption("en-US");
   await field(page, "Photo duration", "4");
   await saved(page);
+  await releaseManualPin(page, "opening-photo");
   await page.locator("#clip-opening-motion").click();
   await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await saved(page);
