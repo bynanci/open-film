@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { runProcess } from "@openfilm/media";
+import { titleTestFontOptions } from "../../../tests/helpers/title-test-fonts.js";
 import {
   createTitleOverlay,
   inspectTitleOverlay,
@@ -41,6 +42,7 @@ async function directory() {
 
 it("measures and draws each run with the same actual local face and complete finishing bounds", async () => {
   const root = await directory();
+  const fonts = await titleTestFontOptions();
   const overlay = await createTitleOverlay(
     text,
     {
@@ -66,7 +68,7 @@ it("measures and draws each run with the same actual local face and complete fin
     },
     frame,
     join(root, "both.png"),
-    { textRuns },
+    { ...fonts, textRuns },
   );
   expect(overlay.runFonts?.map((run) => [run.id, run.actualWeight])).toEqual([
     ["primary", 400],
@@ -117,7 +119,9 @@ it("measures and draws each run with the same actual local face and complete fin
 });
 
 it("identifies secondary fallback and fails a missing secondary font or glyph before raster publication", async () => {
+  const fonts = await titleTestFontOptions();
   const inspection = await inspectTitleOverlay(text, style, frame, {
+    ...fonts,
     textRuns: {
       ...textRuns,
       secondary: { fontFamily: "Unavailable Local Family", fontSize: 20 },
@@ -140,7 +144,9 @@ it("identifies secondary fallback and fails a missing secondary font or glyph be
   const missing = await inspectTitleOverlay(text, style, frame, {
     textRuns,
     fontPathForStyle: (s) =>
-      s?.fontWeight === 700 ? join(root, "missing.otf") : undefined,
+      s?.fontWeight === 700
+        ? join(root, "missing.otf")
+        : fonts.fontPathForStyle(s),
   });
   expect(missing).toMatchObject({
     status: "failed",
@@ -152,7 +158,7 @@ it("identifies secondary fallback and fails a missing secondary font or glyph be
     "繁體標題\n\u{10ffff}",
     style,
     frame,
-    { textRuns },
+    { ...fonts, textRuns },
   );
   expect(glyph).toMatchObject({
     status: "failed",

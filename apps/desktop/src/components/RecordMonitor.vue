@@ -867,4 +867,7 @@ defineExpose({
 .record-canvas :deep(.graphic-preview-root) {
   z-index: 100000001;
 }
+.record-canvas :deep(.native-caption-layer) {
+  z-index: 100000002;
+}
 </style>

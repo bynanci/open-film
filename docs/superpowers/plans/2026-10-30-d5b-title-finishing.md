@@ -85,7 +85,7 @@ resvg 2.6.2, FFmpeg/FFprobe, Vitest and Playwright; no new dependencies.
 Keep `layoutTitleText` and all legacy layout fields; add optional versioned
 `runLayouts`. Combined layout is anchored once, after independent measurements.
 
-- [ ] Add failing tests named `rejects_unknown_run_and_finishing_versions`,
+- [x] Add failing tests named `rejects_unknown_run_and_finishing_versions`,
       `keeps_one_canonical_two_language_string`,
       `wraps_each_run_with_its_own_metrics`,
       `reserves_complete_effect_ink_on_all_edges`, and
@@ -93,17 +93,17 @@ Keep `layoutTitleText` and all legacy layout fields; add optional versioned
       one-step-outside, null/array/unknown-key/prototype/symbol/numeric-string,
       NaN/Infinity, bad RGB, invalid Unicode, separator/CRLF offsets, empty
       slices, 8000/8001 units, 32/33 combined lines and 128/128.01 gap.
-- [ ] Pin CJK opening/closing punctuation, Latin words, explicit paragraphs,
+- [x] Pin CJK opening/closing punctuation, Latin words, explicit paragraphs,
       combining/ZWJ graphemes, negative left bearing, differently sized primary/
       secondary baselines and shadow offsets on both sides. Assert resolved
       safety includes pills, centered stroke and clipped 3σ support.
-- [ ] Run `pnpm exec vitest run packages/core/tests/title-runs.test.ts packages/core/tests/title-layout.test.ts packages/core/tests/native-captions.test.ts packages/core/tests/project.test.ts`; observe assertion failures for the
+- [x] Run `pnpm exec vitest run packages/core/tests/title-runs.test.ts packages/core/tests/title-layout.test.ts packages/core/tests/native-captions.test.ts packages/core/tests/project.test.ts`; observe assertion failures for the
       new behavior before implementation.
-- [ ] Implement closed validators and shared wrapping/layout; permit optional
+- [x] Implement closed validators and shared wrapping/layout; permit optional
       new model fields without adding migrations or materializing defaults.
       Verify legacy project JSON and layout objects stay equal, including
       centered titles ignoring stored bottom distance.
-- [ ] Repeat the focused command; all cases pass. Commit
+- [x] Repeat the focused command; all cases pass. Commit
       `feat(core): define bounded bilingual title runs and finishing`.
 
 ### Task 2: Run-aware local raster, cache keys and font diagnostics
@@ -123,23 +123,23 @@ Keep primary `font`, `warnings` and all existing function positional arguments.
 Extend cache input with optional `textRuns` and ordered paired
 `runFonts:{id,fontSha256,postscriptName}[]`; require both when runs exist.
 
-- [ ] Add failing actual local-font tests for different run size/tracking and
+- [x] Add failing actual local-font tests for different run size/tracking and
       weight, two face/hash results, requested-family/weight fallback diagnostics,
       missing secondary font/glyph, primary/secondary swap and secondary font
       hash changing the PNG cache key. Assert output contains no user markup
       or remote/font references; source text resembling SVG stays literal glyphs.
-- [ ] Pin actual PNG samples in glyph, outline, shadow and both line pills;
+- [x] Pin actual PNG samples in glyph, outline, shadow and both line pills;
       assert alpha never escapes measured full bounds (allow only the explicit
       raster edge rounding), including negative offsets and maximum blur.
       Assert absent/empty finishing preserves legacy PNG bytes.
-- [ ] Run `pnpm exec vitest run packages/render/tests/titles.test.ts packages/render/tests/title-finishing.test.ts` and retain intended failing
+- [x] Run `pnpm exec vitest run packages/render/tests/titles.test.ts packages/render/tests/title-finishing.test.ts` and retain intended failing
       assertions before implementing.
-- [ ] Load effective faces through the existing trusted resolver, call Task 1
+- [x] Load effective faces through the existing trusted resolver, call Task 1
       geometry, draw numerical paths with fixed paint order/filter support and
       use existing 8K admission. Never embed user text in SVG markup or use
       browser/FFmpeg text layout. Normalize equivalent effect/color values for
       caching and capture actual face/hash evidence for both runs.
-- [ ] Pass the focused tests and commit
+- [x] Pass the focused tests and commit
       `feat(render): rasterize bilingual title finishing with font evidence`.
 
 ### Task 3: Existing typed commands, recovery and timing preservation
@@ -157,23 +157,23 @@ Extend cache input with optional `textRuns` and ordered paired
 finishing through `TitleStyle`. Reject unsupplied boundary updates after a text
 change with `timeline.titleRunsConflict`; removing a title also removes runs.
 
-- [ ] Add failing tests named `rejects_ambiguous_bilingual_text_update_atomically`,
+- [x] Add failing tests named `rejects_ambiguous_bilingual_text_update_atomically`,
       `honors_clip_primary_and_paired_source_locks`,
       `retains_pins_and_other_tracks`,
       `retries_exact_edit_and_rejects_conflicting_request_id`,
       `undo_redo_and_reopen_preserve_whole_run_style` and
       `trim_speed_split_replace_preserve_title_runs`. Compare saved bytes,
       catalog source state, revision and both history stacks on every rejection.
-- [ ] Test valid effective tracking against each inherited/overridden font size,
+- [x] Test valid effective tracking against each inherited/overridden font size,
       a mixed batch with an invalid final runs field, null-clearing without text
       loss, reset preserving boundary, title removal rejecting non-null runs,
       and unknown nested versions before saving. Caption edits increment manual
       revision while retaining source/segment warnings and exact cue times.
-- [ ] Run the focused modified solver/application files, observe failing new
+- [x] Run the focused modified solver/application files, observe failing new
       assertions, then implement detached candidate validation and null rules
       through existing owners. Keep current caption independent-lock semantics
       and all caption shortening conflicts.
-- [ ] Pass focused files; no port or full-suite run. Commit
+- [x] Pass focused files; no port or full-suite run. Commit
       `feat(editor): persist bilingual title edits through existing history`.
 
 ### Task 4: Renderer receipts, approval fences, Collect and interchange
@@ -193,18 +193,18 @@ clip/cue's metadata to Task 2 and records both assignments and diagnostics.
 Collect enumeration passes Task 1 effective styles through existing family/
 weight binding keys; review and QA consume the same per-run font evidence.
 
-- [ ] Add failing receipt tests for two run fonts sharing one usage, conflict
+- [x] Add failing receipt tests for two run fonts sharing one usage, conflict
       within one run, malformed/unknown run ID, legacy receipt identity and
       swapped assignments invalidating approval despite an unchanged font set.
-- [ ] Add failing Collect tests for both fonts in selected/later Compositions,
+- [x] Add failing Collect tests for both fonts in selected/later Compositions,
       unselected caption languages, relocation/reopen parity and a missing or
       hash-changed secondary binding. Keep existing rights/path checks.
-- [ ] Add SRT/VTT parser tests retaining `繁體標題\nOur story` and exact
+- [x] Add SRT/VTT parser tests retaining `繁體標題\nOur story` and exact
       `900..1500` milliseconds; assert literal markup rules remain. Verify
       JSON/OTIO original Composition retains runs/finishing, metadata-only NLE
       warnings name bilingual typography/effects, and caption handoff discloses
       style loss without claiming native editable effects.
-- [ ] Run only the changed render/application/exporter files, observe intended
+- [x] Run only the changed render/application/exporter files, observe intended
       failures, implement the existing-owner integrations, then pass them.
       Commit `feat(export): bind bilingual fonts and preserve title metadata`.
 
@@ -224,18 +224,18 @@ legacy `.titleOverlay(compositionId,clipId)` delegates. Expose existing title
 PNG plus caption PNG and title/caption inspection routes, all project/revision
 bound. Desktop adapters accept `AbortSignal`, never an output path.
 
-- [ ] Add failing tests for wrong project/stale revision/missing cue, changed
+- [x] Add failing tests for wrong project/stale revision/missing cue, changed
       revision or font during an await, delayed old-project completion, aborted
       queue work, one active/eight queued raster admission, 429 overflow,
       same-key deduplication, 64-image eviction and temporary cleanup.
-- [ ] Add HTTP assertions for `image/png`, correct run-aware bytes, path-free
+- [x] Add HTTP assertions for `image/png`, correct run-aware bytes, path-free
       inspection, 409 after any owner change and unchanged saved project/history
       on every image read. Use `startServer({port:0})`; no fixed ports.
-- [ ] Run the new application/HTTP files and existing photo HTTP regression;
+- [x] Run the new application/HTTP files and existing photo HTTP regression;
       observe new failure assertions. Extract current safe cache handling,
       implement capture/rechecks, trusted font resolver and bounded work queue.
       Check owner again before stream publication and cancel on app close.
-- [ ] Pass focused tests; commit
+- [x] Pass focused tests; commit
       `feat(preview): serve measured bilingual title and caption overlays`.
 
 ### Task 6: Shared Inspector controls and actual Monitor captions
@@ -256,21 +256,21 @@ captionTrackId?:string|null,active}`. App supplies existing
 `outputCaptionTrackId` to TimelineEditor; its `captionTrack` event calls existing
 `changeOutputCaptionTrack`. Record Monitor receives that same selection.
 
-- [ ] Add failing component tests for untouched legacy inputs, two-row CJK/Latin
+- [x] Add failing component tests for untouched legacy inputs, two-row CJK/Latin
       editing, independently preserved fractional size/tracking/custom weights,
       staged empty secondary draft, reset preserving both text/boundary, IME
       composition and numeric invalid input, locks and unchanged focus.
-- [ ] Test `captionFrameRange` half-open frames at 30/30000:1001, default first
+- [x] Test `captionFrameRange` half-open frames at 30/30000:1001, default first
       track, explicit track/none and invalid ID; delayed image/inspection and
       decode after seek/revision/track/project switch must clear/drop the old
       cue, abort requests and revoke blob URLs. Missing secondary font and
       overflow show localized status without substituting CSS text.
-- [ ] Run the new focused unit files plus existing record/native-title/style-
+- [x] Run the new focused unit files plus existing record/native-title/style-
       recovery regressions; observe failure assertions. Implement controls with
       existing visual tokens and keyboard exclusion. Integrate caption image
       over current Story and Record picture, gated by saved/current owner;
       compare language selection with the export selector.
-- [ ] Pass focused files, `pnpm test:i18n`, and type checks when coordinated
+- [x] Pass focused files, `pnpm test:i18n`, and type checks when coordinated
       with parent. Commit `feat(desktop): edit and preview bilingual title finishing`.
 
 ### Task 7: Actual media, browser regressions and independent handoff
@@ -287,7 +287,7 @@ commands and SRT/VTT sidecars; no fixture-only product behavior. Evidence
 records exact source/head, command, real local font file/hash/face and tool
 versions; manual workstation checks remain open.
 
-- [ ] Add failing actual FFmpeg tests for procedural picture + synthetic tone,
+- [x] Add failing actual FFmpeg tests for procedural picture + synthetic tone,
       bilingual native attached/standalone titles and caption cue at 30 and
       30000/1001 fps. Decode before/first/middle/last/after cue frames and shuffled
       seeks; sample flat glyph/stroke/shadow/pill interiors from the exact shared
@@ -300,18 +300,18 @@ versions; manual workstation checks remain open.
       to fail before final output publication. Strip each run/effect or move the
       expected bounds by more than 2 pixels as negative controls; comparisons
       must fail for those deliberate differences.
-- [ ] Run focused render media files; observe failing assertions, fix only
+- [x] Run focused render media files; observe failing assertions, fix only
       necessary integration gaps and pass the media tests. Inspect and parse
       actual generated SRT/VTT with both texts and exact millisecond boundaries;
       assert receipts contain both run identities and warnings/disclosures.
-- [ ] Add browser cases using actual synthetic fixtures/current PNG endpoint:
+- [x] Add browser cases using actual synthetic fixtures/current PNG endpoint:
       both Inspectors, actual decoded image/canvas samples matched to render
       baseline, seek/caption boundaries, independent controls, track/none output
       selection, reset/Undo/Redo/reopen, delayed replies/project switch, three
       locales/pseudolocale, keyboard/IME, narrow viewport and 44px coarse targets.
       Parent runs these against its owned browser servers; this worker must not
       start competing services on 4310/1420.
-- [ ] Write evidence and documentation; mark only proved behavior and keep
+- [x] Write evidence and documentation; mark only proved behavior and keep
       physical display/macOS/Windows/NLE/font redistribution limits explicit.
       Run formatter/doc-locale checks on changed documents; coordinate parent
       full format/i18n/lint/type/unit/media/build/browser/interchange/native gates.
@@ -319,15 +319,17 @@ versions; manual workstation checks remain open.
       review, fixes findings with focused regressions, records exact-head CI and
       creates the separate D5B PR. No push/PR/merge by this design worker.
 
-## Design-pass handoff and self-review
+## Execution handoff and self-review
 
 All spec sections have an owner: contracts/layout Task 1; raster/font diagnosis
 Task 2; mutation/recovery Task 3; receipts/Collect/interchange Task 4; cache and
 current-project service Task 5; UI/Monitor Task 6; actual media/browser/docs
 Task 7. Review-focus conditions are each assigned a named failure test above.
 The single canonical string, three nested v1 data contracts and optional run
-receipt field are the primary interfaces for parent approval.
-
-No implementation, product tests, browser servers, full-suite/native benchmark,
-dependency upgrade, external communication, push or PR is part of this design
-pass. Parent approval of these documents is the gate for product code.
+receipt field were approved by the parent before implementation. Tasks 1–6
+are implemented and recorded in the private execution ledger; Task 7 records
+actual media and focused regression proof. Six browser cases passed under the
+parent's exclusive lease, now released. Fresh whole-branch review and exact-head
+integration remain parent-owned gates. No full suite, native
+benchmark, shared browser server, dependency upgrade, push or PR was started by
+this worker without the parent's lease.

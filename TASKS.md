@@ -523,6 +523,13 @@ not retroactively rename completed project capabilities.
         bounded custom-easing contract with legacy reopen and output parity.
   - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
         with legacy reopen, missing-font evidence and output parity.
+        Product candidate now implements canonical bilingual runs, measured
+        shadow/stroke/per-line pills, per-run font receipts/Collect bindings and
+        Story/Record caption raster parity through existing owners. Focused
+        contracts, recovery, PNG/HTTP and actual pinned-font MP4/SRT/VTT checks
+        and six actual browser cases pass; independent review and exact-head
+        gates remain.
+        [D5B validation](docs/validation-title-finishing.md).
   - [ ] D7A: pin a licensed test font/tool record, centralize metric-specific
         tolerance policy and add deliberate failures plus focused OS evidence.
 

@@ -1,7 +1,9 @@
 # D5B — Bilingual title runs and bounded finishing
 
-Status: independent design proposal; product implementation awaits the parent
-agent's interface approval. Inspected base:
+Status: coordinator-approved contract and implemented product candidate;
+focused media and six browser cases pass; independent review and exact-head
+integration remain pending.
+Inspected base:
 `e1255b1a8a83260149211d909cca8c1a50948c6b`, branch
 `codex/v1-d5b-titles`. The user authorized roadmap implementation, regressions
 and independent review; the parent owns integration and hosted gates.
@@ -36,9 +38,9 @@ Record Monitor. `RecordMonitor.vue` currently has no caption overlay; the
 Caption Inspector/lane and MP4 renderer exist. This parity gap is part of D5B,
 not a new Caption Track implementation.
 
-## Approaches and proposed decision
+## Approaches and selected decision
 
-1. **Recommended: canonical literal text plus optional versioned run metadata.**
+1. **Selected: canonical literal text plus optional versioned run metadata.**
    Store both languages in the existing string, separated by one authored LF;
    metadata identifies that boundary and independent typography. Keep one
    Composition, command queue and measured raster. Text exports retain both
@@ -50,7 +52,7 @@ not a new Caption Track implementation.
    duplicates timing/edit ownership or introduces different wrapping and glyphs.
 
 The following values are builder proposals, not additional user decisions.
-Alternative 1 requires parent approval before product code.
+The parent approved alternative 1 and the concrete interfaces before product code.
 
 ## Closed persisted contracts
 
@@ -311,6 +313,9 @@ status and typed detail; source playback remains independently usable. Reuse
 this ownership discipline for native title image errors. Images are full-frame
 composition-sized with no CSS text effects; title fade applies to the complete
 finished PNG. Caption fade behavior remains the renderer's current behavior.
+Overlapping cues render in the existing start/end order. Preview bounds decoded
+image memory to 32 simultaneous cue images and 33,177,600 pixels, with an
+explicit unavailable state above that bound; saved cues and MP4 remain intact.
 
 UI direction extends the existing quiet editing workspace. The editor is
 finishing a remembered scene while keeping the cut visible: primary text,

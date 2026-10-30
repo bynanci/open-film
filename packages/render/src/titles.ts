@@ -478,6 +478,7 @@ const numeric = (value: number): string => String(Number(value.toFixed(6)));
 function paths(
   font: Font,
   layout: Pick<TitleLayout, "style" | "lines">,
+  strokeWidth?: number,
 ): string {
   const scale = layout.style.fontSize / font.unitsPerEm;
   const elements: string[] = [];
@@ -490,7 +491,7 @@ function paths(
         const path = glyph.path.toSVG();
         if (path)
           elements.push(
-            `<path d="${path}" transform="translate(${numeric(x + position.xOffset * scale)} ${numeric(y - position.yOffset * scale)}) scale(${numeric(scale)} ${numeric(-scale)})"/>`,
+            `<path d="${path}"${strokeWidth === undefined ? "" : ` stroke-width="${numeric(strokeWidth / scale)}"`} transform="translate(${numeric(x + position.xOffset * scale)} ${numeric(y - position.yOffset * scale)}) scale(${numeric(scale)} ${numeric(-scale)})"/>`,
           );
         x += position.xAdvance * scale;
         y -= position.yAdvance * scale;
@@ -542,9 +543,19 @@ export async function createTitleOverlay(
       : "";
   const runPaths = layout.runLayouts
     ? layout.runLayouts.runs
-        .map((run) => paths(loaded.get(run.id)!.font, run))
+        .map((run) =>
+          paths(
+            loaded.get(run.id)!.font,
+            run,
+            resolved.finishing?.stroke?.width,
+          ),
+        )
         .join("")
-    : paths(loaded.get("primary")!.font, layout);
+    : paths(
+        loaded.get("primary")!.font,
+        layout,
+        resolved.finishing?.stroke?.width,
+      );
   const effect = resolved.finishing;
   const pill = effect?.pill;
   const pills = pill

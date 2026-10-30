@@ -2,13 +2,15 @@
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { titleTestFontOptions } from "../../../tests/helpers/title-test-fonts.js";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 const roots: string[] = [];
 const apps = new Set<OpenFilmApplication>();
 afterEach(async () => {
   for (const app of apps) app.close();
   apps.clear();
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -21,6 +23,8 @@ async function fixture() {
     "Overlay",
   );
   apps.add(app);
+  const fonts = await titleTestFontOptions();
+  vi.spyOn(app, "titleFontPath").mockImplementation(fonts.fontPathForStyle);
   app.project.settings = { width: 320, height: 180, frameRate: 30 };
   app.project.stories = [{ id: "story", title: "Story", beats: [] }];
   app.project.timelines = [
