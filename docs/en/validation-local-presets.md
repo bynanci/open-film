@@ -289,7 +289,7 @@ acceptance. The same failure reproduced locally in the isolated browser case.
 
 The corrected test retains the cancelled-edge=false assertion through the typed
 effective graph GET, additionally requires the saved graph to remain absent and
-the entire project to remain byte-equivalent as JSON across cancellation, then
+the entire project API payload to remain deeply equal across cancellation, then
 retains the original confirmed-edge=true and selected-asset persistence checks.
 No optional chaining, assertion removal, production change or read-side write was
 added. All seven story-workflow browser cases pass in19.7s, including CJK/layout
