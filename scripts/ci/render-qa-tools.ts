@@ -159,10 +159,10 @@ export function admitBrewFormula(input: unknown, installed: boolean): void {
   if (
     data?.formulae?.length !== 1 ||
     !f ||
-    f.name !== "ffmpeg" ||
+    f.name !== p.formula ||
     f.tap !== "homebrew/core" ||
     f.versions?.stable !== p.version ||
-    f.revision !== 1 ||
+    f.revision !== p.revision ||
     f.license !== "GPL-3.0-or-later" ||
     f.bottle?.stable?.files?.[p.bottleTag]?.sha256 !== p.sha256 ||
     (installed &&
@@ -173,6 +173,26 @@ export function admitBrewFormula(input: unknown, installed: boolean): void {
     throw new Error(
       "Homebrew formula, bottle or installed identity is unreviewed",
     );
+}
+
+export function admitRequiredQaFilters(stdout: string) {
+  const filters = new Map(
+    [
+      ...stdout.matchAll(
+        /^\s*([T.][S.][C.]?)\s+([a-z0-9_]+)\s+V->V(?:\s|$)/gmu,
+      ),
+    ].map(
+      (match) =>
+        [
+          match[2]!,
+          { flags: match[1]!, name: match[2]!, signature: "V->V" },
+        ] as const,
+    ),
+  );
+  const required = ["zscale", "tonemap"];
+  if (required.some((name) => !filters.has(name)))
+    throw new Error("Render QA tool lacks required HDR filters.");
+  return required.map((name) => filters.get(name)!);
 }
 
 /** Raw paths stay in the local setup root; only validated identities/hashes travel. */
@@ -193,7 +213,7 @@ export async function observeMacQaDependencies(
       (name) =>
         typeof name !== "string" ||
         !/^[a-z0-9][a-z0-9+@._-]{0,99}$/u.test(name) ||
-        name === "ffmpeg",
+        name === pins.tools["darwin-arm64"].formula,
     ) ||
     new Set(dependencies).size !== dependencies.length
   )
@@ -219,7 +239,14 @@ export async function observeMacQaDependencies(
       throw new Error("Invalid bounded macOS dependency observation");
     return { stdout, sha256: qaSha256(stdout) };
   }
-  for (const name of ["ffmpeg", ...dependencies]) {
+  const pending = [pins.tools["darwin-arm64"].formula, ...dependencies];
+  const seen = new Set<string>();
+  for (let index = 0; index < pending.length; index++) {
+    const name = pending[index]!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (seen.size > 128)
+      throw new Error("Homebrew dependency closure exceeds its bound");
     const observed = await observation("brew", ["info", "--json=v2", name]);
     let data;
     try {
@@ -229,6 +256,7 @@ export async function observeMacQaDependencies(
           tap?: string;
           installed?: Array<{ version?: string }>;
           dependencies?: unknown;
+          license?: unknown;
         }>;
         casks?: unknown[];
       };
@@ -251,7 +279,28 @@ export async function observeMacQaDependencies(
       throw new Error(
         "Missing or invalid installed Homebrew dependency identity",
       );
-    if (name === "ffmpeg") {
+    if (
+      !Array.isArray(formula.dependencies) ||
+      formula.dependencies.length > 64 ||
+      formula.dependencies.some(
+        (dependency) =>
+          typeof dependency !== "string" ||
+          !/^[a-z0-9][a-z0-9+@._-]{0,99}$/u.test(dependency) ||
+          dependency === pins.tools["darwin-arm64"].formula,
+      ) ||
+      new Set(formula.dependencies).size !== formula.dependencies.length ||
+      typeof formula.license !== "string" ||
+      !formula.license.length ||
+      formula.license.length > 4096 ||
+      [...formula.license].some((character) => {
+        const code = character.charCodeAt(0);
+        return code < 32 || (code >= 127 && code <= 159);
+      })
+    )
+      throw new Error(
+        "Missing or invalid Homebrew dependency/license metadata",
+      );
+    if (name === pins.tools["darwin-arm64"].formula) {
       admitBrewFormula(data, true);
       if (
         !Array.isArray(formula.dependencies) ||
@@ -262,10 +311,12 @@ export async function observeMacQaDependencies(
           "Homebrew dependency inventory changed during observation",
         );
     }
+    pending.push(...formula.dependencies);
     local.metadata.push({ name, ...observed });
     summary.push(
       `brew:${name}=${version}`,
       `brew-info:${name}:sha256=${observed.sha256}`,
+      `brew-license:${name}:sha256=${qaSha256(formula.license)}`,
     );
   }
   for (const name of ["ffmpeg", "ffprobe"]) {

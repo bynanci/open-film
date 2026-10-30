@@ -113,9 +113,8 @@ it("retains only known failure categories and rejects foreign, stale or malforme
       v.startTime = 1;
     },
     (v: ReturnType<typeof report>) => {
-      v.testResults[1]!.assertionResults[0]!.failureMessages = [
-        "x".repeat(65537),
-      ];
+      v.testResults[1]!.assertionResults[0]!.failureMessages =
+        Array<string>(17).fill("message");
     },
   ]) {
     const next = structuredClone(value);
@@ -125,6 +124,77 @@ it("retains only known failure categories and rejects foreign, stale or malforme
       failures: [],
     });
   }
+});
+it("retains bounded facts for a large ordinary error and its subsequent failure", () => {
+  const value = report();
+  value.success = false;
+  const first = value.testResults[0]!.assertionResults[0]!;
+  first.status = "failed";
+  first.failureMessages = [
+    "Error: ffmpeg exited 1: private media\n" +
+      "x".repeat(70000) +
+      "\n at C:\\private\\packages\\render\\tests\\photo-easing.test.ts:42:7)",
+  ];
+  const second = value.testResults[1]!.assertionResults[0]!;
+  second.status = "failed";
+  second.failureMessages = ["AssertionError: expected 4 to be less than 3"];
+  const result = summarizeFinishingFailure(value, context);
+  expect(result).toEqual({
+    status: "failed",
+    failures: [
+      {
+        path: renderQaFinishingFiles[0],
+        assertionIndex: 0,
+        kind: "ffmpeg-exit",
+        messageTruncated: true,
+        location: { line: 42, column: 7 },
+      },
+      {
+        path: renderQaFinishingFiles[1],
+        assertionIndex: 0,
+        kind: "numeric-comparison",
+        actual: 4,
+        operator: "less-than",
+        expected: 3,
+      },
+    ],
+  });
+  expect(JSON.stringify(result)).not.toMatch(/private|media|xxxx/u);
+  expect(() => validateFinishingReport(value, context)).toThrow();
+});
+it.each([
+  "Error: ffmpeg exited 1: /private/file",
+  "Command failed: /private/bin/ffmpeg -i secret",
+])(
+  "classifies real process failure without publishing its suffix: %s",
+  (message) => {
+    const value = report();
+    value.success = false;
+    const assertion = value.testResults[0]!.assertionResults[0]!;
+    assertion.status = "failed";
+    assertion.failureMessages = [message];
+    expect(summarizeFinishingFailure(value, context).failures[0]).toEqual({
+      path: renderQaFinishingFiles[0],
+      assertionIndex: 0,
+      kind: "ffmpeg-exit",
+    });
+  },
+);
+it("retains the exact printed-value count when a required FFmpeg expression sample is missing", () => {
+  const value = report();
+  value.success = false;
+  const assertion = value.testResults[0]!.assertionResults[0]!;
+  assertion.status = "failed";
+  assertion.failureMessages = [
+    "AssertionError: expected [private values omitted] to have a length of 257 but got 256",
+  ];
+  expect(summarizeFinishingFailure(value, context).failures[0]).toEqual({
+    path: renderQaFinishingFiles[0],
+    assertionIndex: 0,
+    kind: "length-comparison",
+    expected: 257,
+    actual: 256,
+  });
 });
 it("retains only numeric source coordinates from ANSI Windows assertion stacks", () => {
   const value = report();

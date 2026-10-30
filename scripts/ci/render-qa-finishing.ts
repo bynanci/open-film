@@ -50,6 +50,7 @@ interface FinishingFailure {
   assertionIndex: number;
   kind:
     | "numeric-comparison"
+    | "length-comparison"
     | "equality"
     | "ffmpeg-exit"
     | "assertion"
@@ -62,6 +63,7 @@ interface FinishingFailure {
     | "greater-than";
   expected?: number;
   location?: { line: number; column: number };
+  messageTruncated?: true;
 }
 /** Failure evidence is diagnostic only. Never publish arbitrary test text/paths. */
 export function summarizeFinishingFailure(
@@ -113,20 +115,33 @@ export function summarizeFinishingFailure(
           !Array.isArray(assertion.failureMessages) ||
           assertion.failureMessages.length > 16 ||
           assertion.failureMessages.some(
-            (message) => typeof message !== "string" || message.length > 65536,
+            (message) => typeof message !== "string",
           )
         )
           invalid();
         if (assertion.status !== "failed") continue;
         if (failures.length >= 50) invalid();
+        const messages = assertion.failureMessages as string[];
+        const messageTruncated = messages.some(
+          (message) => message.length > 4096,
+        );
         const message = stripVTControlCharacters(
-          (assertion.failureMessages as string[]).join("\n"),
+          messages
+            .map((message) =>
+              message.length > 4096
+                ? `${message.slice(0, 2048)}\n<omitted>\n${message.slice(-2048)}`
+                : message,
+            )
+            .join("\n"),
         );
         const failure: FinishingFailure = {
           path,
           assertionIndex: index,
           kind: "unclassified",
         };
+        if (messageTruncated) failure.messageTruncated = true;
+        const length =
+          /\bto have a length of (\d{1,9}) but got (\d{1,9})\b/u.exec(message);
         const numeric =
           /^\s*(?:AssertionError:\s*)?expected\s+(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s+to be (less than or equal to|greater than or equal to|less than|greater than)\s+(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)(?:\s|$)/iu.exec(
             message,
@@ -147,13 +162,21 @@ export function summarizeFinishingFailure(
           } as const;
           failure.operator =
             operators[numeric[2]!.toLowerCase() as keyof typeof operators];
+        } else if (length) {
+          failure.kind = "length-comparison";
+          failure.expected = Number(length[1]);
+          failure.actual = Number(length[2]);
         } else if (
           /^AssertionError:.*(?:deeply equal|strictly equal|to equal)/iu.test(
             message,
           )
         )
           failure.kind = "equality";
-        else if (/Command failed:.*ffmpeg/iu.test(message))
+        else if (
+          /Command failed:.*ffmpeg|^(?:Error:\s*)?ffmpeg exited [0-9]+:/imu.test(
+            message,
+          )
+        )
           failure.kind = "ffmpeg-exit";
         else if (/^AssertionError:/u.test(message)) failure.kind = "assertion";
         const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
