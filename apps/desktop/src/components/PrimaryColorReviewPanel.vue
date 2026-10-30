@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { PrimaryColorReviewReport } from "@openfilm/application";
 import type { TimelineCommand } from "@openfilm/solver";
+import { validatePrimaryColorCorrection } from "@openfilm/core";
 import { api, primaryColorReviewMediaUrl } from "../api";
 const props = defineProps<{
   projectId: string;
@@ -149,7 +150,9 @@ function accept() {
     type: "primary-color",
     scope: "clip",
     clipId: props.clipId,
-    correction: report.value.suggestedCorrection,
+    correction: validatePrimaryColorCorrection(
+      report.value.suggestedCorrection,
+    ),
     primaryColorReviewId: report.value.id,
   });
 }

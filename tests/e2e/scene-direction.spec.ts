@@ -463,6 +463,11 @@ test("a review generated after another client saves uses the latest saved contex
             clipId: "direction-photo",
             layout: { version: 1, preset: "hero" },
           },
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "direction-photo" },
+            pinned: false,
+          },
         ],
       },
     },
