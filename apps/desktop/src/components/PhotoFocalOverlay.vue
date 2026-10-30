@@ -22,17 +22,60 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const surface = ref<HTMLElement | null>(null);
+type CaptureOwner = {
+  sessionKey: string;
+  windowWidth: number;
+  windowHeight: number;
+  rect: { left: number; top: number; width: number; height: number };
+};
+function captureOwner(): CaptureOwner | null {
+  const rect = surface.value?.getBoundingClientRect();
+  if (
+    !rect ||
+    ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) ||
+    rect.width <= 0 ||
+    rect.height <= 0
+  )
+    return null;
+  return {
+    sessionKey: props.sessionKey,
+    windowWidth: window.innerWidth,
+    windowHeight: window.innerHeight,
+    rect: {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    },
+  };
+}
+function currentOwner(owner: CaptureOwner): boolean {
+  const current = captureOwner();
+  return (
+    !props.disabled &&
+    current !== null &&
+    owner.sessionKey === current.sessionKey &&
+    owner.windowWidth === current.windowWidth &&
+    owner.windowHeight === current.windowHeight &&
+    owner.rect.left === current.rect.left &&
+    owner.rect.top === current.rect.top &&
+    owner.rect.width === current.rect.width &&
+    owner.rect.height === current.rect.height
+  );
+}
 let gesture: {
   initial: PhotoFocalPoint;
   anchor: PhotoFocalPoint;
   point: PhotoFocalPoint;
   pointerId: number;
   geometry: PhotoFocalGeometry;
+  owner: CaptureOwner;
 } | null = null;
 let keyboard: {
   initial: PhotoFocalPoint;
   point: PhotoFocalPoint;
   keys: Set<string>;
+  owner: CaptureOwner;
 } | null = null;
 const marker = computed(() => {
   const [a, b, c, d, e, f] = props.geometry.sourceToViewport;
@@ -76,6 +119,8 @@ function start(event: PointerEvent, pick = false) {
     ? photoFocalPointAtViewport(point, props.geometry)
     : { ...props.point };
   if (!anchor) return;
+  const owner = captureOwner();
+  if (!owner) return;
   event.preventDefault();
   event.stopPropagation();
   (event.currentTarget as HTMLElement).focus?.();
@@ -88,6 +133,7 @@ function start(event: PointerEvent, pick = false) {
       rect: { ...props.geometry.rect },
       sourceToViewport: [...props.geometry.sourceToViewport],
     },
+    owner,
   };
   surface.value.setPointerCapture(event.pointerId);
   emit("activity", true);
@@ -95,6 +141,12 @@ function start(event: PointerEvent, pick = false) {
 }
 function valueAt(event: PointerEvent) {
   if (!gesture || event.pointerId !== gesture.pointerId) return null;
+  // Resize/owner observers can run after pointerup. Read their actual owners
+  // synchronously while retaining the original source mapping for the gesture.
+  if (!currentOwner(gesture.owner)) {
+    cancel();
+    return null;
+  }
   return photoFocalPointFromDelta(
     gesture.anchor,
     { x: event.clientX - gesture.point.x, y: event.clientY - gesture.point.y },
@@ -142,10 +194,13 @@ function keydown(event: KeyboardEvent) {
   event.preventDefault();
   event.stopPropagation();
   if (!keyboard) {
+    const owner = captureOwner();
+    if (!owner) return;
     keyboard = {
       initial: { ...props.point },
       point: { ...props.point },
       keys: new Set(),
+      owner,
     };
     emit("activity", true);
   }
@@ -184,6 +239,10 @@ function keydown(event: KeyboardEvent) {
 }
 function keyup(event: KeyboardEvent) {
   if (!keyboard || !keyboard.keys.has(event.key)) return;
+  if (!currentOwner(keyboard.owner)) {
+    cancel();
+    return;
+  }
   keyboard.keys.delete(event.key);
   if (keyboard.keys.size) return;
   const captured = keyboard;

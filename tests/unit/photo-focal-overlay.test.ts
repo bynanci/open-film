@@ -47,12 +47,23 @@ function mount() {
       "vue-i18n": { useI18n: () => ({ t: (key: string) => key }) },
     },
   );
+  const production = component as {
+    setup: (props: Record<string, unknown>, context: unknown) => unknown;
+  };
+  const setup = production.setup;
+  let currentProps: Record<string, unknown> = {};
+  production.setup = (input, context) => {
+    currentProps = vue.toRaw(input);
+    return setup(input, context);
+  };
   const mounted = mountComponent(component, props);
   const surface = flatten(mounted.root).find(
     (node) => node.props.role === "group",
   )!;
   let pointer: number | undefined;
+  const surfaceRect = { left: 0, top: 0, width: 100, height: 200 };
   Object.assign(surface, {
+    getBoundingClientRect: () => ({ ...surfaceRect }),
     setPointerCapture: (id: number) => {
       pointer = id;
     },
@@ -79,11 +90,13 @@ function mount() {
   return {
     ...mounted,
     props,
+    currentProps,
     preview,
     commit,
     activity,
     cancelled,
     surface,
+    surfaceRect,
     button,
     event,
     invoke,
@@ -126,6 +139,64 @@ it.each(["pointercancel", "blur", "resize", "session", "disabled"])(
     test.unmount();
   },
 );
+
+it.each(["innerWidth", "innerHeight"] as const)(
+  "cancels a pointer release after %s changes before the resize event arrives",
+  (dimension) => {
+    const test = mount();
+    test.invoke(test.button, "onPointerdown", test.event(50, 100));
+    test.invoke(test.surface, "onPointermove", test.event(70, 100));
+    Object.assign(window, { [dimension]: window[dimension] + 40 });
+    test.invoke(test.surface, "onPointerup", test.event(70, 100));
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.cancelled).toHaveBeenCalledOnce();
+    expect(test.props.point).toEqual({ x: 0.5, y: 0.5 });
+    test.unmount();
+  },
+);
+
+it("cancels a keyboard release after viewport resize before its event arrives", () => {
+  const test = mount();
+  const key = {
+    key: "ArrowRight",
+    preventDefault() {},
+    stopPropagation() {},
+  };
+  test.invoke(test.button, "onKeydown", key);
+  Object.assign(window, { innerWidth: window.innerWidth + 40 });
+  test.invoke(test.button, "onKeyup", key);
+  expect(test.commit).not.toHaveBeenCalled();
+  expect(test.cancelled).toHaveBeenCalledOnce();
+  expect(test.props.point).toEqual({ x: 0.5, y: 0.5 });
+  test.unmount();
+});
+
+it.each(["left", "top", "width", "height"] as const)(
+  "cancels a pointer release after the actual surface %s changes before observation",
+  (field) => {
+    const test = mount();
+    test.invoke(test.button, "onPointerdown", test.event(50, 100));
+    test.invoke(test.surface, "onPointermove", test.event(70, 100));
+    test.surfaceRect[field] += 10;
+    test.invoke(test.surface, "onPointerup", test.event(70, 100));
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.cancelled).toHaveBeenCalledOnce();
+    expect(test.props.point).toEqual({ x: 0.5, y: 0.5 });
+    test.unmount();
+  },
+);
+
+it("checks the current source session before a queued owner watcher runs", () => {
+  const test = mount();
+  test.invoke(test.button, "onPointerdown", test.event(50, 100));
+  test.invoke(test.surface, "onPointermove", test.event(70, 100));
+  // Change the already-delivered prop without flushing its observer.
+  test.currentProps.sessionKey = "replacement-source";
+  test.invoke(test.surface, "onPointerup", test.event(70, 100));
+  expect(test.commit).not.toHaveBeenCalled();
+  expect(test.cancelled).toHaveBeenCalledOnce();
+  test.unmount();
+});
 
 it("coalesces repeated keyboard nudges until keyup and cancels Escape", () => {
   const test = mount();
