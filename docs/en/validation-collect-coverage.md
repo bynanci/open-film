@@ -2,8 +2,8 @@
 
 Date: 2026-10-30. PR: [#65](https://github.com/bynanci/open-film/pull/65).
 Base: `9c392b7cc8d46f4768d76f30bef30d0397cca8f8` (merged D6A #64).
-Status: derivative execution implemented; final branch-wide gates and independent
-review are in progress. No workstation certification or release claim.
+Status: derivative execution implemented; independent review findings fixed and
+full local unit suite passed. Full browser and exact-head hosted gates are in progress. No workstation certification or release claim.
 
 ## State and compatibility
 
@@ -87,8 +87,12 @@ measurements, not signed third-party attestations.
 - Three actual Chromium workflows pass in 20 seconds (`en-US`, `zh-TW`, `ja-JP`),
   covering rights → explicit quality accept → create → verify, reset on option
   changes, keyboard/native labels, scoped axe and 375/720/1280px layout.
-- Full Vitest, format/i18n/docs, lint/type/build/CLI/interchange and full browser
-  runs are being refreshed. Results will be bound to the final candidate below.
+- Final source candidate `c0983a4f53af145a35c1ff6be2b958a2915eaad0` passes
+  **321 files / 4,535 tests** in419.41s, exit0, including every review regression.
+  Log:`/tmp/openfilm-d6b-fixed-all-tests.log`. TypeScript/Vue, lint, build and
+  formatting pass on that source; the full291-case browser run is in progress.
+  Build retains the existing large-chunk advisory. Final docs/toolchain checks
+  and exact-head hosted gates are refreshed separately. Results will be bound to the final candidate below.
   Local Cargo/native prerequisites remain absent; hosted native and physical
   Windows/macOS evidence must be reported separately.
 
@@ -177,3 +181,15 @@ large-drive behavior, native FFV1 playback/proxy preparation, hardware/4K/GPU,
 real audio listening, typography and actual NLE relink/finishing remain manual.
 The Windows `popo-pc` workstation is not connected to this cloud workspace.
 No manual gate, installer issue or release is closed by synthetic Linux evidence.
+
+## Research and version checkpoint
+
+Latest main research commit:`132cac1db46eb9f85b35426c1ba55073462e715b`
+(`research/README.md` and the October synthesis) is integrated. Its scope/benchmark/
+model proposals remain research hypotheses and reference the existing authoritative
+TASKS/ROADMAP; no duplicate implementation queue or new version commitment is
+introduced. Research Markdown formatting is normalized to satisfy the repository
+format gate, with content preserved. Latest published stable release remains
+`v0.4.0` (2026-10-20). The next version follows the scope actually merged and its
+release/manual gates, not the external paper's phase labels. Windows issues66–68
+are tracked by a separate recovery branch and actual Windows/FFmpeg9 CI evidence.
