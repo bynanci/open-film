@@ -271,3 +271,22 @@ whole originals. Native reopening preserves exact source clocks. JSON/OTIO keep
 pins as metadata; an external NLE does not enforce them. New pipeline runs choose
 **New rough cut** or **Re-solve selected cut** explicitly, with the saved revision
 for the selected cut. Caption-level and selective category pins are not included.
+
+Pins also retain current ambient photo fill, Bézier camera curves, bilingual text
+and title finishing, and local Film Look snapshots with their provenance. A film
+or beat primary-color/Look change is rejected when it changes the effective
+matrix of an untouched pinned clip. An explicit neutral clip override still
+stops inheritance.
+
+Statistical Auto Match and reviewed local preset acceptance are automatic
+changes. Accepting their review does not bypass a pin. A pinned Auto Match target
+cannot Apply until explicitly released and measured again; a local preset that
+changes protected payload also requires explicit release. Direct inspector edits
+to the named clip's primary color, Look or title can still edit that owner's pin,
+under the existing source/clip locks.
+
+Current re-solve retains authored beat boundaries and gaps and allocates
+candidates within existing mutable intervals. A conflict means this bounded
+placement did not succeed; it does not prove every possible whole-film timing
+redistribution infeasible. Adjust neighbors directly or release selected pins
+before retrying.

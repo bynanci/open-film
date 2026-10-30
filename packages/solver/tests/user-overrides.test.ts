@@ -345,3 +345,128 @@ describe("user pin mutation policy", () => {
     ).toThrow(/pin|metadata/iu);
   });
 });
+
+describe("integrated primary inheritance", () => {
+  it.each(["film", "beat"] as const)(
+    "protects effective %s primary matrices for untouched pins",
+    (scope) => {
+      const before = applyTimelineCommand(
+        doc(),
+        assets,
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "b" },
+          pinned: true,
+        },
+        context,
+      );
+      const command =
+        scope === "film"
+          ? {
+              type: "primary-color" as const,
+              scope,
+              correction: {
+                version: 1 as const,
+                temperature: 0.4,
+                exposureEv: 0.5,
+                contrast: 1,
+              },
+            }
+          : {
+              type: "primary-color" as const,
+              scope,
+              beatId: "beat",
+              correction: {
+                version: 1 as const,
+                temperature: 0.4,
+                exposureEv: 0.5,
+                contrast: 1,
+              },
+            };
+      const snapshot = structuredClone(before);
+      expect(() =>
+        applyTimelineCommand(before, assets, command, context),
+      ).toThrow(/pin/iu);
+      expect(before).toEqual(snapshot);
+      const local = applyTimelineCommand(
+        before,
+        assets,
+        {
+          type: "primary-color",
+          scope: "clip",
+          clipId: "b",
+          correction: {
+            version: 1,
+            temperature: 0,
+            exposureEv: 0,
+            contrast: 1,
+          },
+        },
+        context,
+      );
+      expect(
+        applyTimelineCommand(local, assets, command, context).composition
+          .tracks[0]!.clips[1],
+      ).toEqual(local.composition.tracks[0]!.clips[1]);
+    },
+  );
+  it("compares rounded effective primary matrices and rejects automatic full-payload substitution", () => {
+    const before = applyTimelineCommand(
+      doc(),
+      assets,
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "b" },
+        pinned: true,
+      },
+      context,
+    );
+    const equivalent = applyTimelineCommand(
+      before,
+      assets,
+      {
+        type: "primary-color",
+        scope: "film",
+        correction: {
+          version: 1,
+          temperature: 1e-14,
+          exposureEv: 0,
+          contrast: 1,
+        },
+      },
+      context,
+    );
+    expect(clip(equivalent, "b")).toEqual(clip(before, "b"));
+    expect(() =>
+      applyTimelineCommand(
+        before,
+        assets,
+        {
+          type: "primary-color",
+          scope: "clip",
+          clipId: "b",
+          correction: {
+            version: 1,
+            temperature: 0,
+            exposureEv: 0.2,
+            contrast: 1,
+          },
+        },
+        { timebase, origin: "automatic" },
+      ),
+    ).toThrow(/pin/iu);
+    const substituted = structuredClone(before);
+    substituted.composition.defaultPrimaryColor = {
+      version: 1,
+      temperature: 0,
+      exposureEv: 0.5,
+      contrast: 1,
+    };
+    expect(() =>
+      applyOverridePolicy(before, substituted, [], {
+        timebase,
+        origin: "automatic",
+      }),
+    ).toThrow(/pin/iu);
+  });
+});

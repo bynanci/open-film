@@ -659,3 +659,86 @@ it("keeps failed expiry cleanup retired, visible and retryable while disposing e
   expect(cachedReports(app).size).toBe(0);
   await expect(stat(firstRoot)).rejects.toMatchObject({ code: "ENOENT" });
 });
+
+it("keeps a pinned Auto Match target ineligible until explicit release while manual correction remains direct", async () => {
+  const { app, editor, input, paths } = await fixture();
+  const originalHashes = await Promise.all(paths.map((path) => hashFile(path)));
+  const pinned = await editor.edit("f", {
+    baseRevision: input.baseRevision,
+    commands: [
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "target" },
+        pinned: true,
+      },
+    ],
+  });
+  const report = await app.runPrimaryColorReview("f", {
+    ...input,
+    baseRevision: pinned.revision,
+  });
+  expect(report.suggestedCorrection).not.toBeNull();
+  expect(report.canApply).toBe(false);
+  expect(editor.get("f")).toEqual(pinned);
+  await expect(
+    editor.edit("f", {
+      baseRevision: pinned.revision,
+      commands: [
+        {
+          type: "primary-color",
+          scope: "clip",
+          clipId: "target",
+          correction: report.suggestedCorrection!,
+          primaryColorReviewId: report.id,
+        },
+      ],
+    }),
+  ).rejects.toThrow(/stale|expired|pin/iu);
+  const manual = await editor.edit("f", {
+    baseRevision: pinned.revision,
+    commands: [
+      {
+        type: "primary-color",
+        scope: "clip",
+        clipId: "target",
+        correction: { version: 1, temperature: 0, exposureEv: 0, contrast: 1 },
+      },
+    ],
+  });
+  expect(
+    manual.composition.tracks[0]!.clips[0]!.userOverrides?.isUserPinned,
+  ).toBe(true);
+  const released = await editor.edit("f", {
+    baseRevision: manual.revision,
+    commands: [
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "target" },
+        pinned: false,
+      },
+    ],
+  });
+  const fresh = await app.runPrimaryColorReview("f", {
+    ...input,
+    baseRevision: released.revision,
+  });
+  expect(fresh.canApply).toBe(true);
+  const accepted = await editor.edit("f", {
+    baseRevision: released.revision,
+    commands: [
+      {
+        type: "primary-color",
+        scope: "clip",
+        clipId: "target",
+        correction: fresh.suggestedCorrection!,
+        primaryColorReviewId: fresh.id,
+      },
+    ],
+  });
+  expect(accepted.composition.tracks[0]!.clips[0]!.userOverrides).toEqual(
+    released.composition.tracks[0]!.clips[0]!.userOverrides,
+  );
+  expect(await Promise.all(paths.map((path) => hashFile(path)))).toEqual(
+    originalHashes,
+  );
+});

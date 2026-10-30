@@ -387,6 +387,12 @@ export class CreativeVariantService {
     const beatIdMap = new Map(
       beatMappings.map((m) => [m.baselineBeatId, m.variantBeatId]),
     );
+    if (derivedStory.presetPlanSource)
+      derivedStory.presetPlanSource.bindings =
+        derivedStory.presetPlanSource.bindings.map((binding) => ({
+          ...binding,
+          beatId: beatIdMap.get(binding.beatId) ?? binding.beatId,
+        }));
 
     let cursorOffset = 0;
     const newTracks: Track[] = baselineComp.tracks.map((oldTrack) => {
@@ -493,6 +499,14 @@ export class CreativeVariantService {
         ...bl,
         beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
       })),
+      ...(baselineComp.beatPrimaryColors === undefined
+        ? {}
+        : {
+            beatPrimaryColors: baselineComp.beatPrimaryColors.map((entry) => ({
+              ...entry,
+              beatId: beatIdMap.get(entry.beatId) ?? entry.beatId,
+            })),
+          }),
     });
 
     const canonical: import("@openfilm/solver").EditorDocument =
@@ -506,6 +520,16 @@ export class CreativeVariantService {
             ...bl,
             beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
           })),
+          ...(baselineComp.beatPrimaryColors === undefined
+            ? {}
+            : {
+                beatPrimaryColors: baselineComp.beatPrimaryColors.map(
+                  (entry) => ({
+                    ...entry,
+                    beatId: beatIdMap.get(entry.beatId) ?? entry.beatId,
+                  }),
+                ),
+              }),
           tracks: baselineComp.tracks.map((track) => ({
             ...track,
             clips: track.clips.map((clip) => ({

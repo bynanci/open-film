@@ -327,6 +327,16 @@ integration remains a separate follow-up requiring a reviewed scene/shot ID
 adapter and revision-fenced sidecar storage. No improvised StoryPlan fields or
 unimplemented shot-level behavior are claimed.
 
+User Pin now has a candidate inline schema1.1 implementation across the shared
+solver/editor, pipeline, history, Named Versions, variants and Collect. The
+finishing integration protects current photo/title/primary/local-Look payloads
+and effective inherited primary/Look matrices. Reviewed automatic suggestions
+require explicit release where they change a pin; ordinary direct named-owner
+edits remain available. Re-solve retains authored beat boundaries and existing
+mutable gaps, so a bounded conflict is not a global infeasibility proof. Focused
+local evidence is recorded in [validation](docs/validation-user-pins.md); first
+whole-branch review and full exact-head hosted gates remain pending.
+
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
 and **Automated Verified**; actual workstation behavior remains a separate gate.

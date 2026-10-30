@@ -510,6 +510,7 @@ export class PrimaryColorReviewService {
           report.after.clippedFraction - report.before.clippedFraction <=
             0.02 &&
           !target.clip.locked &&
+          !target.clip.userOverrides?.isUserPinned &&
           !target.asset.state.locked;
         if (!report.canApply) report.warnings.push("no-useful-match");
       };

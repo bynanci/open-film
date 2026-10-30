@@ -3,6 +3,8 @@ import {
   ApplicationError,
   filmLookMatrix,
   resolveFilmLook,
+  primaryColorCoefficients,
+  resolvePrimaryColor,
   sequenceFrameAt,
   validateUserOverrideState,
   type Clip,
@@ -188,6 +190,20 @@ export function applyOverridePolicy(
       )
     )
       pinConflict("The parent look would change a user pinned clip.");
+    if (
+      key.startsWith("clip:") &&
+      !sameOverridePayload(
+        primaryColorCoefficients(
+          resolvePrimaryColor(before.composition, previous.owner as Clip)
+            .correction,
+        ).matrix,
+        primaryColorCoefficients(
+          resolvePrimaryColor(next.composition, candidate.owner as Clip)
+            .correction,
+        ).matrix,
+      )
+    )
+      pinConflict("The parent primary color would change a user pinned clip.");
   }
   if (!direct) return next;
   for (const command of commands) {

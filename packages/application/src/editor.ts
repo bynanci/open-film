@@ -1742,8 +1742,13 @@ export class TimelineEditor {
         }
       }
       try {
+        const automaticCommand = (item: TimelineCommand) =>
+          item.type === "regenerate-beat" ||
+          (item.type === "primary-color" &&
+            item.scope === "clip" &&
+            !!item.primaryColorReviewId);
         const directCommands = parsed.commands.filter(
-          (item) => item.type !== "regenerate-beat",
+          (item) => !automaticCommand(item),
         );
         const targets = new Set(
           directOverrideTargets(directCommands).map(overrideTargetKey),
@@ -1810,9 +1815,9 @@ export class TimelineEditor {
             attachProvisional();
           next = applyTimelineCommand(next, assets, compiled, {
             timebase: resolveProjectTimebase(this.application.project.settings),
-            origin: item.type === "regenerate-beat" ? "automatic" : "direct",
+            origin: automaticCommand(item) ? "automatic" : "direct",
           });
-          if (item.type !== "regenerate-beat") {
+          if (!automaticCommand(item)) {
             const written = new Set(
               directOverrideTargets([item]).map(overrideTargetKey),
             );
