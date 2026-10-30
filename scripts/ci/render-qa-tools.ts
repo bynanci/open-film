@@ -1,9 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import { chmod, copyFile, lstat, mkdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import pins from "../../fixtures/render-qa/toolchain.json";
 
 export const qaSha256 = (bytes: Uint8Array | string) =>
   createHash("sha256").update(bytes).digest("hex");
+
+/** A dedicated tool bin must not put all of /usr/bin ahead of setup-node. */
+export async function stageLinuxQaBin(
+  source: string,
+  output: string,
+): Promise<void> {
+  await mkdir(output);
+  try {
+    for (const name of ["ffmpeg", "ffprobe"]) {
+      const from = join(source, name),
+        to = join(output, name),
+        info = await lstat(from);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.size < 1 ||
+        info.size > 256 * 1024 ** 2
+      )
+        throw new Error("Invalid admitted Linux executable");
+      const original = await readFile(from);
+      await copyFile(from, to, constants.COPYFILE_EXCL);
+      await chmod(to, 0o755);
+      if (
+        original.length !== info.size ||
+        qaSha256(original) !== qaSha256(await readFile(to))
+      )
+        throw new Error("Linux tool bytes changed while staging");
+    }
+  } catch (error) {
+    await rm(output, { recursive: true, force: true });
+    throw error;
+  }
+}
 const origins = new Set([
   "raw.githubusercontent.com",
   "github.com",

@@ -25,6 +25,7 @@ import {
   admitToolVersion,
   downloadPinnedBytes,
   qaSha256,
+  stageLinuxQaBin,
   verifyPinnedBytes,
 } from "./render-qa-tools.js";
 
@@ -234,7 +235,8 @@ export async function setupRenderQa(options: {
           pin.packageVersion
         )
           throw new Error("Ubuntu tool package identity changed");
-        bin = "/usr/bin";
+        bin = join(root, "bin");
+        await stageLinuxQaBin("/usr/bin", bin);
         receipt.dependencies = (
           await run("dpkg-query", [
             "-W",
