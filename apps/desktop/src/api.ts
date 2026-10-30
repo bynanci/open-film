@@ -1,5 +1,7 @@
 import type {
   MotionRequest,
+  NativeTextOverlayRequest,
+  NativeTextInspection,
   MotionGenerationReceipt,
   AudioGenerationReceipt,
 } from "@openfilm/application";
@@ -529,6 +531,27 @@ export const titlePreviewUrl = (
   projectId?: string,
 ): string =>
   `${prefix}/compositions/${encodeURIComponent(compositionId)}/title/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ revision, ...(projectId ? { projectId } : {}) })}`;
+function nativeTextPath(
+  input: NativeTextOverlayRequest,
+  inspection = false,
+): string {
+  const ref = input.reference;
+  const target =
+    ref.kind === "title"
+      ? `title/${encodeURIComponent(ref.clipId)}`
+      : `caption/${encodeURIComponent(ref.trackId)}/${encodeURIComponent(ref.cueId)}`;
+  return `/compositions/${encodeURIComponent(input.compositionId)}/${target}${inspection ? "/inspection" : ".png"}?${new URLSearchParams({ projectId: input.projectId, revision: input.revision })}`;
+}
+export const nativeTextOverlay = (
+  input: NativeTextOverlayRequest,
+  signal: AbortSignal,
+): Promise<Blob> =>
+  fetchDownloadBlob(`${prefix}${nativeTextPath(input)}`, signal);
+export const nativeTextInspection = (
+  input: NativeTextOverlayRequest,
+  signal: AbortSignal,
+): Promise<NativeTextInspection> =>
+  request<NativeTextInspection>(nativeTextPath(input, true), { signal });
 export const photoFillPreviewUrl = (
   compositionId: string,
   clipId: string,

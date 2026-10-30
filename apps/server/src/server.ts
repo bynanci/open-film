@@ -4641,26 +4641,68 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const titlePreview =
-          /^\/api\/compositions\/([^/]+)\/title\/([^/]+)\.png$/.exec(route);
-        if (method === "GET" && titlePreview) {
-          const compositionId = decodeURIComponent(titlePreview[1]!);
-          const clipId = decodeURIComponent(titlePreview[2]!);
-          if (url.searchParams.get("projectId") !== application.project.id)
-            throw new HttpError(409, "This title belongs to another project.");
-          const state = editorFor(application).get(compositionId);
-          if (url.searchParams.get("revision") !== state.revision)
+          /^\/api\/compositions\/([^/]+)\/title\/([^/]+)(?:\.png|\/inspection)$/.exec(
+            route,
+          );
+        const captionPreview =
+          /^\/api\/compositions\/([^/]+)\/caption\/([^/]+)\/([^/]+)(?:\.png|\/inspection)$/.exec(
+            route,
+          );
+        if (method === "GET" && (titlePreview || captionPreview)) {
+          const match = titlePreview ?? captionPreview!;
+          const compositionId = decodeURIComponent(match[1]!);
+          const projectId = url.searchParams.get("projectId") ?? "";
+          const revision = url.searchParams.get("revision") ?? "";
+          if (
+            projectId !== application.project.id ||
+            revision !== editorFor(application).get(compositionId).revision
+          )
             throw new HttpError(
               409,
-              "This title preview is stale. Wait for the current edit to save.",
+              "This text preview is stale or belongs to another project.",
             );
-          const path = await application.titleOverlay(compositionId, clipId);
-          await streamFile(
-            request,
-            response,
-            path,
-            join(application.directory, "cache"),
-            "image/png",
-          );
+          const reference = titlePreview
+            ? { kind: "title" as const, clipId: decodeURIComponent(match[2]!) }
+            : {
+                kind: "caption" as const,
+                trackId: decodeURIComponent(match[2]!),
+                cueId: decodeURIComponent(match[3]!),
+              };
+          const input = { projectId, compositionId, revision, reference };
+          const controller = new AbortController();
+          const abort = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", abort);
+          try {
+            const inspection = route.endsWith("/inspection");
+            const result = inspection
+              ? await application.textOverlays.inspect(input, {
+                  signal: controller.signal,
+                })
+              : await application.textOverlays.image(input, {
+                  signal: controller.signal,
+                });
+            if (
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(
+                409,
+                "This text preview changed while loading.",
+              );
+            if (inspection) json(response, 200, result);
+            else
+              await streamFile(
+                request,
+                response,
+                result as string,
+                join(application.directory, "cache"),
+                "image/png",
+              );
+          } finally {
+            response.off("close", abort);
+          }
           return;
         }
         const editorMatch =

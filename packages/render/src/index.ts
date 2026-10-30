@@ -23,7 +23,19 @@ export {
 export { photoEasingExpression } from "./photo-easing.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
-import { createTitleOverlay } from "./titles.js";
+import {
+  createTitleOverlay,
+  type TitleOverlay,
+  type TitleFontDiagnostic,
+} from "./titles.js";
+export type {
+  TitleOverlay,
+  TitleOverlayInspection,
+  TitleOverlayOptions,
+  TitleRunFontResult,
+  TitleFontDiagnostic,
+  TitleFontIdentity,
+} from "./titles.js";
 import { resolveRenderQuality, type RenderQuality } from "./quality.js";
 export {
   resolveRenderQuality,
@@ -47,6 +59,7 @@ import {
   canonicalRenderFonts,
   canonicalRenderFontBindings,
   type RenderFontBinding,
+  type RenderFontUsage,
   type RenderFontEvidence,
   type RenderProjectEvidence,
   type RenderLookEvidence,
@@ -484,6 +497,31 @@ export class FFmpegRenderer {
     const fonts: RenderFontEvidence[] = [];
     const fontBindings: RenderFontBinding[] = [];
     const warnings: string[] = [];
+    const fontDiagnostics: Array<
+      TitleFontDiagnostic & { usage: RenderFontUsage }
+    > = [];
+    const recordTitleFonts = (
+      title: TitleOverlay,
+      usage: RenderFontUsage,
+      bilingual: boolean,
+    ) => {
+      for (const run of title.runFonts) {
+        const font = {
+          family: run.font.family,
+          postscriptName: run.font.postscriptName,
+          sha256: run.font.sha256,
+        };
+        fonts.push(font);
+        fontBindings.push({
+          ...font,
+          usage,
+          ...(bilingual ? { run: run.id } : {}),
+        });
+        fontDiagnostics.push(
+          ...run.diagnostics.map((diagnostic) => ({ ...diagnostic, usage })),
+        );
+      }
+    };
     if (
       assets.some(
         (asset) =>
@@ -689,18 +727,15 @@ export class FFmpegRenderer {
               settings,
               titleFile,
               {
-                fontPath: options.fontPathForStyle?.(clip.titleStyle),
+                textRuns: clip.titleRuns,
+                fontPathForStyle: options.fontPathForStyle,
               },
             );
-            fonts.push({
-              family: title.font.family,
-              postscriptName: title.font.postscriptName,
-              sha256: title.font.sha256,
-            });
-            fontBindings.push({
-              ...fonts.at(-1)!,
-              usage: ["title", track.id, clip.id],
-            });
+            recordTitleFonts(
+              title,
+              ["title", track.id, clip.id],
+              !!clip.titleRuns,
+            );
             warnings.push(...title.warnings);
             args.push(
               "-loop",
@@ -968,18 +1003,15 @@ export class FFmpegRenderer {
             settings,
             join(work, `${suffix}.png`),
             {
-              fontPath: options.fontPathForStyle?.(selectedCaptionTrack.style),
+              textRuns: cue.textRuns,
+              fontPathForStyle: options.fontPathForStyle,
             },
           );
-          fonts.push({
-            family: title.font.family,
-            postscriptName: title.font.postscriptName,
-            sha256: title.font.sha256,
-          });
-          fontBindings.push({
-            ...fonts.at(-1)!,
-            usage: ["caption", selectedCaptionTrack.id, cue.id],
-          });
+          recordTitleFonts(
+            title,
+            ["caption", selectedCaptionTrack.id, cue.id],
+            !!cue.textRuns,
+          );
           warnings.push(...title.warnings);
           for (const warning of cue.warnings ?? [])
             warnings.push(
@@ -1156,6 +1188,7 @@ export class FFmpegRenderer {
         {
           format: audioOnly ? "wav" : "mp4",
           fontBindings,
+          fontDiagnostics,
           ...(videoOnly ? { videoOnly } : {}),
           ...(exportProfile ? { exportProfile } : {}),
           ...(options.audioRole ? { audioRole: options.audioRole } : {}),

@@ -2,6 +2,49 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    titleFinishing: {
+      previewLimited:
+        "同時顯示的字幕已超出預覽影像限制。請減少重疊字幕，或檢查實際算繪的 MP4。",
+      bilingual: "雙語文字行",
+      bilingualHint:
+        "將兩種語言保留在同一個標題中，各自調整字級、字距與本機字型。",
+      primary: "主要語言",
+      secondary: "次要語言",
+      typography: "{run}排版",
+      resetRun: "重設{run}排版",
+      fontFamily: "本機字型名稱",
+      fontSize: "字級（影片像素）",
+      fontWeight: "字重",
+      lineHeight: "行高",
+      tracking: "字距（像素）",
+      gap: "語言間距（像素）",
+      finishing: "標題修飾",
+      finishingHint:
+        "MP4 會燒錄實際量測的標題。SRT／VTT 保留雙語文字與時間；請在剪輯軟體中重建排版與效果。",
+      shadow: "陰影",
+      stroke: "描邊",
+      pill: "逐行圓角底色",
+      color: "顏色",
+      opacity: "不透明度（0–1）",
+      offsetX: "水平偏移（像素）",
+      offsetY: "垂直偏移（像素）",
+      blur: "陰影模糊（像素）",
+      width: "描邊寬度（像素）",
+      paddingX: "水平內距（像素）",
+      paddingY: "垂直內距（像素）",
+      radius: "圓角半徑（像素）",
+      invalidRuns: "請輸入兩種語言，並將數值設定在支援範圍內後再儲存。",
+      invalidFinishing: "請使用顯示範圍內的有限修飾數值。",
+      previewUnavailable:
+        "文字預覽無法使用。請檢查字型涵蓋範圍、字級與安全邊界。",
+      fontFallback: "正在使用已安裝的本機替代字型，請在匯出前檢查文字。",
+      retry: "重試文字預覽",
+      fontUsed: "{run}：{family}，字重 {weight}",
+      runField: "{run}：{field}",
+      previewTrack: "預覽與 MP4 字幕",
+      firstTrack: "自動（第一條字幕軌）",
+      noCaptions: "無字幕",
+    },
     picture: {
       toggle: "調整畫面",
       group: "畫面變形",

@@ -21,6 +21,7 @@ import {
   type ProjectSettings,
 } from "./models.js";
 import { resolveProjectTimebase } from "./timebase.js";
+import { validateTitleTextRuns, validateTitleFinishing } from "./title-runs.js";
 import {
   isCaptionTextValid,
   MAX_CAPTION_CUE_COUNT,
@@ -337,6 +338,7 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     "fadeOut",
     "bottomSafeMargin",
     "safeArea",
+    "finishing",
   ]);
   versionOne(data, path);
   choice(data.role, `${path}.role`, [
@@ -376,6 +378,9 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     choice(v, p, ["center", "bottom"]),
   );
   optional(data, "fadeOut", path, (v, p) => number(v, p, 0, 10));
+  optional(data, "finishing", path, (v) => {
+    validateTitleFinishing(v);
+  });
   optional(data, "bottomSafeMargin", path, (v, p) => number(v, p, 0, 0.3));
   optional(data, "safeArea", path, (v, p) => {
     const safe = presentationObject(v, p, ["left", "right", "top", "bottom"]);
@@ -477,6 +482,7 @@ function captionTrack(
       "startMs",
       "endMs",
       "text",
+      "textRuns",
       "source",
       "warnings",
       "manualRevision",
@@ -499,6 +505,9 @@ function captionTrack(
     if (end > maximumEnd)
       fail(`${cuePath}.endMs`, "caption cue extends beyond the composition");
     const text = string(cue.text, `${cuePath}.text`);
+    optional(cue, "textRuns", cuePath, (value) => {
+      validateTitleTextRuns(value, text);
+    });
     if (!text.trim() || !isCaptionTextValid(text))
       fail(`${cuePath}.text`, "expected non-empty safe Unicode caption text");
     textCharacters += text.length;
@@ -1138,6 +1147,9 @@ function composition(
           "source out must be greater than source in",
         );
       optional(clip, "title", clipPath, string);
+      optional(clip, "titleRuns", clipPath, (value) => {
+        validateTitleTextRuns(value, clip.title as string);
+      });
       optional(clip, "layout", clipPath, (v, p) => {
         const layout = photoLayout(v, p);
         const secondary = layout.secondary?.assetId;

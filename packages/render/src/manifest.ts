@@ -13,8 +13,10 @@ import {
   type FilmLook,
   type ExportProfile,
   type AudioAutomation,
+  type TitleRunId,
 } from "@openfilm/core";
 import { hashFile, localPath, runProcess } from "@openfilm/media";
+import type { TitleFontDiagnostic } from "./titles.js";
 import type { RenderSettings } from "./index.js";
 import { resolveRenderQuality, type RenderQualityProfile } from "./quality.js";
 
@@ -68,6 +70,7 @@ export type RenderFontUsage =
   | readonly ["graphic", sceneId: string, nodeId: string];
 export interface RenderFontBinding extends RenderFontEvidence {
   usage: RenderFontUsage;
+  run?: TitleRunId;
 }
 /** Stable identities for the actual file and face, without local font paths. */
 export function canonicalRenderFonts(
@@ -93,6 +96,8 @@ export function canonicalRenderFontBindings(
       typeof binding.postscriptName !== "string" ||
       typeof binding.sha256 !== "string" ||
       !/^[a-f0-9]{64}$/u.test(binding.sha256) ||
+      (binding.run !== undefined &&
+        !["primary", "secondary"].includes(binding.run)) ||
       !Array.isArray(binding.usage) ||
       binding.usage.length !== 3 ||
       !["title", "caption", "graphic"].includes(binding.usage[0]) ||
@@ -100,9 +105,12 @@ export function canonicalRenderFontBindings(
     )
       throw new Error("Render receipt has an invalid font usage binding.");
     const { family, postscriptName, sha256 } = binding;
-    const key = JSON.stringify(binding.usage);
+    const key = JSON.stringify(
+      binding.run ? [...binding.usage, binding.run] : binding.usage,
+    );
     const value: RenderFontBinding = {
       usage: [binding.usage[0], binding.usage[1], binding.usage[2]],
+      ...(binding.run ? { run: binding.run } : {}),
       family,
       postscriptName,
       sha256,
@@ -195,6 +203,9 @@ export async function writeRenderManifest(
   outputConfig: {
     format: "mp4" | "wav";
     fontBindings?: ReadonlyArray<RenderFontBinding>;
+    fontDiagnostics?: ReadonlyArray<
+      TitleFontDiagnostic & { usage: RenderFontUsage }
+    >;
     videoOnly?: boolean;
     exportProfile?: ExportProfile;
     audioRole?: AudioAutomation["role"];
@@ -298,6 +309,7 @@ export async function writeRenderManifest(
     sources,
     fonts,
     fontBindings: canonicalRenderFontBindings(outputConfig.fontBindings ?? []),
+    fontDiagnostics: outputConfig.fontDiagnostics ?? [],
     warnings: [...new Set(warnings)],
     outputSha256: await hashFile(output, signal),
     verification: {

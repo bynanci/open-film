@@ -115,6 +115,7 @@ export interface VisualQaHost {
   readonly directory: string;
   readonly catalog: ProjectCatalog;
   readonly project: OpenFilmProject;
+  titleFontPath?(style: TitleStyle | undefined): string | undefined;
   getSourceAsset(assetId: string): MediaAsset | undefined;
   renderForVisualQa(
     compositionId: string,
@@ -809,6 +810,7 @@ export class VisualQaService {
 
       const textOverlays: Array<{
         text: string;
+        textRuns?: import("@openfilm/core").TitleTextRuns;
         style: TitleStyle | undefined;
         frame?: { width: number; height: number };
         at: number;
@@ -822,6 +824,7 @@ export class VisualQaService {
           if (clip.title)
             textOverlays.push({
               text: clip.title,
+              textRuns: clip.titleRuns,
               style: clip.titleStyle,
               at: clip.timelineStart,
               identity: { clipId: clip.id },
@@ -831,6 +834,7 @@ export class VisualQaService {
       for (const cue of nativeCaptions?.cues ?? [])
         textOverlays.push({
           text: cue.text,
+          textRuns: cue.textRuns,
           style: nativeCaptions!.style,
           at: cue.startMs / 1000,
           identity: { captionTrackId: nativeCaptions!.id, cueId: cue.id },
@@ -873,6 +877,10 @@ export class VisualQaService {
           overlay.text,
           overlay.style,
           overlay.frame ?? report.settings,
+          {
+            textRuns: overlay.textRuns,
+            fontPathForStyle: (style) => this.host.titleFontPath?.(style),
+          },
         );
         if (inspection.status === "failed") {
           report.issues.push(

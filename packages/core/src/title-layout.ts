@@ -1,5 +1,12 @@
 import type { FrameSize } from "./geometry.js";
 import type { TitleStyle } from "./models.js";
+import {
+  resolveTitleRuns,
+  validateTitleFinishing,
+  type TitleRunId,
+  type TitleTextRuns,
+  type TitleFinishing,
+} from "./title-runs.js";
 
 export const TITLE_LAYOUT_VERSION = 1 as const;
 /** New graphic-title edits and raster input share this UTF-16 storage bound. */
@@ -15,6 +22,12 @@ export interface TitleTextMetrics {
 }
 
 export type TitleTextMeasure = (
+  text: string,
+  fontSize: number,
+  tracking: number,
+) => TitleTextMetrics;
+export type TitleRunTextMeasure = (
+  run: TitleRunId,
   text: string,
   fontSize: number,
   tracking: number,
@@ -36,6 +49,7 @@ export interface ResolvedTitleStyle {
   fadeOut: number;
   bottomSafeMargin: number;
   safeArea: { left: number; right: number; top: number; bottom: number };
+  finishing?: TitleFinishing;
 }
 
 export interface TitleLine {
@@ -56,6 +70,13 @@ export interface TitleLayout {
   lines: TitleLine[];
   /** Complete visible bounds, including an optional scrim. */
   bounds: { x: number; y: number; width: number; height: number };
+  runLayouts?: { version: 1; runs: TitleRunLayout[] };
+}
+export interface TitleRunLayout {
+  id: TitleRunId;
+  style: ResolvedTitleStyle;
+  lines: TitleLine[];
+  bounds: TitleLayout["bounds"];
 }
 
 function positive(value: number, field: string): number {
@@ -102,6 +123,10 @@ export function resolveTitleStyle(
   positive(frame.height, "frame height");
   if (style && style.version !== 1)
     throw new Error("This title style version is unsupported.");
+  const finishing =
+    style?.finishing === undefined
+      ? undefined
+      : validateTitleFinishing(style.finishing);
   const role = style?.role ?? "subtitle";
   if (!["film-title", "scene-statement", "subtitle"].includes(role))
     throw new Error("Choose a film title, scene statement or subtitle role.");
@@ -168,6 +193,9 @@ export function resolveTitleStyle(
     fadeOut: bounded(style?.fadeOut ?? 0, 10, "fade duration"),
     bottomSafeMargin: safeArea.bottom,
     safeArea,
+    ...(finishing && (finishing.shadow || finishing.stroke || finishing.pill)
+      ? { finishing }
+      : {}),
   };
 }
 
@@ -187,6 +215,17 @@ export function layoutTitleText(
   frame: FrameSize,
   measure: TitleTextMeasure,
 ): TitleLayout {
+  if (style?.finishing) {
+    const checked = validateTitleFinishing(style.finishing);
+    if (checked.shadow || checked.stroke || checked.pill)
+      return layoutTitleRuns(
+        text,
+        undefined,
+        style,
+        frame,
+        (_id, value, size, tracking) => measure(value, size, tracking),
+      );
+  }
   if (typeof text !== "string" || !text.trim())
     throw new Error("Enter title text before rendering.");
   if (text.length > MAX_TITLE_LENGTH)
@@ -357,6 +396,123 @@ export function layoutTitleText(
       y: top - padding,
       width: right - left + padding * 2,
       height: textHeight + padding * 2,
+    },
+  };
+}
+
+/** The same measured paragraph owner, stacked once with complete paint safety. */
+export function layoutTitleRuns(
+  text: string,
+  runs: TitleTextRuns | undefined,
+  style: TitleStyle | undefined,
+  frame: FrameSize,
+  measure: TitleRunTextMeasure,
+): TitleLayout {
+  const base = resolveTitleStyle(style, frame);
+  if (!runs && !base.finishing)
+    return layoutTitleText(text, style, frame, (value, size, tracking) =>
+      measure("primary", value, size, tracking),
+    );
+  const resolved = resolveTitleRuns(text, runs, style, frame);
+  const finishing = base.finishing;
+  const stroke = (finishing?.stroke?.width ?? 0) / 2;
+  const shadow = finishing?.shadow;
+  const padding =
+    base.background === "scrim" && !finishing?.pill ? base.fontSize * 0.35 : 0;
+  const horizontal = Math.max(padding, finishing?.pill?.paddingX ?? 0, stroke);
+  const vertical = Math.max(padding, finishing?.pill?.paddingY ?? 0, stroke);
+  const left = Math.max(
+    horizontal,
+    stroke + (shadow ? shadow.blur * 3 - shadow.offsetX : 0),
+  );
+  const right = Math.max(
+    horizontal,
+    stroke + (shadow ? shadow.blur * 3 + shadow.offsetX : 0),
+  );
+  const top = Math.max(
+    vertical,
+    stroke + (shadow ? shadow.blur * 3 - shadow.offsetY : 0),
+  );
+  const bottom = Math.max(
+    vertical,
+    stroke + (shadow ? shadow.blur * 3 + shadow.offsetY : 0),
+  );
+  const innerWidth =
+    frame.width * (1 - base.safeArea.left - base.safeArea.right) - left - right;
+  if (innerWidth <= 0)
+    throw new Error(
+      "Title finishing cannot fit this frame. Reduce the font size or effects.",
+    );
+  const layouts = resolved.map((run) => ({
+    id: run.id,
+    style: run.style,
+    layout: layoutTitleText(
+      run.text,
+      {
+        ...run.style,
+        finishing: undefined,
+        background: "none",
+        position: "center",
+        safeArea: { left: 0, right: 0, top: 0, bottom: 0 },
+      },
+      { width: innerWidth, height: frame.height },
+      (value, size, tracking) => measure(run.id, value, size, tracking),
+    ),
+  }));
+  if (layouts.reduce((count, run) => count + run.layout.lines.length, 0) > 32)
+    throw new Error(
+      "Title text overflows the frame. Split it into shorter cues.",
+    );
+  const gap = runs ? (runs.gap ?? base.fontSize * 0.35) : 0;
+  const inkHeight =
+    layouts.reduce((height, run) => height + run.layout.bounds.height, 0) +
+    gap * (layouts.length - 1);
+  const outerHeight = inkHeight + top + bottom;
+  const safeTop = frame.height * base.safeArea.top;
+  const maximumTop = frame.height * (1 - base.safeArea.bottom) - outerHeight;
+  if (maximumTop < safeTop - 1e-7)
+    throw new Error(
+      "Title text overflows the frame. Reduce its size, gap or finishing.",
+    );
+  const outerTop =
+    base.position === "bottom"
+      ? maximumTop
+      : Math.max(
+          safeTop,
+          Math.min((frame.height - outerHeight) / 2, maximumTop),
+        );
+  const offsetX = frame.width * base.safeArea.left + left;
+  let nextTop = outerTop + top;
+  const runLayouts: TitleRunLayout[] = layouts.map((run) => {
+    const offsetY = nextTop - run.layout.bounds.y;
+    const lines = run.layout.lines.map((line) => ({
+      ...line,
+      x: line.x + offsetX,
+      originX: line.originX + offsetX,
+      baseline: line.baseline + offsetY,
+    }));
+    const bounds = {
+      ...run.layout.bounds,
+      x: run.layout.bounds.x + offsetX,
+      y: nextTop,
+    };
+    nextTop += run.layout.bounds.height + gap;
+    return { id: run.id, style: run.style, lines, bounds };
+  });
+  const lines = runLayouts.flatMap((run) => run.lines);
+  const minX = Math.min(...lines.map((line) => line.x));
+  const maxX = Math.max(...lines.map((line) => line.x + line.width));
+  return {
+    version: TITLE_LAYOUT_VERSION,
+    frame: { ...frame },
+    style: base,
+    lines,
+    runLayouts: { version: 1, runs: runLayouts },
+    bounds: {
+      x: minX - left,
+      y: outerTop,
+      width: maxX - minX + left + right,
+      height: outerHeight,
     },
   };
 }

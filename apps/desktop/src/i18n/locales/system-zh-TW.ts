@@ -64,6 +64,8 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      titleRunsConflict:
+        "編輯文字時請一併更新語言分界，或明確移除獨立文字行樣式。",
       lookLocked:
         "這項風格變更會影響 {count} 個受保護片段。請先解鎖片段或來源，或只調整未鎖定的片段。",
       notFound: "已找不到這份剪輯。請開啟影片的最新版本。",
@@ -76,6 +78,7 @@ export default {
       captionRangeConflict:
         "縮短影片會排除已儲存的字幕。請先調整或刪除受影響的字幕，再重試。",
     },
+    title: { busy: "請等待目前文字預覽完成後再試一次。" },
     graphics: {
       invalid: "請檢查圖像場景的欄位、時間與支援的圖層類型。",
       resourceLimit: "圖像場景超出資源限制。請降低尺寸、時長或圖層數量。",

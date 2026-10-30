@@ -295,6 +295,7 @@ export interface TitleStyle {
   bottomSafeMargin?: number;
   /** Optional fractional safe-frame margins; absent values retain title defaults. */
   safeArea?: { left?: number; right?: number; top?: number; bottom?: number };
+  finishing?: import("./title-runs.js").TitleFinishing;
 }
 
 export type CaptionCueSource =
@@ -321,6 +322,7 @@ export interface CaptionCue {
   startMs: number;
   endMs: number;
   text: string;
+  textRuns?: import("./title-runs.js").TitleTextRuns;
   source: CaptionCueSource;
   /** Explicit manual-review reasons inherited from transcript mapping. */
   warnings?: CaptionCueWarning[];
@@ -380,6 +382,7 @@ export interface Clip {
   timelineDuration: number;
   transform?: ClipTransform;
   title?: string;
+  titleRuns?: import("./title-runs.js").TitleTextRuns;
   layout?: PhotoLayout;
   motion?: PhotoMotion;
   titleStyle?: TitleStyle;
