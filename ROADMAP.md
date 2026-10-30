@@ -154,6 +154,14 @@ see [CI validation](docs/validation-ci-contract-media.md). PR70 merged as8de63ae
 after full gates: fast1m45s; heavy45m35s/46m26s. This is separate feedback,
 not a claimed overall speedup or release version.
 
+CI reliability follow-up now fixes the actual main Pages dead links and adds
+an obligatory PR website build. The complete browser suite moves to four isolated
+single-worker VMs parallel with media, with exact discovery/candidate-bound
+execution verification and every previous gate retained. PR synchronizations and
+main pushes retain full coverage without duplicate feature push runs. Hosted
+timings and actual main Pages success remain pending; see
+[validation](docs/validation-ci-pages-e2e.md).
+
 ## Released 0.4.0 source integration
 
 Release `v0.4.0` retains project schema 1.0.0. This maintenance pass hardens

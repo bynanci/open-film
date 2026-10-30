@@ -6,6 +6,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 120_000,
+  metadata: {
+    sourceCandidate: process.env.OPENFILM_QA_CANDIDATE_SHA ?? "local",
+  },
   reporter: process.env.CI ? [["list"], ["github"]] : "list",
   use: {
     baseURL: "http://127.0.0.1:1420",

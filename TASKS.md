@@ -70,6 +70,21 @@ Scope: [design](docs/superpowers/specs/2026-10-30-ci-contract-media-design.md),
       +3427media tests,291browser,23Rust,2archive,18interchange and security checks.
 - [ ] Manual hardware/NLE/installer observations remain with their existing owners.
 
+## CI delivery reliability and E2E duration
+
+Scope: [design](docs/superpowers/specs/2026-10-30-ci-pages-e2e-design.md),
+[plan](docs/superpowers/plans/2026-10-30-ci-pages-e2e.md) and
+[validation](docs/validation-ci-pages-e2e.md).
+
+- [x] Reproduce main Pages dead links; fix both architecture links and require
+      the actual VitePress build on every PR/main candidate.
+- [x] Run complete E2E on four isolated single-worker VMs alongside media QA;
+      reject discovery omissions/overlaps and skipped/flaky/missing actual results.
+- [x] Bind browser receipts to the exact candidate and require every lane in the
+      existing aggregate; avoid duplicate feature push plus PR Verify runs.
+- [ ] Final independent review, full exact-head gates, measured timing evidence,
+      merge and actual main Pages/Verify success.
+
 ## In progress — Multi-source import and common analysis
 
 Scope: [roadmap](docs/roadmap/multi-source-analysis.md),
