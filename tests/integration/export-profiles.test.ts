@@ -43,7 +43,7 @@ import {
 } from "../helpers/platform-storage.js";
 import {
   syntheticFontPixelScope,
-  retainSyntheticFontPixelFailure,
+  retainSyntheticFontPixelEvidence,
   rgbPixelDifference,
 } from "../helpers/font-pixel-diagnostics.js";
 import {
@@ -1194,6 +1194,8 @@ describe("professional profile exports", () => {
       const stillRgb = await decodedRgb(still.path);
       const mp4FastSeekRgb = await decodedRgb(mp4.path, 0.25);
       const mp4LiteralRgb = await decodedRgbFrame(mp4.path, 3);
+      let comparisonPassed = false;
+      let comparisonFailure: unknown;
       try {
         expect(stillRgb).toEqual(reviewed);
         expect(mp4FastSeekRgb).toEqual(reviewed);
@@ -1206,82 +1208,81 @@ describe("professional profile exports", () => {
             receipt.fonts,
           );
         }
+        comparisonPassed = true;
       } catch (error) {
-        if (qaDirectory) {
-          try {
-            const previewPath = await app.exportProfiles.previewPath(
-              preview.token,
-            );
-            const receipts = await Promise.all(
-              [still.path, mp4.path].map(async (path) => {
-                const delivered = JSON.parse(
-                  await readFile(`${path}.manifest.json`, "utf8"),
-                );
-                return {
-                  fonts: delivered.fonts,
-                  fontBindings: delivered.fontBindings,
-                };
-              }),
-            );
-            Object.assign(diagnosticFiles, {
-              "preview.png": await readFile(previewPath),
-              "still.png": await readFile(still.path),
-              "delivery.mp4": await readFile(mp4.path),
-              "reviewed.rgb": reviewed,
-              "still.rgb": stillRgb,
-              "delivery-fast-seek.rgb": mp4FastSeekRgb,
-              "delivery-literal-frame-3.rgb": mp4LiteralRgb,
-            });
-            await retainSyntheticFontPixelFailure(qaDirectory, {
-              evidence: {
-                syntheticOnly: true,
-                sourceCandidate: process.env.OPENFILM_SOURCE_CANDIDATE ?? null,
-                platform: process.platform,
-                node: process.version,
-                frame: {
-                  width: 90,
-                  height: 160,
-                  frameRate: 12,
-                  index: 3,
-                  seekSeconds: 0.25,
-                },
-                originalSources,
-                sourcesAfter: await sourceHashes(),
-                preview: {
-                  fonts: receipt.fonts,
-                  fontBindings: receipt.fontBindings,
-                },
-                delivered: receipts,
-                comparisons: {
-                  still: rgbPixelDifference(reviewed, stillRgb, 90),
-                  fastSeek: rgbPixelDifference(reviewed, mp4FastSeekRgb, 90),
-                  literalFrame3: rgbPixelDifference(
-                    reviewed,
-                    mp4LiteralRgb,
-                    90,
-                  ),
-                  seekVersusLiteral: rgbPixelDifference(
-                    mp4LiteralRgb,
-                    mp4FastSeekRgb,
-                    90,
-                  ),
-                },
-                renders,
-                deliveryProbe: await fontPixelProbe(mp4.path),
-              },
-              files: diagnosticFiles,
-            });
-            console.info(
-              "Retained synthetic font pixel failure diagnostics in the configured QA directory.",
-            );
-          } catch {
-            console.error(
-              "Could not retain synthetic font pixel failure diagnostics.",
-            );
-          }
-        }
-        throw error;
+        comparisonFailure = error;
       }
+      if (qaDirectory) {
+        try {
+          const previewPath = await app.exportProfiles.previewPath(
+            preview.token,
+          );
+          const receipts = await Promise.all(
+            [still.path, mp4.path].map(async (path) => {
+              const delivered = JSON.parse(
+                await readFile(`${path}.manifest.json`, "utf8"),
+              );
+              return {
+                fonts: delivered.fonts,
+                fontBindings: delivered.fontBindings,
+              };
+            }),
+          );
+          Object.assign(diagnosticFiles, {
+            "preview.png": await readFile(previewPath),
+            "still.png": await readFile(still.path),
+            "delivery.mp4": await readFile(mp4.path),
+            "reviewed.rgb": reviewed,
+            "still.rgb": stillRgb,
+            "delivery-fast-seek.rgb": mp4FastSeekRgb,
+            "delivery-literal-frame-3.rgb": mp4LiteralRgb,
+          });
+          await retainSyntheticFontPixelEvidence(qaDirectory, {
+            evidence: {
+              syntheticOnly: true,
+              comparisonPassed,
+              sourceCandidate: process.env.OPENFILM_SOURCE_CANDIDATE ?? null,
+              platform: process.platform,
+              node: process.version,
+              frame: {
+                width: 90,
+                height: 160,
+                frameRate: 12,
+                index: 3,
+                seekSeconds: 0.25,
+              },
+              originalSources,
+              sourcesAfter: await sourceHashes(),
+              preview: {
+                fonts: receipt.fonts,
+                fontBindings: receipt.fontBindings,
+              },
+              delivered: receipts,
+              comparisons: {
+                still: rgbPixelDifference(reviewed, stillRgb, 90),
+                fastSeek: rgbPixelDifference(reviewed, mp4FastSeekRgb, 90),
+                literalFrame3: rgbPixelDifference(reviewed, mp4LiteralRgb, 90),
+                seekVersusLiteral: rgbPixelDifference(
+                  mp4LiteralRgb,
+                  mp4FastSeekRgb,
+                  90,
+                ),
+              },
+              renders,
+              deliveryProbe: await fontPixelProbe(mp4.path),
+            },
+            files: diagnosticFiles,
+          });
+          console.info(
+            "Retained synthetic font pixel observation in the configured QA directory.",
+          );
+        } catch {
+          console.error("Could not retain synthetic font pixel observation.");
+          if (comparisonPassed)
+            throw new Error("Synthetic font pixel evidence collection failed.");
+        }
+      }
+      if (!comparisonPassed) throw comparisonFailure;
     } finally {
       collector?.mockRestore();
       vi.unstubAllEnvs();
