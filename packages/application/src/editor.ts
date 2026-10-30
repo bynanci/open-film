@@ -14,6 +14,7 @@ import {
   resolveTitleStyle,
   validateAudioAutomation,
   validateFilmLook,
+  validatePrimaryColorCorrection,
   MAX_TITLE_LENGTH,
   validatePresetSnapshot,
   type PresetAcceptInput,
@@ -187,6 +188,37 @@ function command(value: unknown, index: number): TimelineCommand {
     return structuredClone(data) as TimelineCommand;
   }
   const type = nonempty(data.type, `${path}.type`);
+  if (type === "primary-color") {
+    const scope = data.scope;
+    if (scope !== "film" && scope !== "beat" && scope !== "clip")
+      invalid(`${path}.scope`, "expected film, beat or clip");
+    const allowed = ["type", "scope", "correction"];
+    if (scope !== "film") {
+      const id = scope === "beat" ? "beatId" : "clipId";
+      nonempty(data[id], `${path}.${id}`);
+      allowed.push(id);
+    }
+    if (scope === "clip") {
+      allowed.push("primaryColorReviewId");
+      if (data.primaryColorReviewId !== undefined) {
+        nonempty(
+          data.primaryColorReviewId,
+          `${path}.primaryColorReviewId`,
+          128,
+        );
+        if (data.correction === null)
+          invalid(path, "a reviewed correction cannot be null");
+      }
+    }
+    keys(data, allowed, path);
+    if (data.correction !== null)
+      nested(
+        data.correction,
+        `${path}.correction`,
+        validatePrimaryColorCorrection,
+      );
+    return structuredClone(data) as TimelineCommand;
+  }
   if (type === "look") {
     const scope = data.scope;
     if (scope !== "film" && scope !== "beat" && scope !== "clip")
@@ -1524,7 +1556,31 @@ export class TimelineEditor {
           acknowledgedRevision: receipt.revision,
         };
       }
+      if (
+        parsed.commands.length !== 1 &&
+        parsed.commands.some(
+          (item) =>
+            item.type === "primary-color" &&
+            item.scope === "clip" &&
+            item.primaryColorReviewId,
+        )
+      )
+        throw new TimelineEditorError(
+          "A reviewed primary color Apply requires a single-command transaction.",
+        );
       for (const item of parsed.commands) {
+        if (
+          item.type === "primary-color" &&
+          item.scope === "clip" &&
+          item.primaryColorReviewId
+        )
+          await this.application.primaryColorReview.validateAcceptance(
+            item.primaryColorReviewId,
+            compositionId,
+            parsed.baseRevision,
+            item.clipId,
+            item.correction!,
+          );
         if (item.type === "audio.add" && item.generationId)
           await this.application.audioGeneration.validateImport(
             item.generationId,

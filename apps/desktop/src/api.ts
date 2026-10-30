@@ -84,6 +84,7 @@ import type {
   GraphicSceneAgentRequest,
   VisualQaReport,
   AudioQualityReport,
+  PrimaryColorReviewReport,
   ProjectVersionCreateInput,
   ProjectVersionRestoreInput,
   ProjectVersionRestoreResult,
@@ -648,6 +649,13 @@ export const exportProfileAudio = (
   },
   signal?: AbortSignal,
 ): Promise<AudioProfileExport> => post("/export/audio", input, signal);
+export const primaryColorReviewMediaUrl = (
+  id: string,
+  variant: "reference" | "before" | "after",
+  index: number,
+  projectId: string,
+) =>
+  `${prefix}/primary-color-reviews/${encodeURIComponent(id)}/media/${variant}/${index}?${new URLSearchParams({ projectId })}`;
 export const audioQualityMediaUrl = (
   reportId: string,
   variant: "original" | "candidate",
@@ -1545,6 +1553,26 @@ export const api = {
       projectId,
       timelineStart,
     }),
+  primaryColorReview: (
+    compositionId: string,
+    input: {
+      projectId: string;
+      baseRevision: string;
+      targetClipId: string;
+      referenceClipId: string;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<PrimaryColorReviewReport>(
+      `/compositions/${encodeURIComponent(compositionId)}/primary-color-review`,
+      input,
+      signal,
+    ),
+  discardPrimaryColorReview: (id: string, projectId: string) =>
+    request<{ ok: true }>(
+      `/primary-color-reviews/${encodeURIComponent(id)}?${new URLSearchParams({ projectId })}`,
+      { method: "DELETE" },
+    ),
   audioQuality: (
     compositionId: string,
     clipId: string,

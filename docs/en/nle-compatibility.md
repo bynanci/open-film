@@ -28,7 +28,7 @@ to record each capability independently when application testing is performed.
 
 Advanced edits are **metadata only**, a known implementation limit. Speed,
 volume/mute, scale, rotation, position, incoming crossfades, titles, photo layouts,
-protected regions, photo motion, title styles, film looks, audio automation, non-ripple track
+protected regions, photo motion, title styles, primary correction, film looks, audio automation, non-ripple track
 editing and clip locks are retained exactly in OpenFilm metadata and must be
 recreated manually in the NLE. They are not native OTIO effects. In particular,
 a diptych exports a native cut using its primary photo; the second photo's URI,
@@ -205,3 +205,9 @@ ranges, aligned full mix, native embedded video audio projection and caption
 sidecars with original effect/source provenance. This does not reconstruct native
 Resolve keyframes or establish actual NLE import success. See the [separate
 M7C workstation gate](validation-nle-handoff.md#resolve-workstation-gate--not-run).
+
+Primary correction retains authored/effective metadata in JSON/OTIO and requires
+manual NLE recreation. Limited FCPXML/EDL rejects active primary settings. Fidelity
+handoff bakes corrected intervals and sets explicit neutral primary on replacement
+precomps. Primary parser/application verification remains false. See
+[the contract](primary-color.md) and [validation](validation-primary-color.md).

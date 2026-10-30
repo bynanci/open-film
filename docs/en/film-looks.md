@@ -6,7 +6,8 @@ greens), Americana, Clean camera, Retro, Natural and Sport. They are creative
 color recipes, not measurements of a camera or film stock. They do not create
 depth of field, recover detail or change playback speed.
 
-Strength runs from 0% to 100%. **Original** deliberately keeps source colors;
+Strength runs from 0% to 100%. **Original** skips the creative Film Look; saved
+[primary correction](primary-color.md) still applies.
 **Inherit** removes this scope's override. Looks affect photos and video,
 including both sources of a diptych, without coloring titles, audio, controls or
 the empty canvas. Source files, trims and film duration remain unchanged.
@@ -87,7 +88,7 @@ with a golden SHA-256; changing recipes requires an explicit version strategy.
 The browser adapter uses SVG `feColorMatrix` with `sRGB` interpolation on source
 elements. FFmpeg applies the same coefficients to decoded RGBA8 sources before
 source geometry/compositing, retaining the existing decode behavior. Existing HDR
-conversion uses Hable tone mapping to BT.709 before the matrix. `format=rgba`
+conversion uses Hable tone mapping to BT.709 before primary correction and the separate Film Look matrix. `format=rgba`
 does not convert BT.709 transfer to sRGB; this feature adds no such conversion.
 Unknown source color metadata stays unknown rather than being guessed.
 

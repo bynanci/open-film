@@ -16,6 +16,7 @@ import {
   resolveClipSourceRange,
   resolveCompositionFrame,
   resolveFilmLook,
+  resolvePrimaryColor,
   resolvePreviewClipGeometry,
   resolveProjectTimebase,
   sequenceTimeAt,
@@ -33,6 +34,8 @@ import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
 import NativeCaptionPreview from "./NativeCaptionPreview.vue";
 import GraphicScenePreview from "./GraphicScenePreview.vue";
+import PrimaryColorFilter from "./PrimaryColorFilter.vue";
+import { sourceColorStyle } from "../source-color";
 import FilmLookFilter from "./FilmLookFilter.vue";
 
 const props = defineProps<{
@@ -119,6 +122,7 @@ const sounds = new Map<string, Resource>();
 const banks = shallowRef<Resource[]>([]);
 const layers = shallowRef<Resource[]>([]);
 const audible = shallowRef<Resource[]>([]);
+const primaryFilterId = `record-primary-${useId().replaceAll(":", "")}`;
 const filterId = `record-look-${useId().replaceAll(":", "")}`;
 let disposed = false;
 let reconciling = false;
@@ -561,9 +565,15 @@ function geometry(resource: Resource) {
     width: `${(geometry.media.width / props.settings.width) * 100}%`,
     height: `${(geometry.media.height / props.settings.height) * 100}%`,
     transform: `translate(${(geometry.x / geometry.media.width) * 100}%, ${(geometry.y / geometry.media.height) * 100}%) rotate(${geometry.rotation}deg) scale(${geometry.scale})`,
-    ...(!props.bypassLook && look.preset !== "none" && look.strength > 0
-      ? { filter: `url(#${filterId}-${id(entry)})` }
-      : {}),
+    ...sourceColorStyle(
+      resolvePrimaryColor(props.composition, entry.clip).correction,
+      look,
+      {
+        primary: `${primaryFilterId}-${entry.trackIndex}-${entry.clipIndex}`,
+        look: `${filterId}-${entry.trackIndex}-${entry.clipIndex}`,
+      },
+      props.bypassLook,
+    ),
   };
 }
 const titles = computed(() => {
@@ -708,8 +718,14 @@ defineExpose({
           }"
           @click="select(resource)"
         >
+          <PrimaryColorFilter
+            :id="`${primaryFilterId}-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
+            :correction="
+              resolvePrimaryColor(composition, resource.entry.clip).correction
+            "
+          />
           <FilmLookFilter
-            :id="`${filterId}-${id(resource.entry)}`"
+            :id="`${filterId}-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
             :look="resolveFilmLook(composition, resource.entry.clip).look"
           />
           <video
@@ -748,6 +764,9 @@ defineExpose({
               :revision="revision"
               :source-version="sourceVersion"
               :active="active"
+              :primary-color="
+                resolvePrimaryColor(composition, resource.entry.clip).correction
+              "
               :look="
                 bypassLook
                   ? undefined

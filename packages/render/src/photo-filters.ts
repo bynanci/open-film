@@ -6,6 +6,7 @@ import {
   photoAmbientGaps,
   type Clip,
   type FilmLook,
+  type PrimaryColorCorrection,
   type FrameSize,
   type MediaAsset,
 } from "@openfilm/core";
@@ -14,6 +15,7 @@ import {
   localPath,
   previewVideoFilters,
 } from "@openfilm/media";
+import { primaryColorFilters } from "./primary-color-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { photoEasingExpression } from "./photo-easing.js";
 
@@ -30,6 +32,7 @@ export async function photoPresentationFilters(
     duration: number;
     signal?: AbortSignal;
     look?: FilmLook;
+    primaryColor?: PrimaryColorCorrection;
     ambient?: { path: string; sha256: string };
   },
 ): Promise<{
@@ -92,16 +95,21 @@ export async function photoPresentationFilters(
     const merged = `photo-merged${options.suffix}-${index}`;
     const decode = await previewVideoFilters(asset, options.signal);
     filters.push(
-      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...(plan.ambient ? [] : filmLookFilters(options.look)), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
+      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...(plan.ambient ? [] : [...primaryColorFilters(options.primaryColor), ...filmLookFilters(options.look)]), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
     );
     filters.push(
       `[${label}][${source}]overlay=x=${Math.round(layer.x)}:y=${Math.round(layer.y)}:format=rgb:eval=init:shortest=1[${merged}]`,
     );
     label = merged;
   }
-  // Raw foreground and ambient share one color group; primary correction joins
-  // here before Film Look when its separately owned contract is integrated.
-  const groupedLook = plan.ambient ? filmLookFilters(options.look) : [];
+  // Grade the verified raw foreground and ambient together, with separate
+  // primary and Film Look clamps. The separator is restored below this group.
+  const groupedLook = plan.ambient
+    ? [
+        ...primaryColorFilters(options.primaryColor),
+        ...filmLookFilters(options.look),
+      ]
+    : [];
   if (groupedLook.length) {
     const output = `photo-color${options.suffix}`;
     filters.push(`[${label}]${groupedLook.join(",")}[${output}]`);

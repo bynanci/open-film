@@ -1,3 +1,4 @@
+import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { afterEach, expect, it, vi } from "vitest";
 import * as core from "@openfilm/core";
 import {
@@ -27,11 +28,16 @@ async function mountPhoto(diptych = false, text = false) {
     "apps/desktop/src/components/PhotoPresentationPreview.vue",
     {
       "@openfilm/core": core,
+      "../source-color": { sourceColorStyle },
       "vue-i18n": { useI18n: () => ({ t: (key: string) => key }) },
       "../api": {
         sourceUrl: (id: string, version?: string | number) =>
           `/source/${id}?v=${encodeURIComponent(version ?? "")}`,
-        titlePreviewUrl: () => "/title.png",
+        titlePreviewUrl: (
+          _composition: string,
+          _clip: string,
+          revision: string,
+        ) => `/title.png?revision=${revision}`,
         photoFillPreviewUrl: (
           _composition: string,
           _clip: string,
@@ -168,6 +174,31 @@ it("fades a plain photo's native bold text using the existing local seek clock w
   photo.props.clip = { ...photo.props.clip, timelineDuration: 3 };
   await settle();
   expect((title().props.style as { opacity: number }).opacity).toBe(0);
+});
+
+it("isolates a returned title revision and explicit retry from prior image requests", async () => {
+  const photo = await mountPhoto(false, true);
+  const title = () =>
+    photo
+      .images()
+      .find((image) => image.props.class === "photo-presentation-title")!;
+  const original = title().props.src;
+  photo.props.revision = "other-revision";
+  await settle();
+  photo.props.revision = "revision";
+  await settle();
+  expect(title().props.src).not.toBe(original);
+  const failed = title().props.src;
+  await photo.error(title());
+  const retry = flatten(title().parent!.parent!).find(
+    (element) =>
+      element.tag === "button" &&
+      element.text.includes("editor.presentation.retryTitle"),
+  );
+  expect(retry).toBeDefined();
+  (retry!.props.onClick as () => void)();
+  await settle();
+  expect(title().props.src).not.toBe(failed);
 });
 
 it("reloads a failed photo after a same-ID URI relink and ignores the removed source error", async () => {

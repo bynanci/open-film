@@ -28,6 +28,7 @@ import {
   resolveUserDataDirectory,
   resolveRenderQuality,
   type ScenePlanAcceptance,
+  type TimelineEditInput,
   type DirectionReviewPlan,
   type CollectRightsDeclaration,
   type SourceSelectionInput,
@@ -91,6 +92,8 @@ Usage:
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm motion providers|preview|receipt|accept|import|restore|revoke|clear --project <film.openfilm> [--id <candidate-id>]
   openfilm motion preview --project <film.openfilm> --composition <id> --clip <id> --request-id <uuid> --motion-consent --motion-prompt <text> --motion-negative <constraints> [--motion-provider local-motion-fixture|local-motion-import] [--motion-count 2|3] [--motion-candidates <id,id>] [--contains-people|--environment-only] [--motion-scene <id>]
+  openfilm primary-color edit --project <film.openfilm> --composition <id> --commands <request.json>
+  openfilm primary-color-review --project <film.openfilm> --composition <id> --clip <id> --reference-clip <id>
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
   openfilm handoff review --project <film.openfilm> --composition <id> [--mode preserve-editability|preserve-visual-fidelity] [--bake-audio] [--caption-track <id> | --no-captions]
   openfilm handoff export --project <film.openfilm> --review <review.json>
@@ -207,6 +210,7 @@ function parse(args: string[]) {
     "max",
     "story",
     "composition",
+    "reference-clip",
     "track",
     "format",
     "port",
@@ -1824,6 +1828,45 @@ async function main() {
           });
         } else throw new Error("Choose a supported motion action.");
       }
+    } else if (command === "primary-color") {
+      if (positional[1] !== "edit")
+        throw new Error("Choose primary-color edit --commands <request.json>.");
+      const compositionId = value(options, "composition");
+      if (!compositionId) throw new Error("Choose --composition.");
+      const input = (await commandFile(
+        value(options, "commands"),
+      )) as unknown as TimelineEditInput;
+      if (
+        !input ||
+        !Array.isArray(input.commands) ||
+        input.commands.some(
+          (command) =>
+            !command ||
+            command.type !== "primary-color" ||
+            (command.scope === "clip" && command.primaryColorReviewId),
+        )
+      )
+        throw new Error(
+          "Use manual primary-color commands; private review IDs cannot be resumed by CLI.",
+        );
+      print(await new TimelineEditor(app).edit(compositionId, input));
+    } else if (command === "primary-color-review") {
+      const compositionId = value(options, "composition"),
+        targetClipId = value(options, "clip"),
+        referenceClipId = value(options, "reference-clip");
+      if (!compositionId || !targetClipId || !referenceClipId)
+        throw new Error("Choose --composition, --clip and --reference-clip.");
+      print(
+        await app.runPrimaryColorReview(
+          compositionId,
+          {
+            baseRevision: new TimelineEditor(app).get(compositionId).revision,
+            targetClipId,
+            referenceClipId,
+          },
+          controller.signal,
+        ),
+      );
     } else if (command === "audio-quality") {
       const compositionId =
         value(options, "composition") ?? app.project.timelines[0]?.id;

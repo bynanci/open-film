@@ -216,9 +216,11 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
   focal interaction, ambient fill, versioned bounded custom easing and bounded
   bilingual title finishing.
-- [ ] D5C: after an independent color/compatibility design, add versioned primary
-      correction before Film Looks. Auto Match remains reviewable measured
-      evidence, never a source mutation.
+- [x] D5C: deliver versioned film/scene/clip primary correction before Film Looks,
+      with shared bounded coefficients, locks/history and measured statistical
+      Auto Match requiring explicit reviewed clip Apply. See the
+      [contract](docs/primary-color.md) and [validation](docs/validation-primary-color.md);
+      calibrated display/real NLE and final integration gates remain explicit.
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
@@ -1364,3 +1366,8 @@ The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature
 validation records retain their original branch identities and historical runs.
+
+- [x] Repair the observed D5C native-title Undo/Redo image-request ABA failure;
+      preserve exact raster assertions and stale-revision guards. Fresh scoped review,
+      103 focused cases and two actual browser journeys pass; final hosted gates
+      remain required before merge.

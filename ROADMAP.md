@@ -137,6 +137,16 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
+contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
+originals, timing and the schema/catalog owners remain stable. Local statistical
+Auto Match presents actual before/after samples and needs explicit reviewed clip
+Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
+video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
+accessibility. Calibrated displays, real NLE behavior and final integrating gates
+remain separate. See [the guide](docs/primary-color.md) and
+[validation](docs/validation-primary-color.md).
+
 D8 now has an unreleased local single-JSON preset candidate on its independent
 branch. Bounded closed recipes, declared license/provenance review, atomic local
 registry operations and embedded immutable look/title/Story snapshots feed
@@ -805,3 +815,8 @@ import/relink/playback, representative fonts/licensing, protected subjects,
 physical color, listening and sustained 4K performance. Future remote generation
 must pass explicit provider consent, API/download safety and terms/cost/retention
 review; local editing continues without a provider.
+
+The D5C integration also repairs the observed title-image request ABA during
+Undo/Redo. Display generations request independent images while the existing
+project/revision fences and shared raster cache remain authoritative. Scoped
+review and exact raster/browser regressions pass; new-head full gates remain open.

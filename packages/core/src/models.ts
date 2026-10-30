@@ -381,6 +381,14 @@ export interface LocalFilmLook {
 }
 export type FilmLook = BuiltinFilmLook | LocalFilmLook;
 
+/** Bounded primary correction in encoded SDR RGB; not calibrated scene-linear exposure. */
+export interface PrimaryColorCorrection {
+  version: 1;
+  temperature: number;
+  exposureEv: number;
+  contrast: number;
+}
+
 export interface Clip {
   id: string;
   assetId: string;
@@ -399,6 +407,7 @@ export interface Clip {
   audioAutomation?: AudioAutomation;
   /** Absent inherits the scene/film look; explicit `none` preserves original color. */
   look?: FilmLook;
+  primaryColor?: PrimaryColorCorrection;
   /** Protect source selection and edits; ripple timeline positioning remains allowed. */
   locked?: boolean;
   transition?: { type: "crossfade"; duration: number };
@@ -420,6 +429,8 @@ export interface Composition {
   duration: number;
   tracks: Track[];
   defaultLook?: FilmLook;
+  defaultPrimaryColor?: PrimaryColorCorrection;
+  beatPrimaryColors?: { beatId: string; correction: PrimaryColorCorrection }[];
   /** Stable scene IDs keep localized or user-authored titles out of lookup state. */
   beatLooks?: { beatId: string; look: FilmLook }[];
   /** Composition-time captions are optional so legacy schema-1 projects stay valid. */

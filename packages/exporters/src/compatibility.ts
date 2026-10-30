@@ -14,6 +14,7 @@ export type NleFeatureId =
   | "volumeMute"
   | "transform"
   | "look"
+  | "primaryColor"
   | "crossfade"
   | "titles"
   | "photoLayout"
@@ -95,6 +96,14 @@ export const resolveCompatibility = {
       realNleVerified: false,
       manualRecreation: true,
     })),
+    {
+      id: "primaryColor",
+      implementation: "metadata-only",
+      schemaValidated: true,
+      parserValidated: false,
+      realNleVerified: false,
+      manualRecreation: true,
+    } satisfies NleFeatureCompatibility,
     {
       id: "look",
       implementation: "metadata-only",

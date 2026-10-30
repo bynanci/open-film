@@ -216,6 +216,7 @@ export default {
         crossfade: "Crossfade",
         titles: "Titles and overlays",
         look: "Film look",
+        primaryColor: "Primary color",
         photoLayout: "Photo layout and protected regions",
         photoMotion: "Photo motion",
         titleStyle: "Title typography and layout",

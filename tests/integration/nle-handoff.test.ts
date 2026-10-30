@@ -1427,9 +1427,15 @@ it("bakes v2 ambient and Bezier photo recipes through the normal fidelity handof
   ).toEqual(hashes);
 });
 
-it("does not inherit the film look again on already rendered precomps", async () => {
+it("does not inherit primary color or the film look again on already rendered precomps", async () => {
   const { app, composition } = await fixture();
   composition.defaultLook = { version: 1, preset: "retro", strength: 0.8 };
+  composition.defaultPrimaryColor = {
+    version: 1,
+    temperature: 0.3,
+    exposureEv: 0.4,
+    contrast: 1.2,
+  };
   app.project.timelines = [composition];
   await app.save();
   const review = app.reviewHandoff(composition.id, {
@@ -1455,11 +1461,25 @@ it("does not inherit the film look again on already rendered precomps", async ()
       (item: { features: string[] }) => item.features.includes("look"),
     ),
   ).toEqual([]);
+  expect(
+    timeline.metadata.openfilm.originalComposition.defaultPrimaryColor,
+  ).toEqual(composition.defaultPrimaryColor);
   const exchange = timeline.metadata.openfilm.composition;
   const precomp = exchange.tracks.find(
     (track: { id: string }) =>
       track.id.startsWith("handoff-") && track.id.includes("-track-"),
   );
+  expect(precomp.clips[0].primaryColor).toEqual({
+    version: 1,
+    temperature: 0,
+    exposureEv: 0,
+    contrast: 1,
+  });
+  expect(
+    timeline.metadata.openfilm.compatibility.metadataOnlyEdits.some(
+      (item: { features: string[] }) => item.features.includes("primary color"),
+    ),
+  ).toBe(false);
   expect(precomp.clips[0].look).toEqual({
     version: 1,
     preset: "none",

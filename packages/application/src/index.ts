@@ -1,3 +1,9 @@
+import { PrimaryColorReviewService } from "./primary-color-review.js";
+export {
+  PrimaryColorReviewService,
+  type PrimaryColorReviewReport,
+  type PrimaryColorReviewInput,
+} from "./primary-color-review.js";
 import { NativeTextOverlayService } from "./title-overlays.js";
 export {
   NativeTextOverlayService,
@@ -389,6 +395,7 @@ export class OpenFilmApplication {
   readonly visualQa: VisualQaService;
   readonly handoff: NleHandoffService;
   readonly audioQuality: AudioQualityService;
+  readonly primaryColorReview: PrimaryColorReviewService;
   readonly audioGeneration: AudioGenerationService;
   readonly motionGeneration: MotionGenerationService;
   readonly versions: ProjectVersionService;
@@ -554,6 +561,7 @@ export class OpenFilmApplication {
         runtime.motionGenerationProvider,
         runtime.motionGenerationTimeoutMs,
       );
+      this.primaryColorReview = new PrimaryColorReviewService(this);
       this.audioQuality = new AudioQualityService(
         this,
         (composition, outputPath, signal) =>
@@ -984,6 +992,25 @@ export class OpenFilmApplication {
     }
   }
 
+  async runPrimaryColorReview(
+    compositionId: string,
+    input: Parameters<PrimaryColorReviewService["run"]>[1],
+    signal?: AbortSignal,
+  ) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.primaryColorReview.run(compositionId, input, signal);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
   async runAudioQuality(
     compositionId: string,
     clipId: string,
@@ -1224,6 +1251,9 @@ export class OpenFilmApplication {
     } catch (error) {
       if (options.requireSave || !this.persistenceConflict) throw error;
     }
+    void this.primaryColorReview.dispose().catch((error: unknown) => {
+      console.error("Primary color review close cleanup failed.", error);
+    });
     void this.motionGeneration.dispose().catch(() => undefined);
     this.graphics.close();
     this.textOverlays.close();

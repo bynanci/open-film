@@ -77,6 +77,8 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      primaryColorLocked:
+        "這項基本色彩變更會影響 {count} 個受保護片段。請先解鎖片段或來源。",
       titleRunsConflict:
         "編輯文字時請一併更新語言分界，或明確移除獨立文字行樣式。",
       lookLocked:
@@ -165,6 +167,7 @@ export default {
       entryConflict: "詞彙已變更或與另一項詞彙衝突，請重新載入詞彙表後再試。",
     },
     review: {
+      cleanupFailed: "無法清除比較影格。請重試清理，或關閉後重新開啟專案。",
       providerUnavailable:
         "語言審閱供應者無法使用或尚需文字傳送同意，仍可使用詞彙建議。",
       suggestionStale:

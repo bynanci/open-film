@@ -1,3 +1,4 @@
+import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -367,6 +368,7 @@ async function mountTimeline(
     vue,
     "vue-i18n": { useI18n },
     "@openfilm/core": core,
+    "../source-color": { sourceColorStyle },
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
@@ -1447,7 +1449,9 @@ describe("Timeline clip render boundary", () => {
     expect(preview).toBeDefined();
     (preview.props.onClick as () => void)();
     await settle();
-    expect(overlay().props.src).toBe("title:composition:instance-0");
+    expect(overlay().props.src).toMatch(
+      /^title:composition:instance-0\?previewRequest=[^&]+-\d+$/,
+    );
     expect(
       text(
         flatten(view.root).find((item) =>
