@@ -223,6 +223,67 @@ test("focal dragging previews locally and accepts one captured transaction with 
   expect(await hashFile(files.source)).toBe(files.sourceHash);
 });
 
+test("ordinary fractional photo viewport accepts one pointer edit and one keyboard edit", async ({
+  page,
+  request,
+}) => {
+  const files = await fixture(request);
+  await openEditor(page);
+  await page.addStyleTag({
+    content:
+      ".editor-source-screen .photo-presentation-frame{position:fixed!important;left:16.25px!important;top:240.5px!important;width:320.5px!important;height:180.25px!important;margin:0!important;border:0!important;box-sizing:content-box!important;z-index:10000!important}",
+  });
+  const focus = page.getByRole("button", { name: "Set focus", exact: true });
+  await focus.click();
+  const handle = page.getByRole("button", {
+    name: "Move photo focus",
+    exact: true,
+  });
+  await expect(handle).toBeVisible();
+  const frame = page.locator(".editor-source-screen .photo-presentation-frame");
+  const rect = (await frame.boundingBox())!;
+  expect(rect.x).toBeCloseTo(16.25, 6);
+  expect(rect.y).toBeCloseTo(240.5, 6);
+  expect(rect.width).toBeCloseTo(320.5, 6);
+  expect(rect.height).toBeCloseTo(180.25, 6);
+  const writes: string[] = [];
+  page.on("request", (sent) => {
+    if (
+      sent.method() === "POST" &&
+      sent.url().endsWith("/photo-finishing/edit")
+    )
+      writes.push(sent.postData()!);
+  });
+  const before = await editor(request);
+  const marker = (await handle.boundingBox())!;
+  await page.mouse.move(
+    marker.x + marker.width / 2,
+    marker.y + marker.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    marker.x + marker.width / 2 + 20.25,
+    marker.y + marker.height / 2 + 10.5,
+  );
+  expect((await editor(request)).revision).toBe(before.revision);
+  expect(writes).toHaveLength(0);
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await editor(request)).revision)
+    .not.toBe(before.revision);
+  expect(writes).toHaveLength(1);
+  const accepted = (await selected(request)).layout!.focalPoint!;
+  expect(accepted.x).toBeGreaterThan(0.5);
+  await focus.click();
+  await handle.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(async () => (await selected(request)).layout!.focalPoint!.x)
+    .toBeCloseTo(accepted.x + 0.01, 10);
+  expect(writes).toHaveLength(2);
+  expect(await hashFile(files.source)).toBe(files.sourceHash);
+});
+
 test("ambient errors remain visible until retry and Inspector edits preserve saved fill and curve", async ({
   page,
   request,

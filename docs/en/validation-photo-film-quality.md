@@ -422,3 +422,33 @@ the source-session guard makes its regression fail; the guard was restored.
 The source/test-only fix was backported from `4b7a497` to this branch. Complete
 hosted gates remain coordinator-owned; earlier stage receipts retain their
 original source identities.
+
+### Focal admission geometry quality increment
+
+The preceding scoped fence review passed and separately documented unchanged
+start-time behavior in a pure component probe: an already resized surface could
+admit a gesture using geometry that its observer had not refreshed. The
+coordinator chose to close that unshipped boundary defensively. The probe does
+not establish natural browser event-order reachability.
+
+New pointer-pick, handle-drag and first-key admission require the supplied
+geometry rectangle to match the measured overlay rectangle. Stale admission
+produces no activity, draft preview, commit or saved change; current bounds can
+be retried after refresh. The existing frozen mapping and synchronous post-start
+window/rectangle/source-session acceptance fences remain intact. The cost is an
+ignored interaction while initial bounds are stale.
+
+Twelve deterministic stale-start regressions failed first: three admission modes
+across changed left/top/width/height. The current four-file focused batch passes
+74 tests, including all 31 overlay cases and the previous 16 checks. Three
+fractional-geometry unit cases verify correct pick/drag/keyboard mapping. All
+eight photo browser cases pass in 28.3 seconds, including the added ordinary
+320.5 × 180.25 pixel viewport at fractional coordinates, one pointer and one
+keyboard transaction, preserved source hash and the existing actual MP4/parity
+negative controls. TypeScript/Vue, scoped lint/format and documentation mirrors
+pass. Shared browser ports were confirmed closed before lease release.
+
+Fresh source/test hashes, logs and synthetic Monitor/media evidence are retained
+under `/tmp/openfilm-finishing-integration/A-focal-start/`. Earlier controls keep
+their original receipt identities. A fresh scoped review of this increment and
+full exact-head hosted gates remain coordinator-owned before publication.

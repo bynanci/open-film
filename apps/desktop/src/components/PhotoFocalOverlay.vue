@@ -49,6 +49,14 @@ function captureOwner(): CaptureOwner | null {
     },
   };
 }
+function sameRect(first: CaptureOwner["rect"], second: CaptureOwner["rect"]) {
+  return (
+    first.left === second.left &&
+    first.top === second.top &&
+    first.width === second.width &&
+    first.height === second.height
+  );
+}
 function currentOwner(owner: CaptureOwner): boolean {
   const current = captureOwner();
   return (
@@ -57,10 +65,7 @@ function currentOwner(owner: CaptureOwner): boolean {
     owner.sessionKey === current.sessionKey &&
     owner.windowWidth === current.windowWidth &&
     owner.windowHeight === current.windowHeight &&
-    owner.rect.left === current.rect.left &&
-    owner.rect.top === current.rect.top &&
-    owner.rect.width === current.rect.width &&
-    owner.rect.height === current.rect.height
+    sameRect(owner.rect, current.rect)
   );
 }
 let gesture: {
@@ -120,7 +125,7 @@ function start(event: PointerEvent, pick = false) {
     : { ...props.point };
   if (!anchor) return;
   const owner = captureOwner();
-  if (!owner) return;
+  if (!owner || !sameRect(props.geometry.rect, owner.rect)) return;
   event.preventDefault();
   event.stopPropagation();
   (event.currentTarget as HTMLElement).focus?.();
@@ -195,7 +200,7 @@ function keydown(event: KeyboardEvent) {
   event.stopPropagation();
   if (!keyboard) {
     const owner = captureOwner();
-    if (!owner) return;
+    if (!owner || !sameRect(props.geometry.rect, owner.rect)) return;
     keyboard = {
       initial: { ...props.point },
       point: { ...props.point },
