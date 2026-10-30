@@ -173,6 +173,7 @@ interface Entry {
   composition: string;
   settings: string;
   projectId: string;
+  projectIdentity: Stats;
   compositionId: string;
   generation: number;
   readers: number;
@@ -201,19 +202,24 @@ export class RecordAudioPreviewService {
       | "composition"
       | "settings"
       | "projectId"
+      | "projectIdentity"
       | "compositionId"
       | "generation"
     >,
   ) {
     this.assertOpen();
-    const state = new TimelineEditor(this.app).get(entry.compositionId);
-    const disk = JSON.parse(
-      await readFile(join(this.app.directory, "project.json"), "utf8"),
-    ) as { id: string; settings: unknown; timelines: Composition[] };
+    const state = new TimelineEditor(this.app).get(entry.compositionId),
+      projectPath = join(this.app.directory, "project.json");
+    const disk = JSON.parse(await readFile(projectPath, "utf8")) as {
+      id: string;
+      settings: unknown;
+      timelines: Composition[];
+    };
     if (
       state.revision !== entry.descriptor.revision ||
       this.app.project.id !== entry.projectId ||
       this.app.projectGeneration !== entry.generation ||
+      !identity(entry.projectIdentity, await lstat(projectPath)) ||
       disk.id !== entry.projectId ||
       JSON.stringify(state.composition) !== entry.composition ||
       JSON.stringify(
@@ -340,6 +346,7 @@ export class RecordAudioPreviewService {
           "Record PCM preparation supports at most one hour (3600 seconds) and 1 GiB. Export WAV or MP4 for longer films.",
         );
       const projectId = this.app.project.id,
+        projectIdentity = await lstat(join(this.app.directory, "project.json")),
         generation = this.app.projectGeneration,
         settings = JSON.stringify(this.app.project.settings),
         ids = audioSourceAssetIds(composition, state.assets, undefined, {
@@ -389,6 +396,7 @@ export class RecordAudioPreviewService {
         composition: JSON.stringify(composition),
         settings,
         projectId,
+        projectIdentity,
         compositionId,
         generation,
       };

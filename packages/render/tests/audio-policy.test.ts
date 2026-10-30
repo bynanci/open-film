@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -23,6 +23,7 @@ import {
   decodePolicyAudio,
   spectralAmplitude,
   firstAudibleSample,
+  recordPolicyEvidence,
 } from "../../../tests/fixtures/audio-policy.js";
 const timebase = resolveProjectTimebase({
   width: 160,
@@ -87,13 +88,38 @@ async function wav(
   coverage: CoverageAudioBindingV1[] = [],
   role?: "dialogue" | "ambience" | "music",
 ) {
+  const sources = await Promise.all(
+    assets.map(async (asset) => ({
+      assetId: asset.id,
+      sha256: await hashFile(fileURLToPath(asset.uri)),
+    })),
+  );
   await renderer.render(composition, assets, path, settings, {
     audioOnly: true,
     exportProfile: profile,
     ...(coverage.length ? { audioMixContext: { timebase, coverage } } : {}),
     ...(role ? { audioRole: role } : {}),
   });
-  return decodePolicyAudio(path);
+  const decoded = await decodePolicyAudio(path);
+  for (const source of sources)
+    expect(
+      await hashFile(
+        fileURLToPath(assets.find((a) => a.id === source.assetId)!.uri),
+      ),
+    ).toBe(source.sha256);
+  await recordPolicyEvidence(`render-${basename(path).replace(/\W+/g, "-")}`, {
+    command:
+      "FFmpegRenderer.render(composition, assets, path, settings, options)",
+    composition,
+    settings,
+    options: { audioOnly: true, exportProfile: profile, coverage, role },
+    sources,
+    encodedSha256: await hashFile(path),
+    decodedPcmSha256: decoded.sha256,
+    decodedFrames: decoded.samples.length / 2,
+    manifest: JSON.parse(await readFile(`${path}.manifest.json`, "utf8")),
+  });
+  return decoded;
 }
 
 describe("shared audio graph", () => {
@@ -152,6 +178,14 @@ describe("shared audio graph", () => {
       expect(
         Math.abs(actual[index]! - (position + 816 + delay)),
       ).toBeLessThanOrEqual(1);
+    await recordPolicyEvidence("canonical-pulse-phases", {
+      delay,
+      positions,
+      actual,
+      errors: positions.map(
+        (position, index) => actual[index]! - (position + 816 + delay),
+      ),
+    });
     expect(await hashFile(fileURLToPath(source.uri))).toBe(source.contentHash);
   });
   it("compiles one canonical source/tempo/effect branch before sample segmentation", async () => {
@@ -516,6 +550,14 @@ it("renders actual AAC MP4 with all three coverage policies, preserving automati
         coverage,
         "dialogue",
       );
+    await recordPolicyEvidence(`mp4-${mode}`, {
+      composition,
+      settings,
+      coverage,
+      encodedSha256: await hashFile(path),
+      decodedPcmSha256: decoded.sha256,
+      manifest: JSON.parse(await readFile(`${path}.manifest.json`, "utf8")),
+    });
     for (const start of [2.3, 4.3, 6.3, 8.3, 10.3]) {
       const covered = start === 4.3 || start === 8.3,
         secondaryExpected = covered && mode !== "keep-primary",
@@ -602,4 +644,272 @@ it("preserves the existing limiter and above-unity gain against an independent i
       Math.abs(actual.samples[i]! - reference.samples[i]!),
     );
   expect(error).toBeLessThanOrEqual(2 / 2 ** 23);
+});
+
+it("fails the same measured gates for duplicate sound, global mute, envelope restart, stem bypass and frame onset controls", async () => {
+  const dir = await root(),
+    a = await toneSource(dir, "negative-primary", 440),
+    b = await toneSource(dir, "negative-secondary", 880),
+    p: Clip = {
+      ...clip("p", a.id),
+      audioTiming: {
+        version: 1,
+        sampleRate: 48000,
+        timelineStartSample: 0,
+        sourceInSample: 0,
+        sourceOutSample: 576000,
+      },
+      audioAutomation: {
+        version: 1,
+        role: "dialogue",
+        points: [
+          { time: 0, gain: 0.2 },
+          { time: 12, gain: 0.8 },
+        ],
+      },
+    },
+    s: Clip = {
+      ...clip("s", b.id),
+      audioTiming: {
+        version: 1,
+        sampleRate: 48000,
+        timelineStartSample: 0,
+        sourceInSample: 0,
+        sourceOutSample: 576000,
+      },
+    },
+    coverage = [
+      binding("replace-primary"),
+      binding("replace-primary", "second", 8, 9),
+    ],
+    healthy = await wav(
+      join(dir, "controls-healthy.wav"),
+      comp(p, s),
+      [a, b],
+      coverage,
+    ),
+    primary = await wav(join(dir, "controls-primary.wav"), comp(p), [a]),
+    secondary = await wav(join(dir, "controls-secondary.wav"), comp(s), [b]);
+  const gate = (actual: number, expected: number) => {
+    const db = 20 * Math.log10(Math.max(actual, 1e-15) / expected);
+    if (Math.abs(db) > 0.5)
+      throw new Error(`Included level ${db} dB exceeds ±0.5 dB`);
+    return db;
+  };
+  const excluded = (actual: number, expected: number) => {
+    const db = 20 * Math.log10(Math.max(actual, 1e-15) / expected);
+    if (db > -45) throw new Error(`Excluded tone ${db} dB is above -45 dB`);
+    return db;
+  };
+  gate(
+    spectralAmplitude(healthy.samples, 880, 4.3),
+    spectralAmplitude(secondary.samples, 880, 4.3) * 0.5,
+  );
+  gate(
+    spectralAmplitude(healthy.samples, 440, 6.3),
+    spectralAmplitude(primary.samples, 440, 6.3),
+  );
+  excluded(
+    spectralAmplitude(healthy.samples, 440, 4.3),
+    spectralAmplitude(primary.samples, 440, 4.3),
+  );
+  const duplicate = await wav(
+    join(dir, "control-duplicate.wav"),
+    comp(p, s, { ...s, id: "duplicate", transform: { volume: 0.5 } }),
+    [a, b],
+    coverage,
+  );
+  const duplicateDb =
+    20 *
+    Math.log10(
+      spectralAmplitude(duplicate.samples, 880, 4.3) /
+        (spectralAmplitude(secondary.samples, 880, 4.3) * 0.5),
+    );
+  expect(() =>
+    gate(
+      spectralAmplitude(duplicate.samples, 880, 4.3),
+      spectralAmplitude(secondary.samples, 880, 4.3) * 0.5,
+    ),
+  ).toThrow(/Included level/);
+  const muted = await wav(
+    join(dir, "control-global-mute.wav"),
+    comp({ ...p, transform: { volume: 0 } }, s),
+    [a, b],
+    coverage,
+  );
+  expect(() =>
+    gate(
+      spectralAmplitude(muted.samples, 440, 6.3),
+      spectralAmplitude(primary.samples, 440, 6.3),
+    ),
+  ).toThrow(/Included level/);
+  const restarted = await wav(
+    join(dir, "control-restarted.wav"),
+    comp(
+      {
+        ...p,
+        audioAutomation: {
+          version: 1,
+          role: "dialogue",
+          points: [
+            { time: 4, gain: 0.2 },
+            { time: 12, gain: 0.6 },
+          ],
+        },
+      },
+      s,
+    ),
+    [a, b],
+    coverage,
+  );
+  const restartDb =
+    20 *
+    Math.log10(
+      spectralAmplitude(restarted.samples, 440, 6.3) /
+        spectralAmplitude(primary.samples, 440, 6.3),
+    );
+  expect(() =>
+    gate(
+      spectralAmplitude(restarted.samples, 440, 6.3),
+      spectralAmplitude(primary.samples, 440, 6.3),
+    ),
+  ).toThrow(/Included level/);
+  const bypassed = await wav(
+    join(dir, "control-stem-bypass.wav"),
+    comp(p),
+    [a],
+    [],
+    "dialogue",
+  );
+  expect(() =>
+    excluded(
+      spectralAmplitude(bypassed.samples, 440, 4.3),
+      spectralAmplitude(primary.samples, 440, 4.3),
+    ),
+  ).toThrow(/Excluded tone/);
+
+  const pulse = await toneSource(dir, "control-pulse", 0, 1, 48000, 2, true);
+  const canonical: Clip = {
+    ...clip("pulse", pulse.id, 6, 1),
+    audioTiming: {
+      version: 1,
+      sampleRate: 48000,
+      timelineStartSample: 252001,
+      sourceInSample: 0,
+      sourceOutSample: 48000,
+    },
+  };
+  const baseline = await wav(
+    join(dir, "control-impulse-baseline.wav"),
+    comp({
+      ...canonical,
+      audioTiming: { ...canonical.audioTiming!, timelineStartSample: 0 },
+    }),
+    [pulse],
+  );
+  const correct = await wav(
+    join(dir, "control-onset-healthy.wav"),
+    comp(canonical),
+    [pulse],
+  );
+  const quantizedStart = Math.round((252001 / 48000) * 30) * 1600;
+  const quantized = await wav(
+    join(dir, "control-frame-quantized.wav"),
+    comp({
+      ...canonical,
+      audioTiming: {
+        ...canonical.audioTiming!,
+        timelineStartSample: quantizedStart,
+      },
+    }),
+    [pulse],
+  );
+  const expected = 252001 + firstAudibleSample(baseline.samples);
+  const onsetGate = (actual: number) => {
+    if (Math.abs(actual - expected) > 1)
+      throw new Error(`Onset error ${actual - expected} samples exceeds1`);
+  };
+  onsetGate(firstAudibleSample(correct.samples));
+  const onsetError = firstAudibleSample(quantized.samples) - expected;
+  expect(() => onsetGate(firstAudibleSample(quantized.samples))).toThrow(
+    /Onset error/,
+  );
+  await recordPolicyEvidence("negative-controls", {
+    duplicateDb,
+    restartDb,
+    onsetError,
+    globalMute: "included level gate rejected",
+    stemBypass: "excluded ≥45dB gate rejected",
+    gates: { includedDb: 0.5, excludedDb: -45, onsetSamples: 1 },
+  });
+});
+
+it("keeps actual H264/AAC pulse edges within1024samples using one PCM limiter baseline", async () => {
+  const dir = await root(),
+    events = [24000, 48000, 76800];
+  const positions = events.flatMap((first) =>
+    Array.from({ length: 64 }, (_, n) => first + n),
+  );
+  const source = await toneSource(dir, "aac-events", 0, 2, 48000, 2, positions);
+  const impulse = await toneSource(
+    dir,
+    "aac-common-impulse",
+    0,
+    1,
+    48000,
+    2,
+    true,
+  );
+  const configured = (
+    id: string,
+    assetId: string,
+    length: number,
+    start = 0,
+  ): Clip => ({
+    ...clip(id, assetId, 6, length / 48000),
+    audioTiming: {
+      version: 1,
+      sampleRate: 48000,
+      timelineStartSample: start,
+      sourceInSample: 0,
+      sourceOutSample: length,
+    },
+  });
+  const baseline = await wav(
+    join(dir, "aac-common-baseline.wav"),
+    comp(configured("baseline", impulse.id, 48000)),
+    [impulse],
+  );
+  const delay = firstAudibleSample(baseline.samples),
+    start = 252001;
+  const composition = comp(configured("events", source.id, 96000, start));
+  const path = join(dir, "aac-events-output.mp4");
+  await renderer.render(composition, [source], path, settings);
+  const decoded = await decodePolicyAudio(path),
+    errors = [];
+  for (const event of events) {
+    const expected = event + start + delay;
+    let peak = 0,
+      edge = -1;
+    for (let n = expected - 2048; n <= expected + 2048; n++) {
+      const level = Math.abs(decoded.samples[n * 2]!);
+      if (level > peak) {
+        peak = level;
+        edge = n;
+      }
+    }
+    expect(peak).toBeGreaterThan(0.05);
+    expect(Math.abs(edge - expected)).toBeLessThanOrEqual(1024);
+    errors.push(edge - expected);
+  }
+  expect(await hashFile(fileURLToPath(source.uri))).toBe(source.contentHash);
+  await recordPolicyEvidence("aac-event-edges", {
+    delay,
+    start,
+    events,
+    errors,
+    encodedSha256: await hashFile(path),
+    decodedPcmSha256: decoded.sha256,
+    manifest: JSON.parse(await readFile(`${path}.manifest.json`, "utf8")),
+  });
 });

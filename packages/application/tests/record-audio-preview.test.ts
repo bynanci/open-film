@@ -219,6 +219,24 @@ it("revokes stale revisions, changed source bytes and corrupt cache files", asyn
     /source|changed/i,
   );
 });
+it("rejects a previous preview after Undo returns to the identical document revision", async () => {
+  const { app, editor, revision } = await fixture();
+  const descriptor = await app.recordAudioPreview.prepare("c", revision);
+  const edited = await editor.edit("c", {
+    baseRevision: revision,
+    commands: [{ type: "volume", clipId: "a", volume: 0.5 }],
+  });
+  const undone = await editor.undo("c", edited.revision);
+  expect(undone.revision).toBe(revision);
+  await expect(
+    app.recordAudioPreview.read(descriptor.id, 0, 1),
+  ).rejects.toMatchObject({ code: "timeline.conflict" });
+  const fresh = await app.recordAudioPreview.prepare("c", undone.revision);
+  expect(fresh.id).not.toBe(descriptor.id);
+  expect((await app.recordAudioPreview.read(fresh.id, 0, 1)).byteLength).toBe(
+    6,
+  );
+});
 it("rejects stale work after actual render and never publishes a ready descriptor", async () => {
   const { app, editor, revision } = await fixture(),
     original = FFmpegRenderer.prototype.render;

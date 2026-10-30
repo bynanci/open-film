@@ -1524,3 +1524,68 @@ it("drops interrupted PCM preparation after a revision change and reports unsupp
   ).toBe(true);
   expect(monitor.audio()).toHaveLength(0);
 });
+
+it("keeps one PCM preparation when a cold picture becomes ready during Play", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips[0]!.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 0,
+    sourceInSample: 48000,
+    sourceOutSample: 96000,
+  };
+  const context = new PolicyAudioContext();
+  let complete!: (value: RecordAudioPreviewDescriptor) => void,
+    preparations = 0;
+  const pending = new Promise<RecordAudioPreviewDescriptor>((resolve) => {
+    complete = resolve;
+  });
+  const monitor = await mount(saved, undefined, undefined, {
+    context: context as unknown as AudioContext,
+    prepare: async () => {
+      preparations++;
+      return pending;
+    },
+  });
+  monitor.transport().play();
+  await settle();
+  expect(preparations).toBe(1);
+  await monitor.ready("a");
+  await settle();
+  expect(preparations).toBe(1);
+  complete({
+    version: 1,
+    id: "12345678-1234-1234-1234-123456789abc",
+    revision: monitor.props.revision,
+    sourceKeyDigest: "a".repeat(64),
+    sampleRate: 48000,
+    channels: 2,
+    format: "pcm_s24le",
+    lengthSamples: 288000,
+  });
+  await monitor.pcmTick(0);
+  await monitor.pcmTick(0.5);
+  expect(monitor.transport().playing).toBe(true);
+  expect(context.nodes.length).toBeGreaterThan(0);
+  expect(monitor.audio()).toHaveLength(0);
+});
+it("synchronizes policy pictures from continuous sound time inside the resolved frame", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips[0]!.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 0,
+    sourceInSample: 48000,
+    sourceOutSample: 96000,
+  };
+  const context = new PolicyAudioContext();
+  const monitor = await mount(saved, undefined, undefined, {
+    context: context as unknown as AudioContext,
+  });
+  const picture = await monitor.ready("a");
+  monitor.transport().play();
+  await monitor.pcmTick(0);
+  await monitor.pcmTick(0.517);
+  expect(monitor.transport().frame).toBe(2);
+  expect(picture.currentTime).toBeCloseTo(1.267, 6);
+});

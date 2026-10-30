@@ -125,6 +125,7 @@ let pcmContext: AudioContext | undefined,
   pcmGeneration = 0,
   pcmLoading = false,
   pcmFreshPreparation = false,
+  pcmObservedAt = 0,
   gestureResume: Promise<void> | undefined;
 const verifiedSignals = new WeakSet<AbortSignal>();
 const transport = useRecordTransport({
@@ -188,8 +189,10 @@ function ensurePcm() {
       return api.recordAudioPcm(id, start, count, signal);
     },
     onTime: (sample) => {
-      if (!disposed && !pcmLoading && owner === resourceOwner.value)
+      if (!disposed && !pcmLoading && owner === resourceOwner.value) {
+        pcmObservedAt = pcmContext?.currentTime ?? 0;
         pcmSample.value = sample;
+      }
     },
     onState: (state, key) => {
       if (disposed || owner !== resourceOwner.value) return;
@@ -264,7 +267,20 @@ async function startPcm(sample = pcmSample.value) {
     transport.pause();
     updateHold();
   } finally {
-    if (pcmPreparation === controller) pcmPreparation = undefined;
+    if (pcmPreparation === controller) {
+      pcmPreparation = undefined;
+      if (
+        !disposed &&
+        stamp === pcmGeneration &&
+        owner === resourceOwner.value &&
+        !controller.signal.aborted &&
+        !pictureHeld.value &&
+        transport.playing.value &&
+        transport.shuttleRate.value === 1 &&
+        pcmState.value === "ready"
+      )
+        void startPcm(pcmSample.value);
+    }
   }
 }
 function cancelPcm() {
@@ -588,17 +604,38 @@ const forward = computed(
 function syncPosition(resource: Resource, force: boolean) {
   const element = media(resource);
   if (!element) return;
+  let target = resource.entry.sourceTime;
+  if (
+    !force &&
+    pcmEnabled.value &&
+    transport.shuttleRate.value === 1 &&
+    layers.value.includes(resource)
+  ) {
+    // Integer frames own cuts/captions; normal picture media follows the same
+    // continuous sound position so half-frame rounding cannot cause seek loops.
+    const continuous =
+      pcmSample.value / 48000 +
+      (pcmState.value === "playing" && pcmContext
+        ? Math.max(0, pcmContext.currentTime - pcmObservedAt)
+        : 0);
+    const phase = continuous - (resolved.value?.time ?? 0);
+    const source = resolveClipSourceRange(
+      resource.entry.clip,
+      resource.entry.asset,
+    );
+    target = Math.max(
+      source.sourceIn,
+      Math.min(source.sourceOut, target + phase * source.speed),
+    );
+  }
   const frameRate = resource.entry.asset.frameRate;
   // Without reliable source metadata only explicit operations can resync.
   const tolerance =
     frameRate && Number.isFinite(frameRate) && frameRate > 0
       ? 0.5 / frameRate
       : Infinity;
-  if (
-    force ||
-    Math.abs(element.currentTime - resource.entry.sourceTime) > tolerance
-  )
-    element.currentTime = resource.entry.sourceTime;
+  if (force || Math.abs(element.currentTime - target) > tolerance)
+    element.currentTime = target;
 }
 function run(resource: Resource, running: boolean) {
   const element = media(resource);
@@ -919,7 +956,7 @@ watch(
     if (held) {
       pcmPlayback?.pause();
       updateHold();
-    } else if (previous) void startPcm(pcmSample.value);
+    } else if (previous && !pcmPreparation) void startPcm(pcmSample.value);
   },
   { flush: "sync" },
 );

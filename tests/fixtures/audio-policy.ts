@@ -1,5 +1,5 @@
 // Deterministic synthetic local audio; no user media or dependencies.
-import { writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
@@ -123,5 +123,23 @@ export async function policyManifest(paths: string[]) {
         .update(await readFile(path))
         .digest("hex"),
     })),
+  );
+}
+/** Optional durable synthetic evidence. Never writes to a source or a project. */
+export async function recordPolicyEvidence(id: string, value: unknown) {
+  const directory = process.env.OPENFILM_AUDIO_EVIDENCE_DIR;
+  if (!directory) return;
+  if (!/^[a-z0-9-]+$/i.test(id)) throw new Error("Invalid audio evidence ID");
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, `${id}.json`),
+    JSON.stringify(
+      {
+        candidate: process.env.OPENFILM_QA_CANDIDATE_SHA ?? "local",
+        ...(value as object),
+      },
+      null,
+      2,
+    ) + "\n",
   );
 }
