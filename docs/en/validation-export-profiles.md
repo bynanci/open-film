@@ -498,3 +498,12 @@ font fixtures. A failure bundle can distinguish frame selection, raster inputs
 and encoded video changes. A passing rerun alone does not identify or fix the
 original mismatch; renderer changes require a causal reproduction and regression
 review.
+
+Follow-up Windows run `41094704344` at `57cb327` failed in the diagnostic
+collector's output-path guard before reaching the pixel assertions and produced
+no font-pixel bundle. The collector now checks render outputs against the
+fixture's `realpath` root and redacts both original and canonical spellings.
+Focused path tests reproduce a Windows temporary short-name/long-name mismatch,
+cover case and slash variants, and preserve rejection of sibling, parent,
+relative and cross-drive outputs. The original decoded-pixel mismatch remains
+unresolved pending another actual pinned Windows run.

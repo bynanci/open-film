@@ -10,6 +10,7 @@ import {
   lstat,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -18,7 +19,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -41,6 +42,7 @@ import {
   testCjkFont,
 } from "../helpers/platform-storage.js";
 import {
+  syntheticFontPixelScope,
   retainSyntheticFontPixelFailure,
   rgbPixelDifference,
 } from "../helpers/font-pixel-diagnostics.js";
@@ -1027,6 +1029,9 @@ describe("professional profile exports", () => {
     // This opt-in collector is owned by this synthetic fixture only. It never
     // copies a project, user source, system font, or an unselected test output.
     const qaDirectory = process.env.OPENFILM_FONT_PIXEL_QA_DIR;
+    const diagnosticScope = qaDirectory
+      ? syntheticFontPixelScope(root, await realpath(root))
+      : undefined;
     const diagnosticFiles: Record<string, Buffer> = {};
     const renders: Array<Record<string, unknown>> = [];
     const sourceFiles = [
@@ -1057,13 +1062,8 @@ describe("professional profile exports", () => {
               args.includes("libx264")
             ) {
               const index = renders.length;
-              const output = args.at(-1)!;
               // All captured files must belong to the freshly generated fixture.
-              const local = relative(root, output);
-              if (!local || isAbsolute(local) || local.startsWith(".."))
-                throw new Error(
-                  "Font pixel collector refused an external output.",
-                );
+              const output = diagnosticScope!.output(args.at(-1)!);
               const work = dirname(output);
               const inputs: Array<{
                 name: string;
@@ -1085,9 +1085,7 @@ describe("professional profile exports", () => {
               const literal = await decodedRgbFrame(output, 3);
               diagnosticFiles[`render-${index}-literal-frame-3.rgb`] = literal;
               renders.push({
-                args: args.map((arg) =>
-                  arg.replaceAll(root, "<synthetic-fixture>"),
-                ),
+                args: args.map((arg) => diagnosticScope!.redact(arg)),
                 videoOnly: args.includes("-an"),
                 inputs,
                 literalFrame3Sha256: digest(literal),

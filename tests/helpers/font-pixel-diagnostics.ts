@@ -1,10 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, posix, win32 } from "node:path";
 
 const sha256 = (bytes: Buffer) =>
   createHash("sha256").update(bytes).digest("hex");
+
+/** The canonical root comes from realpath of the owned synthetic fixture. */
+export function syntheticFontPixelScope(
+  root: string,
+  canonicalRoot: string,
+  platform: "posix" | "win32" = process.platform === "win32"
+    ? "win32"
+    : "posix",
+) {
+  const paths = platform === "win32" ? win32 : posix;
+  const escape = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const roots = [...new Set([root, canonicalRoot])].map((value) =>
+    platform === "win32"
+      ? value.split(/[\\/]/u).map(escape).join("[\\\\/]")
+      : escape(value),
+  );
+  const redaction = new RegExp(
+    `(?:${roots.join("|")})(?=$|${platform === "win32" ? "[\\\\/]" : "/"})`,
+    platform === "win32" ? "giu" : "gu",
+  );
+  return {
+    output(output: string) {
+      const local = paths.relative(canonicalRoot, output);
+      if (
+        !paths.isAbsolute(canonicalRoot) ||
+        !paths.isAbsolute(output) ||
+        !local ||
+        paths.isAbsolute(local) ||
+        local.startsWith("..")
+      )
+        throw new Error("Font pixel collector refused an external output.");
+      return output;
+    },
+    redact(argument: string) {
+      return argument.replaceAll(redaction, "<synthetic-fixture>");
+    },
+  };
+}
 
 /** Diagnostics only: assertions continue to compare the complete RGB buffers. */
 export function rgbPixelDifference(
