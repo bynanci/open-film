@@ -181,3 +181,33 @@ negative controls and current source/test byte receipts are retained under
 their original candidate identities. Browser servers exited and both shared
 ports were confirmed closed before returning the lease. No full suite, native
 benchmark, hosted-CI result or stable-release completion is claimed here.
+
+## 2026-10-30 — reviewed preset corrections and repaired base integrated
+
+Merge `6093ca9` consumes clean fixed D8 `77c9ea0` on the latest A/B stack and
+repaired documentation base `fab0a4c`. It preserves D8's reviewed in-lock catalog
+fence, complete scene assignments, detached ordinary-compose provenance and
+localized title disclosure, together with primary review-Apply validation and
+source protections. The verified primary → local Film Look raw-photo group,
+black separator placement and core color math are byte-identical to the earlier
+C checkpoint. Current focal admission and B's Record caption minimum are carried
+through their reviewed parent branches.
+
+Current focused execution passes 18 files / 233 tests across color/core/solver,
+application review/CAS, real TimelineClip host, source recovery, focal admission,
+Story preset corrections, title disclosure and documentation links. A separate
+actual five-file finishing run passes all 19 test cases with `--maxWorkers=1
+--retry=0 --reporter=json`: photo-easing, photo-ambient, bilingual-title-finishing,
+primary-color and photo-primary-local-look. Its JSON contains exactly those five
+files, all passed, with zero failed/pending/todo cases. This exercises actual
+Bézier expressions/raw ambient, bilingual font/caption MP4s, SDR/PQ/HLG correction
+and combined local-Look diptych/static/camera pixels with unchanged limits.
+
+TypeScript/Vue, scoped ESLint, repository formatting, 2,889 localization keys and
+133 documentation mirrors pass. Fresh actual media, raw JSON report, logs and
+current source/test byte hashes are under
+`/tmp/openfilm-finishing-integration/C-final-stack/`. The preceding 15-case
+browser receipt retains its original source identity; this checkpoint launched
+no browser server. First fresh whole-branch C review and complete exact-head
+hosted gates remain coordinator-owned. This entry does not declare merge or
+release readiness.
