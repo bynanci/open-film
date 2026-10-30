@@ -1,6 +1,8 @@
 # D6B source coverage review — implementation checkpoint
 
 Date:2026-10-30. Branch:`codex/d6b-collect-storage`.
+Integration base: merged D6A PR #64,
+`9c392b7cc8d46f4768d76f30bef30d0397cca8f8`.
 Status:**read-only review implemented; actual derived delivery remains incomplete**.
 This checkpoint extends the existing Collect owner. It does not enable trimmed
 or offline Create, change project schema1/Catalogv6, or publish a release.

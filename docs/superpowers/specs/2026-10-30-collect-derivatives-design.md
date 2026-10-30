@@ -2,7 +2,9 @@
 
 Status: design and first implementation slice; D6B remains incomplete until
 actual derived packages pass the original-baseline parity and relocation gates.
-Base: D6A candidate `c8273bcdf6a6dcbcc9a1f6ab9bc84a6ffb1e5ceb` / PR #64.
+Initial design base: D6A candidate `c8273bcdf6a6dcbcc9a1f6ab9bc84a6ffb1e5ceb`.
+Current integration base: merged PR #64,
+`9c392b7cc8d46f4768d76f30bef30d0397cca8f8`.
 The user has authorized continued roadmap/storage execution without additional
 planning approval rounds. New implementation choices below are the builder's
 calls, rather than attributed user decisions.
