@@ -4,6 +4,7 @@ import { readFileSync, readlinkSync } from "node:fs";
 import { hostname, platform } from "node:os";
 import { win32 } from "node:path";
 import type { ReviewExecutionOwner } from "@openfilm/core";
+import { windowsPowerShellEnvironment } from "./windows-powershell.js";
 
 // A hostname alone is not enough to probe a PID from a portable project. Bind
 // owners to a verified local boot/PID scope before checking liveness.
@@ -34,6 +35,7 @@ function processScope(): { host: string; verifiable: boolean } {
               "ConvertTo-Json -InputObject @{machine=$machine;boot=$boot} -Compress",
           ],
           {
+            env: windowsPowerShellEnvironment(systemRoot),
             encoding: "utf8",
             stdio: ["ignore", "pipe", "ignore"],
             windowsHide: true,

@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import { join, win32 } from "node:path";
 import { promisify } from "node:util";
 import { expect } from "vitest";
+import { windowsPowerShellEnvironment } from "../../packages/application/src/windows-powershell.js";
 
 // Independent fixture paths, not the renderer's font resolver. CI installs and
 // hashes these distinct OFL faces; exact hashes must still appear in receipts.
@@ -49,7 +50,10 @@ export async function expectPrivateStorage(path: string, mode: 0o600 | 0o700) {
         "ConvertTo-Json -Compress -InputObject @{ownerTrusted=($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -in $trusted);canonical=$acl.AreAccessRulesCanonical;hasAllow=($allows.Count -gt 0);untrustedAllowCount=$untrusted.Count}",
     ],
     {
-      env: { ...process.env, OPENFILM_QA_ACL_PATH: path },
+      env: {
+        ...windowsPowerShellEnvironment(systemRoot),
+        OPENFILM_QA_ACL_PATH: path,
+      },
       windowsHide: true,
       timeout: 10_000,
       maxBuffer: 4096,

@@ -4,13 +4,19 @@ const evidence = vi.hoisted(() => ({
   platform: "win32",
   output: "",
   error: false,
+  shellEnvironment: undefined as NodeJS.ProcessEnv | undefined,
 }));
 vi.mock("node:os", () => ({
   platform: () => evidence.platform,
   hostname: () => "same-hostname",
 }));
 vi.mock("node:child_process", () => ({
-  execFileSync: () => {
+  execFileSync: (
+    _command: string,
+    _args: string[],
+    options: { env?: NodeJS.ProcessEnv },
+  ) => {
+    evidence.shellEnvironment = options.env;
     if (evidence.error) throw new Error("OS identity is unavailable");
     return evidence.output;
   },
@@ -23,6 +29,7 @@ beforeEach(() => {
   evidence.platform = "win32";
   evidence.output = JSON.stringify({ machine, boot });
   evidence.error = false;
+  evidence.shellEnvironment = undefined;
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -41,6 +48,23 @@ it("shares Windows OS evidence across executions without storing the machine ide
   expect(second.ownsReviewOwner(owner)).toBe(false);
   expect(owner.host).not.toContain(machine);
   expect(owner.host).not.toContain(boot);
+});
+
+it("uses only the trusted Windows PowerShell module directory under an inherited Core/user environment", async () => {
+  vi.stubEnv(
+    "PSModulePath",
+    "C:\\Program Files\\PowerShell\\7\\Modules;C:\\untrusted-project\\Modules",
+  );
+  vi.stubEnv("PSMODULEPATH", "C:\\untrusted-case-variant\\Modules");
+  await loadOwnerModule();
+  expect(evidence.shellEnvironment?.PSModulePath).toBe(
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+  );
+  expect(
+    Object.keys(evidence.shellEnvironment ?? {}).filter(
+      (key) => key.toLowerCase() === "psmodulepath",
+    ),
+  ).toEqual(["PSModulePath"]);
 });
 
 it.each([

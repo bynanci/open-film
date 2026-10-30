@@ -93,7 +93,12 @@ expectations, slash-only containment and unverified cross-process owner recovery
 Follow-up keeps exact source hashes and all rendering/layout assertions, uses
 independent fixed Sans/Serif/weight fixtures, checks actual Windows DACLs rather
 than ignoring permissions, strengthens containment to the expected parent path,
-and records boot-scope diagnostics before changing recovery policy. Unknown
+and records boot-scope diagnostics. The second actual Windows run41032361736
+passed85/92: the remaining7 expose inbox Windows PowerShell importing
+incompatible Core modules. Its three independent boot-query hashes are identical;
+there is no evidence to replace or round the boot identity. The correction
+restricts `PSModulePath` to the trusted inbox system module directory and strips
+case-variant inherited entries for both the owner query and the ACL inspection. Unknown
 owners remain protected; no PID-only or guessed boot-time recovery is authorized.
 
 Single independent whole-branch review (base18f8c1f..3cab20d): no Critical or
