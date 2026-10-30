@@ -7,6 +7,7 @@ import {
   type Job,
   type MediaAsset,
   type TimelineMarker,
+  type SourceWaveformEvidence,
 } from "@openfilm/core";
 import type { ProjectCatalog } from "@openfilm/catalog";
 import { ProviderRegistry } from "@openfilm/analysis";
@@ -224,6 +225,57 @@ export class MediaIntelligence {
 
   sourceIdentity(assetId: string): Promise<string> {
     return this.identity(this.asset(assetId));
+  }
+
+  async readWaveforms(
+    assetIds: readonly string[],
+  ): Promise<SourceWaveformEvidence[]> {
+    if (
+      !Array.isArray(assetIds) ||
+      !assetIds.length ||
+      assetIds.length > 8 ||
+      assetIds.some(
+        (id) => typeof id !== "string" || !id.length || id.length > 1024,
+      ) ||
+      new Set(assetIds).size !== assetIds.length
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose one to eight unique imported waveform sources.",
+        400,
+      );
+    const entries: SourceWaveformEvidence[] = [];
+    for (const assetId of assetIds) {
+      try {
+        const sourceHash = await this.identity(this.asset(assetId));
+        const waveform = this.catalog.intelligence.getWaveform(
+          assetId,
+          sourceHash,
+          WAVEFORM_CACHE_IDENTITY,
+        );
+        entries.push(
+          waveform
+            ? { assetId, status: "ready", sourceHash, waveform }
+            : { assetId, status: "not-cached", sourceHash },
+        );
+      } catch (error) {
+        if (
+          !(error instanceof ApplicationError) ||
+          !["media.notFound", "media.missing", "source.changed"].includes(
+            error.code,
+          )
+        )
+          throw error;
+        const code = error.code as
+          "media.notFound" | "media.missing" | "source.changed";
+        entries.push({
+          assetId,
+          status: code === "source.changed" ? "source-changed" : "unavailable",
+          issue: { code },
+        });
+      }
+    }
+    return entries;
   }
 
   async read(

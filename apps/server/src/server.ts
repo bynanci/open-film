@@ -3600,6 +3600,41 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, await application.intelligence.providers());
           return;
         }
+        if (method === "POST" && route === "/api/intelligence/waveforms") {
+          const data = await body(request);
+          keys(data, ["projectId", "assetIds"]);
+          const projectId = text(data, "projectId");
+          const current = () =>
+            app === application && projectId === application.project.id;
+          if (!current())
+            throw new HttpError(
+              409,
+              "Waveform project changed.",
+              "project.unavailable",
+            );
+          let entries;
+          try {
+            entries = await application.intelligence.readWaveforms(
+              data.assetIds as string[],
+            );
+          } catch (error) {
+            if (!current())
+              throw new HttpError(
+                409,
+                "Waveform project changed.",
+                "project.unavailable",
+              );
+            throw error;
+          }
+          if (!current())
+            throw new HttpError(
+              409,
+              "Waveform project changed.",
+              "project.unavailable",
+            );
+          json(response, 200, { projectId, entries });
+          return;
+        }
         const analysisRecovery =
           /^\/api\/intelligence\/jobs\/([^/]+)\/(recovery|recover)$/.exec(
             route,
@@ -3689,10 +3724,22 @@ export async function startServer(options: ServerOptions = {}) {
             throw new HttpError(400, "Choose transcribe, waveform or scenes.");
           if (
             Object.keys(data).some(
-              (key) => !["operation", "language", "execution"].includes(key),
+              (key) =>
+                !["operation", "language", "execution", "projectId"].includes(
+                  key,
+                ),
             )
           )
             throw new HttpError(400, "Unsupported media analysis setting.");
+          if (
+            data.projectId !== undefined &&
+            (app !== application || data.projectId !== application.project.id)
+          )
+            throw new HttpError(
+              409,
+              "Analysis project changed.",
+              "project.unavailable",
+            );
           if (
             data.language !== undefined &&
             (typeof data.language !== "string" ||
