@@ -4,6 +4,27 @@ import { setTimeout as delay } from "node:timers/promises";
 import { isAbsolute, relative, sep } from "node:path";
 import { inspectWindowsFileOwners } from "./windows-file-owners.js";
 
+/** Keep a teardown error from concealing the failed assertion or seed operation. */
+export async function runFixtureCleanup<T>(
+  cleanup: () => Promise<T>,
+  primaryFailure?: { error: unknown },
+): Promise<T> {
+  try {
+    return await cleanup();
+  } catch (error) {
+    if (!primaryFailure) throw error;
+    const description =
+      primaryFailure.error instanceof Error
+        ? primaryFailure.error.message
+        : String(primaryFailure.error);
+    throw new AggregateError(
+      [primaryFailure.error, error],
+      `Fixture cleanup failed after: ${description.slice(0, 2000)}`,
+      { cause: error },
+    );
+  }
+}
+
 interface FixturePage {
   isClosed(): boolean;
   goto(url: string): Promise<unknown>;
@@ -78,7 +99,7 @@ export async function cleanupProjectFixture(input: {
         const current = await observed.json();
         stillClosed =
           observed.ok() &&
-          Boolean(current) &&
+          current !== null &&
           typeof current === "object" &&
           "project" in current &&
           current.project === null;

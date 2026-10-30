@@ -10,7 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { cleanupProjectFixture } from "../e2e/project-fixture-cleanup.js";
+import {
+  cleanupProjectFixture,
+  runFixtureCleanup,
+} from "../e2e/project-fixture-cleanup.js";
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0))
@@ -101,4 +104,52 @@ it("requires the closed project state even after HTTP200", async () => {
     cleanupProjectFixture({ ...f, api: "http://127.0.0.1:4310/api" }),
   ).rejects.toThrow(/project/i);
   expect((await lstat(f.root)).isDirectory()).toBe(true);
+});
+
+it("preserves the original seeding failure when teardown also fails", async () => {
+  const primary = new Error("synthetic seed failed");
+  const removal = new Error("synthetic fixture still locked");
+  let caught: unknown;
+  try {
+    await runFixtureCleanup(
+      async () => {
+        throw removal;
+      },
+      { error: primary },
+    );
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(AggregateError);
+  expect((caught as AggregateError).errors).toEqual([primary, removal]);
+  expect((caught as Error).cause).toBe(removal);
+  expect((caught as Error).message).toContain(primary.message);
+});
+
+it("propagates standalone cleanup failures unchanged", async () => {
+  const failure = new Error("fixture close failed");
+  await expect(
+    runFixtureCleanup(async () => {
+      throw failure;
+    }),
+  ).rejects.toBe(failure);
+});
+
+it("keeps a failed benchmark failed after successful cleanup", async () => {
+  const primary = new Error("real assertion failed");
+  let cleaned = false;
+  const benchmark = async () => {
+    try {
+      throw primary;
+    } finally {
+      await runFixtureCleanup(
+        async () => {
+          cleaned = true;
+        },
+        { error: primary },
+      );
+    }
+  };
+  await expect(benchmark()).rejects.toBe(primary);
+  expect(cleaned).toBe(true);
 });

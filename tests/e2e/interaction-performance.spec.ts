@@ -1,12 +1,22 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { link, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
-import { cleanupProjectFixture } from "./project-fixture-cleanup.js";
+import {
+  cleanupProjectFixture,
+  runFixtureCleanup,
+} from "./project-fixture-cleanup.js";
 import type { Clip, MediaAsset } from "@openfilm/core";
 import {
   createThumbnail,
@@ -175,7 +185,11 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       ),
     ).observe({ type: "longtask", buffered: true });
   });
-  const root = await mkdtemp(join(tmpdir(), "openfilm-interaction-"));
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "openfilm-interaction-")),
+  );
+  let seedOwner: OpenFilmApplication | undefined;
+  let primaryFailure: { error: unknown } | undefined;
   function productionFiles() {
     return [
       ...new Set(
@@ -299,6 +313,7 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       project,
       "Synthetic interaction benchmark",
     );
+    seedOwner = app;
     const thumbnail = "cache/thumbnails/benchmark.jpg";
     await mkdir(join(project, "cache", "thumbnails"), { recursive: true });
     const descriptor: MediaAsset = {
@@ -418,6 +433,7 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     });
     const draftKey = `openfilm:editor:${app.project.id}:benchmark-cut`;
     app.close();
+    seedOwner = undefined;
     expect(
       (
         await request.post(`${api}/project/open`, { data: { path: project } })
@@ -721,6 +737,9 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     expect((idle.renders as RenderCounts).PrecisionTranscript?.calls ?? 0).toBe(
       0,
     );
+  } catch (error) {
+    primaryFailure = { error };
+    throw error;
   } finally {
     const artifact = {
       label: process.env.OPENFILM_BENCHMARK_LABEL ?? "synthetic-ui",
@@ -740,6 +759,9 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       browser: await page.context().browser()?.version(),
       viewport: page.viewportSize(),
       samples,
+      primaryFailure: primaryFailure
+        ? String(primaryFailure.error).slice(0, 2000)
+        : undefined,
     };
     const output = testInfo.outputPath("interaction-performance.json");
     await writeFile(output, JSON.stringify(artifact, null, 2));
@@ -757,10 +779,15 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
         JSON.stringify(artifact, null, 2),
       );
     }
-    const cleanup = await cleanupProjectFixture({ page, request, api, root });
-    await testInfo.attach("interaction-project-cleanup", {
-      body: Buffer.from(JSON.stringify(cleanup)),
-      contentType: "application/json",
-    });
+    await runFixtureCleanup(async () => {
+      // An aborted, synthetic seed has not been handed to the UI. Discard its
+      // owned connection; saving it again could repeat and hide the seed error.
+      seedOwner?.catalog.close();
+      const cleanup = await cleanupProjectFixture({ page, request, api, root });
+      await testInfo.attach("interaction-project-cleanup", {
+        body: Buffer.from(JSON.stringify(cleanup)),
+        contentType: "application/json",
+      });
+    }, primaryFailure);
   }
 });
