@@ -15,6 +15,7 @@ import { api, exportDownloadUrl } from "../api";
 import { localizeError } from "../i18n";
 import Icon from "./Icon.vue";
 import LocalDownload from "./LocalDownload.vue";
+import CollectCoverageReview from "./CollectCoverageReview.vue";
 
 type Scope = CollectPlanInput["scope"];
 type Format = "directory" | "zip";
@@ -33,6 +34,12 @@ const props = defineProps<{
 const emit = defineEmits<{ busy: [value: boolean] }>();
 
 const { t, locale } = useI18n();
+const coverageBusy = ref(false);
+const controlsDisabled = computed(() => props.disabled || coverageBusy.value);
+function coverageActivity(value: boolean) {
+  coverageBusy.value = value;
+  emit("busy", value || operation.value !== "");
+}
 const issueTranslationKeys: Record<string, string> = {
   "source.unsupported-uri": "sourceUnsupportedUri",
   "source.nested-archive": "sourceNestedArchive",
@@ -103,7 +110,7 @@ const invalidRights = computed(() =>
 );
 const canCreate = computed(
   () =>
-    !props.disabled &&
+    !controlsDisabled.value &&
     operation.value === "" &&
     planCurrent.value &&
     !!plan.value?.complete &&
@@ -143,7 +150,7 @@ function issueLabel(code: string): string {
 
 function setOperation(next: typeof operation.value) {
   operation.value = next;
-  emit("busy", next !== "");
+  emit("busy", next !== "" || coverageBusy.value);
   error.value = "";
 }
 
@@ -175,7 +182,7 @@ async function review() {
     if (controller === current) controller = undefined;
     if (currentGeneration === generation) {
       operation.value = "";
-      emit("busy", false);
+      emit("busy", coverageBusy.value);
     }
   }
 }
@@ -207,7 +214,7 @@ async function createPackage() {
     if (controller === current) controller = undefined;
     if (currentGeneration === generation) {
       operation.value = "";
-      emit("busy", false);
+      emit("busy", coverageBusy.value);
     }
   }
 }
@@ -234,7 +241,7 @@ async function verifyPackage() {
     if (controller === current) controller = undefined;
     if (currentGeneration === generation) {
       operation.value = "";
-      emit("busy", false);
+      emit("busy", coverageBusy.value);
     }
   }
 }
@@ -243,7 +250,7 @@ function cancel() {
   controller?.abort();
   controller = undefined;
   operation.value = "";
-  emit("busy", false);
+  emit("busy", coverageBusy.value);
 }
 
 function ensureDraft(item: CollectMediaPlanItem): RightsDraft {
@@ -272,6 +279,7 @@ watch(
     verified.value = undefined;
     error.value = "";
     operation.value = "";
+    coverageBusy.value = false;
     emit("busy", false);
   },
 );
@@ -279,6 +287,7 @@ watch(
 onBeforeUnmount(() => {
   generation++;
   controller?.abort();
+  coverageBusy.value = false;
   emit("busy", false);
 });
 </script>
@@ -297,7 +306,7 @@ onBeforeUnmount(() => {
     <p class="collect-privacy">{{ t("app.collect.privacy") }}</p>
 
     <div class="collect-options">
-      <fieldset :disabled="disabled || operation !== ''">
+      <fieldset :disabled="controlsDisabled || operation !== ''">
         <legend>{{ t("app.collect.scope") }}</legend>
         <label>
           <input v-model="scope" type="radio" value="current-film" />
@@ -322,7 +331,7 @@ onBeforeUnmount(() => {
         <select
           id="collect-composition"
           v-model="compositionId"
-          :disabled="disabled || operation !== ''"
+          :disabled="controlsDisabled || operation !== ''"
           data-testid="collect-composition"
         >
           <option
@@ -343,7 +352,7 @@ onBeforeUnmount(() => {
         <select
           id="collect-format"
           v-model="format"
-          :disabled="disabled || operation !== ''"
+          :disabled="controlsDisabled || operation !== ''"
           data-testid="collect-format"
         >
           <option value="zip">{{ t("app.collect.zip") }}</option>
@@ -356,7 +365,7 @@ onBeforeUnmount(() => {
       <button
         class="primary"
         :disabled="
-          disabled ||
+          controlsDisabled ||
           operation !== '' ||
           (scope === 'current-film' && !compositionId)
         "
@@ -381,6 +390,15 @@ onBeforeUnmount(() => {
       }}</span>
     </div>
 
+    <CollectCoverageReview
+      :request="{
+        ...input(),
+        projectId: project.id,
+        ...(planCurrent && plan ? { expectedRevision: plan.revision } : {}),
+      }"
+      :disabled="disabled || operation !== ''"
+      @busy="coverageActivity"
+    />
     <p v-if="error" class="collect-error" role="alert">{{ error }}</p>
 
     <template v-if="plan">
@@ -437,7 +455,7 @@ onBeforeUnmount(() => {
           </ul>
           <fieldset
             class="collect-rights"
-            :disabled="disabled || operation !== ''"
+            :disabled="controlsDisabled || operation !== ''"
           >
             <legend>{{ t("app.collect.rights") }}</legend>
             <label class="collect-confirm">

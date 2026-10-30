@@ -9,6 +9,7 @@ import {
   errorInfo,
   validateFilmLook,
   createExportProfile,
+  validateCollectDeliveryOptions,
   type ExportRatio,
   type ExportFraming,
   type FilmLook,
@@ -102,6 +103,7 @@ Usage:
   openfilm versions delete <version-id> --project <film.openfilm> --base-revision <sha256> --confirm
   openfilm versions restore <version-id> --project <film.openfilm> --base-revision <sha256> --request-id <uuid> --confirm
   openfilm collect plan --project <film.openfilm> --scope current-film|entire-project [--composition <id>] [--rights <declarations.json>]
+  openfilm collect coverage --project <film.openfilm> --scope current-film|entire-project [--composition <id> --delivery-mode originals|trimmed-originals|offline-proxies --handles 2 --base-revision <sha256>] (read-only planning)
   openfilm collect create --project <film.openfilm> --scope current-film|entire-project --plan-id <sha256> --base-revision <sha256> --format directory|zip --destination <new-path> [--composition <id>] [--rights <declarations.json>]
   openfilm collect verify --project <film.openfilm> --package <directory-or-zip>
   openfilm serve [--project <film.openfilm>] [--port 4310]
@@ -240,6 +242,8 @@ function parse(args: string[]) {
     "jobs",
     "quota-bytes",
     "fingerprint",
+    "delivery-mode",
+    "handles",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -449,6 +453,15 @@ async function sourceManifestFile(
 async function main() {
   const { positional, options } = parse(process.argv.slice(2));
   const command = positional[0];
+  if (
+    (Object.hasOwn(options, "delivery-mode") ||
+      Object.hasOwn(options, "handles")) &&
+    !(command === "collect" && positional[1] === "coverage")
+  )
+    throw new ApplicationError(
+      "request.invalid",
+      "Delivery options require read-only collect coverage; package creation still includes full originals.",
+    );
   if (options.version) {
     console.log(`OpenFilm ${packageInfo.version}`);
     return;
@@ -519,6 +532,7 @@ async function main() {
   // Deriving exports must not save the source project or recover other jobs.
   const app =
     command === "proxy" ||
+    (command === "collect" && positional[1] === "coverage") ||
     command === "captions" ||
     command === "handoff" ||
     command === "export" ||
@@ -658,7 +672,26 @@ async function main() {
           ...(compositionId ? { compositionId } : {}),
           ...(rightsDeclarations ? { rightsDeclarations } : {}),
         } as const;
-        if (action === "plan") {
+        if (action === "coverage") {
+          const delivery = validateCollectDeliveryOptions({
+            version: 1,
+            mode: value(options, "delivery-mode") ?? "trimmed-originals",
+            handlesSeconds: Number(value(options, "handles") ?? 2),
+          });
+          print(
+            await app.collectMedia.coverage(
+              {
+                ...base,
+                projectId: app.project.id,
+                delivery,
+                ...(value(options, "base-revision") === undefined
+                  ? {}
+                  : { expectedRevision: value(options, "base-revision") }),
+              },
+              controller.signal,
+            ),
+          );
+        } else if (action === "plan") {
           print(await app.collectMedia.plan(base, controller.signal));
         } else if (action === "create") {
           const planId = value(options, "plan-id");

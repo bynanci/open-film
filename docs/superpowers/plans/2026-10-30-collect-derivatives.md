@@ -50,10 +50,10 @@ and evidence-bound asset IDs; captured classification belongs to Task2.
 
 ## Task 2 — Shared review and execution eligibility
 
-- [ ] Bind application plan to baseline Collect ID, saved revision and hashes.
-- [ ] Add project-fenced CLI/API and review UI over the same owner, with quality
+- [x] Bind application plan to baseline Collect ID, saved revision and hashes.
+- [x] Add project-fenced CLI/API and review UI over the same owner, with quality
       disclosure, explicit accept and stale handling. No speculative Create.
-- [ ] Review source-clock/catalog conversion; keep opaque evidence on originals
+- [x] Review source-clock/catalog conversion; keep opaque evidence on originals
       until a complete typed mapping preserves immutable provenance.
 
 ## Task 3 — Actual derivatives and portable v2 publication

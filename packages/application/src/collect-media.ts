@@ -43,11 +43,15 @@ import {
   type OpenFilmProject,
   type TitleStyle,
   frameAlignedDuration,
+  validateCollectDeliveryOptions,
+  type CollectCoveragePlanV1,
+  type CollectDeliveryOptionsV1,
 } from "@openfilm/core";
 import {
   CATALOG_SCHEMA_VERSION,
   createPortableCatalogSnapshot,
   inspectCatalogSnapshot,
+  inspectCollectSourceClockAssets,
 } from "@openfilm/catalog";
 import {
   checkAbort,
@@ -64,6 +68,7 @@ import {
   writeStoredZip,
 } from "./collect-archive.js";
 import type { OpenFilmApplication } from "./index.js";
+import { planCollectCoverage } from "./collect-coverage.js";
 import {
   DirectoryPublicationRecoveryError,
   directoryPublicationUnavailable,
@@ -127,6 +132,16 @@ export interface CollectMediaPlan {
   complete: boolean;
   versionsIncluded: false;
   issues: { code: string; severity: "block" | "warning"; itemId?: string }[];
+}
+
+export interface CollectCoveragePlanInput extends CollectPlanInput {
+  projectId: string;
+  delivery: CollectDeliveryOptionsV1;
+  expectedRevision?: string;
+}
+export interface CollectCoverageReview {
+  baseline: CollectMediaPlan;
+  coverage: CollectCoveragePlanV1;
 }
 
 export interface CollectMediaCreateInput extends CollectPlanInput {
@@ -1544,6 +1559,137 @@ async function hashAllPackageFiles(
 /** Shared local-first collection service; Desktop, HTTP and CLI call this object. */
 export class CollectMediaService {
   constructor(private readonly app: OpenFilmApplication) {}
+
+  /** A source-clock review cannot authorize execution or silently retime evidence. */
+  async coverage(
+    input: CollectCoveragePlanInput,
+    signal?: AbortSignal,
+  ): Promise<CollectCoverageReview> {
+    checkAbortAndStatus(signal);
+    const data = plain(input, "Collect coverage");
+    if (
+      Object.keys(data).some(
+        (key) =>
+          ![
+            "scope",
+            "compositionId",
+            "rightsDeclarations",
+            "projectId",
+            "delivery",
+            "expectedRevision",
+          ].includes(key),
+      )
+    )
+      fail("request.invalid", "Collect coverage contains an unknown field.");
+    const delivery = validateCollectDeliveryOptions(data.delivery);
+    const projectId = safeIdentifier(data.projectId, "Project ID");
+    if (projectId !== this.app.project.id)
+      fail(
+        "story.planStale",
+        "Collect coverage belongs to another project.",
+        409,
+      );
+    if (
+      data.expectedRevision !== undefined &&
+      (typeof data.expectedRevision !== "string" ||
+        !SHA_PATTERN.test(data.expectedRevision))
+    )
+      fail(
+        "request.invalid",
+        "Collect coverage requires a complete revision identity.",
+      );
+    const planInput: CollectPlanInput = {
+      scope: input.scope,
+      ...(input.compositionId === undefined
+        ? {}
+        : { compositionId: input.compositionId }),
+      ...(input.rightsDeclarations === undefined
+        ? {}
+        : { rightsDeclarations: input.rightsDeclarations }),
+    };
+    const normalized = validatePlanInput(planInput);
+    if (
+      data.expectedRevision !== undefined &&
+      this.capture().revision !== data.expectedRevision
+    )
+      fail(
+        "story.planStale",
+        "Saved project changed before coverage review.",
+        409,
+      );
+    const baseline = await this.plan(planInput, signal);
+    checkAbortAndStatus(signal);
+    const captured = this.capture();
+    if (
+      captured.revision !== baseline.revision ||
+      (data.expectedRevision !== undefined &&
+        data.expectedRevision !== baseline.revision)
+    )
+      fail(
+        "story.planStale",
+        "Saved project changed during coverage review.",
+        409,
+      );
+    const selected = this.selected(captured, normalized);
+    const ids = new Set(selected.assetIds);
+    const opaqueGraph = selected.project.stories.some((story) =>
+      story.graph?.edges.some(
+        (edge) => edge.metadata && Object.keys(edge.metadata).length > 0,
+      ),
+    );
+    const evidence = new Set(
+      inspectCollectSourceClockAssets(
+        captured.catalog,
+        CATALOG_SCHEMA_VERSION,
+        selected.assetIds,
+      ),
+    );
+    const technicalMetadata = new Set([
+      "openfilm.reference",
+      "openfilm.managedSource",
+      "openfilm.importPipeline",
+      "openfilm.preview",
+      "openfilm.ffprobe",
+      "openfilm.color",
+      "openfilm.timestamp",
+      "openfilm.filesystem",
+      "openfilm.exif",
+      "openfilm.metadata.exiftoolAvailable",
+      "openfilm.pixel",
+      "openfilm.insta360",
+    ]);
+    const items = new Map(
+      baseline.items.map((item) => [item.resourceId, item]),
+    );
+    const assets = captured.assets
+      .filter((asset) => ids.has(asset.id))
+      .map((asset) => {
+        if (
+          Object.keys(asset.metadata).some((key) => !technicalMetadata.has(key))
+        )
+          evidence.add(asset.id);
+        const item = items.get(`asset:${asset.id}`);
+        return {
+          ...asset,
+          contentHash: item?.issues.some((code) => code.startsWith("source."))
+            ? undefined
+            : item?.sha256,
+        };
+      });
+    return {
+      baseline,
+      coverage: planCollectCoverage({
+        projectId,
+        revision: baseline.revision,
+        baselinePlanId: baseline.id,
+        options: delivery,
+        assets,
+        compositions: selected.project.timelines,
+        opaqueAssetIds: opaqueGraph ? selected.assetIds : [],
+        evidenceBoundAssetIds: [...evidence],
+      }),
+    };
+  }
 
   private capture(): CapturedProject {
     if (this.app.hasActiveJobs)

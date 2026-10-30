@@ -1,3 +1,4 @@
+import collectDelivery from "../modules/collect-delivery/en-US";
 import proxyStorage from "../modules/proxy-storage/en-US";
 import nleHandoff from "../modules/nle-handoff/en-US";
 import cutDesk from "../modules/cut-desk/en-US";
@@ -15,6 +16,7 @@ import system from "./system-en-US";
 import motion from "../modules/motion/en-US";
 
 export default {
+  ...collectDelivery,
   ...proxyStorage,
   ...cutDesk,
   ...motion,

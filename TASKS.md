@@ -160,6 +160,14 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
       with derivative provenance, handles, relocation/reopen, decoded
       picture/audio/time parity against the original project baseline and
       explicit quality disclosure.
+  - [x] Read-only delivery/coverage contract, saved baseline/hash/revision capture,
+        portable-clock protection and shared CLI/API/three-locale review UI.
+        [Checkpoint evidence](docs/validation-collect-coverage.md); Create remains
+        full-original v1.
+  - [ ] Generate/verify actual derivatives, piecewise clock receipts and v2
+        directory/ZIP relocation against the original decoded baseline.
+  - [ ] Complete explicit offline acceptance/output disclosure, full gates and
+        independent review before marking D6B delivery complete.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
   controls and focused Windows/macOS render evidence.

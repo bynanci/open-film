@@ -160,6 +160,8 @@ export {
   type CollectMediaCreateInput,
   type CollectMediaCreateResult,
   type CollectMediaPlan,
+  type CollectCoveragePlanInput,
+  type CollectCoverageReview,
   type CollectPlanInput,
   type CollectMediaPlanItem,
   type CollectMediaScope,
