@@ -12,6 +12,7 @@ const bounds = [
   ["photoDepth.alphaChannelError", "rgb-channel-units", "lte", 8],
   ["filmLook.channelError", "rgb-channel-units", "lte", 3],
   ["filmLook.losslessChannelError", "rgb-channel-units", "lte", 1],
+  ["title.highDetailGlyphChannelError", "rgb-channel-units", "lte", 8],
   ["cutDesk.channelError", "rgb-channel-units", "lte", 12],
   ["cutDesk.primaryAmplitudeError", "linear-peak-amplitude", "lt", 0.006],
   ["cutDesk.overlayAmplitudeError", "linear-peak-amplitude", "lt", 0.004],

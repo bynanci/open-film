@@ -20,6 +20,7 @@ export const renderQaPolicy = Object.freeze({
   "photoDepth.alphaChannelError": bound("rgb-channel-units", "lte", 8),
   "filmLook.channelError": bound("rgb-channel-units", "lte", 3),
   "filmLook.losslessChannelError": bound("rgb-channel-units", "lte", 1),
+  "title.highDetailGlyphChannelError": bound("rgb-channel-units", "lte", 8),
   "cutDesk.channelError": bound("rgb-channel-units", "lte", 12),
   "cutDesk.pts": { kind: "closeTo", unit: "seconds", digits: 6 },
   "cutDesk.primaryAmplitudeError": bound("linear-peak-amplitude", "lt", 0.006),
