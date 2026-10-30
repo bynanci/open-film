@@ -675,3 +675,21 @@ idempotency protect cancellation, retries and project changes. No profile field
 is written into project settings or composition history. See the
 [Export Profile contract](export-profiles.md) and
 [validation](validation-export-profiles.md).
+
+## D6A managed preview storage
+
+`ProxyCacheService` owns the existing generator's queue, source snapshot/hash
+fences, private artifact receipts, policy and maintenance. The catalog's existing
+Job table stores versioned operational task metadata; project schema and catalog
+version are unchanged. Private sidecars/preferred pointers survive a Named
+Version restoring older jobs while canonical assets and editing history stay
+unchanged. Derivation identity survives relocation; publication also fences the
+current source locator, owner and generation.
+
+Library, CLI and HTTP share the service. Background HTTP worker tickets are
+bounded transport state, with durable per-source jobs underneath. Read leases
+span verified managed media streaming; cleanup and read registration share the
+catalog write boundary. Cleanup requires provenance, an available original and
+unchanged policy/protection/file identities. Actual output always uses original
+media. See [validation](validation-proxy-storage.md) and the
+[design](superpowers/specs/2026-10-30-proxy-storage-design.md).

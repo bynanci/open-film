@@ -451,6 +451,8 @@ export interface Job {
   analysisOwner?: ReviewExecutionOwner;
   /** Durable, project-local attempt state; removed from portable project packages. */
   attempt?: import("./multi-source.js").JobAttempt;
+  /** Project-private preview preparation; excluded from portable catalogs. */
+  proxyCache?: import("./proxy-cache.js").ProxyCacheTask;
   errors?: {
     uri: string;
     stage: string;

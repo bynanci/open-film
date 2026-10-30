@@ -1,3 +1,4 @@
+import proxyStorage from "../modules/proxy-storage/en-US";
 import nleHandoff from "../modules/nle-handoff/en-US";
 import cutDesk from "../modules/cut-desk/en-US";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
@@ -14,6 +15,7 @@ import system from "./system-en-US";
 import motion from "../modules/motion/en-US";
 
 export default {
+  ...proxyStorage,
   ...cutDesk,
   ...motion,
 

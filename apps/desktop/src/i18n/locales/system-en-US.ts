@@ -42,6 +42,15 @@ export default {
       notRunning:
         "This task has already finished. Refresh Activity to see its result.",
     },
+    proxy: {
+      quotaExceeded:
+        "Managed preview storage is full. Review cleanup or increase the preview quota.",
+      storageUnavailable:
+        "Preview storage is unavailable. Check drive access and try again.",
+      stale: "Preview storage changed. Refresh it and review the action again.",
+      protected:
+        "This preview is protected or in use. Keep its source online and review its protection before cleanup.",
+    },
     media: {
       notFound:
         "This memory is no longer in the library. Refresh the library to continue.",

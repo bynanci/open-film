@@ -25,3 +25,4 @@ export * from "./pipeline.js";
 export * from "./creative-variants.js";
 export * from "./multi-source.js";
 export * from "./travel.js";
+export * from "./proxy-cache.js";

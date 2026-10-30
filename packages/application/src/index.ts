@@ -11,6 +11,8 @@ export * from "./source-analysis.js";
 import { SourceAnalysisReviewService } from "./source-analysis-review.js";
 export * from "./source-analysis-review.js";
 export * from "./travel-evidence.js";
+import { ProxyCacheService } from "./proxy-cache.js";
+export * from "./proxy-cache.js";
 
 import { NleHandoffService, type HandoffRequest } from "./nle-handoff.js";
 import type { HandoffOptions } from "@openfilm/exporters";
@@ -131,7 +133,6 @@ import {
 } from "@openfilm/source-insta360";
 import {
   checkAbort,
-  createProxy,
   createThumbnail,
   FilesystemSource,
   hashFile,
@@ -257,6 +258,8 @@ export type {
   ScenePlanAcceptance,
 } from "./scene-plan.js";
 export type OpenFilmRuntimeOptions = KnowledgeOptions & {
+  /** Trusted host-only media boundary; project/HTTP data cannot supply code. */
+  proxyGenerator?: typeof import("@openfilm/media").createProxy;
   audioGenerationProvider?: AudioGenerationProvider;
   motionGenerationProvider?: MotionGenerationProvider;
   motionGenerationTimeoutMs?: number;
@@ -378,6 +381,7 @@ export class OpenFilmApplication {
   readonly sourceBatches: SourceBatchService;
   readonly sourceAnalysis: SourceAnalysisService;
   readonly sourceAnalysisReview: SourceAnalysisReviewService;
+  readonly proxyCache: ProxyCacheService;
 
   readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
@@ -400,6 +404,23 @@ export class OpenFilmApplication {
     this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
     try {
+      const proxyProject = () => this.project;
+      this.proxyCache = new ProxyCacheService(
+        {
+          directory,
+          catalog: this.catalog,
+          get project() {
+            return proxyProject();
+          },
+          beginProxyWork: () => {
+            this.activeJobs++;
+          },
+          endProxyWork: () => {
+            this.activeJobs--;
+          },
+        },
+        runtime.proxyGenerator,
+      );
       this.sourceDraft = new SourceDraftService(directory, project.id);
       this.sourceDiscovery = new SourceDiscoveryService(
         this.sourceDraft,
@@ -630,6 +651,7 @@ export class OpenFilmApplication {
     try {
       application.repairMediaReferences();
       application.sourceAnalysis.recoverInterruptedAttempts();
+      application.proxyCache.recoverInterrupted();
       for (const job of application.catalog.listJobs()) {
         if (
           [
@@ -640,6 +662,7 @@ export class OpenFilmApplication {
             "waveform",
             "scenes",
             "analysis-run",
+            "proxy",
           ].includes(job.type)
         )
           continue;
@@ -1269,16 +1292,6 @@ export class OpenFilmApplication {
           "thumbnails",
           `${stem}.jpg`,
         );
-        const proxy = await safeProjectCachePath(
-          this.directory,
-          "proxies",
-          `${stem}.mp4`,
-        );
-        const audioProxy = await safeProjectCachePath(
-          this.directory,
-          "proxies",
-          `${stem}.mp3`,
-        );
         const derivedComplete =
           previous &&
           previous.metadata["openfilm.importPipeline"] === 2 &&
@@ -1286,7 +1299,7 @@ export class OpenFilmApplication {
           (options.proxies === false ||
             !["video", "360-video", "audio"].includes(previous.mediaType) ||
             (!!previous.proxyUri &&
-              existsSync(previous.mediaType === "audio" ? audioProxy : proxy)));
+              (await this.proxyCache.isAvailable(previous))));
         if (previous?.contentHash === originalHash && derivedComplete) {
           result.skipped++;
           return;
@@ -1379,21 +1392,28 @@ export class OpenFilmApplication {
           ["video", "360-video", "audio"].includes(asset.mediaType)
         ) {
           stage = "proxy";
-          const mediaProxy = asset.mediaType === "audio" ? audioProxy : proxy;
-          const extension = asset.mediaType === "audio" ? "mp3" : "mp4";
-          if (!existsSync(mediaProxy)) {
-            const temporary = await safeProjectCachePath(
-              this.directory,
-              "proxies",
-              `${stem}-${job.id}.partial.${extension}`,
+          try {
+            asset.proxyUri = await this.proxyCache.prepareImportedAsset(
+              asset,
+              options.signal,
             );
-            partials.push(temporary);
-            await createProxy(asset, temporary, options.signal);
-            await rename(temporary, mediaProxy);
+          } catch (error) {
+            checkAbort(options.signal);
+            if (
+              !(error instanceof ApplicationError) ||
+              error.code !== "proxy.quotaExceeded"
+            )
+              throw error;
+            // Preview capacity never discards an otherwise verified source.
+            // Its failed proxy task remains explicitly resumable after cleanup.
+            job.errors!.push({
+              uri: "",
+              stage: "proxy-pending",
+              code: error.code,
+              message:
+                "Original media imported; preview preparation is waiting for storage capacity.",
+            });
           }
-          asset.proxyUri = relative(this.directory, mediaProxy)
-            .split(sep)
-            .join("/");
         }
         stage = "index";
         checkAbort(options.signal);

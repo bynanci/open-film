@@ -3211,3 +3211,153 @@ label.ui-language {
     transition: none;
   }
 }
+
+/* Library preview storage follows the existing quiet, progressively disclosed tools. */
+.proxy-storage {
+  min-width: 0;
+  margin-block: var(--of-space-4);
+  border-block: 1px solid var(--of-border-subtle);
+  color: var(--of-text-secondary);
+}
+.proxy-storage > summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--of-space-2) var(--of-space-4);
+  padding-block: var(--of-space-3);
+  cursor: pointer;
+  color: var(--of-text-primary);
+}
+.proxy-storage > summary::before {
+  content: "›";
+  font-size: 1.1em;
+}
+.proxy-storage[open] > summary::before {
+  content: "⌄";
+}
+.proxy-storage-usage {
+  margin-inline-start: auto;
+  font-size: var(--of-font-small);
+  color: var(--of-text-muted);
+}
+.proxy-storage-body {
+  display: grid;
+  gap: var(--of-space-3);
+  padding-block: var(--of-space-2) var(--of-space-4);
+}
+.proxy-storage-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.proxy-storage progress {
+  width: 100%;
+  height: 4px;
+  accent-color: var(--of-accent);
+}
+.proxy-storage-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--of-space-2) var(--of-space-3);
+}
+.proxy-storage button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-height: 36px;
+}
+.proxy-storage-sources {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.proxy-storage-sources > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--of-space-2) var(--of-space-4);
+  padding-block: var(--of-space-3);
+  border-top: 1px solid var(--of-border-subtle);
+}
+.proxy-storage-source-name {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--of-text-primary);
+}
+.proxy-storage-source-status {
+  flex: 0 1 10rem;
+  overflow-wrap: anywhere;
+}
+.proxy-storage small {
+  display: block;
+  color: var(--of-text-muted);
+  font-size: var(--of-font-caption);
+}
+.proxy-storage-review {
+  padding: var(--of-space-4);
+  background: var(--of-surface-2);
+  border-radius: var(--of-radius-md);
+  display: grid;
+  gap: var(--of-space-3);
+}
+.proxy-storage-review h3 {
+  margin: 0;
+  font-size: var(--of-font-base);
+  color: var(--of-text-primary);
+}
+.proxy-storage-review ul {
+  margin: 0;
+  padding-inline-start: var(--of-space-5);
+  overflow-wrap: anywhere;
+}
+.proxy-storage-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--of-space-3);
+  min-height: 36px;
+}
+.proxy-storage-confirm input {
+  flex: 0 0 auto;
+  margin-block-start: 5px;
+}
+.proxy-storage-settings > summary {
+  cursor: pointer;
+  padding-block: var(--of-space-2);
+}
+.proxy-storage-settings form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+  padding-block: var(--of-space-3);
+}
+.proxy-storage-settings label {
+  display: grid;
+  gap: var(--of-space-2);
+  flex: 1 1 14rem;
+}
+.proxy-storage-settings input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+.proxy-storage-settings form p {
+  flex-basis: 100%;
+  font-size: var(--of-font-small);
+}
+.proxy-storage-warning {
+  color: var(--of-warning);
+}
+@media (max-width: 600px) {
+  .proxy-storage-usage {
+    flex-basis: 100%;
+    margin-inline-start: var(--of-space-4);
+  }
+  .proxy-storage-source-status {
+    flex: 1 1 8rem;
+  }
+}
+@media (pointer: coarse) {
+  .proxy-storage :is(button, summary, .proxy-storage-confirm) {
+    min-height: 44px;
+  }
+}

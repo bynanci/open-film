@@ -119,6 +119,13 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D6A managed preview storage (PR #64) implements a shared
+Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
+the existing proxy generator and keeps output on originals. Independent review
+corrections and 4464 local tests pass; exact Chromium/hosted merge gates are
+tracked in [validation](docs/validation-proxy-storage.md). D6B trimmed
+original/offline packages and physical installer gates remain separate.
+
 ## Released 0.4.0 source integration
 
 Release `v0.4.0` retains project schema 1.0.0. This maintenance pass hardens

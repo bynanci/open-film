@@ -637,6 +637,8 @@ export interface ServerOptions {
   languageProvider?: LanguageProvider;
   /** Trusted host registration only; an HTTP request can never install a provider. */
   visionSampleProviders?: VisionSampleProvider[];
+  /** Trusted runtime dependency only; never accepted from HTTP or projects. */
+  proxyGenerator?: typeof import("@openfilm/media").createProxy;
   /** Bounded lifetime for consented external GraphicScene proposals. */
   graphicSceneAgentProviderTimeoutMs?: number;
 }
@@ -655,6 +657,7 @@ export async function startServer(options: ServerOptions = {}) {
     userDataDirectory: resolveUserDataDirectory(options.userDataDirectory),
     languageProvider: options.languageProvider,
     visionSampleProviders: options.visionSampleProviders,
+    proxyGenerator: options.proxyGenerator,
   };
   const configure = (application: OpenFilmApplication) => {
     if (options.transcriptionProvider)
@@ -679,6 +682,19 @@ export async function startServer(options: ServerOptions = {}) {
       await OpenFilmApplication.open(resolve(options.project), runtimeOptions),
     );
   const active = new Map<string, AbortController>();
+  const proxyOperations = new Map<
+    string,
+    { projectId: string; controller: AbortController }
+  >();
+  const proxyWorkers = new Map<
+    string,
+    {
+      id: string;
+      status: "running" | "completed" | "failed" | "cancelled";
+      error?: { code: ApplicationErrorCode };
+      result?: { completed: number; failed: number; cancelled: number };
+    }
+  >();
   const sourceDiscoveryControllers = new Set<AbortController>();
   const browserDiscoveryControllers = new Map<string, AbortController>();
   const browserDiscoveryTimers = new Map<
@@ -758,7 +774,7 @@ export async function startServer(options: ServerOptions = {}) {
   };
   const tasks = new Set<Promise<unknown>>();
   const requireIdleProject = () => {
-    if (hasActiveProjectWork())
+    if (hasActiveProjectWork() || proxyOperations.size || app?.hasActiveJobs)
       throw new HttpError(
         409,
         "Wait for running jobs and source scans before switching or closing this project.",
@@ -785,6 +801,19 @@ export async function startServer(options: ServerOptions = {}) {
   let mutationQueue = Promise.resolve();
   let closing = false;
   const mediaStreams = new Map<AbortController, Promise<void>>();
+  const trackedMediaRead = (read: (signal: AbortSignal) => Promise<void>) => {
+    const controller = new AbortController();
+    if (closing) controller.abort();
+    const task = Promise.resolve()
+      .then(() => read(controller.signal))
+      .finally(() => mediaStreams.delete(controller));
+    mediaStreams.set(controller, task);
+    return task;
+  };
+  const cancelMediaReads = async () => {
+    for (const controller of mediaStreams.keys()) controller.abort();
+    await Promise.allSettled(mediaStreams.values());
+  };
   const streamFile = (
     request: IncomingMessage,
     response: ServerResponse,
@@ -887,7 +916,8 @@ export async function startServer(options: ServerOptions = {}) {
         const method = request.method;
         const cancellation =
           method === "POST" &&
-          /^\/api\/(?:jobs|analysis-runs)\/[^/]+\/cancel$/.test(route);
+          (/^\/api\/(?:jobs|analysis-runs)\/[^/]+\/cancel$/.test(route) ||
+            route === "/api/proxy-cache/cancel");
         const nonMutatingGraphicAgentPreview =
           method === "POST" &&
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
@@ -911,7 +941,9 @@ export async function startServer(options: ServerOptions = {}) {
           route !== "/api/projects/availability"
         ) {
           if (
-            hasActiveProjectWork() &&
+            (hasActiveProjectWork() ||
+              proxyOperations.size ||
+              app?.hasActiveJobs) &&
             [
               "/api/project/create",
               "/api/project/open",
@@ -1083,6 +1115,7 @@ export async function startServer(options: ServerOptions = {}) {
         if (method === "POST" && route === "/api/project/close") {
           requireIdleProject();
           await discardUploads();
+          await cancelMediaReads();
           // A caption GET can capture this project during upload cleanup.
           // Recheck immediately before close; do not await after this guard.
           requireIdleProject();
@@ -1126,6 +1159,7 @@ export async function startServer(options: ServerOptions = {}) {
               : resolve(filePath(data, "path"));
           const previousPath = app?.directory;
           await discardUploads();
+          await cancelMediaReads();
           requireIdleProject();
           cancelGraphicSceneAgentPreviews();
           app?.close();
@@ -1152,6 +1186,215 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
+        if (route === "/api/proxy-cache" && method === "GET") {
+          const health = await application.proxyCache.health({
+            projectId: url.searchParams.get("projectId") ?? "",
+            offset: url.searchParams.has("offset")
+              ? Number(url.searchParams.get("offset"))
+              : undefined,
+            limit: url.searchParams.has("limit")
+              ? Number(url.searchParams.get("limit"))
+              : undefined,
+          });
+          json(response, 200, {
+            health,
+            worker: proxyWorkers.get(application.project.id),
+          });
+          return;
+        }
+        if (
+          route.startsWith("/api/proxy-cache/") &&
+          (method === "POST" || method === "PATCH")
+        ) {
+          const data = await body(request);
+          const projectId = text(data, "projectId");
+          if (projectId !== application.project.id || app !== application)
+            throw new HttpError(
+              409,
+              "The preview request belongs to another project.",
+              "proxy.stale",
+            );
+          type Cache = typeof application.proxyCache;
+          if (method === "POST" && route === "/api/proxy-cache/cancel") {
+            keys(data, ["projectId", "jobIds"]);
+            const jobs = application.proxyCache.cancel({
+              ...data,
+              projectId,
+              jobIds:
+                data.jobIds === undefined ? undefined : paths(data, "jobIds"),
+            });
+            if (data.jobIds === undefined)
+              for (const operation of proxyOperations.values())
+                if (operation.projectId === projectId)
+                  operation.controller.abort();
+            json(response, 200, { jobs });
+            return;
+          }
+          if (method === "POST" && route === "/api/proxy-cache/queue") {
+            json(response, 202, {
+              jobs: application.proxyCache.enqueue({
+                ...data,
+                projectId,
+                requestId: text(data, "requestId"),
+                assetIds: paths(data, "assetIds"),
+              }),
+            });
+            return;
+          }
+          if (method === "POST" && route === "/api/proxy-cache/resume") {
+            json(response, 202, {
+              jobs: application.proxyCache.resume({
+                ...data,
+                projectId,
+                requestId: text(data, "requestId"),
+                jobIds: paths(data, "jobIds"),
+              }),
+            });
+            return;
+          }
+          if (method === "POST" && route === "/api/proxy-cache/run") {
+            keys(data, ["projectId"]);
+            const previous = proxyWorkers.get(projectId);
+            if (previous?.status === "running") {
+              json(response, 202, { worker: previous, started: false });
+              return;
+            }
+            if (
+              hasActiveProjectWork() ||
+              application.proxyCache.isRunning ||
+              proxyOperations.size
+            )
+              throw new HttpError(
+                409,
+                "Wait for the current preview or import operation.",
+              );
+            const id = randomUUID();
+            const controller = new AbortController();
+            const worker: {
+              id: string;
+              status: "running" | "completed" | "failed" | "cancelled";
+              error?: { code: ApplicationErrorCode };
+              result?: { completed: number; failed: number; cancelled: number };
+            } = { id, status: "running" };
+            while (proxyWorkers.size >= 32)
+              proxyWorkers.delete(proxyWorkers.keys().next().value!);
+            proxyWorkers.set(projectId, worker);
+            proxyOperations.set(id, { projectId, controller });
+            const task = Promise.resolve()
+              .then(() =>
+                application.proxyCache.runPending({
+                  projectId,
+                  signal: controller.signal,
+                }),
+              )
+              .then(
+                (result) => {
+                  worker.result = result;
+                  worker.status = result.failed
+                    ? "failed"
+                    : result.cancelled || controller.signal.aborted
+                      ? "cancelled"
+                      : "completed";
+                  if (result.failed)
+                    worker.error = { code: "media.previewUnavailable" };
+                },
+                (error: unknown) => {
+                  worker.status = controller.signal.aborted
+                    ? "cancelled"
+                    : "failed";
+                  worker.error = {
+                    code: errorInfo(error, "media.previewUnavailable").code,
+                  };
+                },
+              )
+              .finally(() => {
+                proxyOperations.delete(id);
+                tasks.delete(task);
+              });
+            tasks.add(task);
+            json(response, 202, { worker, started: true });
+            return;
+          }
+          if (
+            hasActiveProjectWork() ||
+            application.proxyCache.isRunning ||
+            proxyOperations.size
+          )
+            throw new HttpError(
+              409,
+              "Wait for the current preview operation before maintaining its cache.",
+            );
+          if (method === "PATCH" && route === "/api/proxy-cache/policy") {
+            json(response, 200, {
+              policy: await application.proxyCache.setPolicy(
+                data as Parameters<Cache["setPolicy"]>[0],
+              ),
+            });
+            return;
+          }
+          if (method === "POST" && route === "/api/proxy-cache/recover") {
+            json(response, 200, {
+              recovered: application.proxyCache.recover(
+                data as Parameters<Cache["recover"]>[0],
+              ),
+            });
+            return;
+          }
+          const maintenance = new Map<string, () => Promise<unknown>>([
+            [
+              "/api/proxy-cache/verify",
+              () =>
+                application.proxyCache.verify({
+                  ...data,
+                  signal: controller.signal,
+                } as Parameters<Cache["verify"]>[0]),
+            ],
+            [
+              "/api/proxy-cache/cleanup/preview",
+              () =>
+                application.proxyCache.previewCleanup({
+                  ...data,
+                  signal: controller.signal,
+                } as Parameters<Cache["previewCleanup"]>[0]),
+            ],
+            [
+              "/api/proxy-cache/cleanup/accept",
+              () =>
+                application.proxyCache.acceptCleanup({
+                  ...data,
+                  signal: controller.signal,
+                } as Parameters<Cache["acceptCleanup"]>[0]),
+            ],
+          ]);
+          const operation =
+            method === "POST" ? maintenance.get(route) : undefined;
+          if (!operation)
+            throw new HttpError(404, "Preview operation was not found.");
+          if (Object.hasOwn(data, "signal"))
+            throw new HttpError(
+              400,
+              "Request cancellation must use the cancel action.",
+            );
+          const id = randomUUID();
+          const controller = new AbortController();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          proxyOperations.set(id, { projectId, controller });
+          releaseMutation?.();
+          releaseMutation = undefined;
+          const task = Promise.resolve().then(operation);
+          tasks.add(task);
+          try {
+            json(response, 200, { result: await task });
+          } finally {
+            proxyOperations.delete(id);
+            tasks.delete(task);
+            response.off("close", disconnected);
+          }
+          return;
+        }
         if (route === "/api/import-batches/progress" && method === "GET") {
           const requestId = url.searchParams.get("requestId") ?? "";
           const state = sourceBatchProgress.get(requestId);
@@ -3714,73 +3957,145 @@ export async function startServer(options: ServerOptions = {}) {
               "media.previewUnavailable",
               { name: asset.name },
             );
-          const derivedUri = needsImagePreview
-            ? asset.thumbnailUri
-            : ["video", "audio"].includes(asset.mediaType)
-              ? asset.proxyUri
+          await trackedMediaRead(async (signal) => {
+            const managed = ["video", "audio"].includes(asset.mediaType)
+              ? await application.proxyCache
+                  .acquirePreview(asset, signal)
+                  .catch((error: unknown) => {
+                    if (
+                      !signal.aborted &&
+                      ((error instanceof ApplicationError &&
+                        error.status === 409 &&
+                        [
+                          "media.previewUnavailable",
+                          "proxy.storageUnavailable",
+                        ].includes(error.code)) ||
+                        (error as NodeJS.ErrnoException).code === "ENOENT")
+                    )
+                      return undefined;
+                    throw error;
+                  })
               : undefined;
-          const useProxy = !!derivedUri;
-          const file = derivedUri
-            ? derivedUri.startsWith("file:")
-              ? fileURLToPath(derivedUri)
-              : resolve(application.directory, derivedUri)
-            : fileURLToPath(asset.uri);
-          if (!useProxy && (asset.hdr || asset.codec === "hevc"))
-            throw new HttpError(
-              422,
-              "A compatible preview proxy is required for this HDR/HEVC source. Import it again with proxies enabled.",
-              "media.previewUnavailable",
-              { name: asset.name },
-            );
-          const mime = (
-            {
-              ".jpg": "image/jpeg",
-              ".jpeg": "image/jpeg",
-              ".png": "image/png",
-              ".webp": "image/webp",
-              ".gif": "image/gif",
-              ".bmp": "image/bmp",
-              ".mp4": "video/mp4",
-              ".m4v": "video/mp4",
-              ".mov": "video/quicktime",
-              ".webm": "video/webm",
-              ".mp3": "audio/mpeg",
-              ".wav": "audio/wav",
-              ".m4a": "audio/mp4",
-              ".ogg": "audio/ogg",
-              ".opus": "audio/ogg",
-              ".flac": "audio/flac",
-              ".aac": "audio/aac",
-            } as Record<string, string>
-          )[extname(file).toLowerCase()];
-          if (!mime)
-            throw new HttpError(
-              422,
-              "This source format needs a compatible preview. Import it again with proxies enabled, or add a JPEG, MP4 or MP3 copy.",
-            );
-          try {
-            // The path comes exclusively from this project's catalog, never a request path.
-            await streamFile(
-              request,
-              response,
-              file,
-              useProxy
-                ? resolve(application.directory, "cache")
-                : dirname(file),
-              mime,
-            );
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "ENOENT")
-              throw new HttpError(
-                404,
-                useProxy
-                  ? "Preview proxy missing: import this media again to rebuild its cached preview."
-                  : "Missing Media: reconnect the disk or relink this source.",
-                useProxy ? "media.previewUnavailable" : "media.missing",
-                { name: asset.name },
+            try {
+              const catalogProxy = asset.proxyUri;
+              const catalogPreviewPath = catalogProxy
+                ? catalogProxy.startsWith("file:")
+                  ? fileURLToPath(catalogProxy)
+                  : resolve(application.directory, catalogProxy)
+                : undefined;
+              const inManagedNamespace = (candidate: string) =>
+                ["cache/proxies/managed", "cache/proxy-manager"].some(
+                  (path) => {
+                    const child = relative(
+                      resolve(application.directory, path),
+                      candidate,
+                    );
+                    return (
+                      !child ||
+                      (!isAbsolute(child) &&
+                        child !== ".." &&
+                        !child.startsWith(
+                          `..${process.platform === "win32" ? "\\" : "/"}`,
+                        ))
+                    );
+                  },
+                );
+              let managedNamespace =
+                !!catalogPreviewPath && inManagedNamespace(catalogPreviewPath);
+              if (
+                !managed &&
+                catalogPreviewPath &&
+                !managedNamespace &&
+                ["video", "audio"].includes(asset.mediaType)
+              ) {
+                try {
+                  const info = await lstat(catalogPreviewPath);
+                  // Legacy aliases must not bypass managed verification or read leases.
+                  managedNamespace =
+                    !info.isFile() ||
+                    info.nlink !== 1 ||
+                    inManagedNamespace(await realpath(catalogPreviewPath));
+                } catch (error) {
+                  if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+                    throw error;
+                }
+              }
+              const derivedUri = needsImagePreview
+                ? asset.thumbnailUri
+                : ["video", "audio"].includes(asset.mediaType)
+                  ? (managed?.uri ??
+                    (managedNamespace ? undefined : catalogProxy))
+                  : undefined;
+              const useProxy = !!derivedUri;
+              const file = derivedUri
+                ? derivedUri.startsWith("file:")
+                  ? fileURLToPath(derivedUri)
+                  : resolve(application.directory, derivedUri)
+                : fileURLToPath(asset.uri);
+              if (!useProxy && (asset.hdr || asset.codec === "hevc"))
+                throw new HttpError(
+                  422,
+                  "A compatible preview proxy is required for this HDR/HEVC source. Import it again with proxies enabled.",
+                  "media.previewUnavailable",
+                  { name: asset.name },
+                );
+              const mime = (
+                {
+                  ".jpg": "image/jpeg",
+                  ".jpeg": "image/jpeg",
+                  ".png": "image/png",
+                  ".webp": "image/webp",
+                  ".gif": "image/gif",
+                  ".bmp": "image/bmp",
+                  ".mp4": "video/mp4",
+                  ".m4v": "video/mp4",
+                  ".mov": "video/quicktime",
+                  ".webm": "video/webm",
+                  ".mp3": "audio/mpeg",
+                  ".wav": "audio/wav",
+                  ".m4a": "audio/mp4",
+                  ".ogg": "audio/ogg",
+                  ".opus": "audio/ogg",
+                  ".flac": "audio/flac",
+                  ".aac": "audio/aac",
+                } as Record<string, string>
+              )[extname(file).toLowerCase()];
+              if (!mime)
+                throw new HttpError(
+                  422,
+                  "This source format needs a compatible preview. Import it again with proxies enabled, or add a JPEG, MP4 or MP3 copy.",
+                );
+              response.setHeader(
+                "X-OpenFilm-Preview",
+                managed ? "managed" : useProxy ? "legacy" : "original",
               );
-            throw error;
-          }
+              try {
+                // The path comes exclusively from this project's catalog, never a request path.
+                await streamFile(
+                  request,
+                  response,
+                  file,
+                  useProxy
+                    ? resolve(application.directory, "cache")
+                    : dirname(file),
+                  mime,
+                );
+              } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "ENOENT")
+                  throw new HttpError(
+                    404,
+                    useProxy
+                      ? "Preview proxy missing: import this media again to rebuild its cached preview."
+                      : "Missing Media: reconnect the disk or relink this source.",
+                    useProxy ? "media.previewUnavailable" : "media.missing",
+                    { name: asset.name },
+                  );
+                throw error;
+              }
+            } finally {
+              managed?.release();
+            }
+          });
           return;
         }
         const graphicPreview =
@@ -4613,6 +4928,14 @@ export async function startServer(options: ServerOptions = {}) {
             const job = application.catalog
               .listJobs()
               .find(({ id }) => id === decodeURIComponent(cancel[1]!));
+            if (job?.type === "proxy") {
+              application.proxyCache.cancel({
+                projectId: application.project.id,
+                jobIds: [job.id],
+              });
+              json(response, 200, { ok: true });
+              return;
+            }
             if (job?.attempt?.operationKind === "analysis-run") {
               application.sourceAnalysis.cancelRun({
                 projectId: application.project.id,
@@ -5587,6 +5910,8 @@ export async function startServer(options: ServerOptions = {}) {
     for (const controller of mediaStreams.keys()) controller.abort();
     const stopped = new Promise<void>((accept) => server.close(() => accept()));
     for (const controller of new Set(active.values())) controller.abort();
+    for (const operation of proxyOperations.values())
+      operation.controller.abort();
     await Promise.allSettled(tasks);
     await mutationQueue;
     await Promise.allSettled(mediaStreams.values());
