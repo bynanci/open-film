@@ -211,3 +211,47 @@ browser receipt retains its original source identity; this checkpoint launched
 no browser server. First fresh whole-branch C review and complete exact-head
 hosted gates remain coordinator-owned. This entry does not declare merge or
 release readiness.
+
+## 2026-10-30 — reviewed Apply isolation and private evidence expiry
+
+This correction follows the first complete C review of `dc3f7ae`. Its confirmed
+batch counterexample used actual FFmpeg evidence: validation ran against the
+saved document before a sibling command changed the measured context. Reviewed
+Apply now requires a single-command editor transaction, before mutation/history
+or persistence. Ordinary manual batches, later independent source replacement,
+Undo/Redo and exact acknowledged request replay retain their existing behavior.
+The separate inspector scope-initialization policy was not changed.
+
+Ten real-service regressions first failed for target/reference replacement,
+target/reference trim and reference correction, each in both command orders.
+They now reject atomically and preserve document, persisted bytes, source hashes
+and prior Undo/Redo history. Singleton reviewed Apply/retry after report discard,
+later replacement and an ordinary manual batch remain positive controls.
+
+Private reports now own an unreferenced expiry timer. At the original deadline,
+cleanup removes both the cached report and its private directory without another
+measurement. Expired access retries cleanup; discard and disposal clear timers.
+Deletion uses bounded filesystem retries. A failed deletion is reported and
+retains bounded cleanup ownership while permanently retiring the report, even
+if the wall clock moves backward. Disposal attempts every owned cleanup, clears
+all timers and reports failures; project close reports asynchronous failures.
+Controlled-clock tests use the real service and FFmpeg, with only clock controls
+and a narrow deletion-failure injection. They first exposed the missing expiry
+cleanup and clock-rollback reactivation, then passed without changing deadlines.
+
+Focused execution passes 13 files / 119 tests across primary core/solver,
+application editor/review/history/locks, HTTP/CLI, UI and real render behavior.
+The final service plus actual combined-photo selection passes 2 files / 25 tests,
+with zero failed/pending/todo cases in the captured JSON report. Its three
+synthetic MP4 cases retain the existing contain/diptych/moving-diptych checks:
+verified raw ambient/foreground receive primary then local Film Look once,
+with ungraded transformed separators and unchanged pixel limits/source hashes.
+The final exact-head focused execution and fresh source/artifact receipt are
+retained under `/tmp/openfilm-finishing-integration/C-final-fix/`; historical
+receipts keep their original identities.
+
+TypeScript/Vue, scoped ESLint, formatting, 2,889 localization keys and 133 English
+documentation mirrors pass. This correction launches no browser server; prior
+browser evidence remains attached to its original source checkpoint. Fresh
+scoped review and complete hosted gates remain coordinator-owned and pending.
+No full suite, native benchmark, hosted success or merge readiness is claimed.

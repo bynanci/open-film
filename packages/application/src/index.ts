@@ -1251,7 +1251,9 @@ export class OpenFilmApplication {
     } catch (error) {
       if (options.requireSave || !this.persistenceConflict) throw error;
     }
-    void this.primaryColorReview.dispose().catch(() => undefined);
+    void this.primaryColorReview.dispose().catch((error: unknown) => {
+      console.error("Primary color review close cleanup failed.", error);
+    });
     void this.motionGeneration.dispose().catch(() => undefined);
     this.graphics.close();
     this.textOverlays.close();

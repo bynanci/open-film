@@ -74,6 +74,9 @@ interface Cached {
   settings: string;
   uris: Map<string, string>;
   bytes: number;
+  retired?: boolean;
+  expiryTimer?: ReturnType<typeof setTimeout>;
+  cleanup?: Promise<void>;
 }
 const digest = (v: unknown) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
@@ -110,13 +113,52 @@ export class PrimaryColorReviewService {
   private running?: AbortController;
   private disposed = false;
   constructor(private readonly app: OpenFilmApplication) {}
+  private clearExpiry(cached: Cached) {
+    if (cached.expiryTimer !== undefined) clearTimeout(cached.expiryTimer);
+    cached.expiryTimer = undefined;
+  }
+  private async removeCached(cached: Cached): Promise<void> {
+    // Failed deletion must never make retired evidence usable again, including
+    // after a wall-clock adjustment. Retain ownership until cleanup succeeds.
+    cached.retired = true;
+    this.clearExpiry(cached);
+    if (!cached.cleanup)
+      cached.cleanup = rm(cached.root, {
+        recursive: true,
+        force: true,
+        maxRetries: 2,
+        retryDelay: 100,
+      })
+        .then(() => {
+          if (this.reports.get(cached.report.id) === cached)
+            this.reports.delete(cached.report.id);
+        })
+        .finally(() => {
+          cached.cleanup = undefined;
+        });
+    await cached.cleanup;
+  }
+  private scheduleExpiry(cached: Cached) {
+    cached.expiryTimer = setTimeout(
+      () => {
+        cached.expiryTimer = undefined;
+        void this.removeCached(cached).catch((error: unknown) => {
+          // Keep failed cleanup in the bounded report inventory for retry through
+          // access/discard/disposal, and report this background lifecycle failure.
+          console.error("Primary color review expiry cleanup failed.", error);
+        });
+      },
+      Math.max(0, Date.parse(cached.report.expiresAt) - Date.now()),
+    );
+    cached.expiryTimer.unref();
+  }
   private async assertCurrent(cached: Cached, signal?: AbortSignal) {
     signal?.throwIfAborted();
-    if (
-      this.disposed ||
-      Date.now() > Date.parse(cached.report.expiresAt) ||
-      this.app.project.id !== cached.report.projectId
-    )
+    if (cached.retired || Date.now() >= Date.parse(cached.report.expiresAt)) {
+      await this.removeCached(cached);
+      throw stale();
+    }
+    if (this.disposed || this.app.project.id !== cached.report.projectId)
       throw stale();
     const current = new TimelineEditor(this.app).get(
       cached.report.compositionId,
@@ -193,7 +235,7 @@ export class PrimaryColorReviewService {
   }
   private async expire(rootParent: string) {
     for (const [id, cached] of this.reports)
-      if (Date.now() > Date.parse(cached.report.expiresAt))
+      if (cached.retired || Date.now() >= Date.parse(cached.report.expiresAt))
         await this.discard(id);
     for (const entry of await readdir(rootParent, { withFileTypes: true })) {
       if (
@@ -287,7 +329,6 @@ export class PrimaryColorReviewService {
       ),
       root = dirname(first);
     await chmod(root, 0o700);
-    await this.expire(dirname(root));
 
     const currentCorrection = resolvePrimaryColor(
       state.composition,
@@ -331,6 +372,7 @@ export class PrimaryColorReviewService {
       ]),
     };
     try {
+      await this.expire(dirname(root));
       await this.assertCurrent(cached, combined);
       const assets = [
         ...new Map(
@@ -490,7 +532,11 @@ export class PrimaryColorReviewService {
           40 * 1024 * 1024
       )
         await this.discard(this.reports.keys().next().value!);
+      combined.throwIfAborted();
+      if (this.disposed || Date.now() >= Date.parse(report.expiresAt))
+        throw stale();
       this.reports.set(id, cached);
+      this.scheduleExpiry(cached);
       return structuredClone(report);
     } catch (error) {
       await rm(root, { recursive: true, force: true });
@@ -507,14 +553,15 @@ export class PrimaryColorReviewService {
       )
     )
       throw stale();
-    await this.verify(cached);
-    if (this.reports.get(id) !== cached) throw stale();
-    return safeProjectCachePath(
+    const path = await safeProjectCachePath(
       this.app.directory,
       "primary-color-review",
       id,
       `${variant}-${index}.png`,
     );
+    await this.verify(cached);
+    if (this.reports.get(id) !== cached) throw stale();
+    return path;
   }
   async validateAcceptance(
     id: string,
@@ -542,14 +589,20 @@ export class PrimaryColorReviewService {
   }
   async discard(id: string) {
     const cached = this.reports.get(id);
-    if (cached) {
-      this.reports.delete(id);
-      await rm(cached.root, { recursive: true, force: true });
-    }
+    if (cached) await this.removeCached(cached);
   }
   async dispose() {
     this.disposed = true;
     this.running?.abort();
-    for (const id of [...this.reports.keys()]) await this.discard(id);
+    for (const cached of this.reports.values()) this.clearExpiry(cached);
+    const results = await Promise.allSettled(
+      [...this.reports.keys()].map((id) => this.discard(id)),
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        "Primary color review cleanup failed.",
+      );
   }
 }
