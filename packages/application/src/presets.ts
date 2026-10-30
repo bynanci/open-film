@@ -226,7 +226,9 @@ export class PresetApplicationService {
   async accept(
     value: PresetAcceptInput,
     editor: TimelineEditor,
+    signal?: AbortSignal,
   ): Promise<PresetAcceptance> {
+    signal?.throwIfAborted();
     const input = validatePresetAcceptance(value);
     const prior = this.accepted(input, editor);
     if (prior) return prior;
@@ -267,6 +269,7 @@ export class PresetApplicationService {
     return editor.acceptPresetApplication(
       input.request.target.compositionId,
       input,
+      signal,
     );
   }
   receipt(

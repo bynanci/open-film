@@ -11,13 +11,22 @@ import {
 import type { FilmLocale } from "../appTypes";
 import Icon from "./Icon.vue";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch.vue";
+import LocalPresetsPanel from "./LocalPresetsPanel.vue";
+import type { OpenFilmProject } from "@openfilm/core";
+import type { PresetAcceptance } from "@openfilm/application";
 const props = defineProps<{
   contentLocale?: string;
+  project?: OpenFilmProject;
+  activeCompositionId?: string;
   busy: boolean;
   native: boolean;
   defaultRoot: string;
 }>();
-const emit = defineEmits<{ close: []; contentLocale: [value: FilmLocale] }>();
+const emit = defineEmits<{
+  close: [];
+  contentLocale: [value: FilmLocale];
+  presetApplied: [result: PresetAcceptance];
+}>();
 const { t } = useI18n();
 const pickerFailed = ref(false);
 const interfaceLocales = [
@@ -189,6 +198,12 @@ onBeforeUnmount(() => previousFocus?.focus());
         >
       </div>
       <WorkspaceModeSwitch />
+      <LocalPresetsPanel
+        :project="project"
+        :active-composition-id="activeCompositionId"
+        :busy="busy"
+        @applied="emit('presetApplied', $event)"
+      />
       <section class="settings-privacy">
         <h3>{{ t("app.settings.localTitle") }}</h3>
         <p>{{ t("app.settings.localDescription") }}</p>

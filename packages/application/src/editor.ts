@@ -1442,9 +1442,11 @@ export class TimelineEditor {
   async acceptPresetApplication(
     compositionId: string,
     value: PresetAcceptInput,
+    signal?: AbortSignal,
   ): Promise<PresetAcceptance> {
     const input = validatePresetAcceptance(value);
     return this.serialize(async () => {
+      signal?.throwIfAborted();
       const prior = this.application.presets.accepted(input, this);
       if (prior) return prior;
       const review = this.application.presets.review(input.request, this);

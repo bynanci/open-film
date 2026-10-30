@@ -9,6 +9,22 @@ export default {
     technicalDetails: "Technical details",
   },
   errors: {
+    presets: {
+      invalid:
+        "This preset contains unsupported or invalid data. Review the indicated field.",
+      unsupported:
+        "This preset version is unsupported. Keep the original package and use a compatible version.",
+      conflict:
+        "The preset conflicts with an installed release or protected authored content. Review the target and its selections.",
+      stale:
+        "The recipe, project or source changed. Review the current target again.",
+      storageBusy:
+        "Another or unverified process owns preset storage. Retry when it finishes.",
+      storageUnavailable:
+        "Local preset storage could not be verified. Saved films remain usable; review backup recovery.",
+      recoveryUnavailable:
+        "A safe preset backup recovery is unavailable. Inspect or archive the existing recovery copy.",
+    },
     request: {
       invalid: "Check the entered values and try again.",
       tooLarge:

@@ -278,6 +278,22 @@ export function assertPresetJsonData(
   };
   walk(value, 1);
 }
+/** Called only after the bounded descriptor walk; Vue wrappers are copied as data. */
+function copyValidatedPresetData(value: unknown): unknown {
+  if (Array.isArray(value))
+    return Array.from({ length: value.length }, (_, index) =>
+      copyValidatedPresetData(
+        Object.getOwnPropertyDescriptor(value, String(index))!.value,
+      ),
+    );
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(Object.getOwnPropertyDescriptors(value)).map(
+        ([key, descriptor]) => [key, copyValidatedPresetData(descriptor.value)],
+      ),
+    );
+  return value;
+}
 export function presetText(
   value: unknown,
   path: string,
@@ -487,7 +503,7 @@ export function validatePresetRecipe<K extends PresetKind>(
       }
     });
   }
-  return structuredClone(value) as PresetRecipeByKind[K];
+  return copyValidatedPresetData(value) as PresetRecipeByKind[K];
 }
 export function validatePresetPackage(value: unknown): PresetPackageV1 {
   assertPresetJsonData(value);
@@ -538,7 +554,7 @@ export function validatePresetPackage(value: unknown): PresetPackageV1 {
     PRESET_LIMITS.packageBytes
   )
     presetInvalid("package", "package byte budget exceeded");
-  return structuredClone(value) as PresetPackageV1;
+  return copyValidatedPresetData(value) as PresetPackageV1;
 }
 export function canonicalPresetJson(value: unknown): string {
   assertPresetJsonData(value, { depth: 24, tokens: 1000000, text: 16777216 });
@@ -602,7 +618,7 @@ export function validatePresetSnapshot<K extends PresetKind>(
     PRESET_LIMITS.snapshotBytes
   )
     presetInvalid("snapshot", "snapshot byte budget exceeded");
-  return structuredClone(value) as PresetSnapshot<K>;
+  return copyValidatedPresetData(value) as PresetSnapshot<K>;
 }
 export function compositionPresetSnapshots(c: Composition): PresetSnapshot[] {
   const result: PresetSnapshot[] = [];
@@ -725,7 +741,7 @@ export function validatePresetApplyInput(value: unknown): PresetApplyInput {
         presetNumber(t.strength, "target.strength", 0, 1);
     } else presetInvalid("target.kind", "unsupported preset kind");
   }
-  return structuredClone(value) as PresetApplyInput;
+  return copyValidatedPresetData(value) as PresetApplyInput;
 }
 export function validatePresetReceipts(
   value: unknown,
@@ -781,7 +797,7 @@ export function validatePresetReceipts(
     )
       presetInvalid("receipt.acceptedAt", "expected ISO timestamp");
   }
-  return structuredClone(value) as PresetApplicationReceipt[];
+  return copyValidatedPresetData(value) as PresetApplicationReceipt[];
 }
 export function validatePresetStoryPlanContext(
   value: unknown,
@@ -813,7 +829,7 @@ export function validatePresetStoryPlanContext(
       presetInvalid("binding", "duplicate source beat");
     seen.add(String(b.beatId));
   }
-  return structuredClone(value) as PresetStoryPlanContext;
+  return copyValidatedPresetData(value) as PresetStoryPlanContext;
 }
 export function validatePresetPlanSource(value: unknown): PresetPlanSource {
   assertPresetJsonData(value);
@@ -848,5 +864,5 @@ export function validatePresetPlanSource(value: unknown): PresetPlanSource {
     presetText(b.sourceBeatId, "binding.sourceBeatId");
     presetText(b.beatId, "binding.beatId");
   }
-  return structuredClone(value) as PresetPlanSource;
+  return copyValidatedPresetData(value) as PresetPlanSource;
 }

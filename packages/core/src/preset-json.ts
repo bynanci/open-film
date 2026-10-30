@@ -76,7 +76,7 @@ export function parsePresetJson(
       }
       tokens++;
     } else {
-      while (i + 1 < text.length && !/[\s,\[\]{}:"]/.test(text[i + 1]!)) i++;
+      while (i + 1 < text.length && !/[\s,[\]{}:"]/.test(text[i + 1]!)) i++;
       tokens++;
     }
     if (tokens > limits.tokens)

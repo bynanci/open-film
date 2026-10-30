@@ -4,6 +4,13 @@ import * as core from "../src/index.js";
 import { presetPackage } from "../../../tests/fixtures/local-presets/package.js";
 
 describe("closed local preset contracts", () => {
+  it("detaches descriptor-safe reactive wrappers without structuredClone or getter access", () => {
+    const input = presetPackage();
+    input.entries[0]!.recipe = new Proxy(input.entries[0]!.recipe, {});
+    const result = core.validatePresetPackage(new Proxy(input, {}));
+    expect(result).toEqual(presetPackage());
+    expect(result).not.toBe(input);
+  });
   it("parses a detached package using title owner validation", () => {
     const input = presetPackage();
     const result = core.validatePresetPackage(input);

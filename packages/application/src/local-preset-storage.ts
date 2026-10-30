@@ -16,8 +16,13 @@ import {
   writeFileSync,
   type Stats,
 } from "node:fs";
-import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
-import { ApplicationError, PRESET_LIMITS } from "@openfilm/core";
+import { basename, dirname, isAbsolute, join, parse, resolve } from "node:path";
+import {
+  ApplicationError,
+  PRESET_LIMITS,
+  parsePresetJson,
+  presetRecord,
+} from "@openfilm/core";
 import { createReviewOwner, reviewOwnerState } from "./review-owner.js";
 
 export function presetStorageFailure(
@@ -147,22 +152,55 @@ export async function readLocalPresetDocument(
   return value.text;
 }
 export class LocalPresetStorage {
-  readonly directory: string;
-  readonly registryPath: string;
-  readonly backupPath: string;
-  readonly corruptPath: string;
   private rootIdentity?: Stats;
   private directoryIdentity?: Stats;
-  constructor(private readonly root: string) {
-    if (!isAbsolute(root) || root.includes("\0")) throw presetStorageFailure();
-    this.directory = join(root, "presets");
-    this.registryPath = join(this.directory, "registry-v1.json");
-    this.backupPath = join(this.directory, "registry-v1.json.bak");
-    this.corruptPath = join(this.directory, "registry-v1.corrupt");
+  private canonicalRoot?: string;
+  constructor(private readonly configuredRoot: string) {
+    if (!isAbsolute(configuredRoot) || configuredRoot.includes("\0"))
+      throw presetStorageFailure();
+  }
+  get directory(): string {
+    return join(this.canonicalRoot ?? this.configuredRoot, "presets");
+  }
+  get registryPath(): string {
+    return join(this.directory, "registry-v1.json");
+  }
+  get backupPath(): string {
+    return join(this.directory, "registry-v1.json.bak");
+  }
+  get corruptPath(): string {
+    return join(this.directory, "registry-v1.corrupt");
+  }
+  private hostRoot(): string {
+    let ancestor = this.configuredRoot;
+    const suffix: string[] = [];
+    for (;;) {
+      let info: Stats;
+      try {
+        info = lstatSync(ancestor);
+      } catch (error) {
+        if (!missing(error) || ancestor === parse(ancestor).root)
+          throw presetStorageFailure();
+        suffix.unshift(basename(ancestor));
+        ancestor = dirname(ancestor);
+        continue;
+      }
+      if (ancestor === this.configuredRoot && info.isSymbolicLink())
+        throw presetStorageFailure(
+          "The configured preset root must not be a symlink.",
+        );
+      // Only trusted host ancestors are canonicalized, before the owned boundary.
+      const resolved = resolve(realpathSync(ancestor), ...suffix);
+      if (this.canonicalRoot && resolved !== this.canonicalRoot)
+        throw presetStorageFailure("The trusted preset root changed.");
+      this.canonicalRoot ??= resolved;
+      return this.canonicalRoot;
+    }
   }
   ensure(create = false): boolean {
+    const rootPath = this.hostRoot();
     const chain: string[] = [];
-    for (let p = resolve(this.root); ; p = dirname(p)) {
+    for (let p = rootPath; ; p = dirname(p)) {
       chain.push(p);
       if (p === parse(p).root) break;
     }
@@ -185,7 +223,7 @@ export class LocalPresetStorage {
           "Local preset directory must not contain symlinks.",
         );
     }
-    const root = lstatSync(this.root);
+    const root = lstatSync(rootPath);
     if (this.rootIdentity && !same(root, this.rootIdentity))
       throw presetStorageFailure("Local preset root changed.");
     this.rootIdentity ??= root;
@@ -221,6 +259,39 @@ export class LocalPresetStorage {
       if (!missing(e)) throw presetStorageFailure();
     }
   }
+  private readLockOwner(
+    path: string,
+  ):
+    | { owner: ReturnType<typeof createReviewOwner>; identity: Stats }
+    | undefined {
+    const file = readPresetFile(path, 2048, true);
+    if (!file) return undefined;
+    const owner = presetRecord(
+      parsePresetJson(file.text, { bytes: 2048, depth: 2, tokens: 32 }),
+      "lock",
+      ["version", "host", "pid", "token"],
+    );
+    if (
+      owner.version !== 1 ||
+      typeof owner.host !== "string" ||
+      !owner.host.trim() ||
+      owner.host.length > 256 ||
+      !Number.isSafeInteger(owner.pid) ||
+      Number(owner.pid) < 1 ||
+      Number(owner.pid) > 2147483647 ||
+      typeof owner.token !== "string" ||
+      !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/iu.test(owner.token)
+    )
+      throw new ApplicationError(
+        "presets.storageBusy",
+        "Preset lock version or owner cannot be verified.",
+        409,
+      );
+    return {
+      owner: owner as unknown as ReturnType<typeof createReviewOwner>,
+      identity: file.identity,
+    };
+  }
   private lock(
     path = join(this.directory, "registry-v1.lock"),
     depth = 0,
@@ -250,16 +321,23 @@ export class LocalPresetStorage {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST")
           throw presetStorageFailure();
         let observed: ReturnType<typeof createReviewOwner>;
+        let observedIdentity: Stats;
         try {
-          const file = readPresetFile(path, 2048, true);
-          if (!file) throw new Error();
-          observed = JSON.parse(file.text);
-        } catch {
-          throw new ApplicationError(
+          const file = this.readLockOwner(path);
+          if (!file)
+            throw new Error("Preset lock disappeared during recovery.", {
+              cause: e,
+            });
+          observed = file.owner;
+          observedIdentity = file.identity;
+        } catch (cause) {
+          const error = new ApplicationError(
             "presets.storageBusy",
             "Preset lock owner cannot be verified.",
             409,
           );
+          Object.defineProperty(error, "cause", { value: cause });
+          throw error;
         }
         if (reviewOwnerState(observed) !== "dead")
           throw new ApplicationError(
@@ -269,8 +347,12 @@ export class LocalPresetStorage {
           );
         const release = this.lock(`${path}.recover`, depth + 1);
         try {
-          const current = readPresetFile(path, 2048, true);
-          if (!current || JSON.parse(current.text).token !== observed.token)
+          const current = this.readLockOwner(path);
+          if (
+            !current ||
+            !same(current.identity, observedIdentity) ||
+            current.owner.token !== observed.token
+          )
             throw new ApplicationError(
               "presets.storageBusy",
               "Preset lock ownership changed.",
@@ -285,19 +367,24 @@ export class LocalPresetStorage {
     } finally {
       if (identity) this.unlinkOwned(temp, identity);
     }
-    const held = readPresetFile(path, 2048, true);
-    if (!held || JSON.parse(held.text).token !== owner.token)
-      throw presetStorageFailure();
+    const held = this.readLockOwner(path);
+    if (!held || held.owner.token !== owner.token) throw presetStorageFailure();
     return () => {
-      const current = readPresetFile(path, 2048, true);
+      let current: ReturnType<LocalPresetStorage["readLockOwner"]>;
+      try {
+        current = this.readLockOwner(path);
+      } catch {
+        return;
+      }
       if (
         current &&
         same(current.identity, held.identity) &&
-        JSON.parse(current.text).token === owner.token
+        current.owner.token === owner.token
       )
         this.unlinkOwned(path, current.identity);
     };
   }
+
   withLock<T>(operation: () => T): T {
     this.ensure(true);
     const release = this.lock();

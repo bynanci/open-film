@@ -77,6 +77,22 @@ it("preserves alive and unverifiable owners and recovers only a proven dead same
   expect((await store.install(request)).packages).toHaveLength(1);
   expect(existsSync(lock)).toBe(false);
 });
+it("leaves an unknown lock version untouched even when its PID is provably dead", async () => {
+  const { root, store } = fixture(),
+    request = input(store);
+  mkdirSync(join(root, "presets"));
+  const lock = join(root, "presets", "registry-v1.lock"),
+    bytes = JSON.stringify({
+      version: 999,
+      ...createReviewOwner(),
+      pid: 2147483646,
+    });
+  writeFileSync(lock, bytes);
+  await expect(store.install(request)).rejects.toMatchObject({
+    code: "presets.storageBusy",
+  });
+  expect(readFileSync(lock, "utf8")).toBe(bytes);
+});
 it("rejects replaced root ownership and a hard-linked registry", async () => {
   const { root, store } = fixture();
   await store.install(input(store));
@@ -109,4 +125,24 @@ it("rejects duplicate raw registry keys instead of silently selecting the last v
   const path = join(root, "presets", "registry-v1.json");
   writeFileSync(path, '{"version":999,"version":1,"packages":[]}');
   expect(() => store.list()).toThrow();
+});
+it("canonicalizes trusted host ancestor aliases once and rejects an owned-root link or later alias replacement", async () => {
+  const { root } = fixture(),
+    actual = join(root, "host"),
+    alias = join(root, "host-alias");
+  mkdirSync(actual);
+  symlinkSync(actual, alias, "junction");
+  const store = new LocalPresetRegistry(join(alias, "user"));
+  const request = input(store);
+  expect((await store.install(request)).packages).toHaveLength(1);
+  expect(existsSync(join(actual, "user", "presets", "registry-v1.json"))).toBe(
+    true,
+  );
+  expect(() => new LocalPresetRegistry(alias).list()).toThrow();
+  rmSync(alias);
+  const replacement = join(root, "replacement");
+  mkdirSync(replacement);
+  symlinkSync(replacement, alias, "junction");
+  expect(() => store.list()).toThrow();
+  expect(existsSync(join(replacement, "user"))).toBe(false);
 });

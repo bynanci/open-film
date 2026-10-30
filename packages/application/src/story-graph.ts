@@ -161,7 +161,7 @@ export class StoryGraphService {
       return cached;
     }
 
-    const graph = this.getGraph(storyId);
+    const graph = this.previewGraph(storyId);
     const layout = computeStoryGraphAutoLayout(graph, story);
 
     const initialState: GraphViewState = {
