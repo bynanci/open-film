@@ -12,15 +12,16 @@ export async function toneSource(
   duration = 12,
   sampleRate = 48000,
   channels = 2,
-  impulse = false,
+  impulse: boolean | readonly number[] = false,
 ): Promise<MediaAsset> {
   const samples = Math.round(duration * sampleRate),
     bytes = Buffer.alloc(samples * channels * 3),
-    header = Buffer.alloc(44);
+    header = Buffer.alloc(44),
+    impulses = new Set(impulse === true ? [0] : impulse || []);
   for (let sample = 0; sample < samples; sample++) {
     const value = Math.round(
       (impulse
-        ? sample === 0
+        ? impulses.has(sample)
           ? 0.1
           : 0
         : 0.1 * Math.cos((2 * Math.PI * frequency * sample) / sampleRate)) *

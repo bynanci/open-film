@@ -48,7 +48,8 @@ export function compileAudioMixPlan(
             CANONICAL_AUDIO_FILTER,
             `atrim=start_sample=${Math.round(first.sourceInSeconds * 48000)}:end_sample=${Math.round(first.sourceOutSeconds * 48000)}`,
             "asetpts=PTS-STARTPTS",
-            ...tempo(first.speed),
+            // atempo=1 still performs SOLA and can shift/duplicate transients.
+            ...(first.speed === 1 ? [] : tempo(first.speed)),
             "apad",
             `atrim=end_sample=${Math.round(duration * 48000)}`,
           ]

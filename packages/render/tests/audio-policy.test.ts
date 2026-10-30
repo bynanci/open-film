@@ -97,6 +97,63 @@ async function wav(
 }
 
 describe("shared audio graph", () => {
+  it("keeps every canonical 1x pulse phase within one sample of one common impulse baseline", async () => {
+    const dir = await root(),
+      positions = [9600, 28800, 48000, 54000, 102000, 124800, 177600],
+      source = await toneSource(
+        dir,
+        "independent-pulses",
+        0,
+        4,
+        48000,
+        2,
+        positions,
+      ),
+      baselineSource = await toneSource(
+        dir,
+        "common-impulse",
+        0,
+        4,
+        48000,
+        2,
+        true,
+      );
+    const configured = (id: string, assetId: string, start = 0) => ({
+      ...clip(id, assetId, 0, 4),
+      audioTiming: {
+        version: 1 as const,
+        sampleRate: 48000 as const,
+        timelineStartSample: start,
+        sourceInSample: 0,
+        sourceOutSample: 192000,
+      },
+    });
+    const baseline = await wav(
+      join(dir, "common-latency.wav"),
+      comp(configured("baseline", baselineSource.id)),
+      [baselineSource],
+    );
+    const delay = firstAudibleSample(baseline.samples);
+    expect(delay).toBeGreaterThanOrEqual(0);
+    const result = await wav(
+      join(dir, "phases.wav"),
+      comp(configured("phases", source.id, 816)),
+      [source],
+    );
+    const actual: number[] = [];
+    for (let n = 0; n < result.samples.length / 2; n++)
+      if (
+        Math.abs(result.samples[n * 2]!) > 0.05 &&
+        (n === 0 || Math.abs(result.samples[(n - 1) * 2]!) <= 0.05)
+      )
+        actual.push(n);
+    expect(actual).toHaveLength(positions.length);
+    for (const [index, position] of positions.entries())
+      expect(
+        Math.abs(actual[index]! - (position + 816 + delay)),
+      ).toBeLessThanOrEqual(1);
+    expect(await hashFile(fileURLToPath(source.uri))).toBe(source.contentHash);
+  });
   it("compiles one canonical source/tempo/effect branch before sample segmentation", async () => {
     const dir = await root(),
       asset = await toneSource(dir, "source", 440),
@@ -138,7 +195,9 @@ describe("shared audio graph", () => {
     expect(
       text.match(/aresample=48000:async=1:min_hard_comp=0:first_pts=0/g),
     ).toHaveLength(1);
-    expect(text.match(/atempo=1/g)).toHaveLength(2);
+    // The legacy occurrence retains its exact processor domain; canonical 1x
+    // does not run phase-changing time stretch.
+    expect(text.match(/atempo=1/g)).toHaveLength(1);
     expect(text.match(/afade=t=in/g)).toHaveLength(1);
     expect(text).toContain("atrim=start_sample=0:end_sample=480000");
     expect(text).toContain("[0:a:0]aresample");
@@ -312,7 +371,7 @@ describe("shared audio graph", () => {
 });
 
 it.each([0.5, 1, 2])(
-  "matches the identical atempo reference for 44.1 kHz AAC priming and a 125ms delayed stream at speed %s",
+  "matches the canonical source/tempo reference for 44.1 kHz AAC priming and a 125ms delayed stream at speed %s",
   async (speed) => {
     const dir = await root(),
       source = await toneSource(dir, "44100", 880, 4, 44100, 1),
@@ -387,7 +446,7 @@ it.each([0.5, 1, 2])(
         "-map",
         "0:a:0",
         "-af",
-        `aresample=48000:async=1:first_pts=0,atrim=start_sample=4801:end_sample=100801,asetpts=PTS-STARTPTS,atempo=${speed},apad,atrim=end_sample=${length},volume=1,adelay=817S:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=12`,
+        `aresample=48000:async=1:min_hard_comp=0:first_pts=0,atrim=start_sample=4801:end_sample=100801,asetpts=PTS-STARTPTS,${speed === 1 ? "" : `atempo=${speed},`}apad,atrim=end_sample=${length},volume=1,adelay=817S:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=12`,
         "-c:a",
         "pcm_s24le",
         "-ar",
@@ -492,7 +551,7 @@ it("renders actual AAC MP4 with all three coverage policies, preserving automati
   }
 });
 
-it("preserves the complete existing limiter baseline under overload and legacy gain above unity", async () => {
+it("preserves the existing limiter and above-unity gain against an independent identity-tempo baseline", async () => {
   const dir = await root(),
     asset = await toneSource(dir, "overload", 440),
     legacy = {
@@ -504,9 +563,23 @@ it("preserves the complete existing limiter baseline under overload and legacy g
         fadeIn: 0.2,
       },
     };
-  const reference = await wav(join(dir, "overload-legacy.wav"), comp(legacy), [
-    asset,
+  const referencePath = join(dir, "overload-identity-reference.wav");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-i",
+    fileURLToPath(asset.uri),
+    "-af",
+    "atrim=start=0:end=12,asetpts=PTS-STARTPTS,apad,atrim=duration=12,afade=t=in:st=0:d=0.2,volume=20,adelay=0:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=12",
+    "-c:a",
+    "pcm_s24le",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    referencePath,
   ]);
+  const reference = await decodePolicyAudio(referencePath);
   const independent = {
       ...legacy,
       audioTiming: {
