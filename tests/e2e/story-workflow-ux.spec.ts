@@ -312,6 +312,14 @@ test("drags graph layout and creates a typed story connection through the expert
       viewport.height - 2,
     ),
   };
+  const projectBeforeCancel = (
+    await (await request.get(`${api}/project`)).json()
+  ).project;
+  expect(
+    projectBeforeCancel.stories.find(
+      (item: { id: string }) => item.id === activeStoryId,
+    ).graph,
+  ).toBeUndefined();
   await page.mouse.move(
     sourceBox!.x + sourceBox!.width / 2,
     sourceBox!.y + sourceBox!.height / 2,
@@ -326,12 +334,12 @@ test("drags graph layout and creates a typed story connection through the expert
   await page.mouse.up();
   await expect
     .poll(async () => {
-      const project = (await (await request.get(`${api}/project`)).json())
-        .project;
-      const story = project.stories.find(
-        (item: { id: string }) => item.id === activeStoryId,
+      const response = await request.get(
+        `${api}/stories/${activeStoryId}/graph`,
       );
-      return story.graph.edges.some(
+      expect(response.ok()).toBe(true);
+      const { graph } = await response.json();
+      return graph.edges.some(
         (edge: { from: string; to: string; type: string }) =>
           edge.from === beatNodeId &&
           edge.to === assetNodeId &&
@@ -339,6 +347,9 @@ test("drags graph layout and creates a typed story connection through the expert
       );
     })
     .toBe(false);
+  expect((await (await request.get(`${api}/project`)).json()).project).toEqual(
+    projectBeforeCancel,
+  );
 
   const actualSourceBox = await sourceHandle.boundingBox();
   expect(actualSourceBox).not.toBeNull();

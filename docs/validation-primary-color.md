@@ -246,12 +246,32 @@ with zero failed/pending/todo cases in the captured JSON report. Its three
 synthetic MP4 cases retain the existing contain/diptych/moving-diptych checks:
 verified raw ambient/foreground receive primary then local Film Look once,
 with ungraded transformed separators and unchanged pixel limits/source hashes.
-The final exact-head focused execution and fresh source/artifact receipt are
-retained under `/tmp/openfilm-finishing-integration/C-final-fix/`; historical
-receipts keep their original identities.
+The service/media JSON report and synthetic artifacts are retained under
+`/tmp/openfilm-finishing-integration/C-final-fix/`; historical receipts keep
+their original identities.
 
 TypeScript/Vue, scoped ESLint, formatting, 2,889 localization keys and 133 English
 documentation mirrors pass. This correction launches no browser server; prior
 browser evidence remains attached to its original source checkpoint. Fresh
 scoped review and complete hosted gates remain coordinator-owned and pending.
 No full suite, native benchmark, hosted success or merge readiness is claimed.
+
+## 2026-10-30 — reviewed D8 CI recovery carried into C
+
+The correction stack also consumes reviewed D8 `cb9baf9`. Its real Story browser
+fixture checks read-only effective graph output, absent persisted graph and an
+unchanged project on Cancel, then requires explicit Connect to persist an edge.
+The TimelineClip host retains both real local-preset and source-color module
+bindings. Automatic merging initially duplicated the preset import/dependency
+key, which types and the host loader rejected; the redundant declarations were
+removed without changing any assertion or product code. Failed logs remain in
+the private integration record.
+
+The corrected final focused selection passes all 14 files / 174 tests, including
+all 55 existing TimelineClip host cases and the 22 real primary-review service
+cases. The captured JSON requires every assertion passed with no skipped/todo
+cases. Fresh combined contain/diptych/moving-diptych MP4 evidence and current
+source/artifact hashes belong to the separate final checkpoint under
+`/tmp/openfilm-finishing-integration/C-final-fix-stack-green/`; earlier failed
+and successful observations retain their own directories. This local check does
+not replace the pending scoped review or hosted gates.

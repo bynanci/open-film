@@ -278,3 +278,33 @@ this checkpoint ran no browser server or full suite. Fresh synthetic artifacts
 and current byte receipts are under
 `/tmp/openfilm-finishing-integration/D8-latest-base/`. Full exact-head hosted
 gates remain coordinator-owned.
+
+## 2026-10-30 — exact-head CI browser compatibility repair
+
+Initial PR76 head `77c9ea03b33796d0e9aac2fe068dec3ea39aafc1` failed
+browser shard4 in Verify41083838628. The legacy graph-cancel case directly read
+`story.graph.edges` from the saved manifest before any graph edit. D8 deliberately
+makes GET graph/view read-only, so an absent graph is valid until explicit
+acceptance. The same failure reproduced locally in the isolated browser case.
+
+The corrected test retains the cancelled-edge=false assertion through the typed
+effective graph GET, additionally requires the saved graph to remain absent and
+the entire project API payload to remain deeply equal across cancellation, then
+retains the original confirmed-edge=true and selected-asset persistence checks.
+No optional chaining, assertion removal, production change or read-side write was
+added. All seven story-workflow browser cases pass in19.7s, including CJK/layout
+and keyboard flows. Scoped ESLint, formatting and diff whitespace checks pass.
+This is focused repair evidence; complete new-head CI is still required and the
+initial failed run remains part of the record.
+
+## 2026-10-30 — real clip-host test dependency update
+
+The same initial PR76 heavy-media job failed55 Timeline render-boundary cases
+with `Unexpected import: ../local-presets`. The custom Vue host explicitly
+supplies real first-party helper modules; its dependency map had not admitted
+the new Look-label helper. A local rerun reproduced all55 failures. The host now
+imports and supplies the actual `local-presets` module; no production component,
+network behavior, clipping logic, test assertion or module fallback changed.
+The unchanged55 cases all pass in20.20s; scoped ESLint and formatting pass.
+The earlier seven browser repair cases remain independently recorded above.
+Complete new-head hosted gates are required; no suite is skipped or retried.
