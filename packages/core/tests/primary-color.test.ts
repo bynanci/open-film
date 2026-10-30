@@ -24,6 +24,15 @@ const composition: Composition = {
 };
 
 describe("primary color v1", () => {
+  it("treats parameters that round to identity coefficients as an inactive operation", () => {
+    expect(
+      core.isPrimaryColorActive({
+        ...neutral,
+        exposureEv: 1e-15,
+        temperature: 1e-15,
+      }),
+    ).toBe(false);
+  });
   it("exports bounded identity and preserves legacy fields on validation", () => {
     expect(core.PRIMARY_COLOR_VERSION).toBe(1);
     expect(core.PRIMARY_COLOR_DOMAIN).toBe("encoded-sdr-rgb");

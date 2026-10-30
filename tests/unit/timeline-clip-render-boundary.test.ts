@@ -1,3 +1,4 @@
+import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -354,6 +355,7 @@ async function mountTimeline(
     vue,
     "vue-i18n": { useI18n },
     "@openfilm/core": core,
+    "../source-color": { sourceColorStyle },
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,

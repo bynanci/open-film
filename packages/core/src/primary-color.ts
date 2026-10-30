@@ -67,9 +67,10 @@ export function isPrimaryColorActive(
   value?: PrimaryColorCorrection | null,
 ): boolean {
   if (value == null) return false;
-  const recipe = validatePrimaryColorCorrection(value);
+  const coefficients = primaryColorCoefficients(value);
   return (
-    recipe.temperature !== 0 || recipe.exposureEv !== 0 || recipe.contrast !== 1
+    coefficients.offset !== 0 ||
+    coefficients.slopes.some((slope) => slope !== 1)
   );
 }
 export interface ResolvedPrimaryColor {

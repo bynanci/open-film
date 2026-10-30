@@ -147,12 +147,15 @@ it("publishes actual before/after evidence and applies only through explicit rev
 });
 it("rejects same-size source mutation and tampered evidence without touching the project", async () => {
   const { app, editor, before, input, paths } = await fixture();
+  await utimes(paths[0]!, new Date(0), new Date(0));
   const report = await app.runPrimaryColorReview("f", input);
   const original = await stat(paths[0]!);
   const bytes = await readFile(paths[0]!);
   bytes[bytes.length - 3] = bytes[bytes.length - 3]! ^ 1;
   await writeFile(paths[0]!, bytes);
   await utimes(paths[0]!, original.atime, original.mtime);
+  expect((await stat(paths[0]!)).mtimeMs).toBe(original.mtimeMs);
+  expect((await stat(paths[0]!)).size).toBe(original.size);
   await expect(
     app.primaryColorReview.media(report.id, "before", 0),
   ).rejects.toThrow(/changed|stale/);

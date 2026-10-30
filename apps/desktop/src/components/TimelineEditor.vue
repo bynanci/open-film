@@ -15,6 +15,8 @@ import {
 import {
   resolveClipGeometry,
   resolveFilmLook,
+  resolvePrimaryColor,
+  PRIMARY_COLOR_IDENTITY,
   resolvePreviewClipGeometry,
   evaluateAudioGain,
   resolveCompositionFrame,
@@ -66,6 +68,9 @@ import GraphicScenePreview from "./GraphicScenePreview.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
+import PrimaryColorInspector from "./PrimaryColorInspector.vue";
+import PrimaryColorFilter from "./PrimaryColorFilter.vue";
+import { sourceColorStyle } from "../source-color";
 import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
@@ -871,6 +876,13 @@ const photoPresentationActive = computed(
       (playbackClip.value?.title && playbackClip.value.titleStyle?.fadeOut)
     ),
 );
+const primaryColorFilterId = `primary-color-${useId().replaceAll(":", "")}`;
+const playbackPrimaryColor = computed(() =>
+  state.value && playbackClip.value && lookEligible.value
+    ? resolvePrimaryColor(state.value.composition, playbackClip.value)
+        .correction
+    : PRIMARY_COLOR_IDENTITY,
+);
 const filmLookFilterId = `film-look-${useId().replaceAll(":", "")}`;
 const playbackLook = computed(() =>
   state.value && playbackClip.value && lookEligible.value
@@ -878,10 +890,17 @@ const playbackLook = computed(() =>
     : { version: 1 as const, preset: "none" as const, strength: 1 },
 );
 const playbackLookActive = computed(
-  () => playbackLook.value.preset !== "none" && playbackLook.value.strength > 0,
+  () =>
+    !!sourceColorStyle(playbackPrimaryColor.value, playbackLook.value, {
+      primary: primaryColorFilterId,
+      look: filmLookFilterId,
+    }).filter,
 );
 const playbackLookStyle = computed(() =>
-  playbackLookActive.value ? { filter: `url(#${filmLookFilterId})` } : {},
+  sourceColorStyle(playbackPrimaryColor.value, playbackLook.value, {
+    primary: primaryColorFilterId,
+    look: filmLookFilterId,
+  }),
 );
 const lookEligible = computed(
   () =>
@@ -3164,6 +3183,10 @@ onBeforeUnmount(() => {
           </div>
           <div v-else-if="!expertMode" class="editor-player-region">
             <div ref="sourceScreenElement" class="editor-source-screen">
+              <PrimaryColorFilter
+                :id="primaryColorFilterId"
+                :correction="playbackPrimaryColor"
+              />
               <FilmLookFilter :id="filmLookFilterId" :look="playbackLook" />
               <template v-if="playbackAsset">
                 <div v-if="playbackUnavailable" class="editor-missing-source">
@@ -3227,6 +3250,7 @@ onBeforeUnmount(() => {
                   :project-id="projectId"
                   :source-version="sourceVersion"
                   :active="active && editMode === 'story'"
+                  :primary-color="playbackPrimaryColor"
                   :look="playbackLook"
                   ><template #default="slot"
                     ><GraphicScenePreview
@@ -4081,6 +4105,17 @@ onBeforeUnmount(() => {
             <p v-if="selectedClip.locked" class="editor-note">
               {{ t("editor.clip.protected") }}
             </p>
+            <PrimaryColorInspector
+              :composition="state.composition"
+              :clip="selectedClip"
+              :assets="state.assets"
+              :project-id="projectId"
+              :revision="state.revision"
+              :clip-eligible="lookEligible"
+              :clip-protected="!!selectedClip.locked || clipSourceLocked"
+              :disabled="historyBusy || directionBlocked"
+              @command="command"
+            />
             <FilmLookInspector
               :composition="state.composition"
               :clip="selectedClip"

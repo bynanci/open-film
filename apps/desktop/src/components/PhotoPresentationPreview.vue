@@ -11,11 +11,14 @@ import {
   resolveClipGeometry,
   type Clip,
   type FilmLook,
+  type PrimaryColorCorrection,
   type MediaAsset,
   type ProjectSettings,
   type FrameSize,
 } from "@openfilm/core";
 import { sourceUrl, titlePreviewUrl } from "../api";
+import PrimaryColorFilter from "./PrimaryColorFilter.vue";
+import { sourceColorStyle } from "../source-color";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import { formatDuration } from "../i18n";
 
@@ -32,12 +35,14 @@ const props = withDefaults(
     active: boolean;
     sourceVersion?: number;
     look?: FilmLook;
+    primaryColor?: PrimaryColorCorrection;
     externalTime?: number;
     externalPlaying?: boolean;
   }>(),
   {
     sourceVersion: undefined,
     look: undefined,
+    primaryColor: undefined,
     externalTime: undefined,
     externalPlaying: undefined,
   },
@@ -47,10 +52,12 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const lookFilterId = `photo-look-${useId().replaceAll(":", "")}`;
+const primaryFilterId = `photo-primary-${useId().replaceAll(":", "")}`;
 const lookStyle = computed(() =>
-  props.look && props.look.preset !== "none" && props.look.strength > 0
-    ? { filter: `url(#${lookFilterId})` }
-    : {},
+  sourceColorStyle(props.primaryColor, props.look, {
+    primary: primaryFilterId,
+    look: lookFilterId,
+  }),
 );
 const ownedTime = ref(0);
 const controlled = computed(
@@ -268,6 +275,11 @@ defineExpose({ toggle, pause, seekTo });
     class="photo-presentation-preview"
     :class="{ 'photo-presentation-controlled': controlled }"
   >
+    <PrimaryColorFilter
+      v-if="primaryColor"
+      :id="primaryFilterId"
+      :correction="primaryColor"
+    />
     <FilmLookFilter v-if="look" :id="lookFilterId" :look="look" />
     <div
       class="photo-presentation-frame"
