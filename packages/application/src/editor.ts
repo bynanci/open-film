@@ -1486,6 +1486,21 @@ export class TimelineEditor {
           throw new TimelineEditorError(
             "Photo diptych gap must be smaller than the composition width",
           );
+        if (
+          item.type === "presentation" &&
+          item.layout?.version === 2 &&
+          item.layout.preset === "diptych"
+        ) {
+          const width = this.application.project.settings.width;
+          const gap = item.layout.gap ?? 32;
+          if (
+            Math.round((width - gap) / 2) < 1 ||
+            width - Math.round((width + gap) / 2) < 1
+          )
+            throw new TimelineEditorError(
+              "Photo ambient cells require at least one output pixel",
+            );
+        }
         const referenced =
           item.type === "graphic.scene.upsert"
             ? graphicSceneAssetIds([item.scene])

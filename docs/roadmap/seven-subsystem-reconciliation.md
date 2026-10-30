@@ -137,6 +137,16 @@ from the saved Composition and must not become another edit state.
 
 ### Photo presentation
 
+D5A candidate update (2026-10-30): the existing F05 owner now has an isolated
+implementation of direct focal interaction, strict separately versioned bounded
+custom easing and raw ambient-fill Monitor/FFmpeg parity. See the
+[contract](../photo-film-quality.md#photo-finishing-d5a-candidate),
+design in `docs/superpowers/specs/2026-10-30-d5a-photo-finishing-design.md` and
+[candidate validation](../validation-photo-film-quality.md#d5a-photo-finishing-candidate).
+The audit-base matrix remains historical; this candidate still requires fresh
+whole-branch review and the complete exact-head gate before merge. Primary color
+remains D5C's independent owner.
+
 `packages/core/src/models.ts` and `presentation.ts` already own normalized focal
 and protected regions. `PhotoPresentationPreview.vue` and the renderer share the
 same evaluator; `packages/render/src/photo-filters.ts` uses per-frame floating

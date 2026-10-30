@@ -529,6 +529,13 @@ export const titlePreviewUrl = (
   projectId?: string,
 ): string =>
   `${prefix}/compositions/${encodeURIComponent(compositionId)}/title/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ revision, ...(projectId ? { projectId } : {}) })}`;
+export const photoFillPreviewUrl = (
+  compositionId: string,
+  clipId: string,
+  revision: string,
+  projectId: string,
+): string =>
+  `${prefix}/compositions/${encodeURIComponent(compositionId)}/photo-fill/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ projectId, revision })}`;
 export const captionDownloadUrl = (
   id: string,
   projectId: string,

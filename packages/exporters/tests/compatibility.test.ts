@@ -36,6 +36,50 @@ const composition: Composition = {
 };
 
 describe("Resolve compatibility evidence", () => {
+  it("preserves complete v2 photo finishing as JSON and OTIO metadata and rejects unsupported native effect exports", () => {
+    const edited = structuredClone(composition);
+    const clip = edited.tracks[0]!.clips[0]!;
+    clip.layout = {
+      version: 2,
+      preset: "contain",
+      fill: { version: 1, kind: "ambient", blurSigma: 0.02, dim: 0.45 },
+    };
+    clip.motion = {
+      version: 2,
+      preset: "pan",
+      easing: {
+        version: 1,
+        kind: "cubic-bezier",
+        x1: 0.25,
+        y1: 0.1,
+        x2: 0.25,
+        y2: 1,
+      },
+      from: { scale: 1.08, x: -3, y: 0 },
+      to: { scale: 1.08, x: 3, y: 0 },
+    };
+    const source: MediaAsset = {
+      ...assets[0]!,
+      mediaType: "image",
+      uri: "file:///synthetic.png",
+      dimensions: { width: 100, height: 200 },
+    };
+    const json = exportTimeline("json", edited, [source]);
+    expect(JSON.parse(json.content).composition).toEqual(edited);
+    const otio = exportTimeline("otio", edited, [source]);
+    expect(JSON.parse(otio.content).metadata.openfilm.composition).toEqual(
+      edited,
+    );
+    expect(otio.warnings?.join(" ")).toContain(
+      "photo layout, photo motion are METADATA ONLY",
+    );
+    for (const format of ["fcpxml", "edl"] as const)
+      expect(() => exportTimeline(format, edited, [source])).toThrow(
+        /cannot represent layout/iu,
+      );
+    expect(clip.layout.version).toBe(2);
+    expect(clip.motion.version).toBe(2);
+  });
   it("does not promote official parser checks into application verification", () => {
     expect(resolveCompatibility.evidence.realNle).toEqual([]);
     expect(

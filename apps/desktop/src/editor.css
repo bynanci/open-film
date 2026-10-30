@@ -1029,12 +1029,27 @@ button.editor-beat-heading:hover {
   transform-origin: center;
 }
 
-.editor-source-screen .photo-presentation-layers > img {
+.editor-source-screen .photo-presentation-layers > img,
+.editor-source-screen .photo-presentation-raw > img {
   position: absolute;
   max-width: none;
   max-height: none;
   object-fit: fill;
   border: 0;
+}
+
+.photo-easing-curve {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: var(--of-space-2) 0;
+  color: var(--of-accent);
+}
+
+.photo-easing-curve path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
 }
 
 .editor-source-screen .photo-presentation-title,

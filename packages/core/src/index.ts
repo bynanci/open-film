@@ -7,6 +7,7 @@ export * from "./sequence-waveform.js";
 export * from "./export-profile.js";
 export * from "./geometry.js";
 export * from "./presentation.js";
+export * from "./photo-easing.js";
 export * from "./title-layout.js";
 export * from "./validation.js";
 export * from "./migration.js";

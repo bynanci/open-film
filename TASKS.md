@@ -536,6 +536,11 @@ not retroactively rename completed project capabilities.
       4K and NLE finishing as separately recorded manual gates.
   - [ ] D5A: add focal interaction, ambient fill and a separately versioned
         bounded custom-easing contract with legacy reopen and output parity.
+        Candidate implementation now uses strict v2 recipes, one revision-pinned
+        focal transaction, verified raw ambient preparation and shared bounded
+        easing. Focused synthetic Monitor/MP4/hash/seek evidence is recorded in
+        [the validation](docs/validation-photo-film-quality.md#d5a-photo-finishing-candidate);
+        fresh whole-branch review and the complete exact-head gate remain open.
   - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
         with legacy reopen, missing-font evidence and output parity.
   - [ ] D7A: pin a licensed test font/tool record, centralize metric-specific
