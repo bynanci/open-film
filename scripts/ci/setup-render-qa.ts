@@ -23,6 +23,7 @@ import { readPinnedTestFonts } from "../../tests/helpers/render-qa-fonts.js";
 import {
   admitBrewFormula,
   admitToolVersion,
+  admitRequiredQaFilters,
   downloadPinnedBytes,
   observeMacQaDependencies,
   qaSha256,
@@ -266,16 +267,16 @@ export async function setupRenderQa(options: {
             "The fixed Homebrew tool recipe requires macOS15 ARM64",
           );
         await downloadPinnedBytes(
-          `https://raw.githubusercontent.com/Homebrew/homebrew-core/${pin.formulaCommit}/Formula/f/ffmpeg.rb`,
+          `https://raw.githubusercontent.com/Homebrew/homebrew-core/${pin.formulaCommit}/Formula/f/${pin.formula}.rb`,
           pin.formulaSha256,
           64 * 1024,
         );
         const before = JSON.parse(
-          await run("brew", ["info", "--json=v2", "ffmpeg"]),
+          await run("brew", ["info", "--json=v2", pin.formula]),
         );
         admitBrewFormula(before, false);
-        await run("brew", ["fetch", "--force-bottle", "ffmpeg"]);
-        const cache = await run("brew", ["--cache", "ffmpeg"]);
+        await run("brew", ["fetch", "--force-bottle", pin.formula]);
+        const cache = await run("brew", ["--cache", pin.formula]);
         if (!isAbsolute(cache) || /[\r\n]/u.test(cache))
           throw new Error("Unexpected Homebrew cache identity");
         verifyPinnedBytes(
@@ -284,22 +285,22 @@ export async function setupRenderQa(options: {
           pin.maxBytes,
         );
         admitBrewFormula(
-          JSON.parse(await run("brew", ["info", "--json=v2", "ffmpeg"])),
+          JSON.parse(await run("brew", ["info", "--json=v2", pin.formula])),
           false,
         );
         // Homebrew resolves bottle installation through the admitted formula;
         // a cached archive path is treated as a formula name by current brew.
-        await run("brew", ["install", "--force-bottle", "ffmpeg"]);
+        await run("brew", ["install", "--force-bottle", pin.formula]);
         verifyPinnedBytes(
           await boundedFile(cache, pin.maxBytes),
           pin.sha256,
           pin.maxBytes,
         );
         const after = JSON.parse(
-          await run("brew", ["info", "--json=v2", "ffmpeg"]),
+          await run("brew", ["info", "--json=v2", pin.formula]),
         );
         admitBrewFormula(after, true);
-        const prefix = await run("brew", ["--prefix", "ffmpeg"]);
+        const prefix = await run("brew", ["--prefix", pin.formula]);
         if (!isAbsolute(prefix) || /[\r\n]/u.test(prefix))
           throw new Error("Unexpected Homebrew prefix");
         bin = join(prefix, "bin");
@@ -334,6 +335,21 @@ export async function setupRenderQa(options: {
         };
       }
       receipt.tools = identities;
+      const filters = await run(
+        join(bin!, `ffmpeg${process.platform === "win32" ? ".exe" : ""}`),
+        ["-hide_banner", "-filters"],
+        { timeout: 30_000, maxBuffer: 256 * 1024 },
+      );
+      const requiredFilters = admitRequiredQaFilters(filters);
+      await writeFile(join(root, "ffmpeg-filters.txt"), filters, {
+        mode: 0o600,
+      });
+      receipt.dependencies.push(`ffmpeg-filters:sha256=${qaSha256(filters)}`);
+      for (const row of requiredFilters) {
+        const fact = `${row.flags} ${row.name} ${row.signature}`;
+        receipt.dependencies.push(`ffmpeg-filter:${fact}`);
+        process.stdout.write(`Admitted FFmpeg filter row: ${fact}\n`);
+      }
     }
     await writeFile(
       join(root, "tool-receipt.json"),

@@ -1,0 +1,1058 @@
+{
+  "schemaVersion": 1,
+  "scope": "Static inspection of official macOS ARM64 tool bytes on Linux; actual macOS runtime admission is separate.",
+  "purpose": "CI test-tool admission; no runtime redistribution approval.",
+  "replaces": {
+    "formula": "ffmpeg",
+    "packageVersion": "9.0.2_1",
+    "formulaSha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
+    "bottleSha256": "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+    "observedRunId": "41098660221"
+  },
+  "formula": {
+    "name": "ffmpeg-full",
+    "packageVersion": "9.0.2_1",
+    "revision": 1,
+    "reviewCommit": "ecffce861d0041acf03d80c0544c4acead05b052",
+    "reviewSha256": "2cc3ffea0ad8bc1c135e3506717207d82f07fe242672dd4403ce41081ba55a8a",
+    "buildCommit": "c0cb290ef76ab7944d94a53ef6567d5a95362c9b",
+    "buildSha256": "1ca4a91c8c47b5c54c0e21489fc803a7094cf410144aa167a1904bfa170e9452",
+    "embeddedRecipeSha256": "8dfb709048cdf82fb3f932848a3a3c41c1fa95a4cc05102f098b74d7407b4129",
+    "sourceUrl": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+    "sourceSha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+    "license": "GPL-3.0-or-later",
+    "recipeComparison": "Both reviewed and manifest-source formulae match the embedded recipe exactly after removal of generated bottle blocks."
+  },
+  "bottle": {
+    "tag": "arm64_sequoia",
+    "bytes": 24272713,
+    "sha256": "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
+    "manifestSha256": "889312d5673d64fd1e560c221cc98566aaed92f786c14d022c60632c32cdecf2",
+    "manifestBytes": 111444,
+    "upstreamLicense": "GPL-3.0-or-later",
+    "licenseTextSha256": {
+      "COPYING.GPLv2": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+      "COPYING.GPLv3": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "COPYING.LGPLv2.1": "246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30",
+      "COPYING.LGPLv3": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768",
+      "LICENSE.md": "2e1d16c72fd74e12063776371da757322f8b77589386532f4fd8634bde7de1af"
+    },
+    "binaryRelocationFiles": ["bin/ffmpeg", "bin/ffplay", "bin/ffprobe"],
+    "changedPkgConfigFiles": [
+      "lib/pkgconfig/libavcodec.pc",
+      "lib/pkgconfig/libavdevice.pc",
+      "lib/pkgconfig/libavfilter.pc",
+      "lib/pkgconfig/libavformat.pc",
+      "lib/pkgconfig/libavutil.pc",
+      "lib/pkgconfig/libswresample.pc",
+      "lib/pkgconfig/libswscale.pc"
+    ]
+  },
+  "selectedMachO": [
+    {
+      "name": "ffmpeg",
+      "unrelocatedSha256": "d83db24a7f2e67b6ee42bc9c6804f1e91b5c88ad84475b8a6d6d61169ba90a18",
+      "bytes": 492544,
+      "architecture": "arm64",
+      "minimumMacOS": "15.0.0",
+      "sdk": "15.4.0",
+      "loadLocations": [
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavdevice.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavfilter.12.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavformat.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavcodec.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswresample.7.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswscale.10.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavutil.61.dylib",
+        "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+        "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+        "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+        "/usr/lib/libSystem.B.dylib",
+        "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+        "/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo",
+        "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+        "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb-shm.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb-shape.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb-xfixes.0.dylib",
+        "/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL",
+        "/usr/lib/libz.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/rubberband/lib/librubberband.3.dylib",
+        "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
+        "@@HOMEBREW_PREFIX@@/opt/libsamplerate/lib/libsamplerate.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/whisper.cpp/lib/libwhisper.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/harfbuzz/lib/libharfbuzz.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libplacebo/lib/libplacebo.387.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvmaf/lib/libvmaf.3.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/tesseract/lib/libtesseract.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libarchive/lib/libarchive.13.dylib",
+        "/usr/lib/libcurl.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libass/lib/libass.9.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvidstab/lib/libvidstab.1.2.dylib",
+        "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+        "/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox",
+        "@@HOMEBREW_PREFIX@@/opt/zeromq/lib/libzmq.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/zimg/lib/libzimg.2.dylib",
+        "/System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage",
+        "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+        "@@HOMEBREW_PREFIX@@/opt/qrencode/lib/libqrencode.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/fontconfig/lib/libfontconfig.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/freetype/lib/libfreetype.6.dylib",
+        "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+        "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+        "/usr/lib/libxml2.2.dylib",
+        "/usr/lib/libbz2.1.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libbluray/lib/libbluray.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/gnutls/lib/libgnutls.30.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/librist/lib/librist.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/srt/lib/libsrt.1.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libssh/lib/libssh.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvpx/lib/libvpx.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/webp/lib/libwebpmux.3.dylib",
+        "/usr/lib/libiconv.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/xz/lib/liblzma.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/aribb24/lib/libaribb24.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/dav1d/lib/libdav1d.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrwb.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/snappy/lib/libsnappy.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/aom/lib/libaom.3.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/lame/lib/libmp3lame.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrnb.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/openjpeg/lib/libopenjp2.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opus/lib/libopus.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/rav1e/lib/librav1e.0.8.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/speex/lib/libspeex.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/svt-av1/lib/libSvtAv1Enc.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/theora/lib/libtheoraenc.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/theora/lib/libtheoradec.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libogg/lib/libogg.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvorbis/lib/libvorbis.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvorbis/lib/libvorbisenc.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/webp/lib/libwebp.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/x264/lib/libx264.165.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/x265/lib/libx265.217.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/xvid/lib/libxvidcore.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libsoxr/lib/libsoxr.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libx11/lib/libX11.6.dylib",
+        "/usr/lib/libc++.1.dylib"
+      ],
+      "configuration": [
+        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+      ],
+      "zscaleNamePresent": false,
+      "tonemapNamePresent": false
+    },
+    {
+      "name": "ffprobe",
+      "unrelocatedSha256": "29c24ac9326faaf1118572ab84a769e4b1c1adfe4cdb6788c00318f90cbea557",
+      "bytes": 303008,
+      "architecture": "arm64",
+      "minimumMacOS": "15.0.0",
+      "sdk": "15.4.0",
+      "loadLocations": [
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavdevice.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavfilter.12.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavformat.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavcodec.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswresample.7.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswscale.10.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavutil.61.dylib",
+        "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+        "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+        "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+        "/usr/lib/libSystem.B.dylib",
+        "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+        "/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo",
+        "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+        "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb-shm.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb-shape.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libxcb/lib/libxcb-xfixes.0.dylib",
+        "/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL",
+        "/usr/lib/libz.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/rubberband/lib/librubberband.3.dylib",
+        "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
+        "@@HOMEBREW_PREFIX@@/opt/libsamplerate/lib/libsamplerate.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/whisper.cpp/lib/libwhisper.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/harfbuzz/lib/libharfbuzz.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libplacebo/lib/libplacebo.387.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvmaf/lib/libvmaf.3.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/tesseract/lib/libtesseract.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libarchive/lib/libarchive.13.dylib",
+        "/usr/lib/libcurl.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libass/lib/libass.9.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvidstab/lib/libvidstab.1.2.dylib",
+        "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+        "/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox",
+        "@@HOMEBREW_PREFIX@@/opt/zeromq/lib/libzmq.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/zimg/lib/libzimg.2.dylib",
+        "/System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage",
+        "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+        "@@HOMEBREW_PREFIX@@/opt/qrencode/lib/libqrencode.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/fontconfig/lib/libfontconfig.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/freetype/lib/libfreetype.6.dylib",
+        "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+        "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+        "/usr/lib/libxml2.2.dylib",
+        "/usr/lib/libbz2.1.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libbluray/lib/libbluray.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/gnutls/lib/libgnutls.30.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/librist/lib/librist.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/srt/lib/libsrt.1.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libssh/lib/libssh.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvpx/lib/libvpx.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/webp/lib/libwebpmux.3.dylib",
+        "/usr/lib/libiconv.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/xz/lib/liblzma.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/aribb24/lib/libaribb24.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/dav1d/lib/libdav1d.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrwb.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/snappy/lib/libsnappy.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/aom/lib/libaom.3.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/lame/lib/libmp3lame.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrnb.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/openjpeg/lib/libopenjp2.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opus/lib/libopus.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/rav1e/lib/librav1e.0.8.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/speex/lib/libspeex.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/svt-av1/lib/libSvtAv1Enc.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/theora/lib/libtheoraenc.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/theora/lib/libtheoradec.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libogg/lib/libogg.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvorbis/lib/libvorbis.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvorbis/lib/libvorbisenc.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/webp/lib/libwebp.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/x264/lib/libx264.165.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/x265/lib/libx265.217.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/xvid/lib/libxvidcore.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libsoxr/lib/libsoxr.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libx11/lib/libX11.6.dylib",
+        "/usr/lib/libc++.1.dylib"
+      ],
+      "configuration": [
+        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+      ],
+      "zscaleNamePresent": false,
+      "tonemapNamePresent": false
+    },
+    {
+      "name": "libavfilter.12.1.102.dylib",
+      "unrelocatedSha256": "246cd7da38f2a32f4dd7e6493f0950a67d6e85d9e5faa045dfd8269c40fc7d12",
+      "bytes": 3414096,
+      "architecture": "arm64",
+      "minimumMacOS": "15.0.0",
+      "sdk": "15.4.0",
+      "loadLocations": [
+        "@@HOMEBREW_PREFIX@@/opt/ffmpeg-full/lib/libavfilter.12.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswscale.10.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavformat.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavcodec.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswresample.7.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavutil.61.dylib",
+        "/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL",
+        "/usr/lib/libSystem.B.dylib",
+        "/usr/lib/libz.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/rubberband/lib/librubberband.3.dylib",
+        "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
+        "@@HOMEBREW_PREFIX@@/opt/libsamplerate/lib/libsamplerate.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/whisper.cpp/lib/libwhisper.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/harfbuzz/lib/libharfbuzz.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libplacebo/lib/libplacebo.387.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvmaf/lib/libvmaf.3.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/tesseract/lib/libtesseract.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libarchive/lib/libarchive.13.dylib",
+        "/usr/lib/libcurl.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libass/lib/libass.9.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvidstab/lib/libvidstab.1.2.dylib",
+        "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+        "/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox",
+        "@@HOMEBREW_PREFIX@@/opt/zeromq/lib/libzmq.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/zimg/lib/libzimg.2.dylib",
+        "/System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage",
+        "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+        "@@HOMEBREW_PREFIX@@/opt/qrencode/lib/libqrencode.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/fontconfig/lib/libfontconfig.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/freetype/lib/libfreetype.6.dylib",
+        "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+        "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+        "/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo",
+        "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+        "/usr/lib/libxml2.2.dylib",
+        "/usr/lib/libbz2.1.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libbluray/lib/libbluray.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/gnutls/lib/libgnutls.30.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/librist/lib/librist.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/srt/lib/libsrt.1.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libssh/lib/libssh.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvpx/lib/libvpx.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/webp/lib/libwebpmux.3.dylib",
+        "/usr/lib/libiconv.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/xz/lib/liblzma.5.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/aribb24/lib/libaribb24.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/dav1d/lib/libdav1d.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrwb.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/snappy/lib/libsnappy.1.dylib",
+        "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+        "@@HOMEBREW_PREFIX@@/opt/aom/lib/libaom.3.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/lame/lib/libmp3lame.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrnb.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/openjpeg/lib/libopenjp2.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/opus/lib/libopus.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/rav1e/lib/librav1e.0.8.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/speex/lib/libspeex.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/svt-av1/lib/libSvtAv1Enc.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/theora/lib/libtheoraenc.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/theora/lib/libtheoradec.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libogg/lib/libogg.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvorbis/lib/libvorbis.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libvorbis/lib/libvorbisenc.2.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/webp/lib/libwebp.7.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/x264/lib/libx264.165.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/x265/lib/libx265.217.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/xvid/lib/libxvidcore.4.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libsoxr/lib/libsoxr.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/libx11/lib/libX11.6.dylib",
+        "/usr/lib/libc++.1.dylib",
+        "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+        "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+        "/usr/lib/libobjc.A.dylib"
+      ],
+      "configuration": [
+        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+      ],
+      "zscaleNamePresent": true,
+      "tonemapNamePresent": true
+    }
+  ],
+  "dependencyNotes": "Build versions, bottle digests and license conclusions below come from the exact official manifest SBOM. Actual installed versions, metadata/license hashes and selected executable linkage must be observed on macOS; they are not inferred from this build inventory.",
+  "runtimeDependencies": [
+    {
+      "name": "aom",
+      "buildPackageVersion": "3.15.2",
+      "declaredDirectly": true,
+      "buildBottleSha256": "d8b133d6a8e7b2193f34f2f3cbc2cb327e8898331432daf2cc4cb84164871b35",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "aribb24",
+      "buildPackageVersion": "1.0.4",
+      "declaredDirectly": true,
+      "buildBottleSha256": "4f5a5fb9f91e28f11bbf33dda14a54b36510cecc834a29f0ba28d980a57760fc",
+      "upstreamSbomLicenseConcluded": "LGPL-3.0-only"
+    },
+    {
+      "name": "brotli",
+      "buildPackageVersion": "1.2.1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "7b92f3978056e44ac3f4bb6f5fc1ec31278a6b5972706236e8988e7c255cb3d4",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "ca-certificates",
+      "buildPackageVersion": "2026-10-20",
+      "declaredDirectly": false,
+      "buildBottleSha256": "8589f4e61b3afcc5ea375aab11af1c891ec4c94421c699c2a5a4765078de4443",
+      "upstreamSbomLicenseConcluded": "MPL-2.0"
+    },
+    {
+      "name": "cairo",
+      "buildPackageVersion": "1.18.6",
+      "declaredDirectly": false,
+      "buildBottleSha256": "2eb1ea8f47088a4bddf68c052eef3ef5e52a5bc1369118d432db6bea2e363853",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-only OR MPL-1.1"
+    },
+    {
+      "name": "cjson",
+      "buildPackageVersion": "1.7.19",
+      "declaredDirectly": false,
+      "buildBottleSha256": "02864d4e743d0b31edf050ab99325b77cbd34bde4a0fee2258c4903fb7cac621",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "dav1d",
+      "buildPackageVersion": "1.5.4",
+      "declaredDirectly": true,
+      "buildBottleSha256": "5f573db161c0685ba7e8d27bd3b6a494e6952e47c7c99355a0d090b253b566af",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "flac",
+      "buildPackageVersion": "1.5.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "c9698bcebe8e99ab84adf49a347cad5a9f122c45b80622a9fe2acbaeab902545",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause AND GPL-2.0-or-later AND ISC AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND LicenseRef-Homebrew-public-domain AND (GPL-2.0-or-later OR LGPL-2.1-or-later)"
+    },
+    {
+      "name": "fontconfig",
+      "buildPackageVersion": "2.18.3",
+      "declaredDirectly": true,
+      "buildBottleSha256": "a5f5df5f8d02e8a5b2587cac464c7bd45128447da06b7ab39938a9645982ef49",
+      "upstreamSbomLicenseConcluded": "HPND-sell-variant AND Unicode-3.0 AND MIT-Modern-Variant AND MIT AND LicenseRef-Homebrew-public-domain"
+    },
+    {
+      "name": "freetype",
+      "buildPackageVersion": "2.15.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "7e7a7bb07a484cf6fccb168587d697ed24b98cce52e6ac735debb22adb422237",
+      "upstreamSbomLicenseConcluded": "FTL"
+    },
+    {
+      "name": "frei0r",
+      "buildPackageVersion": "3.6.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "9282c476ed3636265f089a368f854b12ebb8a61a19d8a5c018454b6798ed89e0",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "fribidi",
+      "buildPackageVersion": "1.0.17",
+      "declaredDirectly": false,
+      "buildBottleSha256": "c1e62df532f06bf13ebb31df04d7e78645271a00e4261b17594248d16cf7e5b8",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later AND LGPL-2.1-or-later"
+    },
+    {
+      "name": "gettext",
+      "buildPackageVersion": "1.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "98a116d35792ccd730360ffc8c0d8fc5799b2282b96bb7696192c573f064a331",
+      "upstreamSbomLicenseConcluded": "GPL-3.0-or-later AND LGPL-2.1-or-later"
+    },
+    {
+      "name": "ggml",
+      "buildPackageVersion": "0.27.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "c654a80c06b0b01fd96794d61f3fce58a05fc2208386c441330d03b55d97c6c5",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "giflib",
+      "buildPackageVersion": "6.1.3",
+      "declaredDirectly": false,
+      "buildBottleSha256": "cfd0ce71b021f10c57fe01270b77703a82c56032afd078a48d7ad48c603ae0de",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "glib",
+      "buildPackageVersion": "2.90.1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "ce9568a335281cb6bd12c48fd89d7a118a046f9df16761c120826fdae116e468",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "gmp",
+      "buildPackageVersion": "6.3.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "b30bf31c50c294e0981d2a7cb4c149e9c43f50f3cf4f7f552c3dcf9da66b95b5",
+      "upstreamSbomLicenseConcluded": "LGPL-3.0-or-later OR GPL-2.0-or-later"
+    },
+    {
+      "name": "gnutls",
+      "buildPackageVersion": "3.8.13_2",
+      "declaredDirectly": true,
+      "buildBottleSha256": "0c8ba0cb42636a98b28a2c173b33c4298a286972a9838d27602f0bbc860acdbb",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later AND GPL-3.0-only"
+    },
+    {
+      "name": "graphite2",
+      "buildPackageVersion": "1.3.15",
+      "declaredDirectly": false,
+      "buildBottleSha256": "bcbf8282acc59c6ed6a0c9a7cf076935735c21de1495bb4e22c3d6bf32f31ee0",
+      "upstreamSbomLicenseConcluded": "MIT OR MPL-2.0 OR LGPL-2.1-or-later OR GPL-2.0-or-later"
+    },
+    {
+      "name": "harfbuzz",
+      "buildPackageVersion": "15.0.0_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "a6286d242e42731cef8f3e4ad20bff6e45146c4235693cbfc0db73242ca9cc7e",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "highway",
+      "buildPackageVersion": "1.4.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "bf5268ae192ebd188db4892567d45eedfa42ed1d1d41665c8822e7934ccf9a9c",
+      "upstreamSbomLicenseConcluded": "Apache-2.0 OR BSD-3-Clause"
+    },
+    {
+      "name": "icu4c@79",
+      "buildPackageVersion": "79.1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "7d05da26db392a008abe89706adcf8b089e08d3431535ac95a5c984ceda88153",
+      "upstreamSbomLicenseConcluded": "Unicode-3.0"
+    },
+    {
+      "name": "imath",
+      "buildPackageVersion": "3.2.3",
+      "declaredDirectly": false,
+      "buildBottleSha256": "4f6c05dd778e795b70d60af8daacc72dfa4b92ecbaece682ad98c36df92be150",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "jpeg-turbo",
+      "buildPackageVersion": "3.2.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "6dc55edcd33c693e474299ed2bba3c472ac1331cbe300066ec8ef99b88fab17c",
+      "upstreamSbomLicenseConcluded": "IJG AND Zlib AND BSD-3-Clause"
+    },
+    {
+      "name": "jpeg-xl",
+      "buildPackageVersion": "0.12.0_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "3c193d49dacde5e78331ff37462b5ef7f09d44279801ad2df911a7a5d618c109",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "json-c",
+      "buildPackageVersion": "0.19",
+      "declaredDirectly": false,
+      "buildBottleSha256": "5624048dbb067f1a6d3784081029c3d738edeefd57188ce6724bb93d01aa53aa",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "lame",
+      "buildPackageVersion": "4.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "552d24d56ff0d3255e9a3519a368d0ce45de86b5b2967b338209c1a22cd12969",
+      "upstreamSbomLicenseConcluded": "LGPL-2.0-or-later"
+    },
+    {
+      "name": "leptonica",
+      "buildPackageVersion": "1.87.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "305a35821bb0d618e614c791e7fcd9e58e92b08d5763b4b4e1dbdcf69619d034",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "libarchive",
+      "buildPackageVersion": "3.8.10",
+      "declaredDirectly": true,
+      "buildBottleSha256": "171706f55d0de1d512524bf20a62b1053b42603436a86fe4631043b7ac7be842",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "libass",
+      "buildPackageVersion": "0.17.5_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "b893a0f114554c1b9ea3e046d8102d59c6cf98106936da144835310cab2878f3",
+      "upstreamSbomLicenseConcluded": "ISC"
+    },
+    {
+      "name": "libb2",
+      "buildPackageVersion": "0.98.1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "cc4304b760722128b914944f85788795f1f02de3072d1fd8e921b836b508776f",
+      "upstreamSbomLicenseConcluded": "CC0-1.0"
+    },
+    {
+      "name": "libbluray",
+      "buildPackageVersion": "1.5.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "90d5839c5058c8fc7a1b5504a75c350bdd4ee65617a47c02c80d992fd3bba70c",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libdatrie",
+      "buildPackageVersion": "0.2.14",
+      "declaredDirectly": false,
+      "buildBottleSha256": "59dcf66f922dd1edaa379fb0ef30034585a7a1760ad0887c95afc0ff00ea667c",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libdeflate",
+      "buildPackageVersion": "1.26",
+      "declaredDirectly": false,
+      "buildBottleSha256": "f1660f8edad35044cecaa50b957048b3f2933f238c0970531db6bb5fddb09cc6",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libidn2",
+      "buildPackageVersion": "2.3.8",
+      "declaredDirectly": false,
+      "buildBottleSha256": "1eb02bfa40ec00b7ea64d8608fcf2115069d99de5a35eb3e2b3ac444a695ea46",
+      "upstreamSbomLicenseConcluded": "(GPL-2.0-or-later OR LGPL-3.0-or-later) AND (Unicode-TOU AND Unicode-DFS-2016) AND GPL-3.0-or-later AND LGPL-2.1-or-later AND FSFAP-no-warranty-disclaimer"
+    },
+    {
+      "name": "libmicrohttpd",
+      "buildPackageVersion": "1.0.10",
+      "declaredDirectly": false,
+      "buildBottleSha256": "6a0394a2fc518aeb47f03be4db534c0413958334cc2602358e67d14266a2ea5f",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libogg",
+      "buildPackageVersion": "1.3.6",
+      "declaredDirectly": true,
+      "buildBottleSha256": "2423ff6b931f0393cd314052a7328a61fdd6f1d8519b65c4dff5ab560f82c52d",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "libomp",
+      "buildPackageVersion": "23.1.4",
+      "declaredDirectly": false,
+      "buildBottleSha256": "af8425bbe39630ec9b2022b67449ac737e0ed6d48e98a6309f841295d3c6f0f2",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libplacebo",
+      "buildPackageVersion": "7.387.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "a96048b194f3423ef6fc5c888fa349ea70979fb3135719b8c5290889ff6e44cd",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libpng",
+      "buildPackageVersion": "1.6.59",
+      "declaredDirectly": false,
+      "buildBottleSha256": "6461c4dde6a693b559c531357b32126bd649ab67f53db5a5b70c25a5c12de4f1",
+      "upstreamSbomLicenseConcluded": "libpng-2.0"
+    },
+    {
+      "name": "librist",
+      "buildPackageVersion": "0.2.20",
+      "declaredDirectly": true,
+      "buildBottleSha256": "eb3efefc1292c5e105f3fa8e585d229a5cd9b853f97603acbbe26445faafe342",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "libsamplerate",
+      "buildPackageVersion": "0.2.2",
+      "declaredDirectly": true,
+      "buildBottleSha256": "d51907988e3ab62f6e49ddd1253a723fd5964b78a0361453e8d9b75a2106b4e7",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "libsndfile",
+      "buildPackageVersion": "1.2.2_1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "2d6a8173ef41359c3da4c78a5d5eb402846e480c509b868f671b80a17726f9c4",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libsodium",
+      "buildPackageVersion": "1.0.22",
+      "declaredDirectly": false,
+      "buildBottleSha256": "b231db8b0f993cb764b57560b69f484efe059ec87e47887505aa2d5872cc5a01",
+      "upstreamSbomLicenseConcluded": "ISC"
+    },
+    {
+      "name": "libsoxr",
+      "buildPackageVersion": "0.1.3",
+      "declaredDirectly": true,
+      "buildBottleSha256": "164c5e70f213a0cdd5b9a764da773e79bc35753efc54d46e0710aee172de3640",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libssh",
+      "buildPackageVersion": "0.12.2_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "69507118740589ed52f4b4328694eeed6a07166527e001f0d43f9c6a86b09d1f",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libtasn1",
+      "buildPackageVersion": "4.21.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "973e0fd7d529808f53fa9ae281020bcbcc750a1dff60e5e5bc37c0da274cca5e",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libthai",
+      "buildPackageVersion": "0.1.30",
+      "declaredDirectly": false,
+      "buildBottleSha256": "428726b804e7bb80faef7381ba27b0be1a0087e54746d0f355c0af7575220ac6",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libtiff",
+      "buildPackageVersion": "4.7.2",
+      "declaredDirectly": false,
+      "buildBottleSha256": "e971adc15ce3387a9c68a10ff1cf431755faf0e86b9d3a6daf668efc2f6f31d8",
+      "upstreamSbomLicenseConcluded": "libtiff"
+    },
+    {
+      "name": "libudfread",
+      "buildPackageVersion": "1.2.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "a563689c17ca21d204a228773ec9380b5b0880bd3b0ab322170f8596be7f844a",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "libunibreak",
+      "buildPackageVersion": "8.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "fdd04ab1291384622b07b5409786fd297ddb2ceec4715074f9f35c807649ff50",
+      "upstreamSbomLicenseConcluded": "Zlib"
+    },
+    {
+      "name": "libunistring",
+      "buildPackageVersion": "1.5",
+      "declaredDirectly": false,
+      "buildBottleSha256": "5001abe192babcfaf0f97ad322e2e59958d0d991de3da9f2e941b24924b8a2b8",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later OR LGPL-3.0-or-later"
+    },
+    {
+      "name": "libvidstab",
+      "buildPackageVersion": "1.1.2",
+      "declaredDirectly": true,
+      "buildBottleSha256": "1499410c829a5312dd38682273c2778295491d91432d4b7eb6cb6e52250c35f4",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "libvmaf",
+      "buildPackageVersion": "3.2.1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "d3cf35724639ceb6d9d92ee25a7fa4953f7ff952dc4be90aa83eb006910248b4",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause-Patent"
+    },
+    {
+      "name": "libvorbis",
+      "buildPackageVersion": "1.3.7",
+      "declaredDirectly": true,
+      "buildBottleSha256": "c28d1e0b461a4cf6f5aee72e664ac6f5f6f3efaab44f15b91924f08474cfafe1",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "libvpx",
+      "buildPackageVersion": "1.17.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "dd7924c0a05fa5f840f17ab9f5fac72d8672d75b2a7d44dbbf811274f70d17d6",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "libx11",
+      "buildPackageVersion": "1.8.14",
+      "declaredDirectly": true,
+      "buildBottleSha256": "fdc6503c67fb5814bf7de665629b8dbda0807eda7b07d3c2668807768b4ae103",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libxau",
+      "buildPackageVersion": "1.0.12",
+      "declaredDirectly": false,
+      "buildBottleSha256": "e8a5fedbd9e5c49f10006171decc5b1e56c48fbd4267e7668f813e47c0da984f",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libxcb",
+      "buildPackageVersion": "1.17.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "cce8d9e12c3f0b2fdbffbb3f7ba02f7e25cf3fa495b3e759d34a6264599543b3",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libxdmcp",
+      "buildPackageVersion": "1.1.5",
+      "declaredDirectly": false,
+      "buildBottleSha256": "b09a915dae5b45371a86f20a4ccce13c16c7a8eadc843b665e91bc5b2d2143ce",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libxext",
+      "buildPackageVersion": "1.3.7",
+      "declaredDirectly": false,
+      "buildBottleSha256": "71225436c92940977248a28433951e8e26732d3a9eed954ce1999a770f93f98e",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "libxrender",
+      "buildPackageVersion": "0.9.13",
+      "declaredDirectly": false,
+      "buildBottleSha256": "d281b755455ee77f28bcf83c93501b525d7eb2c7a4b8eb8fdf640ee2c6e4b69b",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "little-cms2",
+      "buildPackageVersion": "2.19.1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "f68c3c93b9ee63891388f6485b27c5bc2605638df36b4806bdc52f0636e8254b",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "llama.cpp",
+      "buildPackageVersion": "0.7.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "feb0baf9bf9266e4cbdd5757ab811ca2ce06dc8b398a9f80c1f9822a798398bd",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "lz4",
+      "buildPackageVersion": "1.10.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "91674f1c7407b1f7b73d5bd1d85ed1abaaca93be3b68607af4ef3df632540ac0",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "lzo",
+      "buildPackageVersion": "2.10",
+      "declaredDirectly": false,
+      "buildBottleSha256": "6bb0401c41a18fd37071ec9591fe053a808f07552ff7ea22542faa470eb8e589",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "mpg123",
+      "buildPackageVersion": "1.33.7",
+      "declaredDirectly": false,
+      "buildBottleSha256": "80869bcfed43252f222be16fd652b8e691cb4a144778681853ed76e1d45a7143",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-only"
+    },
+    {
+      "name": "nettle",
+      "buildPackageVersion": "4.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "01050aa13ce3825fc1b81f1a3c5994a165301b9d5223a9fb9015d122bde5ca3e",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later OR LGPL-3.0-or-later"
+    },
+    {
+      "name": "opencore-amr",
+      "buildPackageVersion": "0.1.6",
+      "declaredDirectly": true,
+      "buildBottleSha256": "48a7944b5baf1d23777ff16d0f1b44ba3fb1872728e578e245993019895b0075",
+      "upstreamSbomLicenseConcluded": "Apache-2.0"
+    },
+    {
+      "name": "openexr",
+      "buildPackageVersion": "3.5.2",
+      "declaredDirectly": false,
+      "buildBottleSha256": "20e7c998ed534e281f8606b1567b047ceedb0e19272bf0545ae2128d8c589488",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "openjpeg",
+      "buildPackageVersion": "2.5.4_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "5f2c17c1be495ddc03d00c721b7144f63e9f5098cbee3147cb67610f3875a516",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "openjph",
+      "buildPackageVersion": "0.32.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "a543eb8908cdb84823c5798f0c7b6355af68338f133806a41746d5c22250e01f",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "openssl@4",
+      "buildPackageVersion": "4.1.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "6fcbad388ef13f6f9481e91676e2ec1b49f0a3dbd473e838297a3c8850283978",
+      "upstreamSbomLicenseConcluded": "Apache-2.0"
+    },
+    {
+      "name": "opus",
+      "buildPackageVersion": "1.6.1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "85d6f1e885117016478e468f92033f648d9bab05210708fe195cacefe5be8266",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "p11-kit",
+      "buildPackageVersion": "0.26.5",
+      "declaredDirectly": false,
+      "buildBottleSha256": "6a61302c1be785c331903fe9252f87d0d4ca722fda0697c4e22f6063cd4f1be2",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "pango",
+      "buildPackageVersion": "1.58.2",
+      "declaredDirectly": false,
+      "buildBottleSha256": "4fa58f7090be47c43b3d7411aa961bd0a67cf84850554f08eb7b0a41cab0b0e9",
+      "upstreamSbomLicenseConcluded": "LGPL-2.0-or-later"
+    },
+    {
+      "name": "pcre2",
+      "buildPackageVersion": "10.49",
+      "declaredDirectly": false,
+      "buildBottleSha256": "0ec47d18c50f5770db2b3f07b5b85644284cc6ee8e07e23b11d2727e95932b77",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "pixman",
+      "buildPackageVersion": "0.46.4",
+      "declaredDirectly": false,
+      "buildBottleSha256": "86f5fc013d2b22bbe41c1c14661287bf8e8e4c3ac95cd05b08b886d24918fe34",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "qrencode",
+      "buildPackageVersion": "4.1.1_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "8f2cb82a0924e1d5b2ce0f5edbc59884bfb35b5ab8a7dae5a7b3f362679e278a",
+      "upstreamSbomLicenseConcluded": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "rav1e",
+      "buildPackageVersion": "0.8.1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "61118a13d9f434197f16808350136c7aafc898526937e3ce2917566e77c2672b",
+      "upstreamSbomLicenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "name": "rubberband",
+      "buildPackageVersion": "4.0.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "5ac29718f68b181de61e81dd42bc85cc74cb1fc4ed5fdca541a94224bc43feaa",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "sdl2-compat",
+      "buildPackageVersion": "2.32.74",
+      "declaredDirectly": true,
+      "buildBottleSha256": "0051ded084f7a73374bffe09df4cd6a0e70ccee6b3337a5843c152111bc01c28",
+      "upstreamSbomLicenseConcluded": "Zlib"
+    },
+    {
+      "name": "sdl3",
+      "buildPackageVersion": "3.4.18",
+      "declaredDirectly": false,
+      "buildBottleSha256": "fa5228c04ab1c49370bd54162a2896d0e7c4033b1cf958bb2e02cc503c85d47c",
+      "upstreamSbomLicenseConcluded": "Zlib"
+    },
+    {
+      "name": "shaderc",
+      "buildPackageVersion": "2026.4",
+      "declaredDirectly": false,
+      "buildBottleSha256": "1313ffbae9ac1559f7160cc89657ecd5fc324895ff46e15a4bd198ec3bbebec0",
+      "upstreamSbomLicenseConcluded": "Apache-2.0"
+    },
+    {
+      "name": "snappy",
+      "buildPackageVersion": "1.3.1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "0b5ff66b47727b8af0cc62797ff3bd88632be5a6de6d03786a706114d8883488",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "speex",
+      "buildPackageVersion": "1.2.1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "885ccb79dee4ad080d2c5ee20ab55569b0dfee064535a537568dd78adff88dcb",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "srt",
+      "buildPackageVersion": "1.5.7_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "49961e6bb35fb555930142ccea104dacd22cc0d4de367741f6539ebe83a3624b",
+      "upstreamSbomLicenseConcluded": "MPL-2.0"
+    },
+    {
+      "name": "svt-av1",
+      "buildPackageVersion": "4.2.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "2e6f7cbf3ff42f59ca251f3c84d4ad5a3ecfd518340237a6f70a54a428de1676",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "tesseract",
+      "buildPackageVersion": "5.5.3_1",
+      "declaredDirectly": true,
+      "buildBottleSha256": "d4356db8fc84e1ebf65c4b5e9d80857f8e346db44c7d5d566dd858450a7ede5d",
+      "upstreamSbomLicenseConcluded": "Apache-2.0"
+    },
+    {
+      "name": "theora",
+      "buildPackageVersion": "1.2.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "0474983a6d3f2982c2b34586f12c58d5363ed4e67e6642686d295a4c62533d6e",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "vulkan-headers",
+      "buildPackageVersion": "1.4.363.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "e29460a3bc874e18e407211f3e550cf60177c6f7614c04d3081beb94d8ad4ab2",
+      "upstreamSbomLicenseConcluded": "Apache-2.0"
+    },
+    {
+      "name": "vulkan-loader",
+      "buildPackageVersion": "1.4.363.0",
+      "declaredDirectly": false,
+      "buildBottleSha256": "4b99cecb4fe7115a6faf770cfa9e8f14426c24baa6e4566e2473fe5beedad5af",
+      "upstreamSbomLicenseConcluded": "Apache-2.0"
+    },
+    {
+      "name": "webp",
+      "buildPackageVersion": "1.6.0",
+      "declaredDirectly": true,
+      "buildBottleSha256": "3f5c1ccc592312b2170bc1ea673f902aa65fc479aa9a4c308ff0b1b1a35315fe",
+      "upstreamSbomLicenseConcluded": "BSD-3-Clause"
+    },
+    {
+      "name": "whisper.cpp",
+      "buildPackageVersion": "1.9.5",
+      "declaredDirectly": true,
+      "buildBottleSha256": "a6691f811f613d79d1e508a89c7523e69f5b13a58c10e26083e77f8909b6db1e",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "x264",
+      "buildPackageVersion": "r3222",
+      "declaredDirectly": true,
+      "buildBottleSha256": "a613d44ead5d3999270970f41283eadfad8001061faf063945def6b8fb5145f4",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "x265",
+      "buildPackageVersion": "4.3",
+      "declaredDirectly": true,
+      "buildBottleSha256": "18e89a5822e2f4f91f919c5bf2fbac31433a561c48174fc15e13b4911a1232ac",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "xorgproto",
+      "buildPackageVersion": "2026.1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "8327b24ee8a0d4b3cd9dfb6d49eb20a80484c0f25535be6e726d1b908f444514",
+      "upstreamSbomLicenseConcluded": "MIT"
+    },
+    {
+      "name": "xvid",
+      "buildPackageVersion": "1.3.7",
+      "declaredDirectly": true,
+      "buildBottleSha256": "e7e300ab7d6f6872713f63145b650c66d0d9841a691eb44c4ab3adf06ce57f33",
+      "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
+    },
+    {
+      "name": "xz",
+      "buildPackageVersion": "5.8.4",
+      "declaredDirectly": true,
+      "buildBottleSha256": "c2724c0db0398134694b8366d30d14f4de376115fb54c559c331d5fd0474af76",
+      "upstreamSbomLicenseConcluded": "0BSD AND GPL-2.0-or-later"
+    },
+    {
+      "name": "zeromq",
+      "buildPackageVersion": "4.3.5_2",
+      "declaredDirectly": true,
+      "buildBottleSha256": "03990812828803732fe5253d9940e1a769012068f9af165804d2dd30255aa3c4",
+      "upstreamSbomLicenseConcluded": "MPL-2.0"
+    },
+    {
+      "name": "zimg",
+      "buildPackageVersion": "3.0.6",
+      "declaredDirectly": true,
+      "buildBottleSha256": "ee8314ce01c48102e3f977540d6095a444ceb8bce71f1868199c47cad4ce12e4",
+      "upstreamSbomLicenseConcluded": "WTFPL"
+    },
+    {
+      "name": "zstd",
+      "buildPackageVersion": "1.5.7_1",
+      "declaredDirectly": false,
+      "buildBottleSha256": "d72adf48460a8384b256f88061cd7b9df4977df7fa2e0794051d427db754a565",
+      "upstreamSbomLicenseConcluded": "(BSD-3-Clause OR GPL-2.0-only) AND BSD-2-Clause AND MIT"
+    }
+  ]
+}
