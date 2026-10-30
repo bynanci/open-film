@@ -6,21 +6,28 @@ import {
   type PresetPackageV1,
 } from "./presets.js";
 /** Lexical preflight only; JSON.parse remains the JSON grammar authority. */
-export function parsePresetPackage(
+export function parsePresetJson(
   document: string | Uint8Array,
-): PresetPackageV1 {
+  limits: { bytes: number; depth: number; tokens: number } = {
+    bytes: PRESET_LIMITS.packageBytes,
+    depth: PRESET_LIMITS.depth,
+    tokens: PRESET_LIMITS.tokens,
+  },
+): unknown {
   const bytes =
     typeof document === "string"
       ? new TextEncoder().encode(document)
       : document;
-  if (bytes.byteLength > PRESET_LIMITS.packageBytes)
+  if (bytes.byteLength > limits.bytes)
     presetInvalid("document", "package byte budget exceeded");
   let text: string;
   try {
     text =
       typeof document === "string"
         ? document
-        : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+            bytes,
+          );
   } catch {
     presetInvalid("document", "invalid UTF-8");
   }
@@ -33,7 +40,7 @@ export function parsePresetPackage(
     if (/[\s,:]/.test(c)) continue;
     if (c === "{" || c === "[") {
       stack.push({ kind: c, keys: new Set() });
-      if (stack.length > PRESET_LIMITS.depth)
+      if (stack.length > limits.depth)
         presetInvalid("document", "depth budget exceeded");
       tokens++;
     } else if (c === "}" || c === "]") {
@@ -72,7 +79,7 @@ export function parsePresetPackage(
       while (i + 1 < text.length && !/[\s,\[\]{}:"]/.test(text[i + 1]!)) i++;
       tokens++;
     }
-    if (tokens > PRESET_LIMITS.tokens)
+    if (tokens > limits.tokens)
       presetInvalid("document", "token budget exceeded");
   }
   let value: unknown;
@@ -81,5 +88,11 @@ export function parsePresetPackage(
   } catch {
     presetInvalid("document", "invalid JSON");
   }
-  return validatePresetPackage(value);
+  return value;
+}
+
+export function parsePresetPackage(
+  document: string | Uint8Array,
+): PresetPackageV1 {
+  return validatePresetPackage(parsePresetJson(document));
 }

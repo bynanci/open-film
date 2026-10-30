@@ -1,5 +1,8 @@
 import { MotionGenerationService } from "./motion-generation.js";
 export * from "./motion-generation.js";
+export * from "./local-preset-registry.js";
+export * from "./preset-integrity.js";
+export { readLocalPresetDocument } from "./local-preset-storage.js";
 import { SourceDraftService } from "./source-draft.js";
 export * from "./source-draft.js";
 import { SourceDiscoveryService } from "./source-discovery.js";
