@@ -44,6 +44,10 @@ to the bounded evaluator. Secondary gain is 0–1 and replacement affects only
 the named primary windows. D3B1 does not persist B-roll coverage or expose a
 coverage authoring control.
 
+The existing limiter runs separately on each rendered role stem and the master.
+Overloaded stems therefore do not sum back to the limited master. Peak/loudness
+reports measure decoded output; they do not normalize the saved mix.
+
 Split and source replacement reject explicitly independent sound until it is
 relinked. Conflicting captions, source exhaustion and protected clips/sources
 reject without a partial save. Collect keeps complete originals for independent

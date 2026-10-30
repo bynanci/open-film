@@ -17,6 +17,7 @@ import {
   FFmpegRenderer,
   audioSourceAssetIds,
   compileAudioMixPlan,
+  measureAudioOutput,
 } from "../src/index.js";
 import {
   toneSource,
@@ -911,5 +912,60 @@ it("keeps actual H264/AAC pulse edges within1024samples using one PCM limiter ba
     encodedSha256: await hashFile(path),
     decodedPcmSha256: decoded.sha256,
     manifest: JSON.parse(await readFile(`${path}.manifest.json`, "utf8")),
+  });
+});
+
+it("measures canonical master and role stems through the existing per-output limiter without normalizing them", async () => {
+  const dir = await root(),
+    a = await toneSource(dir, "meter-dialogue", 440, 2),
+    b = await toneSource(dir, "meter-music", 880, 2);
+  const configured = (
+    id: string,
+    assetId: string,
+    role: "dialogue" | "music",
+  ): Clip => ({
+    ...clip(id, assetId, 0, 2),
+    transform: { volume: 20 },
+    audioTiming: {
+      version: 1,
+      sampleRate: 48000,
+      timelineStartSample: 0,
+      sourceInSample: 0,
+      sourceOutSample: 96000,
+    },
+    audioAutomation: { version: 1, role },
+  });
+  const composition = comp(
+    configured("p", a.id, "dialogue"),
+    configured("m", b.id, "music"),
+  );
+  const outputs = [];
+  for (const role of [undefined, "dialogue", "music"] as const) {
+    const path = join(dir, `meter-output-${role ?? "master"}.wav`);
+    const decoded = await wav(path, composition, [a, b], [], role),
+      before = await hashFile(path);
+    const measured = await measureAudioOutput(path);
+    expect(await hashFile(path)).toBe(before);
+    expect(measured.duration).toBe(12);
+    expect(Number.isFinite(measured.integratedLufs)).toBe(true);
+    expect(Number.isFinite(measured.truePeakDbtp)).toBe(true);
+    expect(Number.isFinite(measured.samplePeakDbfs)).toBe(true);
+    expect(measured.meterBins.length).toBeGreaterThan(0);
+    outputs.push({ role: role ?? "master", decoded, measured });
+  }
+  let nonlinearDifference = 0;
+  for (let n = 0; n < outputs[0]!.decoded.samples.length; n++)
+    nonlinearDifference = Math.max(
+      nonlinearDifference,
+      Math.abs(
+        outputs[1]!.decoded.samples[n]! +
+          outputs[2]!.decoded.samples[n]! -
+          outputs[0]!.decoded.samples[n]!,
+      ),
+    );
+  expect(nonlinearDifference).toBeGreaterThan(0.1);
+  await recordPolicyEvidence("master-stem-measurements", {
+    nonlinearDifference,
+    reports: outputs.map(({ role, measured }) => ({ role, measured })),
   });
 });

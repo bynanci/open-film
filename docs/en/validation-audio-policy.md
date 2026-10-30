@@ -122,3 +122,24 @@ The full run retained the candidate-bound media manifests and measurements;
 canonical phase errors were `[0,0,0,0,0,0,0]` from the single239-sample baseline.
 No threshold, skip or retry policy changed. A second complete gate requires the
 new integrated producer correction and the configured pinned parser environment.
+
+## Existing master/stem limiter measurement
+
+A separate actual canonical fixture applies saved gain20 to two low-level
+440/880 Hz sources, then renders the master and dialogue/music roles through the
+existing limiter. `measureAudioOutput` measures the decoded files; each WAV hash
+is identical before and after measurement. The intentionally overloaded result
+is recorded as existing behavior, without additional normalization:
+
+| Output        | Integrated LUFS | Sample peak dBFS | True peak dBTP |
+| ------------- | --------------: | ---------------: | -------------: |
+| Master        |           −3.80 |        −0.000001 |          +1.08 |
+| Dialogue stem |           −1.09 |                0 |          +1.09 |
+| Music stem    |           −0.60 |                0 |          +1.08 |
+
+The maximum difference between summed stems and the limited master is
+0.9999998807907104. Limiting runs independently per output, so nonlinear
+stem/master summation equality is not an acceptance promise. All files retain
+exact12-second duration and finite decoded measurements. The source-overwrite
+guard caught an initial fixture filename collision; changing only the output
+filename allowed the unchanged measurement assertions to execute and pass.
