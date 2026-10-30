@@ -209,25 +209,25 @@ diagnostic English detail; no raw private paths.
   spec. Keep TitleStyle as its owner alias. Receipt validators are closed and
   bounded; look v1 unknown fields remain rejected.
 
-- [ ] **Step 1:** Add failing tests named `rejectsAllUntrustedDataDescriptors`,
+- [x] **Step 1:** Add failing tests named `rejectsAllUntrustedDataDescriptors`,
       `preflightsDepthBytesTokensAndDuplicateKeys`, `enforcesClosedVersionsAndRights`,
       `capsMatrixAndKeepsAlpha`, `usesTitleOwnerValidation`,
       `preservesCanonicalIdentityAcrossKeyOrder`, and `boundsProjectSnapshots`.
       Assert 262,144 bytes/12 depth/20,000 tokens/32 entries succeed at the bound
       with an otherwise valid fixture and fail one beyond; getter invocation
       count stays zero; NaN/Infinity/1e999 and future nested versions fail.
-- [ ] **Step 2:** Run
+- [x] **Step 2:** Run
       `pnpm exec vitest run packages/core/tests/presets.test.ts packages/core/tests/preset-json.test.ts`
       and retain the intended missing-export/behavior failures.
-- [ ] **Step 3:** Implement the signatures and exact spec bounds, closed union,
+- [x] **Step 3:** Implement the signatures and exact spec bounds, closed union,
       safe scanner, Unicode/URL/path rules and detached snapshots. Import/call
       the existing `validateTitleStyle` owner from the preset validator; all
       cross-domain dispatch happens inside function calls after module
       initialization. Add import-order smoke coverage and avoid eager cyclic
       top-level reads. Never copy the title validator.
-- [ ] **Step 4:** Pass the new files and existing core validation/look/title
+- [x] **Step 4:** Pass the new files and existing core validation/look/title
       contracts selected from actual test inventory. Do not run the root suite.
-- [ ] **Step 5:** Commit the independently reviewable pure contract slice.
+- [x] **Step 5:** Commit the independently reviewable pure contract slice.
 
 ### Task 2: Bounded atomic user-data registry
 
@@ -255,7 +255,7 @@ unrelated global-glossary refactor.
   `assertProjectPresetIntegrity(project: OpenFilmProject): void` use Node crypto
   over Task 1's exact canonical inputs. They do not load a registry.
 
-- [ ] **Step 1:** Add failing `sameContentIsIdempotentDifferentContentCollides`,
+- [x] **Step 1:** Add failing `sameContentIsIdempotentDifferentContentCollides`,
       `coexistsAtAnotherVersionWithoutRetargeting`, `enforcesRegistryQuotas`,
       `neverReadsOutsideSelectedRegularFile`, `preservesUnknownAndAliveOwners`,
       `deadOwnerRecoveryCannotReleaseReplacementToken`,
@@ -263,17 +263,17 @@ unrelated global-glossary refactor.
       `lateCancelAcknowledgesCommittedInstall`, and `recoveryNeverDowngradesFutureVersion`.
       Use separate store instances and injected fs failure/race boundaries;
       assert original package and unowned sentinel bytes are identical.
-- [ ] **Step 2:** Run the two new application test files; retain the intended
+- [x] **Step 2:** Run the two new application test files; retain the intended
       failing assertions without native media/browser setup.
-- [ ] **Step 3:** Implement root/descendant identity checks, non-following bounded
+- [x] **Step 3:** Implement root/descendant identity checks, non-following bounded
       reads, complete token lock/recovery, lock-protected reload/CAS, fixed
       sorted registry format, mode-0600 exclusive temp/fsync and atomic replace.
       Define rename as commit; unlink only owned temp identity. Backup recovery
       requires reviewed hashes and preserves a bounded corrupt-file copy.
-- [ ] **Step 4:** Pass all new storage cases plus the focused existing
+- [x] **Step 4:** Pass all new storage cases plus the focused existing
       `packages/application/tests/global-glossary.test.ts` regression owner if
       any shared helper changed. Confirm no constructor registry access.
-- [ ] **Step 5:** Commit the registry owner and its security evidence.
+- [x] **Step 5:** Commit the registry owner and its security evidence.
 
 ### Task 3: Portable look/title application with one editor history
 
@@ -309,25 +309,25 @@ PresetAcceptInput): Promise<PresetAcceptance>` as a preset-specific entry into
   directly; do not import application into render. Tiny SHA calls share the
   canonical contract, not a new crypto implementation.
 
-- [ ] **Step 1:** Add failing `reviewIsDetachedAndDoesNotEnterHistory`,
+- [x] **Step 1:** Add failing `reviewIsDetachedAndDoesNotEnterHistory`,
       `localLookScopesPreserveInheritanceAndProtectedEffectiveMatrices`,
       `titleApplicationUsesOwnerFrameAndLockChecks`,
       `acceptsOneHistoryUnitWithSnapshotAndReceipt`,
       `retriesAfterReopenAndUndoAcknowledgeWithoutReapplying`,
       `changedBodyRequestIdConflicts`, and `removedRegistryEntryStalesNewAcceptance`.
       Assert no source/catalog/geometry/timing mutation and no partial receipt.
-- [ ] **Step 2:** Run focused new application/core/solver tests, retaining the
+- [x] **Step 2:** Run focused new application/core/solver tests, retaining the
       expected failures; keep actual FFmpeg tests for Task 6's owned media run.
-- [ ] **Step 3:** Implement version dispatch and effective matrix, title metadata,
+- [x] **Step 3:** Implement version dispatch and effective matrix, title metadata,
       authoritative review reconstruction, complete editor/catalog/registry
       fences and single-save receipt. Use the same TimelineEditor instance as
       ordinary edits. Add snapshot integrity at app open/save/export/restore
       and renderer entry before a persisted local recipe is consumed.
-- [ ] **Step 4:** Preserve JSON/OTIO authored/effective snapshot metadata, native
+- [x] **Step 4:** Preserve JSON/OTIO authored/effective snapshot metadata, native
       handoff limitations, and accurate per-local-recipe license/origin in
       render manifests. Extend closed handoff clip-key validation for the new
       title provenance field without claiming native effect reconstruction.
-- [ ] **Step 5:** Pass focused look/title/history/exporter tests, including
+- [x] **Step 5:** Pass focused look/title/history/exporter tests, including
       builtin factory type checks using `BuiltinFilmLook["preset"]`, identity
       v2/zero-strength and future-version/hash rejection. Commit this owner slice.
 
@@ -362,7 +362,7 @@ acceptanceMapping: StoryPlanAcceptanceMapping}` shares the existing internal
   local story snapshots before external template lookup; user text/scripts stay
   authored. Supported-locale fallback is explicit and deterministic.
 
-- [ ] **Step 1:** Add failing `requiresBijectiveBeatMappingInAuthoredOrder`,
+- [x] **Step 1:** Add failing `requiresBijectiveBeatMappingInAuthoredOrder`,
       `cannotReplaceAssignedAssetsWithPackageData`,
       `retainsSourceNatureNarrationEchoAndProtectedSelections`,
       `rejectsWeightAgainstBeatBounds`, `sourceLockAndHashChangesStaleWithoutGraphEdit`,
@@ -371,14 +371,14 @@ acceptanceMapping: StoryPlanAcceptanceMapping}` shares the existing internal
       `localizesOnlyTemplateOwnedTextFromSavedSnapshot`. Cover missing/extra/
       idea-only scenes, cycles, alternatives, rejected/locked sources, missing
       required IDs, protected selection order, and deep/forged context.
-- [ ] **Step 2:** Run the new pure and application files and existing
+- [x] **Step 2:** Run the new pure and application files and existing
       `packages/application/tests/story-plan.test.ts`; capture intended failures.
-- [ ] **Step 3:** Implement explicit mapping and weight pacing using the current
+- [x] **Step 3:** Implement explicit mapping and weight pacing using the current
       plan/solver; preserve all asset ownership and source protection. Refactor
       only enough of acceptPlan to share its transaction with the preset path.
       Recheck source/protection/CAS after any await and immediately at publish.
       Keep built-in adapters and `generateStory` unchanged.
-- [ ] **Step 4:** Persist new-cut source mapping, snapshot, text ownership and
+- [x] **Step 4:** Persist new-cut source mapping, snapshot, text ownership and
       durable receipt atomically; verify old Story/Composition and editor history
       are byte/logically identical. Pass focused StoryPlan and localization
       regressions; commit the authored-story owner slice.
@@ -411,24 +411,24 @@ and `tests/e2e/local-presets.spec.ts`.
   cancel/unmount/project-switch discards results from an earlier generation.
   No new framework, UI component library or design-token layer.
 
-- [ ] **Step 1:** Add failing integration assertions for round-trip CLI
+- [x] **Step 1:** Add failing integration assertions for round-trip CLI
       review→separate-process accept, identical package/review hashes across API,
       strict file/path/root rejection, absent license acknowledgement, foreign
       project, native/Origin checks, changed request body and 413 overflow.
       Unit tests assert delayed file/review/install responses cannot change a
       new project or selected file and saved local values remain selectable.
-- [ ] **Step 2:** Run these focused transport/unit files on ephemeral server
+- [x] **Step 2:** Run these focused transport/unit files on ephemeral server
       ports; do not use global 4310/1420 during an uncoordinated worker run.
-- [ ] **Step 3:** Implement settings list/detail import/review/install/remove and
+- [x] **Step 3:** Implement settings list/detail import/review/install/remove and
       explicit backup recovery, then typed film/scene/clip/title targeting and
       authored-beat mapping into existing StoryPlan review. Keep primary actions
       and provenance readable; put hashes under details. Add modified/fallback
       labels, structured errors, busy/cancel/retry states and no delayed save.
-- [ ] **Step 4:** Add all three locales, 360 px/CJK wrapping, labels/live regions,
+- [x] **Step 4:** Add all three locales, 360 px/CJK wrapping, labels/live regions,
       focus restoration/trap/Escape and touch targets with existing tokens.
       Pass focused tests, `pnpm test:i18n`, and relevant Vue/TypeScript checks;
       record commands and commit the shared usable flow.
-- [ ] **Step 5:** Leave real browser/media assertions in Task 6 pending until
+- [x] **Step 5:** Leave real browser/media assertions in Task 6 pending until
       parent allocates the shared servers. Do not report the flow fully accepted
       from source-string/unit tests alone.
 
@@ -448,22 +448,22 @@ Collect, named-version and exporter APIs. Capture evidence as bounded JSON/text
 artifacts with exact candidate/tool/font/media/package/recipe/snapshot/output
 hashes and decoded frame/time results. No new benchmark or test-server platform.
 
-- [ ] **Step 1:** Generate an original RGB chart, two local photos, short video,
+- [x] **Step 1:** Generate an original RGB chart, two local photos, short video,
       CJK/Latin title text and assigned 3-beat StoryPlan. Test strengths 0/0.5/1,
       inheritance, protected scopes, crossfade, diptych/title exclusion, actual
       PNG/MP4 decode and shuffled first/middle/last seek frames. Arithmetic uses
       ≤3 channel levels; reuse and record existing browser/raster tolerances.
-- [ ] **Step 2:** Record source bytes/hashes before any operation. Install/apply,
+- [x] **Step 2:** Record source bytes/hashes before any operation. Install/apply,
       render/seek, remove registry entry and original package, reopen in a
       different user-data root, and render again. Assert exact same-host decoded
       frame hashes, rational frame/time structure, title pixels and unchanged
       original source hashes. Persist encoded output SHA as evidence without an
       across-toolchain encoded-byte equality promise.
-- [ ] **Step 3:** Exercise legacy fixture reopen, named version restore,
+- [x] **Step 3:** Exercise legacy fixture reopen, named version restore,
       directory/ZIP Collect relocation, JSON/OTIO metadata and native/baked
       handoff disclosures. Tampered snapshot/hash, unknown recipe/title version,
       deliberately changed matrix and shifted-frame negative controls must fail.
-- [ ] **Step 4:** With parent coordination run real Chromium import/review/rights
+- [x] **Step 4:** With parent coordination run real Chromium import/review/rights
       acknowledgement/install/application/removal/reopen for every kind, stale
       project/response, malformed package, focus/Escape and CJK/360 px. Assert no
       package-caused outbound requests and compare rendered frames. Use
@@ -479,11 +479,12 @@ hashes and decoded frame/time results. No new benchmark or test-server platform.
       transaction/retry semantics. Reproduce each blocking finding with a focused
       regression, fix it, and rerun the affected evidence. Keep licensing and
       physical workstation/NLE/HDR judgment clearly unverified when unavailable.
-- [ ] **Step 7:** Update docs with actual base/head, commands/results, media
-      hashes, correctness blockers and remaining manual evidence. Only then
-      update the existing D8 completion state. Parent creates the independent
-      PR, obtains exact-head hosted gates/review and merges within the user's
-      existing authorization. This documentation worker never pushes or merges.
+- [x] **Step 7:** Update docs with actual base/head, commands/results, media
+      hashes, correctness blockers and remaining manual evidence. Record the
+      implemented slices in the existing D8 item; final completion stays open.
+- [ ] **Step 8:** Parent creates the independent PR, obtains exact-head hosted
+      gates/review and merges within the user's existing authorization. This
+      implementation worker never pushes or merges.
 
 ## Self-review and execution handoff
 
@@ -491,11 +492,11 @@ The design's closed schemas/budgets map to Task 1; filesystem/atomicity/recovery
 to Task 2; portable looks/titles/history/receipts to Task 3; authored StoryPlan
 protection/localization to Task 4; actual shared user flows to Task 5; and media,
 portability/browser/interchange/final review evidence to Task 6. The five review
-focus conditions each name their owning regression above. Product code,
-dependencies, PR publication and completion claims are absent from this
-documentation checkpoint.
-
-Before execution, parent reviews the exact package/version policy, bounds,
-FilmLook v2 union, clip/story snapshot fields, persistent retry receipt owner,
-and StoryPlan mapping/protection interfaces. Approved implementation then follows
-the preserved parent execution method, with independent review and one D8 PR.
+focus conditions each name their owning regression above. The parent approved
+the package/version policy, bounds, FilmLook v2 union,
+clip/story snapshot fields, persistent retry receipt owner and StoryPlan mapping/
+protection interfaces before implementation. Product checkpoints and actual
+focused/browser/media evidence are recorded in
+[validation](../../validation-local-presets.md). No dependency changed.
+Independent fresh review and parent-coordinated full/hosted gates remain open;
+no PR publication or merge has been performed by this worker.

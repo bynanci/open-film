@@ -1,9 +1,12 @@
 # D8 — Strict local data-only preset registry
 
-Status: proposed design for parent interface review; product implementation has
-not started. Inspection base: `e1255b1a8a83260149211d909cca8c1a50948c6b`, branch
+Status: parent-approved design; implementation and focused media/browser
+evidence complete, independent final review and integrated gates pending.
+Inspection base: `e1255b1a8a83260149211d909cca8c1a50948c6b`, branch
 `codex/v1-d8-presets`, 2026-10-30. The authoritative work item remains D8 in
 `TASKS.md`; this document adds no parallel roadmap queue.
+Product checkpoint: `9da8c3f7dba77a6c54f77cbc4b9bdc386e67ca07`; see [validation](../../validation-local-presets.md)
+for actual evidence and implementation rulings.
 
 ## Intent and scope
 

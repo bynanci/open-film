@@ -124,6 +124,17 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D8 now has an unreleased local single-JSON preset candidate on its independent
+branch. Bounded closed recipes, declared license/provenance review, atomic local
+registry operations and embedded immutable look/title/Story snapshots feed
+existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
+155 tests and three Chromium journeys pass; actual strength/seek tests and
+Collect directory/ZIP relocation retain exact decoded pixels after registry and
+fixture-original deletion. Fresh review and parent-coordinated full/hosted
+integration gates remain open. See [guide](docs/local-presets.md) and
+[validation](docs/validation-local-presets.md). Executable plugin discovery and
+loading remain deferred.
+
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
 the existing proxy generator and keeps output on originals. Independent review

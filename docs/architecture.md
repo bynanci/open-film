@@ -31,6 +31,16 @@ identity, and revision/source changes cannot publish a current-looking result.
 This workflow does not change project schema or execute project-authored code.
 See [Visual QA validation](validation-visual-qa.md).
 
+Local Film Look, title and Story presets use a separate bounded data-only
+package contract. One user-data registry owns reviewed license acceptance,
+immutable package versions and atomic install/remove/recovery. Shared CLI/API/
+Desktop application services feed existing editor history and authored StoryPlan
+transactions. Accepted films embed immutable recipes and license/provenance
+snapshots; open/render/restore do not read the registry. Node application and
+independent renderer boundaries recompute snapshot hashes. Executable plugin
+discovery/loading remains deferred. See [local presets](local-presets.md) and
+[validation](validation-local-presets.md).
+
 Multi-source analysis keeps project evidence separate from local capabilities.
 Catalog schema v6 stores logical selections, occurrences/membership, SHA-256
 content identities, immutable asset content versions, manifests, scoped runs and

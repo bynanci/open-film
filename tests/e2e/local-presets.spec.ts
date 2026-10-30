@@ -121,13 +121,11 @@ test("imports, reviews and applies all three kinds, then removes and reopens wit
     name: "Local presets",
     exact: true,
   });
-  await panel
-    .getByLabel("Choose preset JSON (up to 256 KiB)")
-    .setInputFiles({
-      name: "recipes.openfilm-presets.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify(f.pkg)),
-    });
+  await panel.getByLabel("Choose preset JSON (up to 256 KiB)").setInputFiles({
+    name: "recipes.openfilm-presets.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(f.pkg)),
+  });
   await expect(
     panel.getByRole("region", { name: "Review preset package" }),
   ).toContainText(f.pkg.name);

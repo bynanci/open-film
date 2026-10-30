@@ -236,6 +236,20 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
   signing/notarization, clean-machine install, update, rollback and uninstall.
 - [ ] D8: add a strict local data-only preset registry without enabling project
       JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
+  - [x] Independently inspected threat/compatibility design and parent-approved
+        single-JSON schema, bounds, immutable snapshots and authored StoryPlan
+        interfaces. Preserve TitleStyle and Film Look owner contracts.
+  - [x] Closed bounded packages, explicit license/provenance acceptance, atomic
+        install/remove/recovery, exact review/registry CAS, protected StoryPlan
+        adoption and durable retry receipts through shared CLI/API/Desktop.
+  - [x] Embedded look/title/story recipes survive Undo/reopen/Named Version,
+        JSON/OTIO and existing Collect directory/ZIP relocation after deleting
+        the registry and fixture originals. Node/app/render verify actual hashes.
+  - [x] Focused155 tests, three real Chromium journeys, synthetic strength/seek
+        negative controls and exact relocated decoded hashes. See
+        [validation](docs/validation-local-presets.md).
+  - [ ] Fresh independent review, parent-coordinated full integration/hosted
+        gates and independent PR/merge; physical workstation gates stay open.
 
 Before product-code changes, D2B transition semantics, D3A2 analysis evidence,
 D3B1 audio semantics, D3B2 Story coverage, D4 transcript ripple, D5A photo
