@@ -482,6 +482,7 @@ export class OpenFilmApplication {
               recordJob: false,
               trackActiveJob: false,
               snapshot: options.snapshot,
+              audioMixContext: options.audioMixContext,
             },
           ),
       });
@@ -2099,6 +2100,7 @@ export class OpenFilmApplication {
       trackActiveJob?: boolean;
       compositionOverride?: Composition;
       snapshot?: RenderOptions["snapshot"];
+      audioMixContext?: RenderOptions["audioMixContext"];
     } = {},
   ): Promise<string> {
     let exportProfile: ExportProfile | undefined;
@@ -2199,7 +2201,15 @@ export class OpenFilmApplication {
     try {
       const assets = this.compositionAssets(composition);
       const sourceIds = options.audioOnly
-        ? audioSourceAssetIds(composition, assets, options.audioRole)
+        ? audioSourceAssetIds(
+            composition,
+            assets,
+            options.audioRole,
+            context.audioMixContext ?? {
+              timebase: resolveProjectTimebase(this.project.settings),
+              coverage: [],
+            },
+          )
         : options.videoOnly
           ? visualSourceAssetIds(composition, assets)
           : undefined;
@@ -2263,6 +2273,7 @@ export class OpenFilmApplication {
           audioOnly: options.audioOnly,
           videoOnly: options.videoOnly,
           audioRole: options.audioRole,
+          audioMixContext: context.audioMixContext,
           snapshot: approved,
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;

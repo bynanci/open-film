@@ -185,6 +185,7 @@ export async function writeRenderManifest(
   encoding: RenderQualityProfile = resolveRenderQuality(),
   outputConfig: {
     format: "mp4" | "wav";
+    audioPolicy?: { version: 1; sampleRate: 48000; planSha256: string };
     fontBindings?: ReadonlyArray<RenderFontBinding>;
     videoOnly?: boolean;
     exportProfile?: ExportProfile;
@@ -247,6 +248,9 @@ export async function writeRenderManifest(
       },
       ...looks,
     },
+    ...(outputConfig.audioPolicy
+      ? { audioPolicy: outputConfig.audioPolicy }
+      : {}),
     exportProfile: outputConfig.exportProfile ?? null,
     output: {
       format: outputConfig.format,
