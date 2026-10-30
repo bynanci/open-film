@@ -15,6 +15,7 @@ import {
   type TitleStyle,
   type AudioAutomation,
   type FilmLook,
+  type PrimaryColorCorrection,
   type CaptionCueSource,
   type CaptionTrack,
   type ProjectSettings,
@@ -181,6 +182,27 @@ function filmLook(value: unknown, path: string): FilmLook {
 export function validateFilmLook(value: unknown): FilmLook {
   filmLook(value, "look");
   return copyJson(value, "look") as FilmLook;
+}
+
+function primaryColor(value: unknown, path: string): PrimaryColorCorrection {
+  const data = presentationObject(value, path, [
+    "version",
+    "temperature",
+    "exposureEv",
+    "contrast",
+  ]);
+  if (data.version !== 1)
+    fail(`${path}.version`, "expected supported primary color version 1");
+  number(data.temperature, `${path}.temperature`, -1, 1);
+  number(data.exposureEv, `${path}.exposureEv`, -2, 2);
+  number(data.contrast, `${path}.contrast`, 0.5, 1.5);
+  return data as unknown as PrimaryColorCorrection;
+}
+export function validatePrimaryColorCorrection(
+  value: unknown,
+): PrimaryColorCorrection {
+  primaryColor(value, "primaryColor");
+  return copyJson(value, "primaryColor") as PrimaryColorCorrection;
 }
 
 function versionOne(value: ObjectValue, path: string): void {
@@ -1006,6 +1028,23 @@ function composition(
       knownAssets ? [...knownAssets] : undefined,
     );
   });
+  optional(data, "defaultPrimaryColor", path, primaryColor);
+  optional(data, "beatPrimaryColors", path, (value, entryPath) => {
+    const entries = array(value, entryPath);
+    if (entries.length > 1000)
+      fail(entryPath, "expected at most 1000 scene primary color overrides");
+    const seen = new Set<string>();
+    entries.forEach((entry, index) => {
+      const p = `${entryPath}[${index}]`;
+      const item = presentationObject(entry, p, ["beatId", "correction"]);
+      receiptIdentifier(item.beatId, `${p}.beatId`);
+      const id = item.beatId as string;
+      if (seen.has(id) || (beatIds && !beatIds.has(id)))
+        fail(`${p}.beatId`, "duplicate or unknown scene primary color beat");
+      seen.add(id);
+      primaryColor(item.correction, `${p}.correction`);
+    });
+  });
   optional(data, "defaultLook", path, filmLook);
   optional(data, "beatLooks", path, (value, beatPath) => {
     const entries = array(value, beatPath);
@@ -1105,6 +1144,7 @@ function composition(
         audioAutomation(v, p, length),
       );
       optional(clip, "look", clipPath, filmLook);
+      optional(clip, "primaryColor", clipPath, primaryColor);
       if (
         clip.look !== undefined &&
         (track.type === "audio" ||
