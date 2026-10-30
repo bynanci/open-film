@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
+import { automaticTimelineEdit } from "../src/editor-internal.js";
 import { hashFile } from "@openfilm/media";
 const clean: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -184,6 +185,43 @@ describe("audio timing transactions", () => {
     expect(app.catalog.getAsset("a")).toEqual(asset);
     expect(editor.get("c").revision).toBe(before.revision);
     expect(await readFile(file, "utf8")).toBe(disk);
+  });
+  it("requires direct intent before discarding imported independent sound", async () => {
+    const { app, editor, file } = await fixture(),
+      composition = app.project.timelines[0]!;
+    app.project.schemaVersion = "1.2.0";
+    composition.duration = 8;
+    composition.tracks[0]!.clips[0]!.audioTiming = structuredClone(timing);
+    const kept = {
+      ...structuredClone(composition.tracks[0]!.clips[0]!),
+      id: "keep",
+      timelineStart: 4,
+    };
+    delete kept.audioTiming;
+    composition.tracks[0]!.clips.push(kept);
+    await app.save();
+    const before = editor.get("c"),
+      disk = await readFile(file, "utf8"),
+      input = {
+        baseRevision: before.revision,
+        commands: [{ type: "delete" as const, clipId: "a" }],
+      };
+    await expect(
+      editor[automaticTimelineEdit]("c", input),
+    ).rejects.toMatchObject({
+      code: "timeline.audioTimingConflict",
+      status: 409,
+    });
+    expect(await readFile(file, "utf8")).toBe(disk);
+    expect(editor.get("c").revision).toBe(before.revision);
+    expect(editor.get("c").canUndo).toBe(false);
+    const direct = await editor.edit("c", input);
+    expect(direct.composition.tracks[0]!.clips.map((c) => c.id)).toEqual([
+      "keep",
+    ]);
+    expect((await editor.undo("c", direct.revision)).composition).toEqual(
+      before.composition,
+    );
   });
 });
 

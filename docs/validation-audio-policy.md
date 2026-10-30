@@ -170,3 +170,17 @@ cleanup failure remains an error; no ready preview or partial project save is
 reported. The regression reaches a second renderer attempt after the failure.
 The complete five-file private PCM/HTTP/scheduler/Record/transport gate passes
 102/102; HTTP tests bind port0. No lock bypass, retry loop or test skip is added.
+
+## Trusted producer origin integration — 2026-10-30
+
+Integrated Pin producer checkpoint`938da2bc35fd94137820d32d0605d24da39542ec`.
+A real internal-producer regression then showed the preexisting audio final
+validator still assumed every commit was direct: an automatic delete could
+remove imported, unpinned independent sound. The final audio validator now uses
+the server-owned commit origin from the existing internal capability. The exact
+case rejects with`timeline.audioTimingConflict`409 before publication, retaining
+saved bytes, revision and history; explicit public deletion and Undo remain a
+paired positive case. The complete six-file producer/audio gate passes72/72.
+The symbol remains package internal; no client origin field or alternate writer
+is introduced. Pin's subsequent lock-compatibility correction and final combined
+full gate remain coordinator-owned dependencies.

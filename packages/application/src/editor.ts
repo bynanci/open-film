@@ -2081,7 +2081,7 @@ export class TimelineEditor {
       if (audioAware)
         validateAudioEdit(document(before), next, assets, parsed.commands, {
           timebase: resolveProjectTimebase(this.application.project.settings),
-          origin: "direct",
+          origin,
         });
       this.current(compositionId, parsed.baseRevision);
 
