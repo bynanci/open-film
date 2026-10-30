@@ -886,6 +886,19 @@ const selectedCaptionTrack = computed(() =>
     (track) => track.id === selectedCaptionTrackId.value,
   ),
 );
+const captionFontSize = ref(32);
+// A cue acknowledgement replaces the track object. Keep focused typography
+// input local until change, and reset only for another track or saved size.
+watch(
+  [
+    () => selectedCaptionTrack.value?.id,
+    () => selectedCaptionTrack.value?.style.fontSize,
+  ],
+  ([, fontSize]) => {
+    captionFontSize.value = fontSize ?? 32;
+  },
+  { immediate: true },
+);
 const selectedCaptionCue = computed(() =>
   selectedCaptionTrack.value?.cues.find(
     (cue) => cue.id === selectedCaptionCueId.value,
@@ -5150,7 +5163,7 @@ onBeforeUnmount(() => {
                 <label class="editor-field">
                   {{ t("editor.captions.fontSize") }}
                   <input
-                    :value="selectedCaptionTrack.style.fontSize ?? 32"
+                    v-model.number="captionFontSize"
                     :aria-label="t('editor.captions.fontSize')"
                     type="number"
                     min="8"

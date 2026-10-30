@@ -169,6 +169,7 @@ export default {
       entryConflict: "詞彙已變更或與另一項詞彙衝突，請重新載入詞彙表後再試。",
     },
     review: {
+      cleanupFailed: "無法清除比較影格。請重試清理，或關閉後重新開啟專案。",
       providerUnavailable:
         "語言審閱供應者無法使用或尚需文字傳送同意，仍可使用詞彙建議。",
       suggestionStale:

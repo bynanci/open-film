@@ -91,6 +91,7 @@ export const applicationErrorCodes = [
   "review.providerUnavailable",
   "review.suggestionStale",
   "review.invalidOutput",
+  "review.cleanupFailed",
   "operation.failed",
   "presets.invalid",
   "presets.unsupported",

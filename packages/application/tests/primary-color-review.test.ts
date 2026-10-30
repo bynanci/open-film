@@ -19,6 +19,7 @@ import { OpenFilmApplication } from "../src/index.js";
 import { TimelineEditor } from "../src/editor.js";
 import type { TimelineCommand } from "@openfilm/solver";
 import * as filesystem from "node:fs/promises";
+import { startServer } from "../../../apps/server/src/server.js";
 vi.mock("node:fs/promises", async (original) => ({
   ...(await original<typeof import("node:fs/promises")>()),
 }));
@@ -602,9 +603,13 @@ it("keeps failed expiry cleanup retired, visible and retryable while disposing e
   const before = editor.get("f"),
     manifest = await readFile(join(app.directory, "project.json"));
   const realRemove = filesystem.rm;
-  const failure = Object.assign(new Error("Blocked expiry deletion"), {
-    code: "EBUSY",
-  });
+  const failure = Object.assign(
+    new Error(`EBUSY: resource busy, rm '${firstRoot}'`),
+    {
+      code: "EBUSY",
+      path: firstRoot,
+    },
+  );
   const remove = vi
     .spyOn(filesystem, "rm")
     .mockImplementation(async (...args) => {
@@ -616,18 +621,20 @@ it("keeps failed expiry cleanup retired, visible and retryable while disposing e
   await vi.waitFor(() =>
     expect(logged).toHaveBeenCalledWith(
       "Primary color review expiry cleanup failed.",
-      failure,
+      expect.objectContaining({ code: "review.cleanupFailed", status: 503 }),
     ),
   );
+  expect(String(logged.mock.calls[0]?.[1])).not.toContain(firstRoot);
+  expect(JSON.stringify(logged.mock.calls)).not.toContain(firstRoot);
   expect(cachedReports(app).has(first.id)).toBe(true); // Retain its owned bytes in the bounded inventory until deletion succeeds.
   expect(vi.getTimerCount()).toBe(1);
   await expect(
     app.primaryColorReview.media(first.id, "before", 0),
-  ).rejects.toThrow("Blocked expiry deletion");
+  ).rejects.toMatchObject({ code: "review.cleanupFailed", status: 503 });
   vi.setSystemTime(Date.parse(first.createdAt));
   await expect(
     app.primaryColorReview.media(first.id, "before", 0),
-  ).rejects.toThrow("Blocked expiry deletion");
+  ).rejects.toMatchObject({ code: "review.cleanupFailed", status: 503 });
   await expect(
     app.primaryColorReview.validateAcceptance(
       first.id,
@@ -636,10 +643,11 @@ it("keeps failed expiry cleanup retired, visible and retryable while disposing e
       "target",
       first.suggestedCorrection!,
     ),
-  ).rejects.toThrow("Blocked expiry deletion");
-  await expect(app.runPrimaryColorReview("f", input)).rejects.toThrow(
-    "Blocked expiry deletion",
-  );
+  ).rejects.toMatchObject({ code: "review.cleanupFailed", status: 503 });
+  await expect(app.runPrimaryColorReview("f", input)).rejects.toMatchObject({
+    code: "review.cleanupFailed",
+    status: 503,
+  });
   await expect(app.primaryColorReview.dispose()).rejects.toThrow(
     /cleanup failed/iu,
   );
@@ -741,4 +749,83 @@ it("keeps a pinned Auto Match target ineligible until explicit release while man
   expect(await Promise.all(paths.map((path) => hashFile(path)))).toEqual(
     originalHashes,
   );
+});
+
+it("redacts a real filesystem cleanup error through media and edit HTTP responses", async () => {
+  const { app, input } = await fixture();
+  const server = await startServer({ port: 0, project: app.directory });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const post = (path: string, data: unknown) =>
+      fetch(base + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    const response = await post("/api/compositions/f/primary-color-review", {
+      ...input,
+      projectId: app.project.id,
+    });
+    expect(response.status).toBe(200);
+    const report = await response.json();
+    expect(report.canApply).toBe(true);
+    const root = join(
+      app.directory,
+      "cache",
+      "primary-color-review",
+      report.id,
+    );
+    const manifest = await readFile(join(app.directory, "project.json"));
+    const remove = filesystem.rm;
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse(report.expiresAt) + 1);
+    const fault = vi
+      .spyOn(filesystem, "rm")
+      .mockImplementation(async (...args) => {
+        if (String(args[0]) === root)
+          throw Object.assign(
+            new Error(`EACCES: permission denied, rm '${root}'`),
+            {
+              code: "EACCES",
+              path: root,
+            },
+          );
+        return remove(...args);
+      });
+    try {
+      const media = await fetch(
+        `${base}/api/primary-color-reviews/${report.id}/media/before/0?projectId=${app.project.id}`,
+      );
+      const edit = await post("/api/compositions/f/edit", {
+        baseRevision: input.baseRevision,
+        commands: [
+          {
+            type: "primary-color",
+            scope: "clip",
+            clipId: "target",
+            correction: report.suggestedCorrection,
+            primaryColorReviewId: report.id,
+          },
+        ],
+      });
+      for (const failed of [media, edit]) {
+        expect(failed.status).toBe(503);
+        const payload = await failed.json();
+        expect(payload.code).toBe("review.cleanupFailed");
+        expect(payload.error).toMatch(/cleanup|removed/i);
+        expect(JSON.stringify(payload)).not.toContain(app.directory);
+        expect(JSON.stringify(payload)).not.toContain(root);
+        expect(JSON.stringify(payload)).not.toContain("EACCES");
+      }
+      expect(await readFile(join(app.directory, "project.json"))).toEqual(
+        manifest,
+      );
+    } finally {
+      fault.mockRestore();
+      clock.mockRestore();
+    }
+  } finally {
+    await server.close();
+  }
 });
