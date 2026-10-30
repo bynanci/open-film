@@ -38,27 +38,27 @@ Interfaces: `waveformPeakBetween(wave,start,end)` shares bin math;
 `readWaveforms(assetIds)` returns bounded current waveform evidence; HTTP fences
 the project before/after awaits. No transcript hydration.
 
-- [ ] Write literal failing projection tests, observe RED, implement and prove GREEN.
-- [ ] Write failing waveform-only/bounds/source/hash tests, then implement shared read.
-- [ ] Verify existing Source geometry, source cache and HTTP project-switch behavior.
-- [ ] Commit passing contract/application changes.
+- [x] Write literal failing projection tests, observe RED, implement and prove GREEN.
+- [x] Write failing waveform-only/bounds/source/hash tests, then implement shared read.
+- [x] Verify existing Source geometry, source cache and HTTP project-switch behavior.
+- [x] Commit passing contract/application changes.
 
 ## Task2 — Record overview and preparation
 
 Files: `SequenceWaveform.vue`, bounded loader helper/composable,
 `TimelineEditor.vue`, existing three-locale Cut Desk messages, unit/browser tests.
 
-- [ ] Test bounded cache/read generations and cancellation before implementation.
-- [ ] Add derived per-track view, frame viewport, seek and explicit preparation.
-- [ ] Exercise real browser seek, locks/history, context races and responsive/CJK.
-- [ ] Commit working view and regressions.
+- [x] Test bounded cache/read generations and cancellation before implementation.
+- [x] Add derived per-track view, frame viewport, seek and explicit preparation.
+- [x] Exercise real browser seek, locks/history, context races and responsive/CJK.
+- [x] Commit working view and regressions.
 
 ## Task3 — Media evidence and reviewed delivery
 
 Files: synthetic FFmpeg regression, `TASKS.md`, `ROADMAP.md`, mirrored validation,
 v1 readiness crosswalk linking existing owners without duplicate feature checkboxes.
 
-- [ ] Render/decode actual pulse-source MP4 and verify projected time/hash evidence.
+- [x] Render/decode actual pulse-source MP4 and verify projected time/hash evidence.
 - [ ] Execute format/i18n/docs/lint/types/fullunit/build/browser/interchange gates;
       native on equipped hosted CI. Coordinate fixed local ports across worktrees.
 - [ ] One fresh whole-branch review; one regression-backed Important/Critical fix pass.

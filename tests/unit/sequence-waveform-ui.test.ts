@@ -193,6 +193,20 @@ describe("derived Record waveform view", () => {
     expect(JSON.stringify(view.props.composition)).toBe(before);
   });
 
+  it("exposes the timecode as slider value text without a per-frame live status", async () => {
+    const view = mount();
+    await view.finish();
+    expect(view.slider().props["aria-valuetext"]).toBe("00:00:00:00");
+    expect(view.all().filter((node) => node.tag === "output")).toHaveLength(0);
+    expect(
+      view.all().filter((node) => node.props.role === "status"),
+    ).toHaveLength(0);
+    view.props.frame = 13;
+    await vue.nextTick();
+    expect(view.slider().props["aria-valuetext"]).toBe("00:00:01:03");
+    expect(view.all().filter((node) => node.tag === "output")).toHaveLength(0);
+  });
+
   it("updates only the Record playhead on frame ticks and routes native slider seeks through its owner", async () => {
     const view = mount();
     await view.finish();

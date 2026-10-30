@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -126,9 +126,16 @@ async function makeProject(
       },
     };
     for (let index = 0; index < (options.sources ?? 1); index++) {
+      // Catalog identity is a unique imported URI, even for equal source bytes.
+      const importedPath =
+        index === 0
+          ? mediaPath
+          : join(root, `literal-pulses-${projectNumber}-${index}.mp4`);
+      if (index > 0) await copyFile(mediaPath, importedPath);
       const asset = {
         ...structuredClone(source),
         id: `pulse-source-${index}`,
+        uri: pathToFileURL(importedPath).href,
         contentHash: originalHash,
       };
       app.catalog.upsertAsset(asset);
@@ -521,9 +528,8 @@ test("a delayed earlier-film read cannot populate a new film and current missing
 
 for (const locale of ["zh-TW", "ja-JP"] as const) {
   test(`${locale} coarse narrow waveform controls wrap and retain native keyboard seeking`, async ({
-    page,
     browser,
-  }) => {
+  }, testInfo) => {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
       isMobile: true,
@@ -573,9 +579,11 @@ for (const locale of ["zh-TW", "ja-JP"] as const) {
         .click();
       await expect(overview).toHaveAttribute("data-view-start", "0");
       await expect(overview).toHaveAttribute("data-view-end", "2100");
+      await narrow.screenshot({
+        path: testInfo.outputPath("sequence-waveforms-narrow.png"),
+      });
     } finally {
       await context.close();
-      await page.close();
     }
   });
 }

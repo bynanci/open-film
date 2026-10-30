@@ -27,6 +27,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
   - [ ] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
+        Implementation and 72 focused/seven browser regressions are complete;
+        exact-candidate gates/review remain pending. See the
+        [guide](docs/sequence-waveforms.md) and
+        [decoded MP4 evidence](docs/validation-sequence-waveforms.md).
   - [ ] D3B1: after an edit/audio compatibility design, add the versioned
         audio-policy primitive/evaluator for J/L mechanics; default B-roll to
         `keep-primary`, with explicit role/gain modes and no coverage persistence
@@ -168,6 +172,9 @@ and [validation](docs/validation-multi-source-analysis.md).
 ## Seven-subsystem evidence reconciliation and next stable queue
 
 Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-reconciliation.md).
+
+Delivery goal: [v1.0.0 readiness and existing owner crosswalk](docs/roadmap/v1-readiness.md).
+The published stable remains v0.4.0; release follows verified exit conditions.
 
 - [x] Reconcile Story, photo/render, Cut Desk/audio, transcript/title, color,
       catalog/portability and cross-platform claims against current source,

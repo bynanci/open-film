@@ -536,7 +536,7 @@ onBeforeUnmount(() => {
     <label class="sequence-waveform-seek">
       <span
         >{{ t("cutDesk.waveform.seek") }}
-        <output class="sequence-waveform-time">{{ frameLabel }}</output></span
+        <span class="sequence-waveform-time">{{ frameLabel }}</span></span
       >
       <input
         type="range"
