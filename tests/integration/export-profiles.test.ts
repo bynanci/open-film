@@ -1117,6 +1117,7 @@ describe("professional profile exports", () => {
           scopeMatches: crashedLock.owner.host === createReviewOwner().host,
           platform: process.platform,
           ownerHost: crashedLock.owner.host,
+          currentHost: createReviewOwner().host,
         }),
       ).toBe("dead");
       const reopened = await OpenFilmApplication.openForExport(projectPath);
