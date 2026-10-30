@@ -122,10 +122,8 @@ function typography(value: unknown, path: string): void {
     );
 }
 
-export function validateTitleTextRuns(
-  value: unknown,
-  text: string,
-): TitleTextRuns {
+/** Admission before a command's saved/effective text is available. */
+export function validateTitleTextRunsMetadata(value: unknown): TitleTextRuns {
   const data = object(
     value,
     ["version", "splitAt", "primary", "secondary", "gap"],
@@ -133,14 +131,27 @@ export function validateTitleTextRuns(
   );
   if (data.version !== 1)
     throw new Error("titleRuns.version: unsupported version.");
-  const split = data.splitAt;
+  if (
+    !Number.isSafeInteger(
+      number(data.splitAt, 1, MAX_TITLE_LENGTH - 2, "titleRuns.splitAt"),
+    )
+  )
+    throw new Error("titleRuns.splitAt: expected an integer boundary.");
+  for (const id of ["primary", "secondary"] as const)
+    if (Object.hasOwn(data, id)) typography(data[id], `titleRuns.${id}`);
+  if (Object.hasOwn(data, "gap")) number(data.gap, 0, 128, "titleRuns.gap");
+  return JSON.parse(JSON.stringify(data)) as TitleTextRuns;
+}
+export function validateTitleTextRuns(
+  value: unknown,
+  text: string,
+): TitleTextRuns {
+  const data = validateTitleTextRunsMetadata(value),
+    split = data.splitAt;
   if (
     typeof text !== "string" ||
     text.length > MAX_TITLE_LENGTH ||
     !isCaptionTextValid(text) ||
-    typeof split !== "number" ||
-    !Number.isSafeInteger(split) ||
-    split < 1 ||
     split >= text.length - 1 ||
     text[split] !== "\n" ||
     text[split - 1] === "\r" ||
@@ -150,10 +161,7 @@ export function validateTitleTextRuns(
     throw new Error(
       "titleRuns.splitAt: expected an LF boundary between two nonempty safe text runs (at most 8000 units).",
     );
-  for (const id of ["primary", "secondary"] as const)
-    if (Object.hasOwn(data, id)) typography(data[id], `titleRuns.${id}`);
-  if (Object.hasOwn(data, "gap")) number(data.gap, 0, 128, "titleRuns.gap");
-  return JSON.parse(JSON.stringify(data)) as TitleTextRuns;
+  return data;
 }
 
 export function validateTitleFinishing(value: unknown): TitleFinishing {

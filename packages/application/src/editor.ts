@@ -9,6 +9,8 @@ import {
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
+  validateTitleTextRunsMetadata,
+  resolveTitleRuns,
   resolveTitleStyle,
   validateAudioAutomation,
   validateFilmLook,
@@ -225,7 +227,13 @@ function command(value: unknown, index: number): TimelineCommand {
         nonempty(data.trackId, `${path}.trackId`);
         nonempty(data.cueId, `${path}.cueId`);
         const patch = record(data.patch, `${path}.patch`);
-        keys(patch, ["text", "startMs", "endMs"], `${path}.patch`);
+        keys(patch, ["text", "startMs", "endMs", "textRuns"], `${path}.patch`);
+        if (Object.hasOwn(patch, "textRuns") && patch.textRuns !== null)
+          nested(
+            patch.textRuns,
+            `${path}.patch.textRuns`,
+            validateTitleTextRunsMetadata,
+          );
         if (!Object.keys(patch).length)
           invalid(`${path}.patch`, "provide text, startMs or endMs");
         if (
@@ -264,7 +272,13 @@ function command(value: unknown, index: number): TimelineCommand {
   ];
   switch (type) {
     case "presentation": {
-      const presentationFields = ["layout", "motion", "title", "titleStyle"];
+      const presentationFields = [
+        "layout",
+        "motion",
+        "title",
+        "titleStyle",
+        "titleRuns",
+      ];
       fields.push(...presentationFields);
       if (!presentationFields.some((field) => Object.hasOwn(data, field)))
         invalid(path, "provide a presentation field to change");
@@ -272,6 +286,7 @@ function command(value: unknown, index: number): TimelineCommand {
         ["layout", validatePhotoLayout],
         ["motion", validatePhotoMotion],
         ["titleStyle", validateTitleStyle],
+        ["titleRuns", validateTitleTextRunsMetadata],
       ] as const)
         if (Object.hasOwn(data, field) && data[field] !== null)
           nested(data[field], `${path}.${field}`, validator);
@@ -1510,6 +1525,32 @@ export class TimelineEditor {
           next = applyTimelineCommand(next, assets, item);
       } catch (error) {
         if (error instanceof ApplicationError) throw error;
+        throw new TimelineEditorError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      // Typography inherited by a run depends on the actual Composition frame.
+      // Validate detached candidates before persistence without loading fonts.
+      try {
+        for (const track of next.composition.tracks)
+          for (const clip of track.clips)
+            if (clip.titleRuns)
+              resolveTitleRuns(
+                clip.title!,
+                clip.titleRuns,
+                clip.titleStyle,
+                this.application.project.settings,
+              );
+        for (const track of next.composition.captionTracks ?? [])
+          for (const cue of track.cues)
+            if (cue.textRuns)
+              resolveTitleRuns(
+                cue.text,
+                cue.textRuns,
+                track.style,
+                this.application.project.settings,
+              );
+      } catch (error) {
         throw new TimelineEditorError(
           error instanceof Error ? error.message : String(error),
         );
