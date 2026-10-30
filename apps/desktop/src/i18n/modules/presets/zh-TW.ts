@@ -1,6 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 export default {
   presets: {
+    noValue: "未設定",
+    titleProperties: {
+      role: "用途",
+      fontFamily: "字型",
+      fontSize: "字級 (px)",
+      fontWeight: "字重",
+      lineHeight: "行高",
+      tracking: "字距 (px)",
+      maxWidth: "最大寬度 (px)",
+      align: "對齊",
+      background: "背景",
+      position: "位置",
+      fadeOut: "淡出 (秒)",
+      safeArea: {
+        left: "安全邊界 · 左",
+        right: "安全邊界 · 右",
+        top: "安全邊界 · 上",
+        bottom: "安全邊界 · 下",
+      },
+      finishing: {
+        shadow: {
+          color: "陰影 · 色彩",
+          opacity: "陰影 · 不透明度",
+          offsetX: "陰影 · 水平位移 (px)",
+          offsetY: "陰影 · 垂直位移 (px)",
+          blur: "陰影 · 模糊 (px)",
+        },
+        stroke: { color: "描邊 · 色彩", width: "描邊 · 寬度 (px)" },
+        pill: {
+          color: "底框 · 色彩",
+          opacity: "底框 · 不透明度",
+          paddingX: "底框 · 水平內距 (px)",
+          paddingY: "底框 · 垂直內距 (px)",
+          radius: "底框 · 圓角 (px)",
+        },
+      },
+    },
+    titleValues: {
+      "film-title": "片名",
+      "scene-statement": "場景敘述",
+      subtitle: "字幕",
+      left: "靠左",
+      center: "置中",
+      right: "靠右",
+      bottom: "底部",
+      none: "無",
+      scrim: "遮罩",
+    },
+
     visualChangeCount: "此範圍內有 {count} 個視覺片段改變。",
     titleComparison: "已檢視的標題外觀",
     property: "設定",

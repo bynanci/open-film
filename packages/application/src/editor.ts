@@ -1819,7 +1819,23 @@ export class TimelineEditor {
     this.application.project = candidate;
     try {
       if (presetReceipt && presetSelection)
-        this.application.presets.commit(candidate, presetSelection);
+        this.application.presets.commit(candidate, presetSelection, () => {
+          // The candidate is already staged in application.project. Re-read
+          // catalog editing facts against the captured pre-edit document while
+          // holding the existing project transaction; no source-file I/O here.
+          let currentRevision: string | undefined;
+          try {
+            currentRevision = this.revisionForDocument(document(before));
+          } catch {
+            // A removed source is stale just like changed protection/hash facts.
+          }
+          if (currentRevision !== before.revision)
+            throw new ApplicationError(
+              "presets.stale",
+              "Timeline sources changed before preset publication.",
+              409,
+            );
+        });
       else await this.application.save();
     } catch (error) {
       // A failure after manifest publication retains the application's old

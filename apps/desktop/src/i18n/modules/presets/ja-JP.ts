@@ -1,6 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 export default {
   presets: {
+    noValue: "未設定",
+    titleProperties: {
+      role: "用途",
+      fontFamily: "書体",
+      fontSize: "文字サイズ (px)",
+      fontWeight: "文字の太さ",
+      lineHeight: "行の高さ",
+      tracking: "字間 (px)",
+      maxWidth: "最大幅 (px)",
+      align: "配置",
+      background: "背景",
+      position: "位置",
+      fadeOut: "フェードアウト (秒)",
+      safeArea: {
+        left: "セーフエリア · 左",
+        right: "セーフエリア · 右",
+        top: "セーフエリア · 上",
+        bottom: "セーフエリア · 下",
+      },
+      finishing: {
+        shadow: {
+          color: "影 · 色",
+          opacity: "影 · 不透明度",
+          offsetX: "影 · 水平オフセット (px)",
+          offsetY: "影 · 垂直オフセット (px)",
+          blur: "影 · ぼかし (px)",
+        },
+        stroke: { color: "縁取り · 色", width: "縁取り · 幅 (px)" },
+        pill: {
+          color: "背景枠 · 色",
+          opacity: "背景枠 · 不透明度",
+          paddingX: "背景枠 · 水平余白 (px)",
+          paddingY: "背景枠 · 垂直余白 (px)",
+          radius: "背景枠 · 角丸 (px)",
+        },
+      },
+    },
+    titleValues: {
+      "film-title": "作品タイトル",
+      "scene-statement": "場面の説明",
+      subtitle: "字幕",
+      left: "左",
+      center: "中央",
+      right: "右",
+      bottom: "下部",
+      none: "なし",
+      scrim: "背景スクリーン",
+    },
+
     visualChangeCount: "この範囲の {count} 個の映像クリップが変わります。",
     titleComparison: "確認したタイトルの表示",
     property: "設定",

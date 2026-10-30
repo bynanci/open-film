@@ -21,11 +21,12 @@ import {
   type StoryPlanOptions,
 } from "@openfilm/core";
 import { previewIssue } from "@openfilm/media";
-import { compose } from "@openfilm/solver";
+import { compose, CompositionConstraintError } from "@openfilm/solver";
 import {
   generateStoryPlanFromGraph,
   compilePresetStoryPlan,
   storyFromPresetPlan,
+  assertPresetPlanComposition,
 } from "@openfilm/story";
 import type { OpenFilmApplication } from "./index.js";
 import {
@@ -33,6 +34,26 @@ import {
   hashPresetData,
 } from "./preset-integrity.js";
 import { TimelineEditor } from "./editor.js";
+
+function composePresetPlan(
+  plan: StoryPlan,
+  story: Story,
+  assets: MediaAsset[],
+): Composition {
+  try {
+    const composition = compose(story, assets, {
+      allowEchoAssetIds: plan.scenes.flatMap((s) =>
+        s.assets.filter((a) => a.isEcho).map((a) => a.assetId),
+      ),
+    });
+    assertPresetPlanComposition(plan, story, composition);
+    return composition;
+  } catch (error) {
+    if (error instanceof CompositionConstraintError)
+      throw new ApplicationError("presets.conflict", error.message, 409);
+    throw error;
+  }
+}
 
 const presetModelHash = (value: unknown) =>
   hashPresetData(canonicalPresetJson(JSON.parse(JSON.stringify(value))));
@@ -258,14 +279,13 @@ export class StoryPlanService {
       `preview-story-${plan.id}`,
       plan.scenes.map((s, i) => `preview-beat-${i}-${s.sceneId}`),
     );
-    const composition = compose(previewStory, filterUsableAssets(assets), {
-      allowEchoAssetIds: plan.scenes.flatMap((s) =>
-        s.assets.filter((a) => a.isEcho).map((a) => a.assetId),
-      ),
-    });
+    const composition = composePresetPlan(
+      plan,
+      previewStory,
+      filterUsableAssets(assets),
+    );
     composition.id = `preview-comp-${plan.id}`;
     composition.storyId = previewStory.id;
-    composition.storyPresetSnapshot = structuredClone(snapshot);
     return { plan: validateStoryPlan(plan), compositionPreview: composition };
   }
 
@@ -487,15 +507,11 @@ export class StoryPlanService {
       s.assets.filter((a) => a.isEcho).map((a) => a.assetId),
     );
 
-    const newComposition = compose(newStory, usableAssets, {
-      allowEchoAssetIds: echoAssetIds,
-    });
+    const newComposition = presetReceipt
+      ? composePresetPlan(plan, newStory, usableAssets)
+      : compose(newStory, usableAssets, { allowEchoAssetIds: echoAssetIds });
     newComposition.id = cutCompId;
     newComposition.storyId = newStoryId;
-    if (plan.presetContext && presetReceipt)
-      newComposition.storyPresetSnapshot = structuredClone(
-        plan.presetContext.snapshot,
-      );
 
     // Map scenes to clips
     const sceneToClipIds: Record<string, string[]> = {};

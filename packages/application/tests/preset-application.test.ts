@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 import { filmLookMatrix, type PresetApplyInput } from "@openfilm/core";
 import { presetPackage } from "../../../tests/fixtures/local-presets/package.js";
@@ -252,4 +252,86 @@ it("Node open rejects a changed snapshot hash and ignores a corrupt absent regis
   await expect(
     OpenFilmApplication.open(directory, { userDataDirectory }),
   ).rejects.toThrow(/integrity|hash/);
+});
+
+it.each(
+  (["film-look", "title"] as const).flatMap((kind) =>
+    (["lock", "hash", "metadata"] as const).map((change) => ({ kind, change })),
+  ),
+)(
+  "$kind rechecks catalog $change inside the publication lock",
+  async ({ kind, change }) => {
+    const { app, editor, request, directory } =
+      await presetApplicationFixture();
+    await editor.edit("cut", {
+      baseRevision: editor.get("cut").revision,
+      commands: [
+        { type: "presentation", clipId: "clip", title: "Prior manual title" },
+      ],
+    });
+    const originalAsset = app.catalog.getAsset("photo")!;
+    expect(editor.get("cut").canUndo).toBe(true);
+    const input = request(kind),
+      review = app.presets.review(input, editor);
+    const before = structuredClone(app.project),
+      disk = readFileSync(join(directory, "project.json"));
+    const original = app.catalog.withProjectWrite.bind(app.catalog);
+    const fence = vi
+      .spyOn(app.catalog, "withProjectWrite")
+      .mockImplementation((operation) => {
+        fence.mockRestore();
+        const asset = app.catalog.getAsset("photo")!;
+        app.catalog.upsertAsset({
+          ...asset,
+          ...(change === "lock"
+            ? { state: { ...asset.state, locked: true } }
+            : {}),
+          ...(change === "hash" ? { contentHash: "e".repeat(64) } : {}),
+          ...(change === "metadata"
+            ? { metadata: { ...asset.metadata, rating: 1 } }
+            : {}),
+        });
+        return original(operation);
+      });
+    await expect(
+      app.presets.accept(
+        {
+          request: input,
+          reviewSha256: review.reviewSha256,
+          requestId: `race-${kind}-${change}`,
+        },
+        editor,
+      ),
+    ).rejects.toMatchObject({ code: "presets.stale" });
+    expect(app.project).toEqual(before);
+    expect(readFileSync(join(directory, "project.json"))).toEqual(disk);
+    expect(editor.get("cut").canUndo).toBe(false);
+    expect(app.project.presetApplicationReceipts).toBeUndefined();
+    app.catalog.upsertAsset(originalAsset);
+    expect(editor.get("cut").canUndo).toBe(true);
+    await editor.undo("cut", editor.get("cut").revision);
+    expect(editor.get("cut").composition.tracks[0]!.clips[0]!.title).toBe(
+      "記憶 Memories",
+    );
+  },
+);
+
+it.each(
+  (["film-look", "title"] as const).flatMap((kind) =>
+    (["source", "clip"] as const).map((lock) => ({ kind, lock })),
+  ),
+)("$kind respects an existing $lock lock", async ({ kind, lock }) => {
+  const { app, editor, request, directory } = await presetApplicationFixture();
+  if (lock === "source") {
+    const asset = app.catalog.getAsset("photo")!;
+    app.catalog.upsertAsset({ ...asset, state: { locked: true } });
+  } else app.project.timelines[0]!.tracks[0]!.clips[0]!.locked = true;
+  await app.save();
+  const before = structuredClone(app.project),
+    disk = readFileSync(join(directory, "project.json"));
+  expect(() => app.presets.review(request(kind), editor)).toThrow(
+    /lock|protected/i,
+  );
+  expect(app.project).toEqual(before);
+  expect(readFileSync(join(directory, "project.json"))).toEqual(disk);
 });

@@ -119,3 +119,83 @@ it("rejects missing, repeated, reordered or unbacked bindings and cannot drop re
     ),
   ).toThrow(/duration|bound/i);
 });
+
+it.each([
+  "missing-node",
+  "ambiguous-beat",
+  "repeated-scene",
+  "repeated-occurrence",
+] as const)("rejects %s without guessing occurrence identities", (kind) => {
+  const { source, plan, snapshot, bindings } = fixture();
+  source.graph = createInitialStoryGraph(
+    source,
+    ["a", "b", "c"].map((id) => ({
+      id,
+      name: id,
+      uri: `file:///${id}`,
+      mediaType: "image",
+      tags: [],
+      state: {},
+      metadata: {},
+    })),
+  );
+  if (kind === "missing-node")
+    source.graph.nodes = source.graph.nodes.filter(
+      (n) => n.id !== "asset-node-a",
+    );
+  if (kind === "ambiguous-beat")
+    source.graph.nodes.push({
+      id: "another-a",
+      type: "beat",
+      beatId: "a",
+      storyId: source.id,
+    });
+  if (kind === "repeated-scene")
+    plan.scenes[1]!.sceneId = plan.scenes[0]!.sceneId;
+  if (kind === "repeated-occurrence")
+    plan.scenes[0]!.assets.push({
+      ...plan.scenes[0]!.assets[0]!,
+      isEcho: true,
+    });
+  expect(() =>
+    storyModule.compilePresetStoryPlan(
+      plan,
+      source,
+      snapshot,
+      bindings,
+      "en-US",
+    ),
+  ).toThrow();
+});
+it("checks solved occurrences using explicit scene-to-beat mapping", () => {
+  const { source, plan } = fixture();
+  const clips = plan.scenes.flatMap((scene, i) =>
+    scene.assets.map((a) => ({
+      id: `clip-${i}`,
+      assetId: a.assetId,
+      beatId: source.beats[i]!.id,
+      timelineStart: i * 2,
+      timelineDuration: 2,
+    })),
+  );
+  const composition = {
+    id: "cut",
+    storyId: source.id,
+    duration: 6,
+    tracks: [{ id: "v", type: "video" as const, clips }],
+  };
+  expect(() =>
+    storyModule.assertPresetPlanComposition(plan, source, composition),
+  ).not.toThrow();
+  for (const changed of [
+    clips.slice(1),
+    [...clips, { ...clips[0]!, id: "extra" }],
+    clips.map((c) => ({ ...c, beatId: "unmapped" })),
+  ])
+    expect(() =>
+      storyModule.assertPresetPlanComposition(plan, source, {
+        ...composition,
+        tracks: [{ ...composition.tracks[0]!, clips: changed }],
+      }),
+    ).toThrow();
+});

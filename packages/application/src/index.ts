@@ -485,7 +485,7 @@ export class OpenFilmApplication {
         new LocalPresetRegistry(
           resolveUserDataDirectory(runtime.userDataDirectory),
         ),
-        (next) => this.publishProject(next),
+        (next, assertCurrent) => this.publishProject(next, assertCurrent),
       );
       this.collectMedia = new CollectMediaService(this);
 

@@ -1,6 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 export default {
   presets: {
+    noValue: "Not set",
+    titleProperties: {
+      role: "Role",
+      fontFamily: "Typeface",
+      fontSize: "Font size (px)",
+      fontWeight: "Font weight",
+      lineHeight: "Line height",
+      tracking: "Tracking (px)",
+      maxWidth: "Maximum width (px)",
+      align: "Alignment",
+      background: "Background",
+      position: "Position",
+      fadeOut: "Fade out (s)",
+      safeArea: {
+        left: "Safe area · Left",
+        right: "Safe area · Right",
+        top: "Safe area · Top",
+        bottom: "Safe area · Bottom",
+      },
+      finishing: {
+        shadow: {
+          color: "Shadow · Color",
+          opacity: "Shadow · Opacity",
+          offsetX: "Shadow · Horizontal offset (px)",
+          offsetY: "Shadow · Vertical offset (px)",
+          blur: "Shadow · Blur (px)",
+        },
+        stroke: { color: "Stroke · Color", width: "Stroke · Width (px)" },
+        pill: {
+          color: "Pill · Color",
+          opacity: "Pill · Opacity",
+          paddingX: "Pill · Horizontal padding (px)",
+          paddingY: "Pill · Vertical padding (px)",
+          radius: "Pill · Corner radius (px)",
+        },
+      },
+    },
+    titleValues: {
+      "film-title": "Film title",
+      "scene-statement": "Scene statement",
+      subtitle: "Subtitle",
+      left: "Left",
+      center: "Center",
+      right: "Right",
+      bottom: "Bottom",
+      none: "None",
+      scrim: "Scrim",
+    },
+
     visualChangeCount: "{count} visual clips change at this scope.",
     titleComparison: "Reviewed title appearance",
     property: "Setting",
