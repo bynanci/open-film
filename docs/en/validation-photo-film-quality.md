@@ -467,3 +467,16 @@ passed (two files / 35 tests). The earlier browser/media receipts remain tied to
 their original implementation identities; this documentation merge makes no new
 browser, physical-device or hosted-CI claim. Fresh checkpoint hashes and logs
 are retained in `/tmp/openfilm-finishing-integration/A-latest-base/`.
+
+## 2026-10-30 — verified PR74 merge
+
+Exact head `83cb8461ba47a6775c4d35dd7fa8ea5ce1eda703` passed the full
+Verify41081975592 and Windows41081975687 gates:1155contract +3603media
+=4758tests,306browser cases (78/89/69/70), native, documentation/build,
+OTIO/interchange and built CLI checks. Fresh whole/scoped reviews, including
+the final focal admission/acceptance fences, passed before merge. PR74 merged
+as `f9eaa5d4f044791cee6004e044fd0643737e4fac`. Its main runs were superseded
+by the next verified title merge; final main
+`d5a286ed9250872e8eb9b1c3e40adb926f913d34` passes Verify41084911055,
+Windows41084911048 and actual Pages41084911207. These hosted observations
+do not close the physical-workstation/display/NLE gates above. Stable stays0.4.0.
