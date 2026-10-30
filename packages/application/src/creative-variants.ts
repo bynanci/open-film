@@ -398,8 +398,7 @@ export class CreativeVariantService {
           trackId: oldTrack.id,
         });
 
-        // LOCK PRESERVATION: Cloned clip strictly preserves lock!
-        const isLocked = oldClip.locked === true;
+        // The spread preserves an absent lock as well as explicit false/true.
         const mappedBeatId = oldClip.beatId
           ? (beatIdMap.get(oldClip.beatId) ?? oldClip.beatId)
           : undefined;
@@ -433,7 +432,6 @@ export class CreativeVariantService {
                 oldClip.sourceIn !== undefined
                   ? Number(((oldClip.sourceIn ?? 0) + targetDur).toFixed(3))
                   : oldClip.sourceOut,
-              locked: isLocked,
             };
           } else {
             // PROVABLY UNCHANGED NON-TARGET CLIP: Exact media asset, filters, transforms, and locks
@@ -449,7 +447,6 @@ export class CreativeVariantService {
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset).toFixed(3),
               ),
-              locked: isLocked,
             };
           }
         } else {
@@ -469,7 +466,6 @@ export class CreativeVariantService {
               oldClip.sourceIn !== undefined
                 ? Number(((oldClip.sourceIn ?? 0) + scaledDur).toFixed(3))
                 : oldClip.sourceOut,
-            locked: isLocked,
           };
         }
       });

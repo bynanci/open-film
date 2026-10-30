@@ -171,6 +171,71 @@ describe("Creative Variants Application Service", () => {
     );
   });
 
+  it.each([
+    ["film", undefined],
+    ["film", false],
+    ["selected-section", undefined],
+    ["selected-section", false],
+    ["other-section", undefined],
+    ["other-section", false],
+  ] as const)(
+    "preserves %s no-op pinned payload with locked=%s through reopening and isolation",
+    async (scope, locked) => {
+      const baseline = app.project.timelines[0]!,
+        pinned = baseline.tracks[0]!.clips[1]!;
+      if (locked === undefined) delete pinned.locked;
+      else pinned.locked = locked;
+      pinned.userOverrides = {
+        version: 1,
+        isUserPinned: true,
+        lockedAttributes: ["timing"],
+      };
+      app.project.schemaVersion = "1.1.0";
+      await app.save();
+      const before = structuredClone(pinned);
+      const variant = await app.creativeVariants.createVariant({
+        name: "No-op pinned clone",
+        intent: "Preserve saved choices",
+        modifications: {},
+        scope:
+          scope === "film"
+            ? { type: "film" }
+            : {
+                type: "section",
+                targetBeatId:
+                  scope === "selected-section" ? "beat-2" : "beat-1",
+              },
+      });
+      await app.save();
+      app.close();
+      app = await OpenFilmApplication.open(projectDir);
+      const derived = app.project.timelines.find(
+        (composition) => composition.id === variant.derivedCompositionId,
+      )!;
+      const mapping = variant.provenanceMapping.clipMappings.find(
+        (mapping) => mapping.baselineClipId === before.id,
+      )!;
+      const beatMapping = variant.provenanceMapping.beatMappings.find(
+        (mapping) => mapping.baselineBeatId === before.beatId,
+      )!;
+      const copy = derived.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === mapping.variantClipId)!;
+      expect(copy).toEqual({
+        ...before,
+        id: mapping.variantClipId,
+        beatId: beatMapping.variantBeatId,
+      });
+      expect(Object.hasOwn(copy, "locked")).toBe(locked !== undefined);
+      const reopenedBaseline = app.project.timelines.find(
+        (composition) => composition.id === baseline.id,
+      )!.tracks[0]!.clips[1]!;
+      expect(reopenedBaseline).toEqual(before);
+      copy.userOverrides!.lockedAttributes.push("motionPreset");
+      expect(reopenedBaseline).toEqual(before);
+    },
+  );
+
   it("pinned occurrences retain exact payload and detached graph in duration variants", async () => {
     const baseline = app.project.timelines[0]!;
     const pinned = baseline.tracks[0]!.clips[1]!;
