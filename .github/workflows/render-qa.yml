@@ -54,6 +54,15 @@ jobs:
         env:
           OPENFILM_RENDER_QA_OUTPUT: ${{ runner.temp }}/openfilm-render-qa-evidence
         run: pnpm test:render-qa
+      - name: Run the explicit finishing selection with strict JSON accounting
+        run: pnpm exec tsx scripts/ci/run-render-qa-finishing.ts "$RUNNER_TEMP/openfilm-render-qa-finishing"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: finishing-qa-${{ matrix.id }}-${{ env.OPENFILM_SOURCE_CANDIDATE }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openfilm-render-qa-finishing/*.summary.json
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:
