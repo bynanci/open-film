@@ -26,6 +26,15 @@ export interface RenderLookEvidence {
   strength: number;
   matrix: readonly number[];
 }
+export interface RenderPhotoPresentationEvidence {
+  version: 1;
+  bezierBisectionSteps: 24;
+  fills: {
+    clipId: string;
+    sha256: string;
+    sources: { assetId: string; sha256: string }[];
+  }[];
+}
 export interface RenderLookConfiguration {
   override: FilmLook | null;
   clips: RenderLookEvidence[];
@@ -189,6 +198,7 @@ export async function writeRenderManifest(
     videoOnly?: boolean;
     exportProfile?: ExportProfile;
     audioRole?: AudioAutomation["role"];
+    photoPresentation?: RenderPhotoPresentationEvidence;
   } = { format: "mp4" },
 ): Promise<void> {
   const json = JSON.stringify(composition);
@@ -209,7 +219,7 @@ export async function writeRenderManifest(
     version: 1,
     renderer: {
       id: "openfilm.ffmpeg",
-      presentationVersion: 1,
+      presentationVersion: outputConfig.photoPresentation ? 2 : 1,
       lookVersion: FILM_LOOK_RECIPE_VERSION,
       ffmpegVersion: ffmpegLines[0],
       ffmpegConfiguration:
@@ -217,6 +227,9 @@ export async function writeRenderManifest(
       ffmpegLibraries: ffmpegLines.filter((line) => /^lib\w+\s+\d/u.test(line)),
     },
     createdAt: new Date().toISOString(),
+    ...(outputConfig.photoPresentation
+      ? { photoPresentation: outputConfig.photoPresentation }
+      : {}),
     composition,
     project: project ?? null,
     compositionSha256: createHash("sha256").update(json).digest("hex"),
