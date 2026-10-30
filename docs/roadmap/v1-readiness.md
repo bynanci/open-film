@@ -17,24 +17,25 @@ The waveform increment extends that foundation without another timeline.
 
 ## Delivery owners and remaining scope
 
-| Owner    | Existing foundation                                                           | Required increment toward the goal                                                                                           |
-| -------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| D1       | Multi-source discovery, manifests, analysis and explicit adoption implemented | Retain source/privacy/revision protections; workstation observations remain separate                                         |
-| D2A      | StoryPlan and Scene Direction review                                          | Typed-evidence continuity and advisory emotion guidance; unavailable shot language remains manual review                     |
-| D2B      | Existing crossfade                                                            | Bounded adjacent-scene preview and shared Dip-to-Black/White semantics                                                       |
-| D3A1     | Source peaks and rational/source-range resolvers                              | Saved-Sequence projection, bounded preparation/read cache, safe seeking and actual decoded pulse evidence                    |
-| D3A2     | Generic snap primitive                                                        | Source-bound rhythm evidence and explicit bounded snap proposals with uncertainty                                            |
-| D3B1     | Composition audio/automation                                                  | Versioned J/L audio policy and shared preview/render mix semantics                                                           |
-| D3B2     | Multi-visual Story scenes                                                     | Reviewed visual coverage using D3B1 receipts and no double mix                                                               |
-| D4       | Immutable transcripts and native captions                                     | Reliable-timing-only compound ripple with explicit cross-track retime/conflicts                                              |
-| D5A      | Photo focal/layout/protection and fixed motion                                | Direct focal control, versioned bounded Bezier and shared ambient preparation                                                |
-| D5B      | Measured raster, native captions and text export                              | Independent bilingual typography, bounded finishing, run-aware font evidence and Monitor parity                              |
-| D5C      | HDR conversion and Film Looks                                                 | Primary correction before looks and measured, explicitly accepted color suggestions                                          |
-| D6A/D6B  | Managed proxies and reviewed derived Collect implemented                      | Preserve provenance/quotas/quality disclosures; cross-drive workstation evidence remains                                     |
-| D7A      | Synthetic media and Windows tool/font pins                                    | Shared metric policy, deliberate failure controls and focused OS evidence                                                    |
-| D7B/M7E  | Runtime staging, owned service and candidate packaging                        | Compatible GLib remediation, complete runtime/license closure and installer evidence                                         |
-| D8       | Strict scene validators and built-in presets                                  | Local bounded data-only registry, immutable snapshots and safe authored application                                          |
-| Cut Desk | Source/Record, exact transport, history and contextual controls               | Remaining approved Precision gestures, responsive workspace, track/audio and finishing semantics under their existing owners |
+| Owner     | Existing foundation                                                           | Required increment toward the goal                                                                                            |
+| --------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| User pins | Existing clip/source locks and manual-presentation preservation               | Versioned automatic hard constraints, frame-safe re-solve, visible Pin and isolated persistence; not implemented at this base |
+| D1        | Multi-source discovery, manifests, analysis and explicit adoption implemented | Retain source/privacy/revision protections; workstation observations remain separate                                          |
+| D2A       | StoryPlan and Scene Direction review                                          | Typed-evidence continuity and advisory emotion guidance; unavailable shot language remains manual review                      |
+| D2B       | Existing crossfade                                                            | Bounded adjacent-scene preview and shared Dip-to-Black/White semantics                                                        |
+| D3A1      | Source peaks and rational/source-range resolvers                              | Saved-Sequence projection, bounded preparation/read cache, safe seeking and actual decoded pulse evidence                     |
+| D3A2      | Generic snap primitive                                                        | Source-bound rhythm evidence and explicit bounded snap proposals with uncertainty                                             |
+| D3B1      | Composition audio/automation                                                  | Versioned J/L audio policy and shared preview/render mix semantics                                                            |
+| D3B2      | Multi-visual Story scenes                                                     | Reviewed visual coverage using D3B1 receipts and no double mix                                                                |
+| D4        | Immutable transcripts and native captions                                     | Reliable-timing-only compound ripple with explicit cross-track retime/conflicts                                               |
+| D5A       | Photo focal/layout/protection and fixed motion                                | Direct focal control, versioned bounded Bezier and shared ambient preparation                                                 |
+| D5B       | Measured raster, native captions and text export                              | Independent bilingual typography, bounded finishing, run-aware font evidence and Monitor parity                               |
+| D5C       | HDR conversion and Film Looks                                                 | Primary correction before looks and measured, explicitly accepted color suggestions                                           |
+| D6A/D6B   | Managed proxies and reviewed derived Collect implemented                      | Preserve provenance/quotas/quality disclosures; cross-drive workstation evidence remains                                      |
+| D7A       | Synthetic media and Windows tool/font pins                                    | Shared metric policy, deliberate failure controls and focused OS evidence                                                     |
+| D7B/M7E   | Runtime staging, owned service and candidate packaging                        | Compatible GLib remediation, complete runtime/license closure and installer evidence                                          |
+| D8        | Strict scene validators and built-in presets                                  | Local bounded data-only registry, immutable snapshots and safe authored application                                           |
+| Cut Desk  | Source/Record, exact transport, history and contextual controls               | Remaining approved Precision gestures, responsive workspace, track/audio and finishing semantics under their existing owners  |
 
 Each increment first reconciles actual source and prior evidence, writes its
 independent compatibility/threat design where required, and extends its existing

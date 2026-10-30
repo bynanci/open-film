@@ -25,8 +25,9 @@ D3A1 now projects the existing raw source peaks into saved Sequence time under
 Expert Record, with bounded current-source reads, explicit preparation and
 guarded seeking. Trim/speed/short-source behavior is verified against decoded
 synthetic MP4 pulses; playback does not refetch peaks. This is read-only source
-evidence before mixing. Its final candidate review/CI remain pending; rhythm
-analysis and J/L policy stay separate. See the [waveform guide](docs/sequence-waveforms.md)
+evidence before mixing. Independent review corrections are complete; exact
+candidate/main gates are recorded on [PR72](https://github.com/bynanci/open-film/pull/72)
+and must pass before merge. Rhythm analysis and J/L policy stay separate. See the [waveform guide](docs/sequence-waveforms.md)
 and [validation](docs/validation-sequence-waveforms.md).
 
 A bounded Phase 1B gesture slice now gives General-mode editors direct

@@ -79,10 +79,21 @@ Fresh correction checks pass:
 - TypeScript/Vue, ESLint on all five changed source/test files, and formatting.
 - Owned browser servers exited; ports 4310/1420 were confirmed released.
 
-This correction does not certify full candidate CI or workstation gates. A fresh
-scoped review and completed exact-candidate CI remain required. Full Vitest and
-native benchmarks were not rerun in this bounded correction pass. Stable remains
-0.4.0.
+Fresh scoped review of `730dc05..5666720` passed with no residual Important or
+Critical findings. This does not certify full candidate CI or workstation gates.
+
+The subsequent complete local run on `5666720` exercised 335 files and 4,668
+tests: 4,613 passed and 55 failed in the existing Timeline render-host file
+because its explicit dependency adapter did not register the new cache and
+preparation imports. The host now loads both actual production modules and
+supplies a read-only network fixture. All original 55 rendering, navigation,
+protection, history and performance assertions pass unchanged in its 20.85-second
+rerun. This is a test-adapter compatibility correction, with no later production
+code change. The seven new focused files subsequently pass **77/77**; this count
+excludes those 55 existing host cases. Full rerun, exact candidate and main
+outcomes are maintained on [PR72](https://github.com/bynanci/open-film/pull/72)
+and its complete checks. They remain merge requirements; the focused evidence
+above does not substitute for them. Stable remains 0.4.0.
 
 ## Actual synthetic MP4
 
