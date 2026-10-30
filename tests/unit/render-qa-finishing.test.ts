@@ -5,6 +5,7 @@ import { expect, it } from "vitest";
 import {
   finishingVitestArgs,
   renderQaFinishingFiles,
+  summarizeFinishingFailure,
   validateFinishingReport,
 } from "../../scripts/ci/render-qa-finishing.js";
 const root = resolve("."),
@@ -57,6 +58,95 @@ it("selects the exact five finishing files without filters, retries or only-test
     "--reporter=json",
     `--outputFile=${output}`,
   ]);
+});
+it("publishes bounded numeric failure facts without raw messages, names or absolute paths", () => {
+  const value = report();
+  value.success = false;
+  value.numFailedTests = 1;
+  value.numPassedTests = 4;
+  const suite = value.testResults[0]!;
+  suite.status = "failed";
+  suite.assertionResults[0]!.status = "failed";
+  suite.assertionResults[0]!.fullName = "private C:\\Users\\person\\secret.txt";
+  suite.assertionResults[0]!.failureMessages = [
+    "AssertionError: expected 3.25 to be less than or equal to 3\n /private/media/person.jpg C:\\Users\\person\\secret.txt",
+  ];
+  const result = summarizeFinishingFailure(value, context);
+  expect(result).toEqual({
+    status: "failed",
+    failures: [
+      {
+        path: renderQaFinishingFiles[0],
+        assertionIndex: 0,
+        kind: "numeric-comparison",
+        actual: 3.25,
+        operator: "less-than-or-equal",
+        expected: 3,
+      },
+    ],
+  });
+  expect(JSON.stringify(result)).not.toMatch(
+    /private|Users|person|secret|AssertionError/u,
+  );
+  expect(() => validateFinishingReport(value, context)).toThrow();
+});
+it("retains only known failure categories and rejects foreign, stale or malformed diagnostics", () => {
+  const value = report();
+  value.success = false;
+  value.testResults[1]!.status = "failed";
+  value.testResults[1]!.assertionResults[0]!.status = "failed";
+  value.testResults[1]!.assertionResults[0]!.failureMessages = [
+    "Error: private data outside the expected assertion format",
+  ];
+  expect(summarizeFinishingFailure(value, context).failures).toEqual([
+    {
+      path: renderQaFinishingFiles[1],
+      assertionIndex: 0,
+      kind: "unclassified",
+    },
+  ]);
+  for (const mutate of [
+    (v: ReturnType<typeof report>) => {
+      v.testResults[0]!.name = resolve(root, "private.test.ts");
+    },
+    (v: ReturnType<typeof report>) => {
+      v.startTime = 1;
+    },
+    (v: ReturnType<typeof report>) => {
+      v.testResults[1]!.assertionResults[0]!.failureMessages = [
+        "x".repeat(65537),
+      ];
+    },
+  ]) {
+    const next = structuredClone(value);
+    mutate(next);
+    expect(summarizeFinishingFailure(next, context)).toEqual({
+      status: "unavailable",
+      failures: [],
+    });
+  }
+});
+it("retains only numeric source coordinates from ANSI Windows assertion stacks", () => {
+  const value = report();
+  value.success = false;
+  const assertion = value.testResults[0]!.assertionResults[0]!;
+  assertion.status = "failed";
+  assertion.failureMessages = [
+    "\u001b[31mAssertionError: expected 9 to be greater than 10\u001b[39m\n at C:\\Users\\private\\packages\\render\\tests\\photo-easing.test.ts:42:7)",
+  ];
+  expect(summarizeFinishingFailure(value, context).failures[0]).toEqual({
+    path: renderQaFinishingFiles[0],
+    assertionIndex: 0,
+    kind: "numeric-comparison",
+    actual: 9,
+    operator: "greater-than",
+    expected: 10,
+    location: { line: 42, column: 7 },
+  });
+  expect(summarizeFinishingFailure(report(), context)).toEqual({
+    status: "unavailable",
+    failures: [],
+  });
 });
 it("accepts a complete current report and publishes only relative filenames and counts", () => {
   const actual = validateFinishingReport(report(), context);
