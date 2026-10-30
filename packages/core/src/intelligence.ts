@@ -49,6 +49,21 @@ export interface WaveformData {
   provenance: AnalysisProvenance;
 }
 
+/** Verified source peaks, without unrelated transcript/scene hydration. */
+export type SourceWaveformEvidence =
+  | {
+      assetId: string;
+      status: "ready";
+      sourceHash: string;
+      waveform: WaveformData;
+    }
+  | { assetId: string; status: "not-cached"; sourceHash: string }
+  | {
+      assetId: string;
+      status: "unavailable" | "source-changed";
+      issue: { code: "media.notFound" | "media.missing" | "source.changed" };
+    };
+
 export const TIMELINE_MARKER_TYPES = [
   "manual",
   "scene-cut",

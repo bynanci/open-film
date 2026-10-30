@@ -55,6 +55,7 @@ import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import RecordMonitor from "./RecordMonitor.vue";
+import SequenceWaveform from "./SequenceWaveform.vue";
 import EditDecisionRibbon from "./EditDecisionRibbon.vue";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
@@ -325,6 +326,32 @@ const lastRecordFrame = computed(() =>
   ),
 );
 const recordFrame = computed(() => recordMonitor.value?.frame ?? 0);
+// The editor may publish optimistic drafts while saving. Waveform geometry
+// follows only the last acknowledged document and never becomes an edit owner.
+const savedRecordState = shallowRef<EditorState | null>(null);
+const savedRecordLastFrame = computed(() =>
+  Math.max(
+    0,
+    sequenceFrameAt(
+      savedRecordState.value?.composition.duration ?? 0,
+      projectTimebase.value,
+      "floor",
+    ) - 1,
+  ),
+);
+watch(
+  [state, status, compositionHasPending],
+  ([snapshot, saveStatus, pending]) => {
+    if (
+      snapshot &&
+      snapshot.composition.id === props.compositionId &&
+      saveStatus === "saved" &&
+      !pending
+    )
+      savedRecordState.value = snapshot;
+  },
+  { immediate: true, flush: "post" },
+);
 const recordSplitPending = ref(false);
 const recordIssue = ref("");
 let recordDisposed = false;
@@ -3149,6 +3176,22 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
               </div>
+              <SequenceWaveform
+                v-if="savedRecordState"
+                :project-id="projectId"
+                :composition="savedRecordState.composition"
+                :assets="savedRecordState.assets"
+                :revision="savedRecordState.revision"
+                :timebase="projectTimebase"
+                :frame="recordFrame"
+                :max-frame="savedRecordLastFrame"
+                :source-statuses="sourceStatuses"
+                :source-version="sourceVersion"
+                :active="recordActive"
+                :disabled="cutDeskBlocked"
+                v-bind="cutDeskControls.seek"
+                @activity="emit('activity')"
+              />
               <p
                 v-if="
                   recordIssue &&

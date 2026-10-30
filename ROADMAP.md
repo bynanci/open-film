@@ -1,5 +1,9 @@
 ## Professional Cut Desk — Phase 1A foundation
 
+The accepted delivery goal is [v1.0.0](docs/roadmap/v1-readiness.md). That
+crosswalk retains the existing D task owners and explicit native/manual gates;
+the currently published stable remains v0.4.0.
+
 Expert Source/Record now presents one saved Composition with rational/DF
 timecode, continuous integer-frame Record transport, staged Source I/O and
 acknowledged one-gesture transactions. General retains Story/Precision over the
@@ -16,6 +20,15 @@ tracks/proxies/audio and Phase 4 finishing remain incomplete. Chromium and
 synthetic FFmpeg evidence do not close physical Windows/macOS,
 high-DPI/color-managed display, hardware audio latency or long-form performance
 gates. Unrelated roadmap work remains open.
+
+D3A1 now projects the existing raw source peaks into saved Sequence time under
+Expert Record, with bounded current-source reads, explicit preparation and
+guarded seeking. Trim/speed/short-source behavior is verified against decoded
+synthetic MP4 pulses; playback does not refetch peaks. This is read-only source
+evidence before mixing. Independent review corrections are complete; exact
+candidate/main gates are recorded on [PR72](https://github.com/bynanci/open-film/pull/72)
+and must pass before merge. Rhythm analysis and J/L policy stay separate. See the [waveform guide](docs/sequence-waveforms.md)
+and [validation](docs/validation-sequence-waveforms.md).
 
 A bounded Phase 1B gesture slice now gives General-mode editors direct
 clip-picture move and proportional corner resize in the existing Story monitor.

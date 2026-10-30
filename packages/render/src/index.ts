@@ -63,6 +63,7 @@ import {
   graphicSceneAssetIds,
   projectFrameRate,
   resolveClipSourceRange,
+  resolveClipAudioRange,
   resolveClipGeometry,
   resolveFilmLook,
   validateFilmLook,
@@ -867,7 +868,7 @@ export class FFmpegRenderer {
               "apad",
               `atrim=duration=${number(duration)}`,
               ...audioAutomationFilters(clip.audioAutomation, duration),
-              `adelay=${Math.round(start * 1000)}:all=1`,
+              `adelay=${resolveClipAudioRange(clip, asset).delayMilliseconds}:all=1`,
             ];
             filters.push(`[${input}:a]${audioFilters.join(",")}[${label}]`);
             audioLabels.push(label);
