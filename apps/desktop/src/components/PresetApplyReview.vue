@@ -114,6 +114,40 @@ const titleComparison = computed(() => {
     ),
   };
 });
+// Resolve defaults through the actual title owner, then disclose each changed
+// leaf as escaped text. This also covers nested finishing without raw JSON/CSS.
+const titleChanges = computed(() => {
+  if (!titleComparison.value) return [];
+  const leaves = (
+    value: unknown,
+    prefix = "",
+    out = new Map<string, string | number>(),
+  ) => {
+    if (value && typeof value === "object")
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "version" || key === "bottomSafeMargin") continue;
+        leaves(child, prefix ? `${prefix}.${key}` : key, out);
+      }
+    else if (typeof value === "string" || typeof value === "number")
+      out.set(prefix, value);
+    return out;
+  };
+  const before = leaves(titleComparison.value.before),
+    after = leaves(titleComparison.value.after);
+  const display = (key: string, value: string | number | undefined) => {
+    if (value === undefined) return t("presets.noValue");
+    if (["role", "align", "background", "position"].includes(key))
+      return t(`presets.titleValues.${value}`);
+    return String(value);
+  };
+  return [...new Set([...before.keys(), ...after.keys()])]
+    .filter((key) => before.get(key) !== after.get(key))
+    .map((key) => ({
+      key,
+      before: display(key, before.get(key)),
+      after: display(key, after.get(key)),
+    }));
+});
 function clear() {
   tasks.cancel();
   working.value = false;
@@ -422,6 +456,13 @@ onBeforeUnmount(() => tasks.cancel());
             <td>
               {{ t(`presets.positions.${titleComparison.after.position}`) }}
             </td>
+          </tr>
+          <tr v-for="change in titleChanges" :key="change.key">
+            <th scope="row">
+              {{ t(`presets.titleProperties.${change.key}`) }}
+            </th>
+            <td>{{ change.before }}</td>
+            <td>{{ change.after }}</td>
           </tr>
         </tbody>
       </table>

@@ -150,3 +150,86 @@ it("a pending acceptance cannot publish its old result into a switched project",
   expect(f.applied).not.toHaveBeenCalled();
   expect(f.button("presets.accept")).toBeUndefined();
 });
+
+it.each([
+  {
+    finishing: {
+      version: 1,
+      stroke: { color: "#123456", width: 2 },
+      shadow: {
+        color: "#000000",
+        opacity: 0.5,
+        offsetX: 1,
+        offsetY: 2,
+        blur: 3,
+      },
+      pill: {
+        color: "#FFFFFF",
+        opacity: 0.4,
+        paddingX: 5,
+        paddingY: 6,
+        radius: 7,
+      },
+    },
+  },
+  {
+    tracking: 2,
+    background: "none",
+    align: "left",
+    lineHeight: 1.5,
+    fontWeight: 700,
+    fadeOut: 0.4,
+    maxWidth: 200,
+    safeArea: { left: 0.1 },
+  },
+])(
+  "discloses changed title properties before accepting: %j",
+  async (changes) => {
+    const read = vi.fn(async (request: unknown) => ({
+      version: 1,
+      request,
+      reviewSha256: "c".repeat(64),
+      snapshot: {
+        kind: "title",
+        name: "Title",
+        recipe: { version: 1, ...changes },
+      },
+      commands: [],
+      warnings: [],
+      conflicts: [],
+    }));
+    const f = await fixture(read as never);
+    f.props.entry = presetPackage().entries.find((e) => e.kind === "title")!;
+    f.props.package.entrySummaries.push({
+      id: "quiet",
+      canonicalId: "local:test.studio@1.0.0/title/quiet",
+    });
+    f.props.project = {
+      ...f.props.project,
+      settings: { width: 320, height: 180 },
+    } as typeof f.props.project;
+    await vue.nextTick();
+    await f.click("presets.previewChanges");
+    const output = text(f.root);
+    const keys = changes.finishing
+      ? [
+          "finishing.stroke.width",
+          "finishing.shadow.blur",
+          "finishing.pill.radius",
+        ]
+      : [
+          "tracking",
+          "background",
+          "align",
+          "lineHeight",
+          "fontWeight",
+          "fadeOut",
+          "maxWidth",
+          "safeArea.left",
+        ];
+    for (const key of keys)
+      expect(output).toContain(`presets.titleProperties.${key}`);
+    expect(output).toContain(changes.finishing ? "#123456" : "2");
+    expect(f.accept).not.toHaveBeenCalled();
+  },
+);

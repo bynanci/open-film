@@ -5,6 +5,7 @@ import {
   type PresetSnapshot,
   type Story,
   type StoryPlan,
+  type Composition,
   type ProjectContentLocale,
 } from "@openfilm/core";
 function conflict(message: string): never {
@@ -28,7 +29,9 @@ export function compilePresetStoryPlan(
   if (
     basePlan.scenes.length !== recipe.beats.length ||
     sourceStory.beats.length !== recipe.beats.length ||
-    bindings.length !== recipe.beats.length
+    bindings.length !== recipe.beats.length ||
+    new Set(basePlan.scenes.map((s) => s.sceneId)).size !==
+      basePlan.scenes.length
   )
     conflict("Map every recipe beat to every authored beat exactly once.");
   const keys = new Set<string>(),
@@ -57,15 +60,47 @@ export function compilePresetStoryPlan(
       conflict(
         "Assign existing media to every authored scene before preset review.",
       );
-    const assigned = new Set(scene.assets.map((a) => a.assetId)),
-      required = [
-        ...(source.selectedAssetIds ?? []),
-        ...(source.constraints ?? []).flatMap((c) =>
-          c.type === "must-include" || c.type === "asset-order"
-            ? c.assetIds
-            : [],
-        ),
-      ];
+    const assigned = new Set(scene.assets.map((a) => a.assetId));
+    if (assigned.size !== scene.assets.length)
+      conflict(
+        "Repeated media within a scene has no distinct solver occurrence mapping.",
+      );
+    // A beat/scene identity owns an occurrence. Asset identity alone cannot
+    // recover duplicate graph assignments that the generic planner deduplicates.
+    if (sourceStory.graph) {
+      const graph = sourceStory.graph;
+      const nodes = graph.nodes.filter(
+        (n) => n.type === "beat" && n.beatId === scene.beatId,
+      );
+      if (nodes.length !== 1)
+        conflict(
+          "Every preset scene needs one unambiguous authored beat node.",
+        );
+      const occurrences = new Set<string>();
+      for (const edge of graph.edges.filter(
+        (e) =>
+          e.from === nodes[0]!.id &&
+          (e.type === "supports" || e.type === "contains"),
+      )) {
+        const target = graph.nodes.find((n) => n.id === edge.to);
+        if (!target)
+          conflict(
+            "An authored scene assignment points to a missing graph node.",
+          );
+        if (target.type !== "asset") continue;
+        if (occurrences.has(target.assetId))
+          conflict(
+            "Repeated graph assignments cannot be represented as distinct scene occurrences.",
+          );
+        occurrences.add(target.assetId);
+      }
+    }
+    const required = [
+      ...(source.selectedAssetIds ?? []),
+      ...(source.constraints ?? []).flatMap((c) =>
+        c.type === "must-include" || c.type === "asset-order" ? c.assetIds : [],
+      ),
+    ];
     if (required.some((id) => !assigned.has(id)))
       conflict("The authored plan is missing selected or required media.");
     if (
@@ -101,7 +136,10 @@ export function storyFromPresetPlan(
   storyId: string,
   beatIds: string[],
 ): Story {
-  if (beatIds.length !== plan.scenes.length)
+  if (
+    beatIds.length !== plan.scenes.length ||
+    new Set(beatIds).size !== beatIds.length
+  )
     conflict("Preset scene identity mapping is incomplete.");
   return {
     id: storyId,
@@ -122,14 +160,24 @@ export function storyFromPresetPlan(
         titleSource: "template" as const,
         intentSource: "template" as const,
         targetDuration: scene.targetDuration,
-        candidateAssetIds: [
-          ...new Set([
-            ...(source.candidateAssetIds ?? []),
-            ...scene.assets.map((a) => a.assetId),
-          ]),
-        ],
-        selectedAssetIds: [
-          ...(source.selectedAssetIds ?? scene.assets.map((a) => a.assetId)),
+        // The reviewed scene is the complete occurrence list for this cut.
+        // Preserve source ordering rules as constraints as well as reviewed order.
+        candidateAssetIds: scene.assets.map((a) => a.assetId),
+        selectedAssetIds: scene.assets.map((a) => a.assetId),
+        constraints: [
+          ...structuredClone(source.constraints ?? []),
+          ...(source.selectedAssetIds?.length &&
+          (source.selectedAssetIds.length !== scene.assets.length ||
+            source.selectedAssetIds.some(
+              (id, index) => id !== scene.assets[index]!.assetId,
+            ))
+            ? [
+                {
+                  type: "asset-order" as const,
+                  assetIds: [...source.selectedAssetIds],
+                },
+              ]
+            : []),
         ],
         script: {
           narration: scene.narration ?? "",
@@ -138,4 +186,32 @@ export function storyFromPresetPlan(
       };
     }),
   };
+}
+
+/** Compare occurrences through the explicit scene-to-new-beat mapping, never asset-ID lookup. */
+export function assertPresetPlanComposition(
+  plan: StoryPlan,
+  story: Story,
+  composition: Composition,
+): void {
+  if (
+    story.beats.length !== plan.scenes.length ||
+    new Set(story.beats.map((b) => b.id)).size !== story.beats.length
+  )
+    conflict("Preset scene identity mapping is incomplete or ambiguous.");
+  const clips = composition.tracks
+    .flatMap((t) => t.clips)
+    .sort((a, b) => a.timelineStart - b.timelineStart);
+  if (clips.some((c) => !story.beats.some((b) => b.id === c.beatId)))
+    conflict("The preset composition contains an unmapped occurrence.");
+  for (const [i, scene] of plan.scenes.entries()) {
+    const mapped = clips.filter((c) => c.beatId === story.beats[i]!.id);
+    if (
+      mapped.length !== scene.assets.length ||
+      mapped.some((clip, j) => clip.assetId !== scene.assets[j]!.assetId)
+    )
+      conflict(
+        "The solved composition does not preserve every reviewed scene occurrence in order.",
+      );
+  }
 }

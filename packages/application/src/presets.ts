@@ -74,7 +74,10 @@ export class PresetApplicationService {
   constructor(
     private readonly app: OpenFilmApplication,
     readonly registry: LocalPresetRegistry,
-    private readonly publishProject: (next: OpenFilmProject) => void,
+    private readonly publishProject: (
+      next: OpenFilmProject,
+      assertCurrent?: () => void,
+    ) => void,
   ) {}
   accepted(
     input: PresetAcceptInput,
@@ -293,9 +296,15 @@ export class PresetApplicationService {
       acceptedAt: new Date().toISOString(),
     };
   }
-  commit(next: OpenFilmProject, selection: PresetSelection): void {
+  commit(
+    next: OpenFilmProject,
+    selection: PresetSelection,
+    assertCurrent: () => void,
+  ): void {
     assertProjectPresetIntegrity(next);
-    this.registry.withSelection(selection, () => this.publishProject(next));
+    this.registry.withSelection(selection, () =>
+      this.publishProject(next, assertCurrent),
+    );
   }
   appendReceipt(
     project: OpenFilmProject,

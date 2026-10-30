@@ -12,7 +12,10 @@ import { runProcess } from "@openfilm/media";
 import { createDesktopFixture } from "./helpers.js";
 import { initialLocale, navigate, uiText } from "./ui-helpers.js";
 import { presetPackage } from "../fixtures/local-presets/package.js";
-import type { ProjectContentLocale } from "@openfilm/core";
+import {
+  validatePresetPackage,
+  type ProjectContentLocale,
+} from "@openfilm/core";
 const base = "http://127.0.0.1:4310",
   cleanup: Array<() => Promise<unknown>> = [];
 test.afterEach(async ({ request }) => {
@@ -314,3 +317,120 @@ for (const locale of ["zh-TW", "ja-JP"] as const)
       false,
     );
   });
+
+test("shows finishing-only and spacing title changes before acceptance", async ({
+  page,
+  request,
+}) => {
+  const f = await fixture(request);
+  const pkg = validatePresetPackage(f.pkg);
+  const title = pkg.entries.find((e) => e.kind === "title")!;
+  if (title.kind !== "title") throw new Error("title fixture missing");
+  title.recipe = {
+    version: 1,
+    role: "subtitle",
+    finishing: {
+      version: 1,
+      stroke: { color: "#123456", width: 2 },
+      shadow: {
+        color: "#000000",
+        opacity: 0.5,
+        offsetX: 1,
+        offsetY: 2,
+        blur: 3,
+      },
+      pill: {
+        color: "#FFFFFF",
+        opacity: 0.4,
+        paddingX: 5,
+        paddingY: 6,
+        radius: 7,
+      },
+    },
+  };
+  pkg.entries.push({
+    kind: "title",
+    id: "spacing",
+    name: "Spacing and background",
+    recipe: {
+      version: 1,
+      role: "subtitle",
+      tracking: 2,
+      align: "left",
+      background: "none",
+    },
+  });
+  const document = JSON.stringify(pkg);
+  const reviewResponse = await request.post(
+    base + "/api/presets/import/review",
+    { data: { document } },
+  );
+  expect(reviewResponse.ok()).toBe(true);
+  const review = await reviewResponse.json();
+  const installedResponse = await request.post(
+    base + "/api/presets/import/accept",
+    {
+      data: {
+        document,
+        packageSha256: review.packageSha256,
+        baseRegistryRevision: review.registryRevision,
+        reviewSha256: review.reviewSha256,
+        acknowledgeLicense: true,
+      },
+    },
+  );
+  expect(installedResponse.ok(), await installedResponse.text()).toBe(true);
+  await initialLocale(page);
+  await page.goto("/");
+  const dialog = await settings(page),
+    installed = dialog
+      .locator(".preset-package")
+      .filter({ hasText: f.pkg.name });
+  for (const name of ["Quiet title", "Spacing and background"]) {
+    await installed
+      .locator("li")
+      .filter({ hasText: name })
+      .getByRole("button", { name: "Apply…", exact: true })
+      .click();
+    const apply = dialog.getByRole("region", {
+      name: "Apply local preset",
+      exact: true,
+    });
+    await apply
+      .getByRole("button", { name: "Review changes", exact: true })
+      .click();
+    const table = apply.getByRole("table");
+    const font = table.getByRole("row").filter({
+      has: page.getByRole("rowheader", {
+        name: "Typeface and size",
+        exact: true,
+      }),
+    });
+    await expect(font).toBeVisible();
+    await expect(font.getByRole("cell")).toHaveCount(2);
+    const values = await font.getByRole("cell").allTextContents();
+    expect(values[0]!.trim()).toBe(values[1]!.trim());
+    for (const label of name === "Quiet title"
+      ? [
+          "Stroke · Width (px)",
+          "Shadow · Blur (px)",
+          "Pill · Corner radius (px)",
+        ]
+      : ["Tracking (px)", "Alignment", "Background"])
+      await expect(
+        table.getByRole("rowheader", { name: label, exact: true }),
+      ).toBeVisible();
+    await expect(
+      apply.getByRole("button", {
+        name: "Accept reviewed change",
+        exact: true,
+      }),
+    ).toBeEnabled();
+    expect(
+      (await (await request.get(base + "/api/project")).json()).project
+        .presetApplicationReceipts,
+    ).toBeUndefined();
+    await apply.getByRole("button", { name: "Cancel", exact: true }).click();
+  }
+  expect(await f.assertOriginalsUnchanged()).toBe(true);
+});

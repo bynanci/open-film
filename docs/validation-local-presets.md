@@ -200,3 +200,57 @@ source/test SHA-256 receipt are under
 `/tmp/openfilm-finishing-integration/D8-current/`; its isolated TMPDIR keeps old
 candidate evidence intact. No complete suite or hosted-CI success is claimed.
 Fresh whole-branch review and exact-head hosted gates remain coordinator-owned.
+
+## Final review fixes — 2026-10-30
+
+The final fix wave starts at clean `d45a1defc3bd961ca2dce0dc5c89dc9694da0c40`
+(B parent `f63c8e6`, plus its independently checked focal-viewport backport).
+The review's three Important findings and one Minor finding are addressed:
+
+- Look/title publication rechecks the captured pre-edit document against fresh
+  catalog editing facts inside the existing project write transaction, while
+  retaining the registry selection lock. A catalog-only lock, content-hash or
+  editing-metadata change rejects with `presets.stale` before manifest, receipt
+  or history publication. Existing source/clip locks still reject application.
+  The check is a logical catalog fence; it adds no source-file hashing or
+  unbounded source-file I/O inside that transaction.
+- Each reviewed Story scene supplies the complete selected occurrence list for
+  its new beat. Source selection ordering, required/excluded media, chronology,
+  locks and duration constraints remain in force. Preview and adoption verify
+  solved occurrences through the explicit scene-to-new-beat mapping. Missing,
+  ambiguous or repeated assignments that lack a representable occurrence fail
+  closed instead of being reconstructed from asset identity.
+- The shared solver composition boundary validates and detaches a preset
+  Story's snapshot into every new Composition. Ordinary `compose(story.id)`
+  retains provenance after registry removal/reopen and in real JSON/OTIO exports.
+  Story and cut copies have separate object identities; every occurrence still
+  counts toward the existing 256-snapshot/4 MiB project budget, and Node's
+  cryptographic integrity checks still reject tampering before publication.
+- Title review discloses each changed resolved property, including nested
+  shadow/stroke/pill values, tracking, background, alignment and safe margins.
+  Labels and enum values are localized in English, Traditional Chinese and
+  Japanese. Values remain escaped text; the existing title owner resolves
+  defaults and validates finishing.
+
+The corrected regression fixtures reproduced **19 failing cases** against the
+original product source (`/tmp/d8-finalfix-red-replay.log`). The final focused
+run passed **152 tests / 24 files in 17.58 s**, with every prior assertion
+retained. It includes real application/catalog transactions and history,
+HTTP/CLI, UI rendering, actual strength/seek/negative-matrix media, full-original
+Collect directory/ZIP relocation, immutable Named Versions and bilingual title
+finishing on ambient/Bézier photos. The four Chromium journeys passed in
+**11.9 s**, including a new finishing-only/spacing disclosure check before Accept;
+4310/1420 were explicitly closed and released. New test setup errors (title
+fixture typing, the install endpoint name and reading a review row before its
+async appearance) were corrected without weakening assertions.
+
+Final TypeScript/Vue and scoped ESLint passed. Localization validates **2,853
+semantic keys**. Fresh actual synthetic sources, decoded/encoded media and
+source/test hash proof are retained under `/tmp/openfilm-d8-final-fix/`; the
+post-commit `receipt.json` and private `final-fix-report.md` identify the exact
+candidate. The portability decoded SHA-256 remains
+`880d355825a1c8f24c421da4e9ef695ca0c3883b7f4a69c53430d7c5873669e9`.
+JSON/OTIO preserve recipes as metadata; third-party NLE recipe enforcement is
+not established. Fresh scoped re-review, complete parent CI and subsequent
+integration review remain open. No full Vitest, native benchmark, dependency
+change, push, PR or merge was performed by this worker; version remains 0.4.0.
