@@ -38,8 +38,13 @@ The same owner helper used for language/glossary review binds Linux evidence to
 the host, boot and PID namespace. On Windows it hashes the machine identity and
 OS boot time with the host; the raw machine identifier is not stored in a project.
 The bounded, read-only OS query uses the system PowerShell without profiles or a
-visible window. Missing, malformed or unavailable evidence leaves that execution
-unverifiable. A matching scope and live PID are preserved.
+visible window and only the trusted inbox system module path. If its initial
+5-second query fails, owner inspection may revalidate once with the same deadline.
+Only verified machine/boot evidence replaces the unavailable scope. Local tokens
+remain bound to the exact host identity with which this process created them,
+so revalidation cannot orphan its queued work or authorize a retagged token.
+A failed revalidation stays unavailable; no polling loop or PID-only fallback.
+Missing, malformed or unavailable evidence leaves that execution unverifiable. A matching scope and live PID are preserved.
 Only `ESRCH` proves a stopped owner; permission failures, foreign scopes, old boots,
 legacy missing identities and PID reuse are not evidence that a process stopped.
 An occupied reused PID remains conservatively live and cannot grant local token

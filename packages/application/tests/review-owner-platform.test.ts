@@ -5,6 +5,7 @@ const evidence = vi.hoisted(() => ({
   output: "",
   error: false,
   shellEnvironment: undefined as NodeJS.ProcessEnv | undefined,
+  queries: 0,
 }));
 vi.mock("node:os", () => ({
   platform: () => evidence.platform,
@@ -16,6 +17,7 @@ vi.mock("node:child_process", () => ({
     _args: string[],
     options: { env?: NodeJS.ProcessEnv },
   ) => {
+    evidence.queries++;
     evidence.shellEnvironment = options.env;
     if (evidence.error) throw new Error("OS identity is unavailable");
     return evidence.output;
@@ -30,6 +32,7 @@ beforeEach(() => {
   evidence.output = JSON.stringify({ machine, boot });
   evidence.error = false;
   evidence.shellEnvironment = undefined;
+  evidence.queries = 0;
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -108,6 +111,45 @@ it("keeps unavailable Windows evidence unknown across executions", async () => {
   const owner = first.createReviewOwner();
   const second = await loadOwnerModule();
   expect(second.reviewOwnerState(owner)).toBe("unknown");
+});
+
+it("revalidates a cold unavailable scope once without orphaning its own queued owners", async () => {
+  evidence.error = true;
+  const cold = await loadOwnerModule();
+  const queued = cold.createReviewOwner();
+  evidence.error = false;
+  const verified = await loadOwnerModule();
+  const verifiedOwner = verified.createReviewOwner();
+  const stopped = { ...verifiedOwner, pid: process.pid + 1 };
+  const probe = vi.spyOn(process, "kill").mockImplementation(() => {
+    throw Object.assign(new Error("No such local PID"), { code: "ESRCH" });
+  });
+  expect(cold.reviewOwnerState(stopped)).toBe("dead");
+  expect(probe).toHaveBeenCalledWith(stopped.pid, 0);
+  expect(cold.ownsReviewOwner(queued)).toBe(true);
+  expect(cold.reviewOwnerState(queued)).toBe("alive");
+  expect(cold.ownsReviewOwner({ ...queued, host: verifiedOwner.host })).toBe(
+    false,
+  );
+  expect(cold.createReviewOwner().host).toBe(verifiedOwner.host);
+  expect(evidence.queries).toBe(3);
+});
+
+it("bounds failed scope revalidation and never probes foreign owners or loses local tokens", async () => {
+  evidence.error = true;
+  const cold = await loadOwnerModule();
+  const queued = cold.createReviewOwner();
+  const foreign = { ...queued, host: "foreign-scope", pid: process.pid + 1 };
+  const probe = vi.spyOn(process, "kill");
+  expect(cold.reviewOwnerState(foreign)).toBe("unknown");
+  expect(evidence.queries).toBe(2);
+  evidence.error = false;
+  for (let attempt = 0; attempt < 5; attempt++)
+    expect(cold.reviewOwnerState(foreign)).toBe("unknown");
+  expect(evidence.queries).toBe(2);
+  expect(probe).not.toHaveBeenCalled();
+  expect(cold.ownsReviewOwner(queued)).toBe(true);
+  expect(cold.reviewOwnerState(queued)).toBe("alive");
 });
 
 it("does not authorize recovery on an unverified platform", async () => {

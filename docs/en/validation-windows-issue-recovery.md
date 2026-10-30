@@ -5,7 +5,8 @@ Initial code base:`c0983a4f53af145a35c1ff6be2b958a2915eaad0`;
 research-integrated base:`18f8c1f02b23a3bc015695eb8d6f47791e0364b2`.
 Status: independent source review and focused Linux regressions passed. First
 actual Windows/FFmpeg9 run exposed17 failures (75passed), now under repair;
-full final gates remain pending. No release certification.
+full final gates remain pending. Subsequent runs isolate the cold owner-query
+timeout; see the evidence below. No release certification.
 
 ## Reports and root causes
 
@@ -100,6 +101,17 @@ there is no evidence to replace or round the boot identity. The correction
 restricts `PSModulePath` to the trusted inbox system module directory and strips
 case-variant inherited entries for both the owner query and the ACL inspection. Unknown
 owners remain protected; no PID-only or guessed boot-time recovery is authorized.
+
+Actual run41035002706 retains the two failures with a sanitized process-boundary
+observation: parent query **ETIMEDOUT after5019ms**, whereas the later child has
+verified scope. The temporary observer recorded no machine identifier or raw
+command output and is removed after establishing the cause. The fix permits
+one later query, retaining the same5s deadline and requiring real verified OS
+proof; failed/foreign/malformed proof stays unknown. Each local token retains its
+original host binding across an upgrade, preventing orphaned queues and token
+retagging. Two new regressions fail before this change; all80 cases across
+owner-platform, request-lock and actual export suites pass afterward. No timeout
+assertion, dead-owner assertion or recovery-winner hash assertion is removed.
 
 Single independent whole-branch review (base18f8c1f..3cab20d): no Critical or
 Important source finding. One Minor factual retention claim is corrected above;

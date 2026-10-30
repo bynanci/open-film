@@ -45,86 +45,6 @@ import {
   reviewOwnerState,
 } from "../../packages/application/src/review-owner.js";
 
-// Observe the actual parent query, without replacing its result or recording
-// machine identifiers/command output. A cold process may fail before test entry.
-const scopeProbe = vi.hoisted(() => ({
-  calls: [] as Array<Record<string, string | number | boolean | null>>,
-}));
-vi.mock("node:child_process", async (loadOriginal) => {
-  const actual = await loadOriginal<typeof import("node:child_process")>();
-  const invoke = actual.execFileSync as (...args: unknown[]) => unknown;
-  return {
-    ...actual,
-    execFileSync: (...args: unknown[]) => {
-      const observed = /powershell\.exe$/iu.test(String(args[0]));
-      const started = Date.now();
-      try {
-        const result = invoke(...args);
-        if (observed) {
-          let validJson = false;
-          let machineValid = false;
-          let bootValid = false;
-          let bootDateMatches = false;
-          try {
-            const evidence = JSON.parse(String(result).trim());
-            validJson = true;
-            machineValid =
-              typeof evidence?.machine === "string" &&
-              /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu.test(
-                evidence.machine,
-              );
-            bootValid =
-              typeof evidence?.boot === "string" &&
-              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/u.test(
-                evidence.boot,
-              );
-            bootDateMatches =
-              bootValid &&
-              Number.isFinite(Date.parse(evidence.boot)) &&
-              new Date(evidence.boot).toISOString() ===
-                evidence.boot.slice(0, 23) + "Z";
-          } catch {
-            // Record only structural validity; never output OS identity bytes.
-          }
-          scopeProbe.calls.push({
-            ok: true,
-            elapsedMs: Date.now() - started,
-            validJson,
-            machineValid,
-            bootValid,
-            bootDateMatches,
-          });
-        }
-        return result;
-      } catch (error) {
-        if (observed) {
-          const failure = error as {
-            code?: unknown;
-            status?: unknown;
-            signal?: unknown;
-          };
-          scopeProbe.calls.push({
-            ok: false,
-            elapsedMs: Date.now() - started,
-            code:
-              typeof failure.code === "string" &&
-              /^[A-Z_]+$/u.test(failure.code)
-                ? failure.code
-                : "process-failed",
-            status: typeof failure.status === "number" ? failure.status : null,
-            signal:
-              typeof failure.signal === "string" &&
-              /^SIG[A-Z]+$/u.test(failure.signal)
-                ? failure.signal
-                : "none",
-          });
-        }
-        throw error;
-      }
-    },
-  };
-});
-
 const cleanup: Array<() => Promise<unknown> | void> = [];
 const exec = promisify(execFile);
 afterEach(async () => {
@@ -1198,7 +1118,6 @@ describe("professional profile exports", () => {
           platform: process.platform,
           ownerHost: crashedLock.owner.host,
           currentHost: createReviewOwner().host,
-          scopeProbe: scopeProbe.calls,
         }),
       ).toBe("dead");
       const reopened = await OpenFilmApplication.openForExport(projectPath);
