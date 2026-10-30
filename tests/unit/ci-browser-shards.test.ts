@@ -167,6 +167,13 @@ it("keeps actual docs build and isolated browser VMs mandatory before the legacy
   expect(workflow).toContain("pnpm test:browser-results");
   expect(workflow).toContain("BROWSER_RESULT: ${{ needs.browser-e2e.result }}");
   expect(workflow).toContain("DOCS_RESULT: ${{ needs.docs-site.result }}");
+  const browser = workflow
+    .split("  browser-e2e:\n")[1]
+    ?.split("\n  docs-site:")[0];
+  expect(browser?.split("    steps:\n")[0]).not.toContain("runner.temp");
+  expect(browser).toContain(
+    "      - run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --reporter=list,github,json\n        env:\n          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json",
+  );
   const docs = workflow.split("  docs-site:\n")[1]?.split("\n  #")[0];
   expect(docs).toContain("npm ci");
   expect(docs).toContain("npm run build");

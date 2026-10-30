@@ -81,7 +81,6 @@ jobs:
         shard: [1, 2, 3, 4]
     env:
       OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -104,6 +103,8 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       # Each VM owns its fixed ports and project; retain one worker and serial files.
       - run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --reporter=list,github,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

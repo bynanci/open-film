@@ -60,6 +60,19 @@ synthetic fixtures and expire after7days. No dependency/runtime/schema change.
 - Full local unit/browser and all hosted shard timings are recorded separately
   when complete; no measured speedup or completion is claimed yet.
 
+## Independent review correction
+
+One fresh whole-branch review of5cea653 found one Important workflow issue:
+job-level `env` cannot access `runner.temp`, and GitHub rejected Verify41049947487
+before scheduling jobs. Move the JSON output path to the Playwright step's `env`.
+A regression first fails on the invalid scope, then passes on the corrected
+placement. No other Important/Critical issue was found. Corrected hosted jobs
+must actually schedule, execute every case and validate all four receipts before
+merge; the initial failed workflow remains recorded.
+
+Pinned actionlint1.7.7 independently reproduces the invalid runner context and
+passes the corrected workflow; all34 focused regressions pass.
+
 ## Boundaries
 
 Old failed runs remain historical evidence. A current successful main Verify and
