@@ -1,18 +1,51 @@
 # D6B — Derived Collect Media implementation plan
 
+> **For agentic workers:** use `superpowers:executing-plans` task by task.
+
+**Goal:** Add reviewed trimmed-original and explicitly offline Collect delivery.
+**Architecture:** Extend the existing Collect planner/verifier and v2 lineage;
+source-use windows are projections over the existing Composition.
+**Tech stack:** TypeScript, existing SQLite snapshot adapter, FFmpeg, Vue3,
+Vitest/Playwright; no new dependency.
+
+## Global constraints
+
+- Preserve v1/default full-original packages and project schema1/Catalogv6.
+- No original/Composition mutation, second timeline/scheduler, private cache,
+  credentials or provider upload in portable packages.
+- Handles default2s, bounded0–10s; preview remains review-only/non-executable.
+- Execution requires actual original-baseline decoded frame/audio/time proof.
+
+## Review focus
+
+- Locked/opaque/transcript-clock references retain original identity.
+- Disjoint uses never silently retain gaps while claiming exact trimming.
+- Source/revision changes invalidate accept/publication across project switches.
+- Unknown receipt versions, paths and source maps fail before write or decode.
+- Offline previews cannot be presented as original-quality masters.
+
 Use `superpowers:executing-plans`; preserve a private execution ledger and
 RED→GREEN evidence. Spec: `2026-10-30-collect-derivatives-design.md`.
 
 ## Task 1 — Read-only coverage contract and planner
 
-- [ ] Add closed version-1 delivery/coverage request and result contracts; reject
+**Files:** `packages/core/src/collect-delivery.ts`, core barrel,
+`packages/application/src/collect-coverage.ts`, `tests/unit/collect-coverage.test.ts`.
+**Interfaces:** `validateCollectDeliveryOptions(unknown)` returns normalized
+`CollectDeliveryOptionsV1`; `planCollectCoverage(CollectCoverageInput)` returns
+`CollectCoveragePlanV1` with explicit `executable:false`. Caller supplies opaque
+and evidence-bound asset IDs; captured classification belongs to Task2.
+**Verification:** new29 cases plus existing shared Sequence/timebase tests:
+`pnpm exec vitest run tests/unit/collect-coverage.test.ts packages/core/tests/sequence.test.ts packages/core/tests/timebase.test.ts` →86 passed.
+
+- [x] Add closed version-1 delivery/coverage request and result contracts; reject
       unknown versions/fields, invalid IDs, modes, ranges, handles and bounds.
-- [ ] Project existing source ranges via `resolveClipSourceRange`; union uses
+- [x] Project existing source ranges via `resolveClipSourceRange`; union uses
       with clamped handles, preserve disjoint windows and deterministic ordering.
-- [ ] Expose typed copy-original/block reasons for opaque dependencies, locks,
+- [x] Expose typed copy-original/block reasons for opaque dependencies, locks,
       unsupported media and unavailable timing. Mark preview review-only and
       non-executable. Never mutate assets, Composition or edit history.
-- [ ] Add unit/application regressions and checkpoint this independently useful
+- [x] Add unit/application regressions and checkpoint this independently useful
       inspection owner. Keep D6B unchecked in TASKS.
 
 ## Task 2 — Shared review and execution eligibility
