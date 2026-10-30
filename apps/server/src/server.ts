@@ -4531,6 +4531,95 @@ export async function startServer(options: ServerOptions = {}) {
             return;
           }
         }
+        const recordAudioPrepare =
+          /^\/api\/compositions\/([^/]+)\/record-audio-preview$/.exec(route);
+        if (method === "POST" && recordAudioPrepare) {
+          const data = await body(request);
+          keys(data, ["baseRevision"]);
+          if (hasActiveProjectWork())
+            throw new HttpError(409, "Wait for the active project job.");
+          const compositionId = decodeURIComponent(recordAudioPrepare[1]!),
+            revision = text(data, "baseRevision"),
+            controller = new AbortController(),
+            jobId = randomUUID();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          active.set(jobId, controller);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          const task = application.runRecordAudioPreview(
+            compositionId,
+            revision,
+            controller.signal,
+            jobId,
+          );
+          tasks.add(task);
+          try {
+            const descriptor = await task;
+            await acquireMutation();
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(
+                409,
+                "Record audio preview changed or was cancelled.",
+              );
+            json(response, 200, descriptor);
+          } finally {
+            active.delete(jobId);
+            tasks.delete(task);
+            response.off("close", disconnected);
+          }
+          return;
+        }
+        const recordAudioRange =
+          /^\/api\/record-audio-preview\/([^/]+)\/pcm$/.exec(route);
+        if (method === "GET" && recordAudioRange) {
+          for (const key of url.searchParams.keys())
+            if (!["startSample", "count"].includes(key))
+              throw new HttpError(400, "Unknown PCM range parameter.");
+          const integer = (key: string) => {
+            const values = url.searchParams.getAll(key);
+            if (
+              values.length !== 1 ||
+              !/^(0|[1-9]\d*)$/.test(values[0]!) ||
+              !Number.isSafeInteger(Number(values[0]))
+            )
+              throw new HttpError(
+                400,
+                "PCM ranges require bounded integer samples.",
+              );
+            return Number(values[0]);
+          };
+          const startSample = integer("startSample"),
+            count = integer("count");
+          const bytes = await trackedMediaRead(() =>
+            application.recordAudioPreview.read(
+              decodeURIComponent(recordAudioRange[1]!),
+              startSample,
+              count,
+            ),
+          );
+          if (app !== application)
+            throw new HttpError(409, "Record audio project changed.");
+          response.writeHead(200, {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": bytes.byteLength,
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-OpenFilm-PCM-Sample-Rate": "48000",
+            "X-OpenFilm-PCM-Channels": "2",
+            "X-OpenFilm-PCM-Format": "pcm_s24le",
+            "X-OpenFilm-PCM-Start-Sample": String(startSample),
+            "X-OpenFilm-PCM-Frame-Count": String(count),
+          });
+          response.end(bytes);
+          return;
+        }
         const audioQualityMatch =
           /^\/api\/compositions\/([^/]+)\/audio-quality$/.exec(route);
         if (method === "POST" && audioQualityMatch) {
