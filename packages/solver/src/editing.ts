@@ -1,3 +1,4 @@
+import { placeDirectEdit, solveIncremental } from "./pinned-placement.js";
 import {
   applyOverridePolicy,
   directOverrideTargets,
@@ -896,13 +897,69 @@ export function applyTimelineCommand(
           fail("The scene or source is locked.");
       }
     }
-  const next = command.type.startsWith("user-pin.")
+  const pinned =
+    document.composition.tracks.some((t) =>
+      t.clips.some((c) => c.userOverrides?.isUserPinned),
+    ) ||
+    document.composition.graphicScenes?.some(
+      (s) => s.userOverrides?.isUserPinned,
+    );
+  if (command.type === "regenerate-beat" && pinned) {
+    if (!context.timebase)
+      pinConflict(
+        "Incremental solve requires the authoritative project timebase clock.",
+      );
+    const result = solveIncremental({
+      baseline: document,
+      assets,
+      timebase: context.timebase,
+      scope: { kind: "beat", beatId: command.beatId },
+      mode: command.mode,
+    });
+    if (!result.ok) pinConflict(result.conflicts[0]?.message);
+    return result.document;
+  }
+  let next = command.type.startsWith("user-pin.")
     ? structuredClone(document)
     : applyTimelineCommandRaw(document, assets, command);
-  return applyOverridePolicy(document, next, [command], {
+  if (
+    pinned &&
+    ["trim", "speed", "duration", "delete", "replace", "reorder"].includes(
+      command.type,
+    )
+  ) {
+    if (!context.timebase)
+      pinConflict(
+        "Constrained placement requires the authoritative project timebase clock.",
+      );
+    const result = placeDirectEdit(
+      document,
+      next,
+      assets,
+      context.timebase,
+      writes,
+    );
+    if (!result.ok) pinConflict(result.conflicts[0]?.message);
+    next = result.document;
+  }
+  next = applyOverridePolicy(document, next, [command], {
     origin,
     timebase: context.timebase!,
   });
+  if (command.type === "user-pin.resolve") {
+    if (origin !== "direct")
+      pinConflict("Only explicit direct edits may release user pins.");
+    const result = solveIncremental({
+      baseline: next,
+      assets,
+      timebase: context.timebase!,
+      scope: command.scope,
+      mode: command.mode,
+    });
+    if (!result.ok) pinConflict(result.conflicts[0]?.message);
+    return result.document;
+  }
+  return next;
 }
 
 /** Applies one edit to a detached snapshot; undo history can retain either input. */
@@ -1798,6 +1855,16 @@ function shorteningPlan(
     suggestions[suggestions.length - 1]!.reason +=
       ` The ${targetDuration.toFixed(2)}s target remains infeasible: protected clips, beat minima, or overlapping tracks leave ${current.composition.duration.toFixed(2)}s.`;
   return suggestions;
+}
+
+/** Internal detached candidate planner; pinned-placement restores authoritative anchors. */
+export function proposeIncrementalBeat(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  beatId: string,
+  mode: Extract<TimelineCommand, { type: "regenerate-beat" }>["mode"],
+): EditorDocument {
+  return regenerate(document, assets, beatId, mode);
 }
 
 function regenerate(

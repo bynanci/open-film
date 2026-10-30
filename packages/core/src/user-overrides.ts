@@ -67,7 +67,7 @@ export function validateUserOverrideState(
     const entry = Object.getOwnPropertyDescriptor(values, String(i));
     if (!entry || !("value" in entry))
       fail(`.lockedAttributes[${i}]`, "expected a dense array");
-    const attribute = entry.value as UserLockedAttribute;
+    const attribute = entry!.value as UserLockedAttribute;
     if (
       !attributes.includes(attribute) ||
       (owner === "clip"
