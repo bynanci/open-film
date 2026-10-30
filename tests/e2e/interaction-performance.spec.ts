@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
-  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -13,6 +12,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
+import {
+  BENCHMARK_LINKS_PER_BANK,
+  createBenchmarkMediaFiles,
+} from "./benchmark-media.js";
 import {
   cleanupProjectFixture,
   runFixtureCleanup,
@@ -332,12 +335,16 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     };
     await createThumbnail(descriptor, join(project, thumbnail));
     const clips: Clip[] = [];
-    await mkdir(join(root, "media"));
+    const mediaFiles = await createBenchmarkMediaFiles(
+      source,
+      join(root, "media"),
+      counts.assets,
+    );
+    const assetsToSeed: MediaAsset[] = [];
     for (let index = 0; index < counts.assets; index++) {
       const suffix = String(index).padStart(4, "0");
-      const location = join(root, "media", `${suffix}.mp4`);
-      await link(source, location);
-      app.catalog.upsertAsset({
+      const location = mediaFiles[index]!;
+      assetsToSeed.push({
         ...descriptor,
         uri: pathToFileURL(location).href,
         id: `asset-${suffix}`,
@@ -354,6 +361,10 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
           timelineDuration: 3,
         });
     }
+    // Setup is outside every measured sample; preserve all rows with one commit.
+    app.catalog.withProjectWrite(() => {
+      for (const asset of assetsToSeed) app.catalog.upsertAsset(asset);
+    });
     app.project.mediaLibraries.push({
       id: "benchmark-library",
       name: "Generated media",
@@ -747,6 +758,10 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
         encoding: "utf8",
       }).trim(),
       fixture: counts,
+      fixtureStorage: {
+        kind: "bounded-identical-hardlink-banks",
+        assetsPerBank: BENCHMARK_LINKS_PER_BANK,
+      },
       repeatIndex: testInfo.repeatEachIndex,
       productionSourceFiles: productionFiles(),
       productionSourceBefore: sourceBefore,
