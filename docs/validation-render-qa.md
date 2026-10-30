@@ -150,3 +150,50 @@ audited runtime/sidecars, complete notice/SBOM closure, signing/notarization and
 clean-machine install/upgrade/manual rollback/uninstall observations. The GLib
 backport proposal is a separate D7B direction and has not changed dependencies,
 advisory results or installer admission here.
+
+## 2026-10-30 — complete finishing stack and separate three-OS selection
+
+Merge `690997a` integrates reviewed C `dc3f7ae` and its fixed D8/A/B/latest
+repaired documentation parents into reviewed D7A `6c4fac3`. The shared four-font
+helper remains byte-identical to `11595f33`; the shared metric implementation
+retains D7's reviewed diagnostic payload/domain checks. Rule definitions,
+operators, limits, all 117 representative samples, 10 controls, 17 output IDs,
+strict source/output/identity joins and current macOS dependency observations
+are unchanged. The root Verify/browser/native gates and new contribution,
+locale/governance and research files are preserved.
+
+The coordinator approved a separate finishing selection after tool/font
+admission: `photo-easing.test.ts`, `photo-ambient.test.ts`,
+`bilingual-title-finishing.test.ts`, `primary-color.test.ts`, and
+`photo-primary-local-look.test.ts` under `packages/render/tests/`. It supplements
+the existing representatives and does not invent receipt metrics or widen limits.
+The runner invokes installed Vitest with one worker, `--retry=0`,
+`--allowOnly=false` and a raw JSON report. It rejects missing/duplicate/foreign
+files, empty result lists, failed/pending/skipped/todo cases, contradictory
+counters, failure details, stale timing and changed checkout/font/tool identity.
+All five reviewed files execute actual media assertions without capability-return
+bypasses. Raw reports/logs are bounded and retained locally; only a bounded
+path-free summary is uploaded under a separate `finishing-qa` artifact name.
+The existing aggregate retains its original three-report inventory and requires
+full matrix success, including this additional step. No stdout count is a gate.
+
+Source checkpoint `d336c78` passed the eight-file / 144-test focused QA batch,
+including 22 finishing selection/workflow/report regressions. A permissive report
+scaffold first failed 20 of those boundaries; the complete implementation passes
+all cases. Current TypeScript/Vue, scoped ESLint, repository formatting and 134
+English documentation mirrors pass. An initial caught-error lint requirement was
+corrected by preserving the underlying cause; bounded raw output stays local.
+
+Actual clean local execution at `d336c78` passed `pnpm test:render-qa` with the
+unchanged 117 measurements / 10 observed negative controls / 17 encoded hashes,
+plus the new finishing runner with exactly five files / 19 passed cases, zero
+failed/pending/todo results and all four verified faces. Both reports record
+`workingTreeDirty=false`, `scope=local-observation` and
+`workstationVerified=false`. Local tools remain Node24.19.0/pnpm11.19.0 and
+FFmpeg/FFprobe7.1.5 on Linux x64. The new raw report SHA-256 is
+`21653014fbdc2eaada997c023b37b27cc5423140ed08b17af9f0d8172c1c9666`.
+Evidence is isolated under `/tmp/openfilm-finishing-integration/` in
+`D7-core-clean-d336/` and `D7-finishing-clean-d336/`; earlier receipts retain
+their original candidate identities. Actual Ubuntu/Windows/macOS admission,
+execution and aggregation remain unrun until the parent publishes real CI.
+No complete suite, native benchmark, hardware/NLE or release claim follows.
