@@ -79,6 +79,8 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      primaryColorLocked:
+        "Changing primary color would affect {count} protected clips. Unlock the clips or sources first.",
       lookLocked:
         "Changing this look would affect {count} protected clips. Unlock those clips or sources first, or adjust an unlocked clip.",
       notFound:

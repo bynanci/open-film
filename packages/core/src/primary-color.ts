@@ -116,3 +116,33 @@ export function applyPrimaryColorPixel(
     rgba[3],
   ] as [number, number, number, number];
 }
+
+/** Check even hidden/inactive recipes before direct rendering or interchange. */
+export function assertPrimaryColorSettings(composition: Composition): void {
+  if (composition.defaultPrimaryColor !== undefined)
+    validatePrimaryColorCorrection(composition.defaultPrimaryColor);
+  const entries = composition.beatPrimaryColors;
+  if (entries !== undefined) {
+    if (!Array.isArray(entries) || entries.length > 1000)
+      throw new Error("Invalid scene primary color overrides.");
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (
+        !entry ||
+        typeof entry.beatId !== "string" ||
+        !entry.beatId.trim() ||
+        seen.has(entry.beatId) ||
+        Object.keys(entry).some(
+          (key) => !["beatId", "correction"].includes(key),
+        )
+      )
+        throw new Error("Invalid or duplicate scene primary color override.");
+      seen.add(entry.beatId);
+      validatePrimaryColorCorrection(entry.correction);
+    }
+  }
+  for (const track of composition.tracks)
+    for (const clip of track.clips)
+      if (clip.primaryColor !== undefined)
+        validatePrimaryColorCorrection(clip.primaryColor);
+}

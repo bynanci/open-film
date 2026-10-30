@@ -64,6 +64,8 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      primaryColorLocked:
+        "這項基本色彩變更會影響 {count} 個受保護片段。請先解鎖片段或來源。",
       lookLocked:
         "這項風格變更會影響 {count} 個受保護片段。請先解鎖片段或來源，或只調整未鎖定的片段。",
       notFound: "已找不到這份剪輯。請開啟影片的最新版本。",

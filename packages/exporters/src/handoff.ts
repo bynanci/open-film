@@ -6,6 +6,9 @@ import {
   graphicSceneAssetIds,
   isFilmLookActive,
   resolveFilmLook,
+  resolvePrimaryColor,
+  isPrimaryColorActive,
+  assertPrimaryColorSettings,
   type Composition,
 } from "@openfilm/core";
 export type HandoffMode = "preserve-editability" | "preserve-visual-fidelity";
@@ -49,6 +52,7 @@ export function createHandoffPlan(
   frameRate: number,
   options: HandoffOptions = {},
 ): HandoffPlan {
+  assertPrimaryColorSettings(composition);
   keys(options, ["mode", "bakeAudio", "captionTrackId"]);
   if (
     composition.tracks.length > 128 ||
@@ -113,6 +117,8 @@ export function createHandoffPlan(
     "duration",
     "tracks",
     "defaultLook",
+    "defaultPrimaryColor",
+    "beatPrimaryColors",
     "beatLooks",
     "captionTracks",
     "graphicScenes",
@@ -218,6 +224,7 @@ export function createHandoffPlan(
         "titleStyle",
         "audioAutomation",
         "look",
+        "primaryColor",
         "locked",
         "transition",
       ]);
@@ -342,6 +349,17 @@ export function createHandoffPlan(
           stop,
           "visual",
           "Geometry is metadata; NLE does not reconstruct it",
+        );
+      if (
+        isPrimaryColorActive(resolvePrimaryColor(composition, clip).correction)
+      )
+        add(
+          clip.id,
+          "primaryColor",
+          start,
+          stop,
+          "visual",
+          "Primary color is metadata; recreate manually or use a rendered precomp",
         );
       if (isFilmLookActive(resolveFilmLook(composition, clip).look))
         add(

@@ -15,6 +15,8 @@ export {
   graphicFrameRanges,
 } from "./graphic-scenes.js";
 import { photoPresentationFilters } from "./photo-filters.js";
+import { primaryColorFilters } from "./primary-color-filters.js";
+export { primaryColorFilters } from "./primary-color-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
 import { createTitleOverlay } from "./titles.js";
@@ -65,6 +67,8 @@ import {
   resolveClipSourceRange,
   resolveClipGeometry,
   resolveFilmLook,
+  resolvePrimaryColor,
+  assertPrimaryColorSettings,
   validateFilmLook,
   filmLookMatrix,
   CAPTION_LIMITS,
@@ -418,6 +422,7 @@ export class FFmpegRenderer {
         )
           throw new Error(`Caption cue ${cue.id} has invalid text or timing.`);
     }
+    assertPrimaryColorSettings(composition);
     if (composition.defaultLook) validateFilmLook(composition.defaultLook);
     for (const entry of composition.beatLooks ?? [])
       validateFilmLook(entry.look);
@@ -786,6 +791,9 @@ export class FFmpegRenderer {
               ? []
               : [
                   ...(await previewVideoFilters(asset, options.signal)),
+                  ...primaryColorFilters(
+                    resolvePrimaryColor(composition, clip).correction,
+                  ),
                   ...filmLookFilters(resolvedLooks.get(clip)),
                 ];
             // Contain-fit the decoded display aspect, including non-square pixels.
@@ -833,6 +841,8 @@ export class FFmpegRenderer {
                   duration: displayedDuration,
                   signal: options.signal,
                   look: resolvedLooks.get(clip),
+                  primaryColor: resolvePrimaryColor(composition, clip)
+                    .correction,
                 },
               );
               args.push(...presentation.args);
@@ -1215,3 +1225,6 @@ export async function renderComposition(
 }
 
 export * from "./audio-quality.js";
+
+export * from "./primary-color-review.js";
+export type { RenderCatalogColorMetadata } from "./manifest.js";

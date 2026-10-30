@@ -5,6 +5,7 @@ import {
   resolvePhotoPlan,
   type Clip,
   type FilmLook,
+  type PrimaryColorCorrection,
   type FrameSize,
   type MediaAsset,
 } from "@openfilm/core";
@@ -13,6 +14,7 @@ import {
   localPath,
   previewVideoFilters,
 } from "@openfilm/media";
+import { primaryColorFilters } from "./primary-color-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 
 const n = (value: number) => String(Number(value.toFixed(8)));
@@ -28,6 +30,7 @@ export async function photoPresentationFilters(
     duration: number;
     signal?: AbortSignal;
     look?: FilmLook;
+    primaryColor?: PrimaryColorCorrection;
   },
 ): Promise<{
   args: string[];
@@ -72,7 +75,7 @@ export async function photoPresentationFilters(
     const merged = `photo-merged${options.suffix}-${index}`;
     const decode = await previewVideoFilters(asset, options.signal);
     filters.push(
-      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...filmLookFilters(options.look), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
+      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...primaryColorFilters(options.primaryColor), ...filmLookFilters(options.look), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
     );
     filters.push(
       `[${label}][${source}]overlay=x=${Math.round(layer.x)}:y=${Math.round(layer.y)}:format=rgb:eval=init:shortest=1[${merged}]`,

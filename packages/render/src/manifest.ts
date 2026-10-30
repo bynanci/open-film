@@ -3,6 +3,8 @@
 import { createHash } from "node:crypto";
 import { stat, writeFile } from "node:fs/promises";
 import {
+  resolvePrimaryColor,
+  primaryColorCoefficients,
   FILM_LOOK_PRESETS,
   FILM_LOOK_RECIPE_VERSION,
   FILM_LOOK_MATRIX_DOMAIN,
@@ -221,6 +223,25 @@ export async function writeRenderManifest(
     project: project ?? null,
     compositionSha256: createHash("sha256").update(json).digest("hex"),
     settings,
+    primaryColor: {
+      version: 1,
+      domain: "encoded-sdr-rgb",
+      formula: "encoded-sdr-affine-v1",
+      precision: 12,
+      clamp: "primary-then-look",
+      clips: looks.clips.map(({ clipId, assetIds }) => {
+        const clip = composition.tracks
+          .flatMap((track) => track.clips)
+          .find((clip) => clip.id === clipId)!;
+        const effective = resolvePrimaryColor(composition, clip);
+        return {
+          clipId,
+          assetIds,
+          ...effective,
+          coefficients: primaryColorCoefficients(effective.correction),
+        };
+      }),
+    },
     looks: {
       registryVersion: FILM_LOOK_RECIPE_VERSION,
       matrixSpace: FILM_LOOK_MATRIX_DOMAIN,

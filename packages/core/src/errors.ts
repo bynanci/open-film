@@ -39,6 +39,7 @@ export const applicationErrorCodes = [
   "timeline.captionRangeConflict",
   "timeline.graphicRangeConflict",
   "timeline.lookLocked",
+  "timeline.primaryColorLocked",
   "render.overMaximum",
   "render.failed",
   "graphics.invalid",

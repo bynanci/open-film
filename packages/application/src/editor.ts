@@ -1477,9 +1477,12 @@ export class TimelineEditor {
           item.scope === "clip" &&
           item.primaryColorReviewId
         )
-          throw new TimelineEditorError(
-            "Primary color review is unavailable. Measure again.",
-            409,
+          await this.application.primaryColorReview.validateAcceptance(
+            item.primaryColorReviewId,
+            compositionId,
+            parsed.baseRevision,
+            item.clipId,
+            item.correction!,
           );
         if (item.type === "audio.add" && item.generationId)
           await this.application.audioGeneration.validateImport(
