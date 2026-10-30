@@ -13,6 +13,101 @@ const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
+it("serves only saved current-project ambient pixels and rejects arbitrary preview instructions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-photo-fill-http-"));
+  cleanup.push(() => rm(root, { recursive: true, force: true }));
+  await generateSampleMedia(root);
+  const app = await OpenFilmApplication.create(
+    join(root, "film.openfilm"),
+    "Synthetic ambient",
+  );
+  const projectId = app.project.id;
+  app.project.settings = { width: 320, height: 180, frameRate: 30 };
+  app.catalog.upsertAsset({
+    id: "photo",
+    name: "01-photo.png",
+    uri: pathToFileURL(join(root, "01-photo.png")).href,
+    mediaType: "image",
+    dimensions: { width: 320, height: 180 },
+    tags: [],
+    state: {},
+    metadata: {},
+  });
+  app.project.stories.push({
+    id: "story",
+    title: "Story",
+    beats: [{ id: "beat", title: "Together" }],
+  });
+  app.project.timelines.push({
+    id: "film",
+    storyId: "story",
+    duration: 1,
+    tracks: [
+      {
+        id: "pictures",
+        type: "video",
+        clips: [
+          {
+            id: "clip",
+            assetId: "photo",
+            beatId: "beat",
+            timelineStart: 0,
+            timelineDuration: 1,
+            layout: {
+              version: 2,
+              preset: "contain",
+              fill: { version: 1, kind: "ambient", blurSigma: 0.02, dim: 0.45 },
+            },
+          },
+        ],
+      },
+    ],
+  });
+  app.close();
+  const runtime = await startServer({
+    port: 0,
+    project: join(root, "film.openfilm"),
+  });
+  cleanup.push(() => runtime.close());
+  const base = `http://127.0.0.1:${runtime.port}`;
+  const state = await (
+    await fetch(`${base}/api/compositions/film/editor`)
+  ).json();
+  const url = `${base}/api/compositions/film/photo-fill/clip.png?${new URLSearchParams({ projectId, revision: state.revision })}`;
+  for (const instruction of [
+    "url=https://example.invalid/a.png",
+    "path=/tmp/unowned.png",
+    "filter=while(1,1)",
+    "layout=hero",
+    "revision=duplicate",
+  ])
+    expect((await fetch(`${url}&${instruction}`)).status).toBe(400);
+  expect((await fetch(url.replace(projectId, "other-project"))).status).toBe(
+    409,
+  );
+  expect((await fetch(url.replace(state.revision, "old"))).status).toBe(409);
+  const response = await fetch(url);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toBe("image/png");
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(
+    Buffer.from(await response.arrayBuffer())
+      .subarray(1, 4)
+      .toString(),
+  ).toBe("PNG");
+  const changed = await fetch(`${base}/api/compositions/film/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      baseRevision: state.revision,
+      commands: [
+        { type: "presentation", clipId: "clip", title: "A saved change" },
+      ],
+    }),
+  });
+  expect(changed.status).toBe(200);
+  expect((await fetch(url)).status).toBe(409);
+});
 it("serves the shared CJK title only for the current project revision and exports a source-bound recipe", async () => {
   const root = await mkdtemp(join(tmpdir(), "openfilm-quality-http-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));

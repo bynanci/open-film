@@ -4521,6 +4521,52 @@ export async function startServer(options: ServerOptions = {}) {
           );
           return;
         }
+        const photoFill =
+          /^\/api\/compositions\/([^/]+)\/photo-fill\/([^/]+)\.png$/.exec(
+            route,
+          );
+        if (method === "GET" && photoFill) {
+          for (const key of url.searchParams.keys())
+            if (
+              !["projectId", "revision"].includes(key) ||
+              url.searchParams.getAll(key).length !== 1
+            )
+              throw new HttpError(400, "Unsupported photo preview field.");
+          const compositionId = decodeURIComponent(photoFill[1]!);
+          const clipId = decodeURIComponent(photoFill[2]!);
+          const projectId = url.searchParams.get("projectId") ?? "";
+          const revision = url.searchParams.get("revision") ?? "";
+          const controller = new AbortController();
+          const requestId = randomUUID();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          active.set(requestId, controller);
+          try {
+            const png = await application.photoPresentation.ambient(
+              compositionId,
+              clipId,
+              { projectId, baseRevision: revision, signal: controller.signal },
+            );
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(409, "Photo preview is stale or cancelled.");
+            response.writeHead(200, {
+              "Content-Type": "image/png",
+              "Content-Length": png.byteLength,
+              "Cache-Control": "no-store",
+            });
+            response.end(png);
+          } finally {
+            active.delete(requestId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
         const titlePreview =
           /^\/api\/compositions\/([^/]+)\/title\/([^/]+)\.png$/.exec(route);
         if (method === "GET" && titlePreview) {
