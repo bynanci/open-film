@@ -706,3 +706,294 @@ it("bounds each relocated render and removes previous film outputs before the ne
   );
   expect(observed.every((item) => item.existing === 0)).toBe(true);
 });
+
+it("pinned mixed occurrences force one whole original with exact source frames PCM and pin state through ZIP", async () => {
+  const f = await fixture();
+  const clip = f.app.project.timelines[0]!.tracks[0]!.clips[0]!;
+  clip.userOverrides = {
+    version: 1,
+    isUserPinned: true,
+    lockedAttributes: ["inOutRange", "timing"],
+  };
+  clip.transform = { volume: 0.35, x: 0.1 };
+  f.app.project.schemaVersion = "1.1.0";
+  await f.app.save();
+  const original = structuredClone(f.app.project.timelines[0]);
+  const review = await f.app.collectMedia.coverage({
+    ...f.base,
+    projectId: f.app.project.id,
+    delivery: f.delivery,
+  });
+  expect(review.coverage.entries[0]).toMatchObject({
+    action: "copy-original",
+    reasons: expect.arrayContaining(["source.user-pinned"]),
+    ranges: [{ start: 0, end: 8 }],
+  });
+  const destination = join(f.root, "pinned.zip");
+  await f.app.collectMedia.create({
+    ...f.input,
+    planId: review.baseline.id,
+    baseRevision: review.baseline.revision,
+    coverageId: review.coverageId,
+    destination,
+    format: "zip",
+  });
+  const relocated = join(f.root, "pinned.openfilm");
+  await extractStoredZip(destination, relocated);
+  const manifest = JSON.parse(
+    await readFile(join(relocated, "collect-manifest.json"), "utf8"),
+  );
+  expect(manifest.derivatives).toHaveLength(0);
+  expect(manifest.assets).toHaveLength(1);
+  expect(manifest.retained[0].reason).toBe("source.user-pinned");
+  const copy = join(relocated, manifest.assets[0].path);
+  expect(await hashFile(copy)).toBe(f.before.hash);
+  expect(await hashFile(f.source)).toBe(f.before.hash);
+  const { collectDecodedSignature } =
+    await import("../src/collect-derived-media.js");
+  const decoded = await collectDecodedSignature(f.source);
+  expect(await collectDecodedSignature(copy)).toEqual(decoded);
+  expect(decoded.videoFrames).toBe(160);
+  expect(decoded.audioSha256).toMatch(/^[a-f0-9]{64}$/u);
+  const saved = JSON.parse(
+    await readFile(join(relocated, "project.json"), "utf8"),
+  );
+  expect(saved.schemaVersion).toBe("1.1.0");
+  expect(saved.timelines[0]).toEqual(original);
+  const reopened = await OpenFilmApplication.open(relocated);
+  stops.push(() => reopened.close());
+  expect(reopened.project.timelines[0]).toEqual(original);
+}, 120000);
+
+it("rejects any supplied derivative mapping for a pinned dependency before remapping clocks", async () => {
+  const { remapCollectProject } =
+    await import("../src/collect-derived-media.js");
+  const f = await fixture();
+  const clip = f.app.project.timelines[0]!.tracks[0]!.clips[0]!;
+  clip.userOverrides = {
+    version: 1,
+    isUserPinned: true,
+    lockedAttributes: ["timing"],
+  };
+  f.app.project.schemaVersion = "1.1.0";
+  const before = structuredClone(f.app.project);
+  expect(() =>
+    remapCollectProject(
+      f.app.project,
+      [f.asset],
+      [
+        {
+          assetId: f.asset.id,
+          windows: [
+            { sourceStart: 0, sourceEnd: 8, derivedStart: 0, derivedEnd: 8 },
+          ],
+        } as never,
+      ],
+    ),
+  ).toThrow(/user pinned/iu);
+  expect(f.app.project).toEqual(before);
+});
+
+it("an actual MP4 retains its edited frames and PCM through direct pinning and automatic neighbor solve", async () => {
+  const f = await fixture();
+  const { TimelineEditor } = await import("../src/editor.js");
+  const { applyTimelineCommand } = await import("@openfilm/solver");
+  const { collectDecodedSignature } =
+    await import("../src/collect-derived-media.js");
+  const commands: import("@openfilm/solver").TimelineCommand[] = [
+    { type: "trim", clipId: "first", sourceIn: 1, sourceOut: 1.8 },
+    { type: "transform", clipId: "first", x: 0.1, scale: 1.1 },
+    { type: "volume", clipId: "first", volume: 0.35 },
+  ];
+  let reference = {
+    composition: structuredClone(f.app.project.timelines[0]!),
+    story: structuredClone(f.app.project.stories[0]!),
+  };
+  for (const command of commands)
+    reference = applyTimelineCommand(reference, [f.asset], command);
+  const isolate = (composition: import("@openfilm/core").Composition) => {
+    const result = structuredClone(composition);
+    const clip = result.tracks[0]!.clips.find((c) => c.id === "first")!;
+    result.tracks[0]!.clips = [clip];
+    result.duration = clip.timelineStart + clip.timelineDuration;
+    return result;
+  };
+  const originalReference = isolate(reference.composition),
+    referencePath = join(f.root, "pre-pin-reference.mp4");
+  await new FFmpegRenderer().render(
+    originalReference,
+    [f.asset],
+    referencePath,
+    f.app.project.settings,
+  );
+  const editor = new TimelineEditor(f.app),
+    before = editor.get("film");
+  const pinned = await editor.edit("film", {
+    baseRevision: before.revision,
+    commands,
+  });
+  const pinnedClip = structuredClone(pinned.composition.tracks[0]!.clips[0]!);
+  expect(pinnedClip.userOverrides?.isUserPinned).toBe(true);
+  const after = await editor.resolve("film", {
+    baseRevision: pinned.revision,
+    scope: { kind: "beat", beatId: "beat" },
+    mode: "regenerate",
+  });
+  expect(
+    after.composition.tracks[0]!.clips.find((c) => c.id === "first"),
+  ).toEqual(pinnedClip);
+  const protectedPath = join(f.root, "post-solve-pinned.mp4");
+  await new FFmpegRenderer().render(
+    isolate(after.composition),
+    [f.asset],
+    protectedPath,
+    f.app.project.settings,
+  );
+  const referenceSignature = await collectDecodedSignature(referencePath),
+    protectedSignature = await collectDecodedSignature(protectedPath);
+  expect(protectedSignature).toEqual(referenceSignature);
+  expect(protectedSignature.videoFrames).toBe(16);
+  expect(protectedSignature.audioSha256).toMatch(/^[a-f0-9]{64}$/u);
+  const neutral = isolate(after.composition);
+  delete neutral.tracks[0]!.clips[0]!.transform;
+  const neutralPath = join(f.root, "neutral-control.mp4");
+  await new FFmpegRenderer().render(
+    neutral,
+    [f.asset],
+    neutralPath,
+    f.app.project.settings,
+  );
+  const neutralSignature = await collectDecodedSignature(neutralPath);
+  expect(protectedSignature.videoSha256).not.toBe(neutralSignature.videoSha256);
+  expect(protectedSignature.audioSha256).not.toBe(neutralSignature.audioSha256);
+  expect(await hashFile(f.source)).toBe(f.before.hash);
+}, 120000);
+
+it("entire-project directory collection retains pinned depth resources and scene payload exactly", async () => {
+  const f = await fixture();
+  const { TimelineEditor } = await import("../src/editor.js");
+  const resources = [];
+  for (const [id, color] of [
+    ["depth-source", "red"],
+    ["depth-mask", "white"],
+    ["depth-background", "blue"],
+  ] as const) {
+    const path = join(f.root, `${id}.png`);
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=${color}:s=160x90`,
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      path,
+    ]);
+    const asset = await inspectMedia({
+      path,
+      uri: pathToFileURL(path).href,
+      name: id,
+    });
+    asset.id = id;
+    asset.contentHash = await hashFile(path);
+    f.app.catalog.upsertAsset(asset);
+    resources.push(asset);
+  }
+  const [source, mask, background] = resources as [
+    typeof f.asset,
+    typeof f.asset,
+    typeof f.asset,
+  ];
+  f.app.project.timelines[0]!.duration = 3;
+  f.app.project.timelines[0]!.tracks[0]!.clips[1]!.timelineDuration = 2;
+  f.app.project.timelines[0]!.tracks[0]!.clips[1]!.transform = { speed: 1 };
+  await f.app.save();
+  const scene: import("@openfilm/core").GraphicScene = {
+    version: 1,
+    id: "depth-scene",
+    name: "Depth scene",
+    start: 0,
+    duration: 3,
+    zIndex: 0,
+    nodes: [
+      {
+        id: "depth-image",
+        type: "image",
+        assetId: source.id,
+        x: 0,
+        y: 0,
+        width: 160,
+        height: 90,
+        opacity: 1,
+        zIndex: 0,
+        start: 0,
+        end: 3,
+      },
+    ],
+    photoDepth: {
+      version: 1,
+      id: "depth-recipe",
+      nodeId: "depth-image",
+      mode: "parallax",
+      duration: 3,
+      sourceAssetId: source.id,
+      sourceSha256: source.contentHash!,
+      maskAssetId: mask.id,
+      maskSha256: mask.contentHash!,
+      background: {
+        kind: "asset",
+        assetId: background.id,
+        sha256: background.contentHash!,
+      },
+      protectedRegion: { x: 0.2, y: 0.2, width: 0.4, height: 0.6 },
+      foregroundDepth: 1.2,
+      backgroundDepth: 0.2,
+      amplitude: 0.5,
+      camera: {
+        from: { x: -0.05, y: 0, scale: 1 },
+        to: { x: 0.05, y: 0, scale: 1.12 },
+      },
+      easing: "ease-in-out",
+    },
+  };
+  const editor = new TimelineEditor(f.app);
+  const after = await editor.edit("film", {
+    baseRevision: editor.get("film").revision,
+    commands: [{ type: "graphic.scene.upsert", scene }],
+  });
+  const saved = structuredClone(after.composition.graphicScenes![0]!);
+  expect(saved.userOverrides?.lockedAttributes).toEqual([
+    "photoDepth",
+    "timing",
+  ]);
+  const rightsDeclarations = [f.asset, ...resources].map((asset) => ({
+    resourceId: `asset:${asset.id}`,
+    basis: "cc0" as const,
+    licenseName: "CC0-1.0",
+    confirmed: true as const,
+  }));
+  const options = { scope: "entire-project" as const, rightsDeclarations };
+  const plan = await f.app.collectMedia.plan(options);
+  const destination = join(f.root, "whole-pinned.openfilm");
+  await f.app.collectMedia.create({
+    ...options,
+    planId: plan.id,
+    baseRevision: plan.revision,
+    destination,
+    format: "directory",
+  });
+  const reopened = await OpenFilmApplication.open(destination);
+  stops.push(() => reopened.close());
+  expect(reopened.project.schemaVersion).toBe("1.1.0");
+  expect(reopened.project.timelines[0]!.graphicScenes?.[0]).toEqual(saved);
+  for (const asset of resources) {
+    const packed = reopened.catalog.getAsset(asset.id)!;
+    expect(packed.contentHash).toBe(asset.contentHash);
+    expect(await hashFile(new URL(packed.uri).pathname)).toBe(
+      asset.contentHash,
+    );
+  }
+}, 120000);

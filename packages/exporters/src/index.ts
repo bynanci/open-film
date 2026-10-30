@@ -68,6 +68,15 @@ export function otioCompatibilityReport(
   composition: Composition,
 ): OtioCompatibilityReport {
   const warnings: string[] = [];
+  if (
+    composition.tracks.some((t) =>
+      t.clips.some((c) => c.userOverrides?.isUserPinned),
+    ) ||
+    composition.graphicScenes?.some((s) => s.userOverrides?.isUserPinned)
+  )
+    warnings.push(
+      "Foreign NLEs do not enforce user pins. OpenFilm retains their exact state in owner metadata.",
+    );
   if (composition.graphicScenes?.length)
     warnings.push(
       "GraphicScene animation and compositing are METADATA ONLY; recreate them manually in the NLE or use MP4 for rendered parity.",
@@ -100,6 +109,7 @@ export function otioCompatibilityReport(
       if (track.type === "overlay") features.push("overlay");
       if (clip.transition) features.push(clip.transition.type);
       if (clip.locked) features.push("clip lock");
+      if (clip.userOverrides?.isUserPinned) features.push("user pin");
       if (!features.length) continue;
       metadataOnlyEdits.push({ clipId: clip.id, features });
       warnings.push(

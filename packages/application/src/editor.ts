@@ -1,3 +1,4 @@
+import { promotePinnedProject } from "./user-overrides.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
@@ -5,6 +6,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ApplicationError,
+  resolveProjectTimebase,
+  type OverrideTarget,
   validateProject,
   validatePhotoLayout,
   validatePhotoMotion,
@@ -28,6 +31,9 @@ import {
 } from "@openfilm/core";
 import {
   applyTimelineCommand,
+  applyOverridePolicy,
+  directOverrideTargets,
+  overrideTargetKey,
   applyGraphicSceneAgentActions,
   graphicSceneNodeLockState,
   parseGraphicSceneAgentOperations,
@@ -35,6 +41,7 @@ import {
   prepareGraphicSceneAgentProposal,
   prepareSceneDirection,
   type EditorDocument,
+  type IncrementalSolveInput,
   type GraphicSceneAgentConflict,
   type GraphicSceneAgentOperation,
   type SceneDirectionOptions,
@@ -90,6 +97,7 @@ export class TimelineEditorError extends Error {
   }
 }
 
+const editorQueues = new WeakMap<OpenFilmApplication, Promise<void>>();
 const HISTORY_LIMIT = 100;
 const REQUEST_LIMIT = 200;
 const COMMAND_LIMIT = 100;
@@ -116,6 +124,15 @@ function record(value: unknown, path: string): RecordValue {
     Object.getOwnPropertySymbols(value).length
   )
     invalid(path, "expected a JSON object");
+  for (const key of Reflect.ownKeys(value as object)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (
+      typeof key !== "string" ||
+      !descriptor.enumerable ||
+      !("value" in descriptor)
+    )
+      invalid(path, "expected enumerable JSON data");
+  }
   return value as RecordValue;
 }
 
@@ -162,9 +179,70 @@ function nested(
   }
 }
 
+function overrideTarget(value: unknown, path: string): OverrideTarget {
+  const data = record(value, path);
+  if (data.kind !== "clip" && data.kind !== "graphic-scene")
+    invalid(`${path}.kind`, "expected clip or graphic-scene");
+  const field = data.kind === "clip" ? "clipId" : "sceneId";
+  keys(data, ["kind", field], path);
+  nonempty(data[field], `${path}.${field}`, data.kind === "clip" ? 256 : 128);
+  return structuredClone(data) as OverrideTarget;
+}
+function resolveScope(
+  value: unknown,
+  path: string,
+): IncrementalSolveInput["scope"] {
+  const data = record(value, path);
+  if (data.kind !== "composition" && data.kind !== "beat")
+    invalid(`${path}.kind`, "expected composition or beat");
+  keys(data, data.kind === "beat" ? ["kind", "beatId"] : ["kind"], path);
+  if (data.kind === "beat") nonempty(data.beatId, `${path}.beatId`);
+  return structuredClone(data) as IncrementalSolveInput["scope"];
+}
+function resolveMode(
+  value: unknown,
+  path: string,
+): IncrementalSolveInput["mode"] {
+  if (
+    typeof value !== "string" ||
+    ![
+      "regenerate",
+      "shorten",
+      "more-video",
+      "more-photos",
+      "replace-similar",
+      "remove-repetition",
+    ].includes(value)
+  )
+    invalid(path, "unknown regeneration mode");
+  return value as IncrementalSolveInput["mode"];
+}
+
 function command(value: unknown, index: number): TimelineCommand {
   const path = `commands[${index}]`;
   const data = record(value, path);
+  if (data.type === "user-pin.set") {
+    keys(data, ["type", "target", "pinned"], path);
+    overrideTarget(data.target, `${path}.target`);
+    if (typeof data.pinned !== "boolean")
+      invalid(`${path}.pinned`, "expected boolean");
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (data.type === "user-pin.resolve") {
+    keys(data, ["type", "targets", "scope", "mode"], path);
+    if (!Array.isArray(data.targets) || data.targets.length > 2000)
+      invalid(`${path}.targets`, "expected at most 2000 unique targets");
+    const seen = new Set<string>();
+    for (let i = 0; i < data.targets.length; i++) {
+      const target = overrideTarget(data.targets[i], `${path}.targets[${i}]`);
+      const key = overrideTargetKey(target);
+      if (seen.has(key)) invalid(`${path}.targets`, "duplicate target");
+      seen.add(key);
+    }
+    resolveScope(data.scope, `${path}.scope`);
+    resolveMode(data.mode, `${path}.mode`);
+    return structuredClone(data) as TimelineCommand;
+  }
   if (data.type === "graphic.scene.upsert") {
     keys(data, ["type", "scene", "templateRecord"], path);
     // Per-composition bounds are enforced by the solver; structural bounds here
@@ -722,7 +800,6 @@ export class TimelineEditor {
     string,
     CachedGraphicSceneAgentPlan
   >();
-  private pending: Promise<void> = Promise.resolve();
 
   constructor(private readonly application: OpenFilmApplication) {}
 
@@ -1259,7 +1336,10 @@ export class TimelineEditor {
           allowed.get(action.clipId) ?? new Set<"layout" | "motion">();
         fields.add(action.kind);
         allowed.set(action.clipId, fields);
-        next = applyTimelineCommand(next, before.assets, compiled);
+        next = applyTimelineCommand(next, before.assets, compiled, {
+          timebase: resolveProjectTimebase(this.application.project.settings),
+          origin: "automatic",
+        });
       }
       const sources = Object.fromEntries(
         before.assets.flatMap((asset) => {
@@ -1506,8 +1586,136 @@ export class TimelineEditor {
         }
       }
       try {
-        for (const item of parsed.commands)
-          next = applyTimelineCommand(next, assets, item);
+        const directCommands = parsed.commands.filter(
+          (item) => item.type !== "regenerate-beat",
+        );
+        const targets = new Set(
+          directOverrideTargets(directCommands).map(overrideTargetKey),
+        );
+        const originalClipIds = new Set(
+          before.composition.tracks.flatMap((t) => t.clips.map((c) => c.id)),
+        );
+        const metadata = new Map<string, unknown>();
+        for (const track of before.composition.tracks)
+          for (const clip of track.clips)
+            if (clip.userOverrides)
+              metadata.set(`clip:${clip.id}`, clip.userOverrides);
+        for (const scene of before.composition.graphicScenes ?? [])
+          if (scene.userOverrides)
+            metadata.set(`graphic-scene:${scene.id}`, scene.userOverrides);
+        const provisional = new Map(metadata);
+        const moveOffsets = new Map<string, number>();
+        const attachProvisional = () => {
+          for (const track of next.composition.tracks)
+            for (const clip of track.clips) {
+              const pin = provisional.get(`clip:${clip.id}`);
+              if (pin)
+                clip.userOverrides = structuredClone(pin) as NonNullable<
+                  typeof clip.userOverrides
+                >;
+            }
+          for (const scene of next.composition.graphicScenes ?? []) {
+            const pin = provisional.get(`graphic-scene:${scene.id}`);
+            if (pin)
+              scene.userOverrides = structuredClone(pin) as NonNullable<
+                typeof scene.userOverrides
+              >;
+          }
+        };
+        const detachTargetMetadata = () => {
+          for (const track of next.composition.tracks)
+            for (const clip of track.clips)
+              if (
+                targets.has(`clip:${clip.id}`) ||
+                !originalClipIds.has(clip.id)
+              )
+                delete clip.userOverrides;
+          for (const scene of next.composition.graphicScenes ?? [])
+            if (targets.has(`graphic-scene:${scene.id}`))
+              delete scene.userOverrides;
+        };
+        detachTargetMetadata();
+        for (const item of parsed.commands) {
+          // Client-supplied scene metadata is checked against the saved baseline by the final policy.
+          const compiled = structuredClone(item);
+          if (compiled.type === "graphic.scene.upsert")
+            delete compiled.scene.userOverrides;
+          if (item.type === "user-pin.resolve")
+            for (const target of item.targets)
+              provisional.set(overrideTargetKey(target), {
+                version: 1,
+                isUserPinned: false,
+                lockedAttributes: [],
+              });
+          if (
+            item.type === "regenerate-beat" ||
+            item.type === "user-pin.resolve"
+          )
+            attachProvisional();
+          next = applyTimelineCommand(next, assets, compiled, {
+            timebase: resolveProjectTimebase(this.application.project.settings),
+            origin: item.type === "regenerate-beat" ? "automatic" : "direct",
+          });
+          if (item.type !== "regenerate-beat") {
+            const written = new Set(
+              directOverrideTargets([item]).map(overrideTargetKey),
+            );
+            for (const track of next.composition.tracks)
+              for (const clip of track.clips)
+                if (
+                  (written.has(`clip:${clip.id}`) ||
+                    !originalClipIds.has(clip.id)) &&
+                  clip.userOverrides
+                ) {
+                  provisional.set(
+                    `clip:${clip.id}`,
+                    structuredClone(clip.userOverrides),
+                  );
+                  if (
+                    (item.type === "reorder" || item.type === "audio.move") &&
+                    clip.id === item.clipId &&
+                    clip.userOverrides.manualOffset !== undefined
+                  )
+                    moveOffsets.set(clip.id, clip.userOverrides.manualOffset);
+                }
+            for (const scene of next.composition.graphicScenes ?? [])
+              if (
+                written.has(`graphic-scene:${scene.id}`) &&
+                scene.userOverrides
+              )
+                provisional.set(
+                  `graphic-scene:${scene.id}`,
+                  structuredClone(scene.userOverrides),
+                );
+          }
+          detachTargetMetadata();
+        }
+        // Accumulate categories and offsets from the authoritative pre-gesture metadata.
+        for (const track of next.composition.tracks)
+          for (const clip of track.clips) {
+            const state = metadata.get(`clip:${clip.id}`);
+            if (state && targets.has(`clip:${clip.id}`))
+              clip.userOverrides = structuredClone(state) as NonNullable<
+                typeof clip.userOverrides
+              >;
+          }
+        for (const scene of next.composition.graphicScenes ?? []) {
+          const state = metadata.get(`graphic-scene:${scene.id}`);
+          if (state && targets.has(`graphic-scene:${scene.id}`))
+            scene.userOverrides = structuredClone(state) as NonNullable<
+              typeof scene.userOverrides
+            >;
+        }
+        next = applyOverridePolicy(document(before), next, directCommands, {
+          timebase: resolveProjectTimebase(this.application.project.settings),
+          origin: "direct",
+        });
+        for (const track of next.composition.tracks)
+          for (const clip of track.clips) {
+            const offset = moveOffsets.get(clip.id);
+            if (offset !== undefined && clip.userOverrides?.isUserPinned)
+              clip.userOverrides.manualOffset = offset;
+          }
       } catch (error) {
         if (error instanceof ApplicationError) throw error;
         throw new TimelineEditorError(
@@ -1531,6 +1739,33 @@ export class TimelineEditor {
     });
   }
 
+  async resolve(
+    compositionId: string,
+    input: {
+      baseRevision: string;
+      requestId?: string;
+      scope: IncrementalSolveInput["scope"];
+      mode: IncrementalSolveInput["mode"];
+    },
+  ): Promise<TimelineEditorState> {
+    const data = record(input, "resolve");
+    keys(data, ["baseRevision", "requestId", "scope", "mode"], "resolve");
+    return this.edit(compositionId, {
+      baseRevision: nonempty(data.baseRevision, "baseRevision"),
+      ...(Object.hasOwn(data, "requestId")
+        ? { requestId: nonempty(data.requestId, "requestId") }
+        : {}),
+      commands: [
+        {
+          type: "user-pin.resolve",
+          targets: [],
+          scope: resolveScope(data.scope, "scope"),
+          mode: resolveMode(data.mode, "mode"),
+        },
+      ],
+    });
+  }
+
   async undo(
     compositionId: string,
     baseRevision: string,
@@ -1546,10 +1781,15 @@ export class TimelineEditor {
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.pending.then(operation);
-    this.pending = result.then(
-      () => undefined,
-      () => undefined,
+    const result = (
+      editorQueues.get(this.application) ?? Promise.resolve()
+    ).then(operation);
+    editorQueues.set(
+      this.application,
+      result.then(
+        () => undefined,
+        () => undefined,
+      ),
     );
     return result;
   }
@@ -1614,23 +1854,25 @@ export class TimelineEditor {
     const previousProject = this.application.project;
     let candidate;
     try {
-      candidate = validateProject({
-        ...previousProject,
-        ...(directionReceipt
-          ? {
-              sceneDirectionReceipts: [
-                ...(previousProject.sceneDirectionReceipts ?? []),
-                directionReceipt,
-              ],
-            }
-          : {}),
-        stories: previousProject.stories.map((story) =>
-          story.id === before.story.id ? next.story : story,
-        ),
-        timelines: previousProject.timelines.map((composition) =>
-          composition.id === compositionId ? next.composition : composition,
-        ),
-      });
+      candidate = validateProject(
+        promotePinnedProject({
+          ...previousProject,
+          ...(directionReceipt
+            ? {
+                sceneDirectionReceipts: [
+                  ...(previousProject.sceneDirectionReceipts ?? []),
+                  directionReceipt,
+                ],
+              }
+            : {}),
+          stories: previousProject.stories.map((story) =>
+            story.id === before.story.id ? next.story : story,
+          ),
+          timelines: previousProject.timelines.map((composition) =>
+            composition.id === compositionId ? next.composition : composition,
+          ),
+        }),
+      );
     } catch (error) {
       throw new TimelineEditorError(
         error instanceof Error ? error.message : String(error),

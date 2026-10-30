@@ -1858,7 +1858,7 @@ export class OpenFilmApplication {
     return structuredClone(updated);
   }
 
-  compose(storyId?: string): Composition {
+  prepareComposition(storyId?: string): Composition {
     const story = storyId
       ? this.project.stories.find((item) => item.id === storyId)
       : this.project.stories.at(-1);
@@ -1903,6 +1903,11 @@ export class OpenFilmApplication {
       story,
       assets.filter((asset) => !previewIssue(asset)),
     );
+    return structuredClone(composition);
+  }
+
+  compose(storyId?: string): Composition {
+    const composition = this.prepareComposition(storyId);
     this.publishProject({
       ...this.project,
       timelines: [...this.project.timelines, composition],
@@ -2392,3 +2397,5 @@ export type {
   HandoffPublication,
   HandoffReview,
 } from "./nle-handoff.js";
+
+export * from "./user-overrides.js";

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validatePipelineRecipe,
+  validatePipelineCompositionTarget,
   validatePipelineRun,
   computeInputSnapshotDigest,
   isRunOutdated,
@@ -231,5 +232,61 @@ describe("PipelineRecipe and PipelineRun Core Domain Models", () => {
 
     const validated = validatePipelineRun(run);
     expect(validated.id).toBe("run_abc");
+  });
+});
+
+describe("pin-aware pipeline targets", () => {
+  it("strictly validates closed versioned targets", () => {
+    expect(
+      validatePipelineCompositionTarget({ version: 1, mode: "new-cut" }),
+    ).toEqual({ version: 1, mode: "new-cut" });
+    for (const input of [
+      { version: 2, mode: "new-cut" },
+      { version: 1, mode: "new-cut", compositionId: "x" },
+      { version: 1, mode: "resolve", compositionId: "x", baseRevision: "old" },
+      {
+        version: 1,
+        mode: "resolve",
+        compositionId: "x",
+        baseRevision: "a".repeat(64),
+        origin: "restore",
+      },
+    ])
+      expect(() => validatePipelineCompositionTarget(input)).toThrow();
+  });
+  it("rejects target accessors without invoking them", () => {
+    let reads = 0;
+    const target = Object.defineProperty({ version: 1 }, "mode", {
+      enumerable: true,
+      get() {
+        reads++;
+        return "new-cut";
+      },
+    });
+    expect(() => validatePipelineCompositionTarget(target)).toThrow();
+    expect(reads).toBe(0);
+  });
+  it("composition targets participate in immutable input signatures", () => {
+    const base = {
+      projectRevision: "rev",
+      assetIds: [],
+      narration: { type: "none" as const },
+    };
+    expect(
+      computeInputSnapshotDigest({
+        ...base,
+        compositionTarget: { version: 1, mode: "new-cut" },
+      }),
+    ).not.toBe(
+      computeInputSnapshotDigest({
+        ...base,
+        compositionTarget: {
+          version: 1,
+          mode: "resolve",
+          compositionId: "x",
+          baseRevision: "a".repeat(64),
+        },
+      }),
+    );
   });
 });

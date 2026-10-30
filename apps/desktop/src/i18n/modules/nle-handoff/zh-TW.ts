@@ -43,6 +43,7 @@ export default {
       transition: "轉場",
       transform: "位置與幾何",
       look: "色調",
+      "user-pin": "使用者釘選（外部軟體不會強制執行）",
       graphicScene: "圖卡場景／動畫",
       caption: "字幕",
     },

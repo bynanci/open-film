@@ -99,6 +99,7 @@ async function fixture() {
   };
   const pipeline = new PipelineService(app as unknown as OpenFilmApplication);
   const run = await pipeline.createRun("guided-story-to-video", {
+    compositionTarget: { version: 1, mode: "new-cut" },
     storyId: "story",
     narration: { type: "none" },
   });

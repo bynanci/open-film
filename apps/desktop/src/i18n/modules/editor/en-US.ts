@@ -2,6 +2,22 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      affected: "Affected pinned edits: {owners}.",
+      pinned: "Pinned edit",
+      pin: "Pin edit",
+      unpin: "Release user pin",
+      hint: "Automatic changes preserve the complete pinned edit. Source and clip locks are separate.",
+      releaseResolve: "Unlock & Re-solve",
+      releaseHint:
+        "Release only this user pin and re-solve this cut in one saved action. Failure keeps the pin. Source locks still apply.",
+      saved: "User pin change saved.",
+
+      target: "Cut",
+      newCut: "New rough cut",
+      resolveCut: "Re-solve selected cut",
+      selectCut: "Select a saved cut and retry.",
+    },
     picture: {
       toggle: "Adjust picture",
       group: "Picture transform",

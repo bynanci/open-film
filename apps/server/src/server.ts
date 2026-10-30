@@ -4618,7 +4618,9 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const editorMatch =
-          /^\/api\/compositions\/([^/]+)\/(editor|edit|undo|redo)$/.exec(route);
+          /^\/api\/compositions\/([^/]+)\/(editor|edit|undo|redo|resolve)$/.exec(
+            route,
+          );
         if (editorMatch) {
           const compositionId = decodeURIComponent(editorMatch[1]!);
           const action = editorMatch[2];
@@ -4630,17 +4632,25 @@ export async function startServer(options: ServerOptions = {}) {
           if (method === "POST" && action !== "editor") {
             const data = await body(request);
             const state =
-              action === "edit"
-                ? await editor.edit(
+              action === "resolve"
+                ? await editor.resolve(
                     compositionId,
-                    data as unknown as TimelineEditInput,
+                    data as unknown as Parameters<typeof editor.resolve>[1],
                   )
-                : action === "undo"
-                  ? await editor.undo(compositionId, text(data, "baseRevision"))
-                  : await editor.redo(
+                : action === "edit"
+                  ? await editor.edit(
                       compositionId,
-                      text(data, "baseRevision"),
-                    );
+                      data as unknown as TimelineEditInput,
+                    )
+                  : action === "undo"
+                    ? await editor.undo(
+                        compositionId,
+                        text(data, "baseRevision"),
+                      )
+                    : await editor.redo(
+                        compositionId,
+                        text(data, "baseRevision"),
+                      );
             json(response, 200, state);
             return;
           }

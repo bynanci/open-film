@@ -360,6 +360,9 @@ function updateBackground() {
 <template>
   <section class="photo-depth-controls" data-testid="photo-depth-controls">
     <h4>{{ t("editor.photoDepth.heading") }}</h4>
+    <p v-if="scene.userOverrides?.isUserPinned" class="editor-muted">
+      {{ t("editor.pins.hint") }}
+    </p>
     <p class="editor-muted">{{ t("editor.photoDepth.description") }}</p>
     <p v-if="libraryError" class="editor-error" role="alert">
       {{ t("editor.photoDepth.libraryError") }}

@@ -1,6 +1,6 @@
 # OpenFilm 專案格式
 
-.openfilm 專案是一個資料夾。專案 schema 1.0.0 與 OpenFilm 應用程式版本各自獨立；最新標記的應用程式版本是 v0.4.0，目前 main 尚未發布。專案以本機 file URI 參照來源媒體。原生檔案／資料夾匯入會直接參照原檔；瀏覽器選取檔案時，因瀏覽器不會提供原始本機路徑，所選位元組會複製到專案管理的 sources/。兩種匯入方式都不會修改原檔。
+.openfilm 專案是一個資料夾。新專案預設使用 schema 1.0.0，使用者釘選狀態採用 schema 1.1.0。專案 schema 與 OpenFilm 應用程式版本各自獨立；最新標記的應用程式版本是 v0.4.0，目前 main 尚未發布。專案以本機 file URI 參照來源媒體。原生檔案／資料夾匯入會直接參照原檔；瀏覽器選取檔案時，因瀏覽器不會提供原始本機路徑，所選位元組會複製到專案管理的 sources/。兩種匯入方式都不會修改原檔。
 
 機器可讀契約已發布於 [專案 schema](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.0.0.schema.json)、[媒體資產 schema](https://github.com/bynanci/open-film/blob/main/schemas/media-asset-1.0.0.schema.json) 和 [外掛 manifest schema](https://github.com/bynanci/open-film/blob/main/schemas/plugin-manifest-1.schema.json)。
 
@@ -102,3 +102,15 @@ JSON 匯出包含 schema 版本、完整 Composition、參照資產和設定。O
 ## 原生安裝程式的儲存區隔
 
 M7E RuntimeManifest 和隨附執行檔屬於應用程式安裝資源，不是專案資料。Runtime 暫存和安裝程式打包不會複製或遷移專案資料夾。首次啟動檢查使用應用程式資料目錄。手動回復應用程式版本會保留專案，並依靠既有的專案／素材目錄相容性檢查；不支援的版本會被拒絕，不會被改寫。詳見[原生安裝程式](/native-installer)。
+
+## 使用者釘選與 schema 1.1.0
+
+機器可讀契約：[schema 1.1.0](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.1.0.schema.json)。
+
+直接編輯片段或圖形場景後，會儲存使用者釘選。自動重新產生會保留完整編輯，包含時間、來源區間、效果，以及明確移除效果的狀態。釘選與來源、片段或圖層鎖定為獨立保護；您仍可直接修改自己釘選的項目，既有鎖定仍有效。
+
+第一次寫入釘選狀態時，專案會在同一次儲存由 schema 1.0.0 升至 1.1.0。舊版應用程式會拒絕開啟 1.1.0。解除所有釘選或復原本次編輯不會自動降版；明確還原具名版本可恢復舊版標頭與其釘選狀態。版本比較包含釘選變更。
+
+「解除使用者釘選」只解除選定項目的釘選，不更動內容。「解除釘選並重新求解」會在一次儲存動作中解除釘選並重新求解剪輯；失敗時保留原釘選與剪輯，且不解除原始來源、片段或圖層鎖定。無法在固定錨點間容納的時間配置，或不支援的重疊主序列，會回報衝突。
+
+收集資料夾與 ZIP 套件會保留釘選，並複製釘選相依媒體的完整原檔。原生專案重新開啟會保留來源時鐘。JSON／OTIO 以中繼資料保留釘選，外部剪輯軟體不會強制執行。新管線需明確選擇「新增粗剪」或「重新求解所選剪輯」，後者綁定已儲存的版本。此版不含字幕層級釘選或個別類別解鎖。

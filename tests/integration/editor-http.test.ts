@@ -152,6 +152,43 @@ describe("real timeline HTTP editing", () => {
     expect(undone.canUndo).toBe(false);
   });
 
+  it("rejects client mutation origin, clock and pin payload bypasses", async () => {
+    const { post, state } = await openEditor();
+    const before = await state();
+    for (const payload of [
+      {
+        origin: "restore",
+        commands: [{ type: "transform", clipId: "photo", x: 0.2 }],
+      },
+      {
+        timebase: {
+          version: 1,
+          rateNumerator: 1,
+          rateDenominator: 1,
+          dropFrame: false,
+        },
+        commands: [{ type: "duration", clipId: "photo", duration: 2 }],
+      },
+      {
+        commands: [
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "photo" },
+            pinned: true,
+            userOverrides: { version: 1 },
+          },
+        ],
+      },
+    ]) {
+      const response = await post("/api/compositions/composition/edit", {
+        baseRevision: before.revision,
+        ...payload,
+      });
+      expect(response.status).toBe(400);
+    }
+    expect((await state()).revision).toBe(before.revision);
+  });
+
   it("persists a command batch once, rejects stale writes, and reopens undo/redo results", async () => {
     const { directory, base, post, state } = await openEditor();
     const initial = await state();

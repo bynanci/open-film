@@ -46,6 +46,7 @@ const manualFeatures = computed(() => {
     title: "titles",
     overlay: "titles",
     "clip lock": "clipLocks",
+    "user pin": "userPins",
     "photo layout": "photoLayout",
     "photo motion": "photoMotion",
     "title style": "titleStyle",

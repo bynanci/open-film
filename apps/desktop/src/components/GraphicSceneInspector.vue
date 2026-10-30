@@ -30,6 +30,11 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   command: [command: TimelineCommand, referencedAssets?: readonly MediaAsset[]];
+  pin: [
+    target: import("@openfilm/core").OverrideTarget,
+    pinned: boolean,
+    resolve?: boolean,
+  ];
   selection: [selection: { sceneId: string; nodeId: string }];
   previewTime: [time: number];
   importAssets: [];
@@ -431,6 +436,50 @@ function endpointValue(
         </select></label
       >
       <template v-if="scene">
+        <div
+          class="graphic-field-grid editor-user-pins"
+          :title="t('editor.pins.hint')"
+        >
+          <button
+            type="button"
+            class="editor-button"
+            :disabled="disabled || sceneHasLockedLayer"
+            :aria-pressed="!!scene.userOverrides?.isUserPinned"
+            @click="
+              emit(
+                'pin',
+                { kind: 'graphic-scene', sceneId: scene.id },
+                !scene.userOverrides?.isUserPinned,
+              )
+            "
+          >
+            {{
+              t(
+                scene.userOverrides?.isUserPinned
+                  ? "editor.pins.unpin"
+                  : "editor.pins.pin",
+              )
+            }}
+          </button>
+          <button
+            v-if="scene.userOverrides?.isUserPinned"
+            type="button"
+            class="editor-button"
+            data-testid="scene-user-pin-resolve"
+            :disabled="disabled || sceneHasLockedLayer"
+            :title="t('editor.pins.releaseHint')"
+            @click="
+              emit(
+                'pin',
+                { kind: 'graphic-scene', sceneId: scene.id },
+                false,
+                true,
+              )
+            "
+          >
+            {{ t("editor.pins.releaseResolve") }}
+          </button>
+        </div>
         <label
           >{{ t("editor.graphics.name")
           }}<input :value="scene.name" @change="updateScene('name', $event)"

@@ -593,3 +593,7 @@ export type {
   GraphicSceneAgentOperation,
   PreparedGraphicSceneAgentProposal,
 } from "./graphic-scene-agent.js";
+
+export * from "./user-overrides.js";
+
+export * from "./pinned-placement.js";

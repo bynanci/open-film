@@ -1506,3 +1506,86 @@ describe("named project versions", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
+
+describe("Named Version pin preservation", () => {
+  it("snapshots 1.1 pins and explicit older restore removes them without rewriting snapshots", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-pin-versions-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const source = join(root, "source.png");
+    await writeFile(source, "synthetic immutable source");
+    const app = await OpenFilmApplication.create(
+      join(root, "project.openfilm"),
+      "Pinned versions",
+    );
+    cleanup.push(() => app.close());
+    app.catalog.upsertAsset({
+      id: "source",
+      name: "Source",
+      uri: pathToFileURL(source).href,
+      mediaType: "image",
+      state: {},
+      metadata: {},
+      tags: [],
+    });
+    app.project.stories = [{ id: "story", title: "Story", beats: [] }];
+    app.project.timelines = [
+      {
+        id: "cut",
+        storyId: "story",
+        duration: 2,
+        tracks: [
+          {
+            id: "video",
+            type: "video",
+            clips: [
+              {
+                id: "clip",
+                assetId: "source",
+                timelineStart: 0.0001,
+                timelineDuration: 1.9999,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    await app.save();
+    const old = await app.versions.create({
+      name: "Legacy",
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+    });
+    app.project.schemaVersion = "1.1.0";
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+      manualOffset: -1,
+    };
+    await app.save();
+    const pinned = structuredClone(app.project.timelines[0]);
+    const version = await app.versions.create({
+      name: "Pinned",
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+    });
+    expect(app.versions.diff(old.id, version.id).pinChangedCount).toBe(1);
+    await app.versions.restore(old.id, {
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+      confirmed: true,
+    });
+    expect(app.project.schemaVersion).toBe("1.0.0");
+    expect(
+      app.project.timelines[0]!.tracks[0]!.clips[0]!.userOverrides,
+    ).toBeUndefined();
+    await app.versions.restore(version.id, {
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+      confirmed: true,
+    });
+    expect(app.project.schemaVersion).toBe("1.1.0");
+    expect(app.project.timelines[0]).toEqual(pinned);
+    expect(await readFile(source, "utf8")).toBe("synthetic immutable source");
+  });
+});
