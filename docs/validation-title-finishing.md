@@ -178,3 +178,16 @@ media, source hashes, picture screenshot and current byte receipts are retained
 under `/tmp/openfilm-finishing-integration/B-current/`. Historical evidence is
 retained separately. Full exact-head hosted gates and fresh integrated review
 remain coordinator-owned.
+
+## 2026-10-30 — repaired base carried through title finishing
+
+Merge `962562f` carries clean A `83cb846` and repaired documentation base
+`fab0a4c` into this title candidate. Application/package source is unchanged from
+reviewed B `d21b811`; the 192px Record minimum, caption ordering, source review
+and cancellation/retry implementations are preserved. Current focused
+`pnpm exec vitest run tests/unit/docs-site-validation.test.ts
+ tests/unit/photo-focal-overlay.test.ts tests/unit/native-caption-preview.test.ts`
+passes three files / 37 tests. No new browser or hosted result is inferred from
+this documentation merge. Earlier receipts retain their source identities;
+checkpoint logs/hashes are under
+`/tmp/openfilm-finishing-integration/B-latest-base/`.

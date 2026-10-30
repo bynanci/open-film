@@ -24,14 +24,34 @@ features:
     details: Keep your workflow flexible with portable project data and interoperable formats.
 ---
 
-## Quick start
+## Start here
 
-Start with the [film-making workflow](/en/product-workflow) to create a project, import media, organize the story, edit and export. See [media portability](/en/media-portability) when moving source files, and read about [camera sources and preview limits](/en/source-support).
+Follow the [film-making workflow](/en/product-workflow) to create a project, import media, organize the story, edit and export. Then read about [media portability](/en/media-portability), [camera source support](/en/source-support) and the [project format](/en/project-format).
 
-## Workflow
+## Documentation map
 
-Create a project → Import media → Organize the story → Edit and preview → Export
+### User workflows and editing guides
 
-## Language and documentation
+[Story templates](/en/creative-story-templates), [precision editing](/en/precision-editing), [markers and snapping](/en/markers-and-snapping), [captions](/en/composition-captions), [audio quality](/en/audio-quality), [sequence waveforms](/en/sequence-waveforms) and [Visual QA](/en/validation-visual-qa) describe behavior, prerequisites and known limits.
 
-The site uses saved Traditional Chinese, English and Japanese Markdown files committed to Git. It does not translate pages at runtime. The five main guides and the creative story templates, precision editing, source markers and snapping, MP4 compression quality, and audio quality pages have saved versions in all three locales. Other technical references still need translation.
+### Export and media portability
+
+[Export quality](/en/export-quality), [Collect Media packages](/en/collect-media), [OpenTimelineIO/NLE compatibility](/en/nle-compatibility) and [Resolve workstation QA](/en/resolve-workstation-qa) cover output formats, moving media and the evidence required for external-editor claims.
+
+### Architecture, formats and integration contracts
+
+Read [architecture](/en/architecture), [project format](/en/project-format), [integration contracts](/en/CONTRACTS), [editing contracts](/en/EDITING_CONTRACTS) and [internationalization](/en/i18n). Technical contracts and implementation references are maintained primarily in English.
+
+### Roadmap, decisions and research
+
+Use the [current roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md), [v1.0.0 readiness](/en/roadmap/v1-readiness), [task list](https://github.com/bynanci/open-film/blob/main/TASKS.md), [architecture decisions](/en/adr/001-monorepo) and [research index](https://github.com/bynanci/open-film/tree/main/research) to review direction, decisions and unverified hypotheses. Research and historical plans are not accepted feature commitments.
+
+### Release and validation records
+
+The sidebar groups release notes, architecture decisions, security documents, reference workflows and validation records separately. Validation pages preserve the commit, platform, tool versions, commands, results and open manual gates for that run. Use the [roadmap and task list for current status](https://github.com/bynanci/open-film/blob/main/ROADMAP.md).
+
+## Languages and contributing
+
+The site provides saved Traditional Chinese, English and Japanese Markdown pages. The main user guides have all three versions; architecture contracts, roadmaps, releases and validation evidence are currently maintained mostly in English. Git contains the translated files; pages are not translated at runtime. Keep commands, paths, identifiers, measurements and evidence links unchanged when translating. See the [documentation language policy](/en/i18n).
+
+Documentation fixes are welcome through [GitHub](https://github.com/bynanci/open-film). The contribution workflow and reporting guidance are in [Contributing](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md).

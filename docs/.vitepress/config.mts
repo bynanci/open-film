@@ -178,6 +178,9 @@ const listedDocumentation = new Set(
     ...validation,
     ...englishGettingStarted,
     ...japaneseGettingStarted,
+    ...englishAdditionalDocs,
+    ...japaneseEditing,
+    ...japaneseExportDocs,
     ...englishReference,
   ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\//, "")),
 );
@@ -198,9 +201,14 @@ const localizedSlugs = new Set([
 ]);
 const sectionNames: Record<string, Record<string, string>> = {
   root: {
-    "zh-TW": "其他技術文件",
-    "en-US": "Other technical documents",
-    "ja-JP": "その他の技術資料",
+    "zh-TW": "產品指南與技術參考",
+    "en-US": "Product guides and technical references",
+    "ja-JP": "製品ガイドと技術資料",
+  },
+  contracts: {
+    "zh-TW": "契約、格式與 schema",
+    "en-US": "Contracts, formats and schemas",
+    "ja-JP": "契約、形式、スキーマ",
   },
   adr: {
     "zh-TW": "架構決策紀錄",
@@ -233,6 +241,18 @@ const sectionNames: Record<string, Record<string, string>> = {
     "ja-JP": "検証記録",
   },
 };
+const validationFileNames = new Set([
+  "validation.md",
+  "resolve-qa-record.md",
+  "resolve-workstation-qa.md",
+  "workstation-qa.md",
+]);
+const contractFileNames = new Set([
+  "contracts.md",
+  "editing_contracts.md",
+  "source_adapter_contracts.md",
+  "relink_contracts.md",
+]);
 const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
   const grouped = new Map<string, ReturnType<typeof guide>[]>();
   const collect = (directory: string) => {
@@ -262,9 +282,23 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
       }
       const slug = relativePath.replace(/\.md$/, "");
       if (listedDocumentation.has(slug)) continue;
-      const section = relativePath.includes("/")
+      const directorySection = relativePath.includes("/")
         ? relativePath.split("/")[0]
         : "root";
+      const filename = relativePath.split("/").at(-1)?.toLowerCase() ?? "";
+      let section = directorySection;
+      if (section === "root") {
+        if (
+          filename.startsWith("validation-") ||
+          validationFileNames.has(filename)
+        ) {
+          section = "validation";
+        } else if (filename.startsWith("security-")) {
+          section = "security";
+        } else if (contractFileNames.has(filename)) {
+          section = "contracts";
+        }
+      }
       const items = grouped.get(section) ?? [];
       const source = readFileSync(absolutePath, "utf8");
       const title = source.match(/^#\s+(.+?)\s*$/m)?.[1] ?? slug;

@@ -121,6 +121,91 @@ it("previews with frozen source geometry and commits only once at pointer releas
   test.unmount();
 });
 
+const starts = ["pick", "drag", "keyboard"] as const;
+it.each(
+  (["left", "top", "width", "height"] as const).flatMap((field) =>
+    starts.map((start) => [start, field] as const),
+  ),
+)("rejects %s admission when initial geometry has stale %s", (start, field) => {
+  const test = mount();
+  test.surfaceRect[field] += 40;
+  if (start === "keyboard") {
+    const key = {
+      key: "ArrowRight",
+      preventDefault() {},
+      stopPropagation() {},
+    };
+    test.invoke(test.button, "onKeydown", key);
+    test.invoke(test.button, "onKeyup", key);
+  } else {
+    test.invoke(
+      start === "pick" ? test.surface : test.button,
+      "onPointerdown",
+      test.event(50, 100),
+    );
+    test.invoke(test.surface, "onPointermove", test.event(70, 100));
+    test.invoke(test.surface, "onPointerup", test.event(70, 100));
+  }
+  expect(test.activity).not.toHaveBeenCalled();
+  expect(test.preview).not.toHaveBeenCalled();
+  expect(test.commit).not.toHaveBeenCalled();
+  expect(test.cancelled).not.toHaveBeenCalled();
+  expect(test.props.point).toEqual({ x: 0.5, y: 0.5 });
+  test.unmount();
+});
+
+it.each(starts)(
+  "accepts %s with current fractional geometry",
+  async (start) => {
+    const test = mount();
+    Object.assign(test.surfaceRect, {
+      left: 10.25,
+      top: 20.5,
+      width: 100.5,
+      height: 200.25,
+    });
+    test.props.geometry = interaction.resolvePhotoFocalGeometry(
+      { assetId: "photo", x: 0, y: 0, width: 100, height: 200 },
+      { scale: 1, x: 0, y: 0 },
+      undefined,
+      { width: 100, height: 200 },
+      test.surfaceRect,
+    );
+    await vue.nextTick();
+    const { left, top, width, height } = test.surfaceRect;
+    if (start === "keyboard") {
+      const key = {
+        key: "ArrowRight",
+        preventDefault() {},
+        stopPropagation() {},
+      };
+      test.invoke(test.button, "onKeydown", key);
+      test.invoke(test.button, "onKeyup", key);
+      expect(test.commit).toHaveBeenCalledExactlyOnceWith({ x: 0.51, y: 0.5 });
+    } else {
+      test.invoke(
+        start === "pick" ? test.surface : test.button,
+        "onPointerdown",
+        test.event(
+          left + width * (start === "pick" ? 0.7 : 0.5),
+          top + height / 2,
+        ),
+      );
+      test.invoke(
+        test.surface,
+        "onPointerup",
+        test.event(left + width * 0.7, top + height / 2),
+      );
+      expect(test.commit).toHaveBeenCalledOnce();
+      expect(test.commit.mock.calls[0]![0].x).toBeCloseTo(0.7, 12);
+      expect(test.commit.mock.calls[0]![0].y).toBeCloseTo(0.5, 12);
+    }
+    expect(test.activity.mock.calls).toEqual([[true], [false]]);
+    expect(test.cancelled).not.toHaveBeenCalled();
+    test.unmount();
+  },
+);
+
 it.each(["pointercancel", "blur", "resize", "session", "disabled"])(
   "cancels %s without a saved edit",
   async (reason) => {
