@@ -1396,3 +1396,8 @@ The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature
 validation records retain their original branch identities and historical runs.
+
+- [x] Repair the observed D5C native-title Undo/Redo image-request ABA failure;
+      preserve exact raster assertions and stale-revision guards. Fresh scoped review,
+      103 focused cases and two actual browser journeys pass; final hosted gates
+      remain required before merge.

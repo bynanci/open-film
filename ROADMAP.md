@@ -860,3 +860,8 @@ import/relink/playback, representative fonts/licensing, protected subjects,
 physical color, listening and sustained 4K performance. Future remote generation
 must pass explicit provider consent, API/download safety and terms/cost/retention
 review; local editing continues without a provider.
+
+The D5C integration also repairs the observed title-image request ABA during
+Undo/Redo. Display generations request independent images while the existing
+project/revision fences and shared raster cache remain authoritative. Scoped
+review and exact raster/browser regressions pass; new-head full gates remain open.

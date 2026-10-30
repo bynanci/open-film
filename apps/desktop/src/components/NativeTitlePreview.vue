@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // SPDX-License-Identifier: Apache-2.0
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
 import { evaluateTitleOpacity, type Clip } from "@openfilm/core";
 
 const props = defineProps<{
@@ -10,6 +10,20 @@ const props = defineProps<{
   player?: HTMLMediaElement | null;
 }>();
 const clock = ref(props.sourceTime);
+const requestOwner = useId();
+const requestGeneration = ref(0);
+watch(
+  () => props.src,
+  () => requestGeneration.value++,
+  { immediate: true },
+);
+// Undo/Redo can return to the same content revision while its old image request
+// is still in flight. Isolate each display generation without changing the
+// server-owned project/revision checks or the shared raster cache.
+const requestSource = computed(
+  () =>
+    `${props.src}${props.src.includes("?") ? "&" : "?"}previewRequest=${encodeURIComponent(requestOwner)}-${requestGeneration.value}`,
+);
 let animation = 0;
 function pause() {
   cancelAnimationFrame(animation);
@@ -75,9 +89,9 @@ onBeforeUnmount(pause);
 
 <template>
   <img
-    :key="src"
+    :key="requestSource"
     crossorigin="anonymous"
-    :src="src"
+    :src="requestSource"
     :alt="clip.title"
     :style="{ opacity }"
     draggable="false"
