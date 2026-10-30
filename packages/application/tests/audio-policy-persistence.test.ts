@@ -181,8 +181,6 @@ it("retains independent same-source occurrences and pin payloads in no-op varian
         assetId: "photo",
         timelineStart: 0,
         timelineDuration: 8,
-        sourceIn: 0,
-        sourceOut: 8,
         layout: {
           version: 2,
           preset: "contain",

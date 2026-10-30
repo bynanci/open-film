@@ -180,7 +180,16 @@ describe("durable GraphicScene editing", () => {
       expect(command).toEqual(snapshot);
       expect(command.scene).toBe(scene);
       expect(command.scene.photoDepth).toBe(recipe);
-      expect(accepted.composition.graphicScenes).toEqual([snapshot.scene]);
+      expect(accepted.composition.graphicScenes).toEqual([
+        {
+          ...snapshot.scene,
+          userOverrides: {
+            version: 1,
+            isUserPinned: true,
+            lockedAttributes: ["photoDepth", "timing"],
+          },
+        },
+      ]);
       expect(accepted.composition.graphicScenes![0]).not.toBe(scene);
       const undone = await editor.undo("composition", accepted.revision);
       expect(undone.composition).toEqual(before.composition);
@@ -477,14 +486,25 @@ describe("durable GraphicScene editing", () => {
       commands: [{ type: "graphic.scene.upsert" as const, scene }],
     };
     const added = await editor.edit("composition", input);
-    expect(added.composition.graphicScenes).toEqual([scene]);
+    const pinnedScene = {
+      ...scene,
+      userOverrides: {
+        version: 1,
+        isUserPinned: true,
+        lockedAttributes: ["timing"],
+      },
+    };
+    expect(added.composition.graphicScenes).toEqual([pinnedScene]);
     expect((await editor.edit("composition", input)).revision).toBe(
       added.revision,
     );
     const undo = await editor.undo("composition", added.revision);
     expect(undo.composition.graphicScenes).toBeUndefined();
     const redo = await editor.redo("composition", undo.revision);
-    expect(redo.composition.graphicScenes).toEqual([scene]);
+    expect(redo.composition.graphicScenes).toEqual([pinnedScene]);
+    scene.userOverrides = structuredClone(
+      redo.composition.graphicScenes![0]!.userOverrides,
+    );
     scene.nodes[0]!.x = 42;
     scene.nodes[0]!.rotation = 22.5;
     scene.nodes[0]!.hidden = true;
@@ -882,7 +902,14 @@ describe("durable GraphicScene editing", () => {
     const initial = editor.get("composition");
     const inserted = await editor.edit("composition", {
       baseRevision: initial.revision,
-      commands: [{ type: "graphic.scene.upsert", scene }],
+      commands: [
+        { type: "graphic.scene.upsert", scene },
+        {
+          type: "user-pin.set",
+          target: { kind: "graphic-scene", sceneId: scene.id },
+          pinned: false,
+        },
+      ],
     });
     const proposal = await editor.previewGraphicSceneAgent("composition", {
       baseRevision: inserted.revision,
@@ -1245,8 +1272,9 @@ describe("durable GraphicScene editing", () => {
         baseRevision: saved.revision,
         commands: [{ type: "trim", clipId: "clip", sourceIn: 0, sourceOut: 3 }],
       }),
-    ).rejects.toMatchObject({ code: "timeline.graphicRangeConflict" });
+    ).rejects.toMatchObject({ code: "timeline.pinConflict", status: 409 });
     expect(await readFile(join(app.directory, "project.json"))).toEqual(bytes);
     expect(editor.get("composition").revision).toBe(saved.revision);
+    expect(editor.get("composition")).toEqual(saved);
   });
 });

@@ -330,6 +330,14 @@ export function solveIncremental(
     const original = spine(baseline).filter(
       ({ clip }) => clip.beatId === beat.id,
     );
+    const required = new Set([
+      ...(beat.selectedAssetIds ?? []),
+      ...(beat.constraints ?? []).flatMap((constraint) =>
+        constraint.type === "must-include" || constraint.type === "asset-order"
+          ? constraint.assetIds
+          : [],
+      ),
+    ]);
     if (!original.length) continue;
     const working = structuredClone(next);
     working.composition.tracks = working.composition.tracks.filter(
@@ -436,7 +444,21 @@ export function solveIncremental(
           if (fixed.clip.timelineStart >= gap.end - 1e-9)
             endFrame = Math.min(endFrame, range.startFrame);
         }
-        const clip = structuredClone(prior ? prior.clip : candidate.clip);
+        const protectedPrior =
+          prior &&
+          (prior.clip.locked ||
+            byId.get(prior.clip.assetId)?.state.locked ||
+            required.has(prior.clip.assetId) ||
+            (prior.clip.layout?.secondary &&
+              (byId.get(prior.clip.layout.secondary.assetId)?.state.locked ||
+                required.has(prior.clip.layout.secondary.assetId))));
+        // A retained ID owns its placement, not its old mutable content. Only
+        // actual locks/required owners retain their complete previous payload.
+        const clip = structuredClone(
+          protectedPrior ? prior.clip : candidate.clip,
+        );
+        if (prior?.clip.userOverrides)
+          clip.userOverrides = structuredClone(prior.clip.userOverrides);
         const fixed = !!prior;
         const capacity = endFrame - startFrame;
         const desired = fixed

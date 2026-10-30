@@ -340,8 +340,11 @@ and effective inherited primary/Look matrices. Reviewed automatic suggestions
 require explicit release where they change a pin; ordinary direct named-owner
 edits remain available. Re-solve retains authored beat boundaries and existing
 mutable gaps, so a bounded conflict is not a global infeasibility proof. Focused
-local evidence is recorded in [validation](docs/validation-user-pins.md); first
-whole-branch review and full exact-head hosted gates remain pending.
+local evidence is recorded in [validation](docs/validation-user-pins.md). The first
+whole review is complete; its measured-audio, same-ID candidate and intermediate
+overlay findings have a coordinated correction wave, including a reproduced
+optional-field variant constructor fix. Scoped correction review and full
+exact-head hosted gates remain pending.
 
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged

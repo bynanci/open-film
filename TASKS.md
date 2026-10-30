@@ -20,8 +20,11 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         source/clip locks do not implement this requested override contract.
         Candidate Tasks1–8 and the current finishing-owner integration are
         implemented, with focused solver/application/schema/actual-media
-        evidence. First whole-branch review and complete exact-head hosted gates
-        remain open; see [User Pin validation](docs/validation-user-pins.md).
+        evidence. The first whole-branch review found measured-audio authority,
+        same-ID candidate retention and premature overlay validation defects;
+        the coordinated correction wave also preserves optional variant fields.
+        Scoped correction review and complete exact-head hosted gates remain
+        open; see [User Pin validation](docs/validation-user-pins.md).
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
         transaction boundaries; preserve cancellation, locks, Undo/Redo,

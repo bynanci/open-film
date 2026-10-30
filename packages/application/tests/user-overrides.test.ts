@@ -230,6 +230,62 @@ describe("transactional user pins", () => {
       pinned.composition,
     );
   });
+  it.each([
+    ["regenerate-beat", "replace-similar"],
+    ["regenerate-beat", "shorten"],
+    ["user-pin.resolve", "replace-similar"],
+    ["user-pin.resolve", "shorten"],
+  ] as const)(
+    "publishes the mutable %s %s proposal and retains its anchored neighbor",
+    async (type, mode) => {
+      const { app, editor } = await fixture();
+      const pinned = await editor.edit("cut", {
+        baseRevision: editor.get("cut").revision,
+        commands: [
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "b" },
+            pinned: true,
+          },
+        ],
+      });
+      const command =
+        type === "regenerate-beat"
+          ? { type, mode, beatId: "beat" }
+          : {
+              type,
+              mode,
+              targets: [],
+              scope: { kind: "beat" as const, beatId: "beat" },
+            };
+      const changed = await editor.edit("cut", {
+        baseRevision: pinned.revision,
+        commands: [command],
+      });
+      const clip = changed.composition.tracks[0]!.clips.find(
+        (item) => item.id === "a",
+      )!;
+      expect(clip.assetId).toBe(mode === "replace-similar" ? "c" : "a");
+      expect(clip.timelineDuration).toBeCloseTo(
+        mode === "shorten" ? 1.8 : 3,
+        9,
+      );
+      expect(clip.sourceOut).toBeCloseTo(mode === "shorten" ? 1.8 : 3, 9);
+      expect(clip.userOverrides).toBeUndefined();
+      expect(
+        changed.composition.tracks[0]!.clips.find((item) => item.id === "b"),
+      ).toEqual(pinned.composition.tracks[0]!.clips[1]);
+      const undone = await editor.undo("cut", changed.revision);
+      expect(undone.composition).toEqual(pinned.composition);
+      const redone = await editor.redo("cut", undone.revision);
+      expect(redone.composition).toEqual(changed.composition);
+      const reopened = await OpenFilmApplication.open(app.directory);
+      clean.push(() => reopened.close());
+      expect(new TimelineEditor(reopened).get("cut").composition).toEqual(
+        changed.composition,
+      );
+    },
+  );
   it("a named presentation edit cannot authorize automatic removal of its existing pin", async () => {
     const { app, editor } = await fixture();
     const initial = editor.get("cut");
@@ -315,6 +371,134 @@ describe("transactional user pins", () => {
     await first;
     await expect(stale).rejects.toMatchObject({ status: 409 });
   });
+  it.each(["graphic", "caption", "locked-audio"] as const)(
+    "commits feasible anchored edits with tail %s and rolls back actual final overflow",
+    async (kind) => {
+      const { app, editor, file } = await fixture();
+      const cut = app.project.timelines[0]!;
+      cut.duration = 8;
+      cut.tracks[0]!.clips[1]!.timelineDuration = 2;
+      cut.tracks[0]!.clips.push({
+        id: "c",
+        assetId: "c",
+        beatId: "beat",
+        timelineStart: 5,
+        timelineDuration: 3,
+      });
+      if (kind === "graphic")
+        cut.graphicScenes = [
+          {
+            version: 1,
+            id: "tail",
+            name: "End",
+            start: 7,
+            duration: 1,
+            zIndex: 0,
+            nodes: [],
+          },
+        ];
+      if (kind === "caption")
+        cut.captionTracks = [
+          {
+            version: 1,
+            id: "captions",
+            name: "Captions",
+            language: "en",
+            style: { version: 1, role: "subtitle" },
+            cues: [
+              {
+                version: 1,
+                id: "tail",
+                startMs: 7000,
+                endMs: 8000,
+                text: "End",
+                source: { kind: "manual" },
+                manualRevision: 0,
+              },
+            ],
+          },
+        ];
+      if (kind === "locked-audio") {
+        app.catalog.upsertAsset({
+          id: "score",
+          name: "Score",
+          uri: "file:///score.wav",
+          mediaType: "audio",
+          duration: 8,
+          state: {},
+          tags: [],
+          metadata: {},
+        });
+        cut.tracks.push({
+          id: "audio",
+          type: "audio",
+          timing: "overlay",
+          clips: [
+            {
+              id: "tail",
+              assetId: "score",
+              timelineStart: 7,
+              timelineDuration: 1,
+              sourceIn: 0,
+              sourceOut: 1,
+              locked: true,
+            },
+          ],
+        });
+      }
+      await app.save();
+      const pinned = await editor.edit("cut", {
+        baseRevision: editor.get("cut").revision,
+        commands: [
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "b" },
+            pinned: true,
+          },
+        ],
+      });
+      const edited = await editor.edit("cut", {
+        baseRevision: pinned.revision,
+        commands: [{ type: "duration", clipId: "a", duration: 2 }],
+      });
+      expect(edited.composition.duration).toBe(8);
+      expect(
+        edited.composition.tracks[0]!.clips.find((clip) => clip.id === "a")!
+          .timelineDuration,
+      ).toBe(2);
+      expect(
+        edited.composition.tracks[0]!.clips.find((clip) => clip.id === "b"),
+      ).toEqual(pinned.composition.tracks[0]!.clips[1]);
+      expect(edited.composition.graphicScenes).toEqual(
+        pinned.composition.graphicScenes,
+      );
+      expect(edited.composition.captionTracks).toEqual(
+        pinned.composition.captionTracks,
+      );
+      if (kind === "locked-audio")
+        expect(edited.composition.tracks[1]).toEqual(
+          pinned.composition.tracks[1],
+        );
+      const disk = await readFile(file);
+      await expect(
+        editor.edit("cut", {
+          baseRevision: edited.revision,
+          commands: [{ type: "duration", clipId: "c", duration: 1 }],
+        }),
+      ).rejects.toMatchObject({ status: 409, code: "timeline.pinConflict" });
+      expect(editor.get("cut")).toEqual(edited);
+      expect(await readFile(file)).toEqual(disk);
+      const undone = await editor.undo("cut", edited.revision);
+      expect(undone.composition).toEqual(pinned.composition);
+      const redone = await editor.redo("cut", undone.revision);
+      expect(redone.composition).toEqual(edited.composition);
+      const reopened = await OpenFilmApplication.open(app.directory);
+      clean.push(() => reopened.close());
+      expect(new TimelineEditor(reopened).get("cut").composition).toEqual(
+        edited.composition,
+      );
+    },
+  );
   it("client origin and timebase injection are rejected before mutation", async () => {
     const { editor } = await fixture();
     const current = editor.get("cut");
