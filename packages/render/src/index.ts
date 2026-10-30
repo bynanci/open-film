@@ -113,6 +113,8 @@ export interface RenderSnapshot {
 }
 export interface RenderOptions {
   signal?: AbortSignal;
+  /** Application-owned bound for private delivery validation intermediates. */
+  maximumOutputBytes?: number;
   onProgress?: (progress: number) => void;
   project?: RenderProjectEvidence;
   /** Null or omitted preserves each clip's saved film, scene and clip choices. */
@@ -309,6 +311,14 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    if (
+      options.maximumOutputBytes !== undefined &&
+      (!Number.isSafeInteger(options.maximumOutputBytes) ||
+        options.maximumOutputBytes < 1)
+    )
+      throw new Error(
+        "Render output byte bound must be a positive safe integer.",
+      );
     const normalizedSettings = {
       ...settings,
       frameRate: projectFrameRate(settings),
@@ -467,6 +477,17 @@ export class FFmpegRenderer {
     const fonts: RenderFontEvidence[] = [];
     const fontBindings: RenderFontBinding[] = [];
     const warnings: string[] = [];
+    if (
+      assets.some(
+        (asset) =>
+          usedIds.has(asset.id) &&
+          (
+            asset.metadata["openfilm.collectDelivery"] as
+              { quality?: unknown } | undefined
+          )?.quality === "offline-only",
+      )
+    )
+      warnings.push("collect.offline-quality");
     if (!audioOnly && exportProfile) {
       const savedRatio = settings.width / settings.height;
       const outputRatio = exportProfile.width / exportProfile.height;
@@ -827,7 +848,7 @@ export class FFmpegRenderer {
                 ? `trim=duration=${number(displayedDuration)}`
                 : `trim=start=${number(sourceIn)}:end=${number(sourceOut)}`;
             filters.push(
-              `[${visualInput}]${trim},setpts=(PTS-STARTPTS)/${number(presentedPhoto ? 1 : speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
+              `[${visualInput}]${trim},settb=AVTB,setpts=(PTS-STARTPTS)/${number(presentedPhoto ? 1 : speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
             );
             const merged = `merged${suffix}`;
             filters.push(
@@ -993,6 +1014,8 @@ export class FFmpegRenderer {
         "-filter_complex",
         filters.join(";"),
       );
+      if (options.maximumOutputBytes !== undefined)
+        args.push("-fs", String(options.maximumOutputBytes));
       if (!audioOnly)
         args.push(
           "-map",
@@ -1089,6 +1112,11 @@ export class FFmpegRenderer {
         },
       });
       checkAbort(options.signal);
+      if (
+        options.maximumOutputBytes !== undefined &&
+        (await stat(temporaryOutput)).size >= options.maximumOutputBytes
+      )
+        throw new Error("Render output reached its private byte bound.");
       await verifyRenderSources(sources);
       const manifestPath = join(work, "manifest.json");
       await writeRenderManifest(

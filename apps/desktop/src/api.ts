@@ -76,6 +76,8 @@ import type {
   ProjectVersionRestoreResult,
   ProjectTimebaseUpdateInput,
   CollectMediaPlan,
+  CollectCoveragePlanInput,
+  CollectCoverageReview,
   CollectPlanInput,
   CollectMediaCreateResult,
   CollectMediaVerifyResult,
@@ -719,6 +721,8 @@ async function uploadFiles(
   }
 }
 export const api = {
+  collectCoverage: (body: CollectCoveragePlanInput, signal?: AbortSignal) =>
+    post<{ review: CollectCoverageReview }>("/collect/coverage", body, signal),
   proxyCache: (projectId: string, offset = 0, signal?: AbortSignal) =>
     request<{
       health: ProxyCacheHealth;
@@ -844,6 +848,10 @@ export const api = {
       planId: string;
       baseRevision: string;
       format: "directory" | "zip";
+      delivery?: CollectCoveragePlanInput["delivery"];
+      coverageId?: string;
+      projectId?: string;
+      acceptDelivery?: true;
     },
     signal?: AbortSignal,
   ) =>

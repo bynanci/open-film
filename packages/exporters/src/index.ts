@@ -29,6 +29,26 @@ export interface OtioCompatibilityReport {
   metadataOnlyEdits: { clipId: string; features: string[] }[];
 }
 
+/** Keep only the portable data-only lineage fields, never extension secrets. */
+export function collectDeliveryMetadata(
+  asset: MediaAsset,
+): Record<string, unknown> | undefined {
+  const data = asset.metadata["openfilm.collectDelivery"] as
+    Record<string, unknown> | undefined;
+  if (!data || !["offline-only", "lossless"].includes(String(data.quality)))
+    return undefined;
+  return {
+    version: 1,
+    mode:
+      data.quality === "offline-only" ? "offline-proxies" : "trimmed-originals",
+    quality: data.quality,
+    ...(typeof data.originalSha256 === "string" &&
+    /^[a-f0-9]{64}$/u.test(data.originalSha256)
+      ? { originalSha256: data.originalSha256 }
+      : {}),
+  };
+}
+
 function isVisualTrack(track: Track): boolean {
   return track.type === "video" || track.type === "overlay";
 }
@@ -271,6 +291,18 @@ export function exportTimeline(
   if (!["json", "otio", "fcpxml", "edl"].includes(format))
     throw new Error(`Unsupported timeline export format: ${String(format)}.`);
   const byId = validate(composition, assets, settings);
+  const usedForQuality = new Set([
+    ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+    ...composition.tracks.flatMap((track) =>
+      track.clips.flatMap(clipSourceIds),
+    ),
+  ]);
+  const offline = assets.some(
+    (asset) =>
+      usedForQuality.has(asset.id) &&
+      collectDeliveryMetadata(asset)?.quality === "offline-only",
+  );
+  const qualityWarnings = offline ? ["collect.offline-quality"] : [];
   if (format === "json") {
     const used = new Set([
       ...graphicSceneAssetIds(composition.graphicScenes ?? []),
@@ -280,6 +312,7 @@ export function exportTimeline(
     ]);
     return {
       extension: "json",
+      ...(offline ? { warnings: qualityWarnings } : {}),
       content:
         JSON.stringify(
           {
@@ -346,6 +379,7 @@ export function exportTimeline(
       }
     }
     const report = otioCompatibilityReport(composition);
+    report.warnings.push(...qualityWarnings);
     return {
       extension: "otio",
       content:
@@ -408,8 +442,13 @@ export function exportTimeline(
     return {
       extension: "fcpxml",
       content: fcpxml(composition, byId, settings),
+      ...(offline ? { warnings: qualityWarnings } : {}),
     };
-  return { extension: "edl", content: edl(composition, byId, settings) };
+  return {
+    extension: "edl",
+    content: edl(composition, byId, settings),
+    ...(offline ? { warnings: qualityWarnings } : {}),
+  };
 }
 
 function sourceIdentity(asset: MediaAsset): Record<string, unknown> {
@@ -420,6 +459,9 @@ function sourceIdentity(asset: MediaAsset): Record<string, unknown> {
     mediaType: asset.mediaType,
     contentHash: asset.contentHash,
     portableReference: asset.metadata["openfilm.reference"],
+    ...(collectDeliveryMetadata(asset)
+      ? { collectDelivery: collectDeliveryMetadata(asset) }
+      : {}),
   };
 }
 
@@ -511,6 +553,9 @@ function otio(
               mediaType: asset.mediaType,
               contentHash: asset.contentHash,
               portableReference: asset.metadata["openfilm.reference"],
+              ...(collectDeliveryMetadata(asset)
+                ? { collectDelivery: collectDeliveryMetadata(asset) }
+                : {}),
             },
           },
         },
@@ -612,7 +657,8 @@ function fcpxml(
       ...clips.map((clip) => (clip.sourceIn ?? 0) + clip.timelineDuration),
     );
     const audio = asset.mediaType === "audio";
-    return `      <asset id="${refs.get(id)!}" name="${xml(asset.name)}" start="0s" duration="${rational(available)}" hasVideo="${audio ? 0 : 1}" hasAudio="${audio ? 1 : 0}"${audio ? ' audioSources="1" audioChannels="2"' : ' format="r1"'}><media-rep kind="original-media" src="${xml(asset.uri)}"/></asset>`;
+    const delivery = collectDeliveryMetadata(asset);
+    return `      <asset id="${refs.get(id)!}" name="${xml(asset.name)}" start="0s" duration="${rational(available)}" hasVideo="${audio ? 0 : 1}" hasAudio="${audio ? 1 : 0}"${audio ? ' audioSources="1" audioChannels="2"' : ' format="r1"'}><media-rep kind="original-media" src="${xml(asset.uri)}"/>${delivery ? `<metadata><md key="com.openfilm.collectDelivery" value="${xml(JSON.stringify(delivery))}"/></metadata>` : ""}</asset>`;
   });
   const populatedTracks = composition.tracks.filter(
     (track) => track.clips.length,
@@ -730,6 +776,16 @@ function edl(
       `${String(event).padStart(3, "0")}  ${reel} V     C        ${code(clip.sourceIn ?? 0)} ${code((clip.sourceIn ?? 0) + clip.timelineDuration)} ${code(clip.timelineStart)} ${code(clip.timelineStart + clip.timelineDuration)}`,
       `* FROM CLIP NAME: ${asset.name.replace(/[\r\n]/g, " ")}`,
       `* SOURCE FILE: ${asset.uri.replace(/[\r\n]/g, " ")}`,
+      ...(collectDeliveryMetadata(asset)?.quality === "offline-only"
+        ? [
+            "* OPENFILM DELIVERY QUALITY: offline-only; compressed review media, original sources required for masters.",
+            ...(collectDeliveryMetadata(asset)?.originalSha256
+              ? [
+                  `* OPENFILM ORIGINAL SHA256: ${collectDeliveryMetadata(asset)!.originalSha256}`,
+                ]
+              : []),
+          ]
+        : []),
       "",
     );
     end = clip.timelineStart + clip.timelineDuration;

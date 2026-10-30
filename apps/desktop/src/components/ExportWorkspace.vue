@@ -32,6 +32,7 @@ import Icon from "./Icon.vue";
 import FilmLookSelect from "./FilmLookSelect.vue";
 const props = defineProps<{
   expertMode?: boolean;
+  offlineMedia?: boolean;
   busy: boolean;
   projectId: string;
   projectSettings: ProjectSettings;
@@ -360,6 +361,9 @@ onUnmounted(() => {
 </script>
 <template>
   <section class="export-options" :aria-label="t('app.export.label')">
+    <p v-if="offlineMedia" class="collect-delivery-disclosure" role="status">
+      {{ t("collectDelivery.offlineOutput") }}
+    </p>
     <header>
       <h2>{{ t("app.export.title") }}</h2>
       <p>{{ t("app.export.description") }}</p>

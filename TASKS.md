@@ -160,6 +160,23 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
       with derivative provenance, handles, relocation/reopen, decoded
       picture/audio/time parity against the original project baseline and
       explicit quality disclosure.
+  - [x] Read-only delivery/coverage contract, saved baseline/hash/revision capture,
+        portable-clock protection and shared CLI/API/three-locale review UI.
+        [Delivery evidence](docs/validation-collect-coverage.md).
+  - [x] Generate/verify bounded lossless derivatives, piecewise clock receipts and
+        v2 directory/ZIP relocation against every selected original decoded baseline;
+        retain protected/VFR/unsupported clocks on originals. Preserve default v1.
+  - [x] Explicit revision-bound CLI/API/Desktop acceptance and persistent offline
+        quality disclosure; source/project/catalog/locks/captions remain unchanged.
+  - [x] Reproduce/fix ready-preview hard-link cleanup race found in checkpoint CI;
+        preserve full hash, alias and corruption assertions.
+  - [x] Independent review: precision-preserving source validation, fresh review
+        acceptance, bounded Verify cleanup, native/baked NLE offline lineage;
+        regression-backed fixes. Keep warning-detail presentation as follow-up.
+  - [x] Complete local full gates: 4535 unit/integration,291 Chromium, official
+        OTIO18, built CLI smoke, types/lint/build/format/i18n/docs.
+  - [ ] Complete exact-head hosted gates before
+        marking D6B delivery ready to merge. Physical workstation gates stay open.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
   controls and focused Windows/macOS render evidence.

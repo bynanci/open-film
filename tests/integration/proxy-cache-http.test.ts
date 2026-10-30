@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   link,
+  lstat,
   mkdtemp,
   readFile,
   rm,
@@ -8,18 +9,92 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { Job, ProxyCacheHealth } from "@openfilm/core";
 import { OpenFilmApplication } from "@openfilm/application";
-import { hashFile, runProcess, type createProxy } from "@openfilm/media";
+import { hashFile, runProcess, createProxy } from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
+// Hold only the worker's final directory cleanup. All file/link/hash/HTTP work
+// stays real; this exposes the ready-before-unlink race without timed sleeps.
+const cleanupFence = vi.hoisted(() => ({
+  path: undefined as string | undefined,
+  gate: undefined as Promise<void> | undefined,
+  entered: undefined as (() => void) | undefined,
+  release: undefined as (() => void) | undefined,
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...real,
+    rm: async (...args: Parameters<typeof real.rm>) => {
+      if (String(args[0]) === cleanupFence.path && cleanupFence.gate) {
+        cleanupFence.entered?.();
+        await cleanupFence.gate;
+      }
+      return real.rm(...args);
+    },
+  };
+});
 afterEach(async () => {
+  cleanupFence.release?.();
+  cleanupFence.path = undefined;
+  cleanupFence.gate = undefined;
+  cleanupFence.entered = undefined;
+  cleanupFence.release = undefined;
   for (const action of cleanup.splice(0).reverse()) await action();
+});
+
+it("publishes a single-link ready preview before scratch cleanup can change its verified identity", async () => {
+  let entered!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  cleanupFence.entered = entered;
+  cleanupFence.gate = new Promise<void>((resolve) => {
+    cleanupFence.release = resolve;
+  });
+  const f = await fixture({
+    proxyGenerator: async (asset, output, signal, options) => {
+      cleanupFence.path = dirname(output);
+      await createProxy(asset, output, signal, options);
+    },
+  });
+  expect(
+    (
+      await f.post("/proxy-cache/queue", {
+        projectId: f.projectId,
+        requestId: "publication-identity",
+        assetIds: ["video"],
+      })
+    ).status,
+  ).toBe(202);
+  expect(
+    (await f.post("/proxy-cache/run", { projectId: f.projectId })).status,
+  ).toBe(202);
+  await blocked;
+  const jobs = (await (await fetch(`${f.base}/jobs`)).json()).jobs as Job[];
+  const job = jobs.find((job) => job.type === "proxy")!;
+  expect(job.status).toBe("completed");
+  const path = join(f.project, job.proxyCache!.output!.uri),
+    before = await lstat(path);
+  expect(before.nlink).toBe(1);
+  cleanupFence.release!();
+  await expect
+    .poll(async () => (await f.health()).worker?.status)
+    .toBe("completed");
+  expect((await lstat(path)).ctimeMs).toBe(before.ctimeMs);
+  const response = await fetch(`${f.base}/source/video`);
+  expect(response.status).toBe(200);
+  expect(
+    createHash("sha256")
+      .update(Buffer.from(await response.arrayBuffer()))
+      .digest("hex"),
+  ).toBe(job.proxyCache!.output!.hash);
 });
 
 async function fixture(options: { proxyGenerator?: typeof createProxy } = {}) {

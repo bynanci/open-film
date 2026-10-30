@@ -636,8 +636,16 @@ The verifier rejects unsafe paths, links, nested archives and invalid ZIP
 records, unpacks into a private temporary root, validates receipts, reopens the
 package, renders a preview and MP4, and decodes/checks the actual output. Font
 lookup is package-relative and hash-checked when a collected project reopens.
-The verifier reports representative render evidence for the first Composition;
-cross-platform workstation and NLE checks remain manual. See the
+The v1 verifier reports representative render evidence for the first Composition.
+D6B extends this same owner with review-bound acceptance, lossless disjoint source
+consolidation and explicitly offline delivery. Only private catalog/source-clock
+copies change. V2 records original/derived hashes, piecewise windows, retained
+reasons and real original/delivered MP4 picture/PCM signatures for every selected
+Composition. Lossless delivery requires exact decoded parity before publication;
+relocation verification re-renders every delivered Composition. Protected or
+unreliable clocks retain originals; offline metadata/renderer/UI disclose reduced
+quality. See [derived-delivery evidence](validation-collect-coverage.md).
+Cross-platform workstation and NLE checks remain manual. See the
 [Collect Media contract](collect-media.md) and
 [validation record](validation-collect-media.md).
 

@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  ApplicationError,
   validateMediaAsset,
   validateProxyCacheTask,
   type Job,
@@ -32,6 +33,7 @@ import {
 } from "./knowledge-store.js";
 import { migrateTranscriptSegmentIdentity } from "./transcript-segment-identity.js";
 import {
+  CATALOG_TABLE_POLICIES,
   CatalogMultiSourceStore,
   migrateMultiSourceSchema,
   sanitizePortableMultiSourceRows,
@@ -320,6 +322,79 @@ export function inspectCatalogSnapshot(
       logicalRevision: logicalCatalogRevision(database),
       assets,
     };
+  });
+}
+
+/** Conservatively retain sources with portable semantic/provenance clocks. */
+export function inspectCollectSourceClockAssets(
+  image: Uint8Array,
+  expectedSchemaVersion: number,
+  selectedAssetIds: readonly string[],
+): string[] {
+  const invalid = (): never => {
+    throw new ApplicationError(
+      "request.invalid",
+      "Collect source-clock scope must contain distinct known asset IDs.",
+    );
+  };
+  if (
+    !Array.isArray(selectedAssetIds) ||
+    selectedAssetIds.length > 10_000 ||
+    new Set(selectedAssetIds).size !== selectedAssetIds.length ||
+    selectedAssetIds.some(
+      (id) =>
+        typeof id !== "string" ||
+        !id ||
+        id.trim() !== id ||
+        id.length > 512 ||
+        [...id].some(
+          (character) =>
+            character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        ),
+    )
+  )
+    invalid();
+  return withSnapshotDatabase(image, (database) => {
+    validateCatalogDatabase(database, expectedSchemaVersion);
+    const selected = new Set(selectedAssetIds);
+    const known = new Set(
+      database
+        .prepare("SELECT id FROM assets")
+        .all()
+        .map((row) => String(row.id)),
+    );
+    for (const id of selected) if (!known.has(id)) invalid();
+    const protectedIds = new Set<string>();
+    const tables = database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+      )
+      .all();
+    for (const { name } of tables) {
+      const table = String(name),
+        policy = CATALOG_TABLE_POLICIES[table];
+      if (!policy) invalid();
+      if (table === "assets" || policy !== "portable-semantic") continue;
+      const quoted = `"${table.replaceAll('"', '""')}"`;
+      if (
+        !database
+          .prepare(`PRAGMA table_info(${quoted})`)
+          .all()
+          .some((row) => row.name === "asset_id")
+      )
+        continue;
+      // Child revisions/members reach these asset-bearing semantic owners.
+      // Cache and operational rows are deliberately omitted from portable clocks.
+      for (const row of database
+        .prepare(
+          `SELECT DISTINCT asset_id FROM ${quoted} WHERE asset_id IS NOT NULL`,
+        )
+        .iterate()) {
+        const id = String(row.asset_id);
+        if (selected.has(id)) protectedIds.add(id);
+      }
+    }
+    return [...protectedIds].sort();
   });
 }
 

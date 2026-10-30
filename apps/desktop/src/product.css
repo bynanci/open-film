@@ -3361,3 +3361,94 @@ label.ui-language {
     min-height: 44px;
   }
 }
+
+.collect-delivery {
+  border-block: 1px solid var(--of-border-subtle);
+  margin-block: var(--of-space-4);
+  min-width: 0;
+}
+.collect-delivery > summary {
+  cursor: pointer;
+  padding-block: var(--of-space-3);
+  color: var(--of-text-primary);
+}
+.collect-delivery-body {
+  display: grid;
+  gap: var(--of-space-3);
+  padding-block: var(--of-space-2) var(--of-space-4);
+  min-width: 0;
+}
+.collect-delivery p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.collect-delivery-disclosure {
+  font-size: var(--of-font-small);
+  color: var(--of-text-muted);
+}
+.collect-delivery-accept {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--of-space-3);
+  padding-block: var(--of-space-3);
+  min-height: 44px;
+  font-size: var(--of-font-small);
+  overflow-wrap: anywhere;
+}
+.collect-delivery-accept input {
+  flex: 0 0 auto;
+  margin-block-start: var(--of-space-1);
+}
+.collect-delivery-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+}
+.collect-delivery-controls > .field {
+  display: grid;
+  flex: 1 1 14rem;
+  min-width: 0;
+  gap: var(--of-space-2);
+}
+.collect-delivery-controls :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+.collect-delivery button {
+  white-space: normal;
+  min-height: 36px;
+}
+.collect-delivery h3 {
+  color: var(--of-text-primary);
+  font-size: var(--of-font-base);
+}
+.collect-delivery-sources {
+  list-style: none;
+  padding: 0;
+  margin: var(--of-space-4) 0;
+}
+.collect-delivery-sources > li {
+  display: grid;
+  gap: var(--of-space-2);
+  border-top: 1px solid var(--of-border-subtle);
+  padding-block: var(--of-space-4);
+}
+.collect-delivery-sources strong {
+  color: var(--of-text-primary);
+  overflow-wrap: anywhere;
+}
+.collect-delivery-sources p {
+  font-size: var(--of-font-small);
+}
+.collect-delivery nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+}
+@media (pointer: coarse) {
+  .collect-delivery :is(button, summary) {
+    min-height: 44px;
+  }
+}

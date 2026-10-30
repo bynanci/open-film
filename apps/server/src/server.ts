@@ -52,6 +52,7 @@ import {
   type ProjectVersionCreateInput,
   type ProjectVersionRestoreInput,
   type CollectPlanInput,
+  type CollectCoveragePlanInput,
   type CollectMediaCreateInput,
   type SourceSelectionInput,
 } from "@openfilm/application";
@@ -2655,6 +2656,7 @@ export async function startServer(options: ServerOptions = {}) {
           method === "POST" &&
           [
             "/api/collect/plan",
+            "/api/collect/coverage",
             "/api/collect/create",
             "/api/collect/verify",
           ].includes(route)
@@ -2680,6 +2682,22 @@ export async function startServer(options: ServerOptions = {}) {
           response.once("close", disconnected);
           try {
             const data = await body(request);
+            if (route === "/api/collect/coverage") {
+              keys(data, [
+                "projectId",
+                "scope",
+                "compositionId",
+                "rightsDeclarations",
+                "delivery",
+                "expectedRevision",
+              ]);
+              const review = await application.collectMedia.coverage(
+                data as unknown as CollectCoveragePlanInput,
+                controller.signal,
+              );
+              json(response, 200, { review });
+              return;
+            }
             if (route === "/api/collect/plan") {
               keys(data, ["scope", "compositionId", "rightsDeclarations"]);
               const plan = await application.collectMedia.plan(
@@ -2697,6 +2715,10 @@ export async function startServer(options: ServerOptions = {}) {
                 "planId",
                 "baseRevision",
                 "format",
+                "delivery",
+                "coverageId",
+                "projectId",
+                "acceptDelivery",
               ]);
               const format =
                 data.format === "zip"

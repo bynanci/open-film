@@ -1,3 +1,4 @@
+import collectDelivery from "../modules/collect-delivery/zh-TW";
 import proxyStorage from "../modules/proxy-storage/zh-TW";
 import nleHandoff from "../modules/nle-handoff/zh-TW";
 import cutDesk from "../modules/cut-desk/zh-TW";
@@ -15,6 +16,7 @@ import system from "./system-zh-TW";
 import motion from "../modules/motion/zh-TW";
 
 export default {
+  ...collectDelivery,
   ...proxyStorage,
   ...cutDesk,
   ...motion,

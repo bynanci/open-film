@@ -160,6 +160,8 @@ export {
   type CollectMediaCreateInput,
   type CollectMediaCreateResult,
   type CollectMediaPlan,
+  type CollectCoveragePlanInput,
+  type CollectCoverageReview,
   type CollectPlanInput,
   type CollectMediaPlanItem,
   type CollectMediaScope,
@@ -276,6 +278,8 @@ export interface ImportOptions {
 /** MP4/preview policy is a render snapshot, never a saved composition edit. */
 export interface FilmRenderOptions {
   signal?: AbortSignal;
+  /** Internal bound for isolated Collect verification, not a project setting. */
+  maximumOutputBytes?: number;
   jobId?: string;
   onProgress?: (progress: number) => void;
   lookOverride?: FilmLook | null;
@@ -2243,6 +2247,7 @@ export class OpenFilmApplication {
         renderSettings,
         {
           signal: options.signal,
+          maximumOutputBytes: options.maximumOutputBytes,
           project: projectEvidence,
           lookOverride,
           quality,
