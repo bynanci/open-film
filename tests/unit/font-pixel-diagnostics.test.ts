@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   syntheticFontPixelScope,
-  retainSyntheticFontPixelFailure,
+  retainSyntheticFontPixelEvidence,
   rgbPixelDifference,
 } from "../helpers/font-pixel-diagnostics.js";
 
@@ -14,6 +14,25 @@ afterEach(async () => {
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true });
 });
+it.each([true, false])(
+  "retains a %s observation without relabeling its strict comparison",
+  async (comparisonPassed) => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-font-observation-test-"),
+    );
+    directories.push(root);
+    const directory = await retainSyntheticFontPixelEvidence(root, {
+      evidence: { syntheticOnly: true, comparisonPassed },
+      files: { "literal.rgb": Buffer.from([1, 2, 3]) },
+    });
+    expect(
+      JSON.parse(await readFile(join(directory, "evidence.json"), "utf8")),
+    ).toEqual({ syntheticOnly: true, comparisonPassed });
+    expect(await readFile(join(directory, "literal.rgb"))).toEqual(
+      Buffer.from([1, 2, 3]),
+    );
+  },
+);
 
 it("collects canonical Windows fixture outputs and redacts both temporary path spellings", () => {
   const scope = syntheticFontPixelScope(
@@ -108,7 +127,7 @@ it("retains exact synthetic artifacts and structured evidence in a new QA direct
     "delivery.mp4": Buffer.from([0, 0, 0, 24]),
     "delivery-fast-seek.rgb": Buffer.from([1, 2, 3]),
   };
-  const directory = await retainSyntheticFontPixelFailure(root, {
+  const directory = await retainSyntheticFontPixelEvidence(root, {
     evidence: { syntheticOnly: true, comparison: { differentChannels: 1 } },
     files,
   });
@@ -118,7 +137,7 @@ it("retains exact synthetic artifacts and structured evidence in a new QA direct
   expect(
     JSON.parse(await readFile(join(directory, "evidence.json"), "utf8")),
   ).toEqual({ syntheticOnly: true, comparison: { differentChannels: 1 } });
-  const second = await retainSyntheticFontPixelFailure(root, {
+  const second = await retainSyntheticFontPixelEvidence(root, {
     evidence: { syntheticOnly: true },
     files: {},
   });
@@ -132,7 +151,7 @@ it("refuses artifact names that escape the explicit QA directory", async () => {
   const root = await mkdtemp(join(tmpdir(), "openfilm-font-diagnostic-test-"));
   directories.push(root);
   await expect(
-    retainSyntheticFontPixelFailure(root, {
+    retainSyntheticFontPixelEvidence(root, {
       evidence: { syntheticOnly: true },
       files: { "../escaped.txt": Buffer.from("synthetic") },
     }),

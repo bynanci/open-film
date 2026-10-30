@@ -507,3 +507,34 @@ Focused path tests reproduce a Windows temporary short-name/long-name mismatch,
 cover case and slash variants, and preserve rejection of sibling, parent,
 relative and cross-drive outputs. The original decoded-pixel mismatch remains
 unresolved pending another actual pinned Windows run.
+
+### 2026-10-30 — retain passing and failing synthetic pixel observations
+
+Reviewed path correction250b4d6 is integrated ase1ea5e8. Its actual complete
+Verify41097047012 and Windows41097047088 pass, including all original exact
+font-preview/still/MP4 comparisons. This green observation does not establish a
+causal fix for the earlier intermittent pixel mismatch. Passing runs previously
+left no pixel bundle, preventing a later failure from being compared to a known
+passing encoded/PTS/raster reference.
+
+The same opt-in synthetic-only collector now retains each outcome explicitly
+with `comparisonPassed`. Complete RGB/font assertions and original failures are
+preserved; a capture failure after passing comparisons fails the QA-enabled
+test, while an original comparison failure retains priority. No renderer, codec,
+tolerance, frame selection or application code changes. Private paths remain
+redacted under the previously reviewed canonical fixture boundary.
+
+Current checks:8unit cases and2selected actual media cases pass (60othercases
+deselected, not a full current-file run), rootTypeScript, changed ESLint/format
+and whitespace checks pass. An earlier full2file70case run passed before the
+control-flow-only lint correction; its actual source identity is not relabeled.
+The actual passing bundle contains3render records and zero changed channels
+across still, fast-seek, literal frame3 and seek-versus-literal comparisons;
+source hashes are unchanged. A controlled one-byte mutation of only the
+synthetic reviewed expectation exits1, retains `comparisonPassed:false`,
+records exactly1changed channel in all three delivery comparisons and unchanged
+sources. Original test bytes were restored and SHA-256-verified. Negative
+evidence SHA256 `a34b121024594e15a1bbe81f486f623f3d0b099b4a024ebbb0246fe01b6f5208`.
+No controlled fault is committed or enabled in CI. Fresh scoped review and new
+exact-head Windows evidence remain required; this is evidence collection, not a
+claim that the historical mismatch is repaired.

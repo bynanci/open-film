@@ -114,8 +114,8 @@ export function rgbPixelDifference(
   };
 }
 
-/** Called only by the three-font synthetic fixture after an assertion fails. */
-export async function retainSyntheticFontPixelFailure(
+/** Retain one synthetic observation; its explicit comparison result is unchanged. */
+export async function retainSyntheticFontPixelEvidence(
   root: string,
   input: { evidence: Record<string, unknown>; files: Record<string, Buffer> },
 ) {
