@@ -48,6 +48,12 @@ export async function createDesktopFixture(extraPhotos = 6) {
       const after = await Promise.all(originals.map((path) => readFile(path)));
       return after.every((buffer, index) => buffer.equals(before[index]!));
     },
-    cleanup: () => rm(root, { recursive: true, force: true }),
+    cleanup: () =>
+      rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      }),
   };
 }
