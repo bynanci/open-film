@@ -408,3 +408,17 @@ Fresh synthetic source/media/Monitor artifacts and actual current implementation
 SHA-256 receipt are in `/tmp/openfilm-finishing-integration/A-628ecfc/`.
 Earlier candidate receipts remain historical. Full exact-head hosted gates and
 final integration review are coordinator-owned and are not established here.
+
+### Synchronous focal commit fence after integration
+
+The subsequent integrated browser run exposed a resize event-order race: pointer
+release could precede delivery of the resize/ResizeObserver cancellation. The
+isolated focal fix captures window dimensions, the actual overlay rectangle and
+source-session identity, then compares them synchronously before pointer or
+keyboard acceptance. Frozen source mapping and the existing post-await revision
+barrier are retained. Eight deterministic regressions first failed; the four-file
+focused backport batch passes 59 tests, including all 16 overlay cases. Removing
+the source-session guard makes its regression fail; the guard was restored.
+The source/test-only fix was backported from `4b7a497` to this branch. Complete
+hosted gates remain coordinator-owned; earlier stage receipts retain their
+original source identities.
