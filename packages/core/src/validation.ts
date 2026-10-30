@@ -34,6 +34,13 @@ import {
 } from "./graphic-scenes.js";
 import { validateGraphicSceneTemplates } from "./graphic-scene-templates.js";
 import { validateStoryGraph } from "./story-graph.js";
+import {
+  validatePresetSnapshot,
+  validatePresetPlanSource,
+  validatePresetReceipts,
+  projectPresetSnapshots,
+  assertPresetJsonData,
+} from "./presets.js";
 
 export interface ValidationIssue {
   path: string;
@@ -166,6 +173,24 @@ function presentationObject(
 }
 
 function filmLook(value: unknown, path: string): FilmLook {
+  assertPresetJsonData(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    Object.getOwnPropertyDescriptor(value, "version")?.value === 2
+  ) {
+    const data = presentationObject(value, path, [
+      "version",
+      "preset",
+      "strength",
+      "snapshot",
+    ]);
+    if (data.preset !== "local")
+      fail(`${path}.preset`, "expected local preset discriminator");
+    number(data.strength, `${path}.strength`, 0, 1);
+    validatePresetSnapshot(data.snapshot, "film-look");
+    return data as unknown as FilmLook;
+  }
   const data = presentationObject(value, path, [
     "version",
     "preset",
@@ -924,6 +949,12 @@ function story(
   knownAssets?: ReadonlySet<string>,
 ): Story {
   const data = object(value, path);
+  optional(data, "presetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
+  optional(data, "presetPlanSource", path, (value) =>
+    validatePresetPlanSource(value),
+  );
   string(data.id, `${path}.id`);
   string(data.title, `${path}.title`);
   optional(data, "template", path, string);
@@ -1041,6 +1072,9 @@ function composition(
   const data = object(value, path);
   string(data.id, `${path}.id`);
   string(data.storyId, `${path}.storyId`);
+  optional(data, "storyPresetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
   const duration = number(data.duration, `${path}.duration`, 0);
   const tracks = array(data.tracks, `${path}.tracks`);
   ids(tracks, `${path}.tracks`);
@@ -1158,6 +1192,9 @@ function composition(
       });
       optional(clip, "motion", clipPath, photoMotion);
       optional(clip, "titleStyle", clipPath, titleStyle);
+      optional(clip, "titlePresetSnapshot", clipPath, (value) =>
+        validatePresetSnapshot(value, "title"),
+      );
       optional(clip, "audioAutomation", clipPath, (v, p) =>
         audioAutomation(v, p, length),
       );
@@ -1289,6 +1326,9 @@ export function validateProject(
     });
   });
   optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
+  optional(data, "presetApplicationReceipts", path, (value) =>
+    validatePresetReceipts(value, String(data.id)),
+  );
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();
@@ -1309,6 +1349,7 @@ export function validateProject(
     );
     composition(entry, timelinePath, knownAssets, beatIds);
   });
+  projectPresetSnapshots(data as unknown as OpenFilmProject);
   return copyJson(value, path) as OpenFilmProject;
 }
 

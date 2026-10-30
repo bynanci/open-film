@@ -34,6 +34,10 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
   OpenFilmApplication,
+  LocalPresetRegistry,
+  type PresetInstallInput,
+  type PresetRemoveInput,
+  type PresetRecoveryInput,
   TimelineEditor,
   TimelineEditorError,
   parseGpxTrack,
@@ -66,6 +70,8 @@ import type {
 } from "@openfilm/application";
 import {
   validateProject,
+  type PresetApplyInput,
+  type PresetAcceptInput,
   validateFilmLook,
   validateExportProfile,
   timebaseRate,
@@ -660,6 +666,9 @@ export async function startServer(options: ServerOptions = {}) {
     visionSampleProviders: options.visionSampleProviders,
     proxyGenerator: options.proxyGenerator,
   };
+  const presetRegistry = new LocalPresetRegistry(
+    runtimeOptions.userDataDirectory,
+  );
   const configure = (application: OpenFilmApplication) => {
     if (options.transcriptionProvider)
       application.intelligence.registerTranscriptionProvider(
@@ -1039,6 +1048,96 @@ export async function startServer(options: ServerOptions = {}) {
         };
         if (method === "GET" && route === "/api/health") {
           json(response, 200, { ok: true });
+          return;
+        }
+        if (method === "GET" && route === "/api/presets") {
+          json(response, 200, presetRegistry.list());
+          return;
+        }
+        if (
+          method === "POST" &&
+          [
+            "/api/presets/import/review",
+            "/api/presets/import/accept",
+            "/api/presets/remove",
+            "/api/presets/recovery/review",
+            "/api/presets/recovery/accept",
+            "/api/presets/apply/review",
+            "/api/presets/apply/accept",
+          ].includes(route)
+        ) {
+          const data = await body(request);
+          const controller = new AbortController();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          if (response.destroyed) controller.abort();
+          try {
+            controller.signal.throwIfAborted();
+            if (route === "/api/presets/import/review") {
+              keys(data, ["document"]);
+              json(
+                response,
+                200,
+                presetRegistry.reviewImport(text(data, "document")),
+              );
+            } else if (route === "/api/presets/import/accept") {
+              json(
+                response,
+                200,
+                await presetRegistry.install(
+                  data as unknown as PresetInstallInput,
+                  controller.signal,
+                ),
+              );
+            } else if (route === "/api/presets/remove") {
+              json(
+                response,
+                200,
+                await presetRegistry.remove(
+                  data as unknown as PresetRemoveInput,
+                  controller.signal,
+                ),
+              );
+            } else if (route === "/api/presets/recovery/review") {
+              keys(data, []);
+              json(response, 200, presetRegistry.reviewRecovery());
+            } else if (route === "/api/presets/recovery/accept") {
+              json(
+                response,
+                200,
+                await presetRegistry.recover(
+                  data as unknown as PresetRecoveryInput,
+                  controller.signal,
+                ),
+              );
+            } else {
+              const application = current(),
+                editor = editorFor(application);
+              if (route === "/api/presets/apply/review")
+                json(
+                  response,
+                  200,
+                  application.presets.review(
+                    data as unknown as PresetApplyInput,
+                    editor,
+                  ),
+                );
+              else
+                json(
+                  response,
+                  200,
+                  await application.presets.accept(
+                    data as unknown as PresetAcceptInput,
+                    editor,
+                    controller.signal,
+                  ),
+                );
+            }
+          } finally {
+            response.off("close", disconnected);
+          }
           return;
         }
         if (method === "GET" && route === "/api/workspace") {
@@ -5291,7 +5390,7 @@ export async function startServer(options: ServerOptions = {}) {
         if (storyGraphMatch) {
           const storyId = decodeURIComponent(storyGraphMatch[1]!);
           if (method === "GET") {
-            const graph = application.storyGraph.getGraph(storyId);
+            const graph = application.storyGraph.previewGraph(storyId);
             json(response, 200, { graph });
             return;
           }

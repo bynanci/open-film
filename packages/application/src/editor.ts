@@ -15,6 +15,10 @@ import {
   validateAudioAutomation,
   validateFilmLook,
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  type PresetAcceptInput,
+  type PresetApplicationReceipt,
+  type PresetSelection,
   MAX_SCENE_DIRECTION_RECEIPTS,
   isCaptionTextValid,
   validateGraphicScenes,
@@ -43,6 +47,7 @@ import {
   type TimelineCommand,
 } from "@openfilm/solver";
 import type { OpenFilmApplication } from "./index.js";
+import { validatePresetAcceptance, type PresetAcceptance } from "./presets.js";
 import type {
   DirectionAcceptanceInput,
   DirectionReviewPlan,
@@ -277,8 +282,11 @@ function command(value: unknown, index: number): TimelineCommand {
         "motion",
         "title",
         "titleStyle",
+        "titlePresetSnapshot",
         "titleRuns",
       ];
+      if (data.titlePresetSnapshot != null)
+        validatePresetSnapshot(data.titlePresetSnapshot, "title");
       fields.push(...presentationFields);
       if (!presentationFields.some((field) => Object.hasOwn(data, field)))
         invalid(path, "provide a presentation field to change");
@@ -759,6 +767,20 @@ export class TimelineEditor {
         `Timeline story not found: ${composition.storyId}`,
         404,
       );
+    const assets = this.documentAssets({ composition, story });
+    const revision = revisionFor({ composition, story }, assets);
+    const history = this.histories.get(compositionId);
+    return structuredClone({
+      composition,
+      story,
+      assets,
+      revision,
+      canUndo: history?.revision === revision && history.undo.length > 0,
+      canRedo: history?.revision === revision && history.redo.length > 0,
+    });
+  }
+
+  private documentAssets({ composition, story }: EditorDocument): MediaAsset[] {
     const ids = new Set([
       ...graphicSceneAssetIds(composition.graphicScenes ?? []),
       ...composition.tracks
@@ -792,16 +814,11 @@ export class TimelineEditor {
         );
       return asset;
     });
-    const revision = revisionFor({ composition, story }, assets);
-    const history = this.histories.get(compositionId);
-    return structuredClone({
-      composition,
-      story,
-      assets,
-      revision,
-      canUndo: history?.revision === revision && history.undo.length > 0,
-      canRedo: history?.revision === revision && history.redo.length > 0,
-    });
+    return assets;
+  }
+
+  revisionForDocument(document: EditorDocument): string {
+    return revisionFor(document, this.documentAssets(document));
   }
 
   async previewGraphicSceneAgent(
@@ -1432,6 +1449,59 @@ export class TimelineEditor {
     return after;
   }
 
+  async acceptPresetApplication(
+    compositionId: string,
+    value: PresetAcceptInput,
+    signal?: AbortSignal,
+  ): Promise<PresetAcceptance> {
+    const input = validatePresetAcceptance(value);
+    return this.serialize(async () => {
+      signal?.throwIfAborted();
+      const prior = this.application.presets.accepted(input, this);
+      if (prior) return prior;
+      const review = this.application.presets.review(input.request, this);
+      if (
+        input.request.target.kind === "story" ||
+        input.request.target.compositionId !== compositionId ||
+        review.reviewSha256 !== input.reviewSha256 ||
+        !review.document ||
+        review.conflicts.length
+      )
+        throw new ApplicationError(
+          "presets.stale",
+          "The exact preset review changed before acceptance.",
+          409,
+        );
+      const before = this.current(compositionId, input.request.baseRevision);
+      const history = this.history(compositionId, before.revision);
+      const receipt = this.application.presets.receipt(
+        input,
+        review,
+        { storyId: before.story.id, compositionId },
+        revisionFor(review.document, before.assets),
+      );
+      const state = await this.persist(
+        compositionId,
+        before,
+        review.document,
+        {
+          undo: [...history.undo, document(before)].slice(-HISTORY_LIMIT),
+          redo: [],
+        },
+        undefined,
+        receipt,
+        input.request.selection,
+      );
+      return {
+        version: 1,
+        receipt,
+        state,
+        alreadyAccepted: false,
+        result: receipt.result,
+      };
+    });
+  }
+
   async edit(
     compositionId: string,
     input: TimelineEditInput,
@@ -1658,6 +1728,8 @@ export class TimelineEditor {
     next: EditorDocument,
     history: Pick<History, "undo" | "redo">,
     directionReceipt?: SceneDirectionReceipt,
+    presetReceipt?: PresetApplicationReceipt,
+    presetSelection?: PresetSelection,
   ): Promise<TimelineEditorState> {
     if (
       next.composition.id !== compositionId ||
@@ -1672,6 +1744,14 @@ export class TimelineEditor {
     try {
       candidate = validateProject({
         ...previousProject,
+        ...(presetReceipt
+          ? {
+              presetApplicationReceipts: this.application.presets.appendReceipt(
+                previousProject,
+                presetReceipt,
+              ),
+            }
+          : {}),
         ...(directionReceipt
           ? {
               sceneDirectionReceipts: [
@@ -1694,7 +1774,25 @@ export class TimelineEditor {
     }
     this.application.project = candidate;
     try {
-      await this.application.save();
+      if (presetReceipt && presetSelection)
+        this.application.presets.commit(candidate, presetSelection, () => {
+          // The candidate is already staged in application.project. Re-read
+          // catalog editing facts against the captured pre-edit document while
+          // holding the existing project transaction; no source-file I/O here.
+          let currentRevision: string | undefined;
+          try {
+            currentRevision = this.revisionForDocument(document(before));
+          } catch {
+            // A removed source is stale just like changed protection/hash facts.
+          }
+          if (currentRevision !== before.revision)
+            throw new ApplicationError(
+              "presets.stale",
+              "Timeline sources changed before preset publication.",
+              409,
+            );
+        });
+      else await this.application.save();
     } catch (error) {
       // A failure after manifest publication retains the application's old
       // save baseline. Its CAS guard requires reopening; the durable direction

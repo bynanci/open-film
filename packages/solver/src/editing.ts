@@ -2,6 +2,9 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  canonicalPresetJson,
+  type PresetSnapshot,
   validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
@@ -52,6 +55,7 @@ export type TimelineCommand =
       motion?: PhotoMotion | null;
       title?: string | null;
       titleStyle?: TitleStyle | null;
+      titlePresetSnapshot?: PresetSnapshot<"title"> | null;
       titleRuns?: TitleTextRuns | null;
     }
   | {
@@ -1105,6 +1109,7 @@ export function applyTimelineCommand(
         "motion",
         "title",
         "titleStyle",
+        "titlePresetSnapshot",
         "titleRuns",
       ] as const;
       if (!fields.some((key) => Object.hasOwn(command, key)))
@@ -1190,6 +1195,23 @@ export function applyTimelineCommand(
               `Title must be text of at most ${MAX_TITLE_LENGTH} characters.`,
             );
           clip.title = command.title;
+        }
+      }
+      if (command.titlePresetSnapshot !== undefined) {
+        if (command.titlePresetSnapshot === null)
+          delete clip.titlePresetSnapshot;
+        else {
+          const snapshot = validatePresetSnapshot(
+            command.titlePresetSnapshot,
+            "title",
+          );
+          if (
+            !command.titleStyle ||
+            canonicalPresetJson(snapshot.recipe) !==
+              canonicalPresetJson(command.titleStyle)
+          )
+            fail("Preset title style does not match its recipe snapshot.");
+          clip.titlePresetSnapshot = snapshot;
         }
       }
       if (Object.hasOwn(command, "titleRuns")) {

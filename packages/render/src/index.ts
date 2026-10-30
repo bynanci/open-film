@@ -1,3 +1,4 @@
+import { renderPresetSnapshots } from "./preset-integrity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -331,6 +332,7 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    renderPresetSnapshots(composition, options.lookOverride);
     if (
       options.maximumOutputBytes !== undefined &&
       (!Number.isSafeInteger(options.maximumOutputBytes) ||
@@ -597,6 +599,9 @@ export class FFmpegRenderer {
             preset: effective.look.preset,
             strength: effective.look.strength,
             matrix: filmLookMatrix(effective.look),
+            ...(effective.look.version === 2
+              ? { presetSnapshotSha256: effective.look.snapshot.snapshotSha256 }
+              : {}),
           });
         }
       }

@@ -1,3 +1,7 @@
+import {
+  runLocalPresetCommand,
+  runPresetApplicationCommand,
+} from "./presets.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { resolve } from "node:path";
@@ -79,6 +83,10 @@ Usage:
   openfilm scene-plan accept --project <film.openfilm> --plan <preview.json>
   openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> (--clips <clip-id,...> | --clips-json <JSON-array>) [--replace-existing]
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
+  openfilm presets list|review|install|remove|recovery review|recovery accept [--user-data-dir <folder>]
+  openfilm presets review --file <package.openfilm-presets.json>
+  openfilm presets install --file <package.json> --package-sha <sha> --base-revision <sha> --review-sha <sha> --accept-license
+  openfilm presets apply review|accept --project <film.openfilm> --request <request.json> [--review-sha <sha> --request-id <id>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm motion providers|preview|receipt|accept|import|restore|revoke|clear --project <film.openfilm> [--id <candidate-id>]
@@ -157,9 +165,17 @@ function parse(args: string[]) {
     "confirm-crop",
     "preview",
     "accept-delivery",
+    "accept-license",
+    "accept-recovery",
   ]);
   const values = new Set([
     "project",
+    "file",
+    "request",
+    "package-id",
+    "package-version",
+    "package-sha",
+    "review-sha",
     "clip",
     "motion-provider",
     "motion-count",
@@ -516,6 +532,16 @@ async function main() {
       value(options, "user-data-dir"),
     ),
   };
+  if (command === "presets" && positional[1] !== "apply") {
+    print(
+      await runLocalPresetCommand(
+        positional,
+        options,
+        runtimeOptions.userDataDirectory,
+      ),
+    );
+    return;
+  }
   if (command === "create") {
     if (!positional[1]) throw new Error("Specify a new .openfilm directory.");
     const app = await OpenFilmApplication.create(
@@ -556,6 +582,9 @@ async function main() {
     command === "captions" ||
     command === "handoff" ||
     command === "export" ||
+    (command === "presets" &&
+      positional[1] === "apply" &&
+      positional[2] === "review") ||
     ((command === "scene-plan" || command === "direction-review") &&
       positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
@@ -568,6 +597,10 @@ async function main() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
+    if (command === "presets" && positional[1] === "apply") {
+      print(await runPresetApplicationCommand(app, positional, options));
+      return;
+    }
     if (command === "proxy") {
       const projectId = app.project.id;
       const action = positional[1];

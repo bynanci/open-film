@@ -137,14 +137,27 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
-D5B now has a separately reviewable title-finishing candidate over the existing
-measured raster: independent bilingual typography, bounded shadow/stroke/pills,
-per-run font evidence and Collect bindings, and actual Story/Record caption
-preview using the MP4 caption selection. Legacy pixels and canonical text/time
-remain compatible. Focused synthetic MP4, SRT/VTT, recovery and UI evidence is in
-[validation](docs/validation-title-finishing.md); six actual browser cases pass,
-while independent review and exact-head integration remain pending. The existing nested F05 item is
-still authoritative and no stable release is implied.
+D8 now has an unreleased local single-JSON preset candidate on its independent
+branch. Bounded closed recipes, declared license/provenance review, atomic local
+registry operations and embedded immutable look/title/Story snapshots feed
+existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
+155 tests and three Chromium journeys pass; actual strength/seek tests and
+Collect directory/ZIP relocation retain exact decoded pixels after registry and
+fixture-original deletion. Fresh review and parent-coordinated full/hosted
+integration gates remain open. See [guide](docs/local-presets.md) and
+[validation](docs/validation-local-presets.md). Executable plugin discovery and
+loading remain deferred.
+
+D5A and D5B have merged through PR74/75 asf9eaa5d/d5a286e. Strict v2 focal,
+ambient and bounded easing recipes share preparation with output; independent
+bilingual typography, bounded shadow/stroke/pills, per-run font/Collect receipts
+and shared Story/Record native-caption raster preserve the existing owners.
+Independent reviews and complete exact-head gates pass: D5A4758 tests/306 browser
+cases, D5B4819 tests/312 browser cases. The latest merged main also passes
+Verify/Windows/Pages. [Photo validation](docs/validation-photo-film-quality.md)
+and [title validation](docs/validation-title-finishing.md) retain exact identities,
+actual synthetic output and remaining physical-display/NLE gates. Stable remains
+v0.4.0; these merges do not certify a v1 release.
 
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses

@@ -9,11 +9,14 @@ second feature queue.
 
 ## Current verified foundation
 
-Main `e1255b1a8a83260149211d909cca8c1a50948c6b` includes PR69's Windows
-repairs and PR71's isolated complete browser verification. Exact-head Verify,
-Windows recovery and actual Pages deployment pass. Issues66–68 are closed.
-There are4591unit/integration tests and291browser cases at that foundation.
-The waveform increment extends that foundation without another timeline.
+Main `d5a286ed9250872e8eb9b1c3e40adb926f913d34` includes PR69's Windows
+repairs, PR71's isolated complete browser verification, PR72's saved-Sequence
+waveforms, PR73's documentation recovery and PR74/75's photo/title finishing.
+Issues66–68 are closed. The exact D5B candidate passed4819unit/integration tests
+and312browser cases; merged-main Verify41084911055, Windows41084911048 and
+Pages41084911207 all pass. Historical validation receipts retain their original
+source identities. D8, primary color, render QA, User Pins and later owners remain
+separate unmerged candidates until their own exact gates pass.
 
 ## Delivery owners and remaining scope
 

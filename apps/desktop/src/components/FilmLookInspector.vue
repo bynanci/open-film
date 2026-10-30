@@ -6,6 +6,7 @@ import { resolveFilmLook, type Composition, type Clip } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import { useI18n } from "vue-i18n";
 import FilmLookSelect from "./FilmLookSelect.vue";
+import { presetLookLabel } from "../local-presets";
 const props = defineProps<{
   composition: Composition;
   clip: Clip;
@@ -70,7 +71,7 @@ const sceneLook = computed(
     <p v-if="clipEligible" class="film-look-resolved" role="status">
       {{
         t("looks.resolved", {
-          preset: t(`looks.presets.${resolved.look.preset}`),
+          preset: presetLookLabel(resolved.look, (key) => t(key)),
           source: t(`looks.sources.${resolved.source}`),
         })
       }}
