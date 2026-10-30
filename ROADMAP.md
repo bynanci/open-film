@@ -36,8 +36,15 @@ Actual browser Record/WAV capture has zero PCM and seam error at normal play
 and an arbitrary seek; adversarial timing/mix/cache controls reject. The complete
 frozen pre-correction gate passes5436tests. First whole review's bounded handoff
 sample-rounding issue now has native/bake boundary and actual publication
-regressions; final scoped/browser/hosted verification remains open. D3B2 coverage persistence
-remains a separate, unchecked task. See the [guide](docs/audio-policy.md) and
+regressions and passes fresh scoped review. After reviewed Pin integration,
+the first final browser gate exposes a buffered picture-seek/PCM restart loop;
+the narrow tests-first startup correction passes 94 monitor/scheduler/transport
+checks and both unchanged real browser cases at clean `acd8410d` (9.795s), with
+zero PCM/seam error, stale 409 rejection and zero native audio playback. Complete types/build and
+18 official OTIO tests pass on corrected source. D3B1 source implementation is
+complete; the newer startup delta's narrow review and final exact-head hosted
+union gates remain open. D3B2 coverage persistence remains a separate,
+unchecked task. See the [guide](docs/audio-policy.md) and
 [validation](docs/validation-audio-policy.md).
 
 A bounded Phase 1B gesture slice now gives General-mode editors direct

@@ -24,3 +24,20 @@ OfflineAudioContext で検証しています。元ファイル、音声のサン
 
 物理 Windows／macOS、GTK のネイティブツールチェーン、実機音声遅延、人による聴取品質、
 実際の NLE QA は未実施です。D3B2 coverage 永続化も未完了のままです。
+
+## 最終統合と Record 開始の修正 — 2026-10-30
+
+Pin `c260deaa` 統合後の `a0e1f34b` では二件中一件が失敗しました。
+実 PCM は一致しましたが、バッファー済み映像の補正 seek が音声を繰り返し再準備しました。
+この RED は保持しています。補正対象が実際にバッファー内にある native `waiting` だけで
+主音声時計を維持し、未取得素材／`stalled`／エラーの待機は保持しました。
+新しい三件を含む monitor／scheduler／transport 94 件、型検証、lint、build、公式 OTIO 18 件が合格しました。
+
+修正後の clean `acd8410d56d1a7ee368ea0494354ea8fbc9b316c` で元の二つの browser ケースが
+9.795 秒で合格しました。skip／retry／flaky はありません。開始 0／53129 の PCM 差と境界差は
+ともに 0、各六ノード、Undo 後は 409、native audio の再生呼び出しは 0 です。
+両ポート 4310／1420 は終了後に閉じています。
+
+完全な 5436 件の旧結果は `d5d75107` のみの証拠です。新しい開始修正の限定レビューと
+最終 hosted CI は未完了です。物理端末、聴取、Resolve、native installer の手動 gate と
+D3B2 の永続 coverage は未完了のままです。公開 stable は v0.4.0 です。

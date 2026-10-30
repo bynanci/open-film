@@ -64,8 +64,15 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         reject. The complete frozen pre-correction candidate passes5436/5436
         tests in408files; first whole review found one rounded handoff-endpoint
         mismatch, now covered by native/bake neighbor and real-publication tests.
-        Final scoped review/browser/hosted gates remain open; this checkbox stays
-        unchecked. See the [guide](docs/audio-policy.md) and
+        Independent scoped handoff correction review passes at `dfd0ded1`.
+        Reviewed Pin `c260deaa` integration passes 81 focused joins; its first final
+        browser gate exposed a buffered picture-seek/PCM restart loop (1/2RED).
+        A tests-first startup correction passes 94 monitor/scheduler/transport
+        checks and the unchanged two-case real browser gate at clean `acd8410d` (9.795s,
+        zero PCM/seam error, stale 409 rejection, zero native audio playback); types/build and
+        18 official OTIO tests pass. Source implementation is complete. Narrow startup
+        review and final exact-head hosted union gates remain open; this
+        checkbox stays unchecked. See the [guide](docs/audio-policy.md) and
         [measured evidence](docs/validation-audio-policy.md).
   - [x] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
         quota/eviction, rebuild and health UI through the existing generator.

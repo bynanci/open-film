@@ -4,8 +4,9 @@ Date: 2026-10-30. Approved design `8c9ad31`; implementation checkpoints
 `e360f38` (private PCM), `f012000` (Record/Inspector), `9d4802b` (packet gaps),
 `03ce867` (monotonic capability floor), `a4522f7` (retention), `5f83e69`
 (canonical identity tempo), `7bd38e1` (actual browser capture and generation
-fences). Pin dependency `094e4dc` is integrated separately; its fresh review is
-coordinator-owned and must not be inferred from integration.
+fences). Reviewed Pin dependency `c260deaa` is integrated; its separate review
+and gate record remain in [User Pin validation](validation-user-pins.md). The
+final audio-specific parent joins and browser results are recorded below.
 
 Toolchain used here: Node 24.19.0, pnpm 11.19.0, FFmpeg/FFprobe 7.1.5 Debian,
 Playwright 1.63.0 with Chromium 151.0.7922.173 (`/usr/bin/chromium`). All sources are local synthetic files. No
@@ -232,3 +233,64 @@ source hashes/bounds, missing-URL rejection and the synthetic relocation gate.
 Actual Resolve import and physical workstation validation remain unverified.
 The final corrected commit still requires fresh scoped review and hosted gates;
 the earlier 5436-test full result is kept bound to its exact original SHA.
+
+## Final Pin integration and Record startup correction — 2026-10-30
+
+The reviewed Pin parent `c260deaa502ccb2a0f76e64bdb334f381ea45803`
+merged without conflicts at clean `a0e1f34b0f4aa038d5bcb7aaa860b18da2d2b6af`.
+This joins the reviewed PrimaryColor reactive-value detachment, existing Pin
+browser fixture updates and reconciled main documentation; it changes no audio
+DSP. On that candidate, six affected-join files pass **81/81** tests. Full
+TypeScript/Vue, lint, i18n (2951 keys), documentation mirrors (136) and format
+checks pass.
+
+The first final browser gate at that exact clean merge is retained as **RED**:
+**1 passed, 1 failed in 13.813s**. Actual OfflineAudioContext PCM already matches
+at zero error, but production Record's first Play remains in preparing/buffering
+instead of reaching playing within the existing 5-second assertion. The trace
+shows 15 successful preparation calls with progressively advancing PCM starts.
+A buffered picture correction seeks to the current sound position; native
+`waiting` incorrectly retires the master PCM clock, causing a preparation and
+lookahead cycle. A later instrumented diagnostic passes once and is retained
+only as diagnostic evidence, not as a replacement green gate.
+
+Three native-event regressions first reproduce that incorrect buffered hold
+while preserving the existing unbuffered and stalled-source holds. The narrow
+correction tracks the exact target of a PCM-driven picture seek. Only native
+`waiting` while seeking that already-buffered target retains the master clock;
+cold/unbuffered media, native `stalled`, decode errors and explicit operations
+keep their existing hold path. The half-source-frame resync threshold, DSP,
+sample clocks, scheduling lookahead, assertions, retries and timeouts are
+unchanged. Complete monitor/scheduler/transport coverage passes **94/94 tests**
+in three files, with zero skips. Full TypeScript/Vue, scoped ESLint, the
+production build and all **18 official OTIO 0.18.1** interchange tests pass on
+the corrected source. The existing build chunk-size warning remains visible.
+
+The unchanged two-case browser gate then passes at clean
+**`acd8410d56d1a7ee368ea0494354ea8fbc9b316c`**:
+
+| Result     | Actual measurement                                                                                                                                                                 |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run        | 2/2 passed, 9.795s, zero skipped, retried or flaky cases; JSON metadata identifies the exact clean candidate.                                                                      |
+| Actual PCM | Starts 0 and 53129 each schedule six contiguous bounded nodes; maximum absolute and seam errors are both 0 against the independent rendered WAV, retaining the strict 2/2²³ bound. |
+| Record     | First Play, pause, seek, interrupted preparation, Undo and reopen pass; old PCM after Undo returns 409 and native audio-element play calls remain 0.                               |
+| Source     | Synthetic source hashes are checked unchanged after each case; no private media or provider is used.                                                                               |
+| Teardown   | Both 4310 and 1420 are closed before releasing the exclusive browser lease.                                                                                                        |
+
+The final PCM attachment SHA-256 is
+`06476a5377d8cffbcb257853de1895bdc8aa550d67fa41656ddf0f0ed4ca6ca8`;
+the Record generation-guard attachment SHA-256 is
+`6238bd1b1ae4cc8ef1558aca9b991d700a4b31b70b4836f3dcc3576f6c237528`.
+The 18016-sample controlled OfflineAudioContext start remains an offline schedule
+measurement, not physical latency.
+
+The first whole-feature review's sole canonical handoff finding is resolved;
+the independent fresh scoped correction review passes at `dfd0ded1`. The newer
+Record startup delta still requires its own narrow independent review and the
+final exact-head hosted union gates. The earlier **5436/5436** complete local
+result belongs only to `d5d75107`, before both corrections; it is not relabeled
+as a complete run of this final source. D3B1 source implementation is complete,
+but merge/CI remains open. D3B2 durable coverage records remain a separate task.
+Physical Windows/macOS audio/keyboard/display, human listening, real Resolve/NLE
+and native-installer workstation gates remain unverified; published stable
+remains v0.4.0.
