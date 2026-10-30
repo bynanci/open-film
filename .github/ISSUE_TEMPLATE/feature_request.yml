@@ -1,0 +1,47 @@
+name: Feature request
+description: Explain a user problem and the outcome that would help.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Describe the problem and constraints first. OpenFilm prioritizes local
+        ownership, explicit review and non-destructive editing.
+  - type: dropdown
+    id: language
+    attributes:
+      label: Preferred language
+      options:
+        - English
+        - 繁體中文
+        - 日本語
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What task is difficult today, and who encounters it?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior without prescribing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and trade-offs
+      description: Include offline use, privacy, media ownership, compatibility or accessibility needs.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current workaround or alternatives
+    validations:
+      required: false

@@ -10,10 +10,11 @@ OpenFilm の現在の実装との比較を記録します。研究メモは、�
 
 ## 研究メモ
 
-- [Gemini 研究の整理：OpenFilm ロードマップの参考（2026-10）](2026-10-gemini-roadmap-synthesis.md)
+- [Gemini 研究の整理：OpenFilm ロードマップの参考（2026-10）](2026-10-gemini-roadmap-synthesis.ja.md)
+  ([English](2026-10-gemini-roadmap-synthesis.en.md) · [繁體中文](2026-10-gemini-roadmap-synthesis.md))
   — 二つの研究報告を、main の候補範囲、Visual QA、PhotoDepth、OTIO/NLE、
   プラットフォーム検証と比較します。引用論文の適用範囲と、検証が必要な技術的仮説を
-  明示しています。元のメモは繁体字中国語です。
+  明示しています。
 
 ## 研究を追加する際の方針
 

@@ -6,7 +6,7 @@
 
 ## 研究筆記
 
-- [Gemini 分享研究彙整：OpenFilm roadmap 參考（2026-10）](2026-10-gemini-roadmap-synthesis.md) — 整理兩份 OpenFilm 研究報告，對照 main 的候選規模、Visual QA、PhotoDepth、OTIO/NLE 與跨平台驗證現況；標出外部論文的適用範圍和仍待查證的技術假設。
+- [Gemini 分享研究彙整：OpenFilm roadmap 參考（2026-10）](2026-10-gemini-roadmap-synthesis.md)（[English](2026-10-gemini-roadmap-synthesis.en.md) · [日本語](2026-10-gemini-roadmap-synthesis.ja.md)）— 整理兩份 OpenFilm 研究報告，對照 main 的候選規模、Visual QA、PhotoDepth、OTIO/NLE 與跨平台驗證現況；標出外部論文的適用範圍和仍待查證的技術假設。
 
 ## 後續整理方式
 
