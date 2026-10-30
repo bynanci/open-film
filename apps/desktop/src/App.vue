@@ -55,6 +55,7 @@ import type {
   ProjectTimebaseV1,
 } from "@openfilm/core";
 import { sameRateDropFrameChoice } from "./projectTimebase";
+import { latestActivityJob } from "./activity-jobs";
 import {
   api,
   post,
@@ -359,7 +360,7 @@ const projectSwitchBlocked = computed(
       jobBlocksProjectSwitch(job, analysisRecovery.value[job.id]),
     ),
 );
-const recentJob = computed(() => jobs.value[0]);
+const recentJob = computed(() => latestActivityJob(jobs.value));
 const cancellingJobs = ref<Record<string, boolean>>({});
 const renderCancellationRequested = ref<string | null>(null);
 const storyCreateOpen = ref(false);

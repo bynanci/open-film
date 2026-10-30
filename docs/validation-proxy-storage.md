@@ -73,6 +73,27 @@ handoff. No assertion was removed or weakened. The initial full run exposed
 these boundaries and an unselected Python environment; it is not reported as a
 pass. The final run uses the existing isolated OpenTimelineIO0.18.1 environment.
 
+## Full-workflow repair and retained FFmpeg proof
+
+Full browser validation additionally found completed background proxy children
+masking the foreground import completion. The Activity selector now preserves
+the latest foreground completion, with a standalone proxy fallback. Two unit
+regressions and **10/10** real Desktop/global-language/proxy browser workflows
+pass; no existing assertion was weakened.
+
+A retained two-second synthetic moving-pattern/tone proof has **24 decoded video
+frames** and **96256 decoded 48 kHz mono audio samples**. Before and after preview
+removal, the actual original-render MP4 SHA-256 is identical:
+`fcb4d013aac58932e72a4cb4141beb530e1ac61e11ca86f83429ef1766ed93d3`.
+Decoded RGB and PCM hashes, source hash, canonical asset and Composition also
+match. Source SHA-256:
+`e824fc09c9861620cc48ec08b17e7d0324fd445c4c23ecb11f90cbd0f20c4f9f`.
+
+Local `pnpm test` and `pnpm test:e2e` must run sequentially: the existing native
+benchmark fixtures and the browser fixture both own port4310. A concurrent run
+failed that native fixture; the unchanged isolated protocol test passes. The
+failed/aborted broad runs are retained and are not claimed as passing evidence.
+
 ## Full-gate results
 
 Pending final review and full available local/GitHub gates. No full-gate,
