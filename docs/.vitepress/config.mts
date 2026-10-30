@@ -64,6 +64,7 @@ const editing = keepExisting([
   guide("PhotoDepth", "en/photo-depth"),
   guide("原生文字控制", "en/native-text-controls"),
   guide("音訊品質", "audio-quality"),
+  guide("獨立聲音時間", "audio-policy"),
   guide("字幕", "en/composition-captions"),
   guide("逐字稿編輯", "en/transcript-editing"),
   guide("可審閱建議", "en/review-suggestions"),
@@ -146,6 +147,7 @@ const englishAdditionalDocs = keepExisting([
   guide("Precision editing", "en/precision-editing"),
   guide("Source markers and snapping", "en/markers-and-snapping"),
   guide("Audio quality", "en/audio-quality"),
+  guide("Independent sound timing", "en/audio-policy"),
   guide("MP4 compression quality", "en/export-quality"),
 ]);
 const japaneseEditing = keepExisting([
@@ -153,6 +155,7 @@ const japaneseEditing = keepExisting([
   guide("精密編集", "ja/precision-editing"),
   guide("ソースマーカーとスナップ", "ja/markers-and-snapping"),
   guide("確認可能な音声品質", "ja/audio-quality"),
+  guide("独立した音声タイミング", "ja/audio-policy"),
 ]);
 const japaneseExportDocs = keepExisting([
   guide("MP4 圧縮品質", "ja/export-quality"),
@@ -198,6 +201,7 @@ const localizedSlugs = new Set([
   "markers-and-snapping.md",
   "export-quality.md",
   "audio-quality.md",
+  "audio-policy.md",
 ]);
 const sectionNames: Record<string, Record<string, string>> = {
   root: {
