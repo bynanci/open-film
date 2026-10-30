@@ -42,7 +42,7 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 ## Windows workflow recovery — issues66–68
 
 Scope: [issue plan](docs/superpowers/plans/2026-10-30-windows-issue-recovery.md)
-and [validation](docs/validation-windows-issue-recovery.md). Stacked on PR65;
+and [validation](docs/validation-windows-issue-recovery.md). Based on merged main;
 these narrow regressions do not close physical workstation/installer gates.
 
 - [x] #66: replace retired FFmpeg frame-sync option; real PNG/crop/MP4 and
@@ -55,6 +55,20 @@ these narrow regressions do not close physical workstation/installer gates.
 - [ ] Fresh whole-branch review, full available gates and actual Windows/FFmpeg9
       browser evidence before merge/issue closure.
 - [ ] Manual: exact candidate rerun on Windows10/popopc; broader issue7 gates.
+
+## CI contract/media separation
+
+Scope: [design](docs/superpowers/specs/2026-10-30-ci-contract-media-design.md),
+[plan](docs/superpowers/plans/2026-10-30-ci-contract-media.md), and
+[validation](docs/validation-ci-contract-media.md). Independent of physical QA.
+
+- [x] Split pure core/solver/story/metadata/events and heavy-by-default test
+      discovery; reject omitted, overlapping, duplicated, escaped or empty inventories.
+- [x] Preserve all format/locales/lint/types/build/interchange/CLI/browser gates and
+      unchanged native job; keep the legacy check mandatory for both lane successes.
+- [x] Full evidence/review/hosted gates; PR70 merged as8de63ae after1124contract
+      +3427media tests,291browser,23Rust,2archive,18interchange and security checks.
+- [ ] Manual hardware/NLE/installer observations remain with their existing owners.
 
 ## In progress — Multi-source import and common analysis
 
