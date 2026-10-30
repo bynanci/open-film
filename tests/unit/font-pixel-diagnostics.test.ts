@@ -4,6 +4,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  syntheticFontPixelScope,
   retainSyntheticFontPixelFailure,
   rgbPixelDifference,
 } from "../helpers/font-pixel-diagnostics.js";
@@ -13,6 +14,63 @@ afterEach(async () => {
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true });
 });
+
+it("collects canonical Windows fixture outputs and redacts both temporary path spellings", () => {
+  const scope = syntheticFontPixelScope(
+    "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\openfilm-fixture",
+    "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\openfilm-fixture",
+    "win32",
+  );
+  for (const [output, redacted] of [
+    [
+      "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\openfilm-fixture\\project\\render.mp4",
+      "<synthetic-fixture>\\project\\render.mp4",
+    ],
+    [
+      "c:/users/RUNNERADMIN/AppData/Local/Temp/openfilm-fixture/project/render.mp4",
+      "<synthetic-fixture>/project/render.mp4",
+    ],
+  ] as const) {
+    expect(scope.output(output)).toBe(output);
+    expect(scope.redact(output)).toBe(redacted);
+  }
+  expect(
+    scope.redact(
+      "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\openfilm-fixture\\synthetic.png",
+    ),
+  ).toBe("<synthetic-fixture>\\synthetic.png");
+});
+
+it.each([
+  ["posix", "/tmp/fixture", "/tmp/fixture/render.mp4"],
+  ["win32", "C:\\Temp\\fixture", "c:/temp/fixture/render.mp4"],
+] as const)(
+  "keeps %s output collection inside its owned fixture",
+  (platform, root, output) => {
+    const scope = syntheticFontPixelScope(root, root, platform);
+    expect(scope.output(output)).toBe(output);
+    const rejected =
+      platform === "win32"
+        ? [
+            root,
+            "C:\\Temp\\fixture-other\\render.mp4",
+            "C:\\Temp\\fixture\\..\\other\\render.mp4",
+            "D:\\Temp\\fixture\\render.mp4",
+            "render.mp4",
+          ]
+        : [
+            root,
+            "/tmp/fixture-other/render.mp4",
+            "/tmp/fixture/../other/render.mp4",
+            "render.mp4",
+          ];
+    for (const external of rejected)
+      expect(() => scope.output(external)).toThrow(/external output/u);
+    expect(scope.redact(root + "-other/render.mp4")).toBe(
+      root + "-other/render.mp4",
+    );
+  },
+);
 
 it("records every changed RGB channel and its pixel without an error allowance", () => {
   const expected = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);

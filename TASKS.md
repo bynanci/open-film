@@ -31,9 +31,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
   - [x] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
-        Implementation, independent review correction, 77 focused regressions
-        and 17 related browser cases are complete. Exact-candidate gates are
-        required before merging [PR72](https://github.com/bynanci/open-film/pull/72). See the
+        Implementation and independent review corrections are complete.
+        [PR72](https://github.com/bynanci/open-film/pull/72) merged as1005d38
+        after4668 unit/integration tests,298 browser cases and exact-head gates;
+        its merged-main Verify/Windows/Pages gates also pass. See the
         [guide](docs/sequence-waveforms.md) and
         [decoded MP4 evidence](docs/validation-sequence-waveforms.md).
   - [ ] D3B1: after an edit/audio compatibility design, add the versioned
@@ -550,22 +551,21 @@ not retroactively rename completed project capabilities.
 - [ ] **M6 / F05 + F06 + F10 + F13 — Photo/audio/output review.** Add decoded
       audio diagnostics and repeatable output evidence; keep hardware, real media,
       4K and NLE finishing as separately recorded manual gates.
-  - [ ] D5A: add focal interaction, ambient fill and a separately versioned
-        bounded custom-easing contract with legacy reopen and output parity.
-        Candidate implementation now uses strict v2 recipes, one revision-pinned
-        focal transaction, verified raw ambient preparation and shared bounded
-        easing. Focused synthetic Monitor/MP4/hash/seek evidence is recorded in
-        [the validation](docs/validation-photo-film-quality.md#d5a-photo-finishing-candidate);
-        fresh whole-branch review and the complete exact-head gate remain open.
-  - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
-        with legacy reopen, missing-font evidence and output parity.
-        Product candidate now implements canonical bilingual runs, measured
-        shadow/stroke/per-line pills, per-run font receipts/Collect bindings and
-        Story/Record caption raster parity through existing owners. Focused
-        contracts, recovery, PNG/HTTP and actual pinned-font MP4/SRT/VTT checks
-        and six actual browser cases pass; independent review and exact-head
-        gates remain.
-        [D5B validation](docs/validation-title-finishing.md).
+  - [x] D5A: deliver focal interaction, strict v2 ambient/custom-easing recipes,
+        one revision-bound focal transaction and shared bounded preparation.
+        [PR74](https://github.com/bynanci/open-film/pull/74) merged asf9eaa5d
+        after independent whole/scoped reviews,4758 unit/integration tests,
+        306 browser cases and exact-head hosted gates. Synthetic seek/MP4/hash
+        evidence and physical-display limits remain in
+        [validation](docs/validation-photo-film-quality.md).
+  - [x] D5B: deliver canonical independent bilingual runs, measured
+        shadow/stroke/pills, per-run font/Collect receipts and shared
+        Story/Record native-caption raster parity.
+        [PR75](https://github.com/bynanci/open-film/pull/75) merged asd5a286e
+        after independent whole/scoped reviews,4819 unit/integration tests,
+        312 browser cases and exact-head hosted gates. Actual MP4/SRT/VTT,
+        recovery and physical-workstation limits are in
+        [validation](docs/validation-title-finishing.md).
   - [ ] D7A: complete reproducible cross-platform render QA.
     - [x] Share licensed immutable font/tool provenance, explicit test-font root,
           exact metric units/comparators and real decoded failure controls;
