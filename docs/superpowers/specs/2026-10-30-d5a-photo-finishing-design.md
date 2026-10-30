@@ -1,7 +1,8 @@
 # D5A — Photo finishing
 
-Status: proposed interfaces for coordinator approval; product implementation has
-not started. Base: `e1255b1a8a83260149211d909cca8c1a50948c6b` (PR #69).
+Status: interfaces approved by the coordinator on 2026-10-30; implementation
+candidate awaits whole-branch review and the complete exact-head gate.
+Base: `e1255b1a8a83260149211d909cca8c1a50948c6b` (PR #69).
 Owner: the existing nested D5A/F05 item in `TASKS.md`; this document adds no queue.
 
 ## Outcome and existing owners
@@ -52,8 +53,8 @@ Inspection found these integration constraints:
    existing framing, locks and commands to another owner and duplicate the photo
    contract. It does not fit this milestone.
 
-Recommendation and all defaults below are builder proposals, pending coordinator
-approval. No new dependencies, network service, second timeline, executable
+The coordinator approved this recommendation and these bounded defaults before
+implementation. No new dependencies, network service, second timeline, executable
 project expressions, arbitrary HTML/SVG, or writes to original media are needed.
 
 ## Portable contracts
@@ -449,9 +450,16 @@ the acceptance evidence above is required future work, not a completion claim.
   exact-head acceptance. Exporter tests exercise existing metadata/rejection
   owners; production exporter edits only if evidence shows missing warnings.
 
+Implementation rulings: deduplicated requests also have a 32-waiter cap per key;
+black layout separators are masked outside the photographic color group but
+inside motion/static transforms; the exact direct-image DOM remains for v1
+while only ambient layouts get a grouped wrapper. Keyboard blur follows the
+specified cancellation rule, rather than saving an unfinished key burst.
+
 Builder may choose internal helper names, SVG curve styling and test fixture
 organization within these contracts. Changing portable versions/bounds,
 processing order, pin timing, source ownership, fallback semantics or declared
 metric thresholds requires coordinator review. Execution uses the user's
-already selected subagent-driven workflow; no further agents or product edits
-are part of this design-only assignment.
+already selected subagent-driven workflow. This assigned worker implements
+without further delegation; the coordinator owns the fresh final review and
+complete exact-head gate.

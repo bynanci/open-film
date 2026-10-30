@@ -261,3 +261,91 @@ private-film aesthetics, human audio listening or actual Resolve QA.
   projection/playback hardware. No user image or attachment is a public fixture.
 - Windows native operation, hardware/camera sources and real Resolve finishing
   remain separate workstation gates.
+
+## D5A photo finishing candidate
+
+On 2026-10-30, the approved D5A implementation was validated from base
+`e1255b1a8a83260149211d909cca8c1a50948c6b`. Product commits are `feabe3b`
+(portable variants/math), `9faeb5c` (verified raw ambient/render), `a502e8d`
+(preview/transaction fencing) and `c225259` (focal UI/compatibility fixes).
+This is candidate evidence; fresh whole-branch review and the complete
+exact-head gate remain coordinator-owned before merge. The existing D5A task
+remains open for those gates.
+
+| Focused check                                                                           | Result                                                           |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Core/solver/application/HTTP/UI/export regression batch                                 | 16 files / 294 tests passed                                      |
+| Actual renderer/easing/ambient/photo quality/capability                                 | 4 files / 31 tests passed                                        |
+| Existing real PhotoDepth fallback/legacy plus new v2 fidelity handoff                   | 2 selected real-media cases passed                               |
+| New photo finishing plus existing photo quality/Film Looks/Record Monitor browser files | 37 tests passed in 2.5 minutes                                   |
+| TypeScript and Vue type checking                                                        | Passed                                                           |
+| UI localization                                                                         | 2,678 semantic keys match in en-US/zh-TW/ja-JP                   |
+| Scoped lint                                                                             | 38 changed TypeScript/Vue files, zero warnings                   |
+| Documentation locales                                                                   | 10 README locale families / 124 English reference mirrors passed |
+
+No full Vitest, native/benchmark or uncoordinated browser run was performed.
+The browser run used the coordinator's exclusive 4310/1420 slot, exited 0 at
+session 90055, and both listeners were confirmed stopped before release.
+Local tools were Node 24.19.0, pnpm 11.19.0, FFmpeg 7.1.5 and Chromium
+151.0.7922.173. FFmpeg 6.1 and other OS/native behavior still require their
+exact-head CI gates.
+
+The renderer produced a real 6.000-second, 320×180, 30 fps / 180-frame H.264
+MP4. Frame times were `0`, `90/30` and `179/30`; the last sample is not the
+excluded six-second duration endpoint. Actual Monitor screenshots were taken
+from the existing component at 320×180 CSS pixels and an integer viewport
+position, with no resampling. Independently measured visible regions returned:
+
+| Measurement                                    | Observed             | Declared limit |
+| ---------------------------------------------- | -------------------- | -------------- |
+| Ambient mean absolute RGB error                | 1.6618–1.7273 levels | ≤12            |
+| Sharp foreground mean absolute RGB error       | 2.4146–3.3723 levels | ≤12            |
+| Monitor/decoded foreground landmark difference | 0 pixels             | ≤1.5 px        |
+
+Both Monitor pixels and decoded MP4 pixels repeated exactly at repeated indexes
+in seek order `0,90,179,35,140,179,0,90`. Deliberately removing fill, applying dim
+twice, applying color twice, or holding the wrong curve position triggered the
+corresponding region/channel/landmark failure. A separate actual FFmpeg
+perspective test compared six curves × 257 samples, including endpoint-flat
+and exponent-form handles, with the shared fixed-24-step evaluator; maximum
+printed error was below `5.1e-7`, FFmpeg's six-decimal print resolution.
+
+The generated source SHA-256 before and after all operations was
+`9ee5b23528b9506138678700a32dad194ef01bd27f61193ca3a27b152a1affb0`.
+It matches the renderer source receipts. The raw ambient PNG hash was
+`cf4f2d025679b349a6add7d51680a46a0bffddcea335a9400545f3ab08868e4f`.
+The ambient/custom-motion MP4 without a Look was
+`ca95dc013ecd7ee9920fc649892391f0da127dc9438c273c319bb0cc83708a38`;
+the Monitor parity fixture with its one Retro Look was
+`a14f9ffe1a8cc632e803957932ce73e8e287dd6327342a94700d001b0d10743e`.
+
+Generated originals, both MP4s/sidecars, raw fill, Monitor/decoded PNGs,
+deliberate-failure PNGs, `render-evidence.json`, `monitor-parity.json` and the
+implementation source-hash receipt remain under
+`/tmp/openfilm-d5a-photo-finishing`. Existing PhotoDepth evidence remains under
+`/tmp/openfilm-d5a-photo-depth`. No media binary was committed or uploaded.
+
+Regressions also cover strict old/new recipes; source hashes/alpha/gap bounds;
+source/clip/paired protection; exact retry, one Undo step, Redo, autosave,
+reopen and Named Versions; delayed-flush revision rejection before POST;
+same-key cancellation/retry, queue limits and project closure; and PNG HTTP
+admission with no arbitrary path/URL/filter input. JSON/OTIO preserve full v2
+metadata, FCPXML/EDL reject it, and actual fidelity handoff bakes a 32-frame
+reference without changing source or saved project bytes.
+
+Independent failure cases found during this work were corrected with focused
+regressions: a cancelled worker must not poison a same-key retry; affine color
+lift must not tint the black diptych separator; applying an already disabled
+fill must leave absent legacy layout absent; idle Escape must exit the focus
+tool; and legacy images must retain their direct parent for Record readiness.
+The last issue interrupted an earlier browser run after 34 passes; product
+markup was corrected and the same existing assertions passed unchanged in the
+final 37-case run.
+
+Builder rulings keep deduplicated waiters bounded at 32, place layout separators
+outside the photographic color group but inside camera/static transforms, keep
+the exact v1 image DOM while grouping only ambient v2, and cancel an unfinished
+keyboard burst on blur. D5C owns primary correction; this candidate supplies its
+raw → primary → Film Look seam without implementing another color path.
+Private-photo/subject aesthetics, touch/pen hardware, calibrated displays,
+sustained 4K, native OS and real NLE finishing remain manual gates.
