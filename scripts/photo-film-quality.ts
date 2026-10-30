@@ -1,3 +1,4 @@
+import { assertRenderQaMetric } from "../tests/helpers/render-qa-policy.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -231,13 +232,12 @@ for (const [variant, composition] of [
   // The full ffprobe file is local evidence and contains the local filename.
   await json(join(root, `${variant}-ffprobe.private.json`), metadata);
   const duration = Number(metadata.format?.duration);
-  if (
-    !Number.isFinite(duration) ||
-    Math.abs(duration - 20) > 1 / qualitySettings.frameRate + 0.001
-  )
-    throw new Error(
-      `${variant} output duration is ${duration}; expected 20 s within one frame`,
-    );
+  assertRenderQaMetric(
+    "photoFilm.durationError",
+    Math.abs(duration - 20),
+    undefined,
+    { frameRate: qualitySettings.frameRate },
+  );
   if (!metadata.streams?.some((stream) => stream.codec_type === "audio"))
     throw new Error(`${variant} output has no audio stream`);
   for (const [index, time] of qualitySampleTimes.entries()) {

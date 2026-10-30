@@ -1,3 +1,4 @@
+import { assertRenderQaMetric } from "../../../tests/helpers/render-qa-policy.js";
 // SPDX-License-Identifier: Apache-2.0
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -206,8 +207,8 @@ describe("native subtitle controls in real FFmpeg output", () => {
       const sourceAt = (frame: number) => colorAt(frame, { x: 10, y: 10 });
       const firstTextDelta = colorAt(startFrame, text) - sourceAt(startFrame);
       const firstScrimDelta = colorAt(startFrame, scrim) - sourceAt(startFrame);
-      expect(firstTextDelta).toBeGreaterThan(60);
-      expect(firstScrimDelta).toBeLessThan(-60);
+      assertRenderQaMetric("title.textDelta", firstTextDelta);
+      assertRenderQaMetric("title.scrimDelta", firstScrimDelta);
       for (const localTime of [0.5, 1.5, 1.9]) {
         const localFrame = Math.round(localTime * frameRate);
         const frame = startFrame + localFrame;
@@ -216,19 +217,31 @@ describe("native subtitle controls in real FFmpeg output", () => {
           localFrame / frameRate,
           duration,
         );
-        expect(
+        assertRenderQaMetric(
+          "title.opacityRatio",
           (colorAt(frame, text) - sourceAt(frame)) / firstTextDelta,
-        ).toBeCloseTo(expected, 1);
-        expect(
+          expected,
+        );
+        assertRenderQaMetric(
+          "title.opacityRatio",
           (colorAt(frame, scrim) - sourceAt(frame)) / firstScrimDelta,
-        ).toBeCloseTo(expected, 1);
-        expect(sourceAt(frame)).toBeCloseTo(sourceAt(startFrame), 0);
+          expected,
+        );
+        assertRenderQaMetric(
+          "title.sourceLuminance",
+          sourceAt(frame),
+          sourceAt(startFrame),
+        );
       }
       // Gating retains the existing rounded output-frame start and exclusive end.
-      expect(colorAt(startFrame - 1, text)).toBeLessThan(5);
-      expect(
+      assertRenderQaMetric(
+        "title.exclusiveGateLuminance",
+        colorAt(startFrame - 1, text),
+      );
+      assertRenderQaMetric(
+        "title.exclusiveGateLuminance",
         colorAt(startFrame + Math.ceil((duration - 1e-9) * frameRate), text),
-      ).toBeLessThan(5);
+      );
       expect(await hashFile(source)).toBe(sourceHash);
       expect(composition).toEqual(before);
     },

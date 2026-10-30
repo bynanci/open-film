@@ -137,6 +137,13 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D7A render QA now has shared immutable font/tool provenance, preserved metric
+units and strict bounds, and actual decoded positive/negative controls. Local
+synthetic evidence records 117 samples and 10 deliberate failures; a separate three-OS
+workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
+pin admission and exact-head review remain pending; this does not close native
+installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
+
 D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
 contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
 originals, timing and the schema/catalog owners remain stable. Local statistical

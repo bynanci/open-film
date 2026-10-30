@@ -16,7 +16,7 @@ import {
   type PrimaryColorCorrection,
 } from "@openfilm/core";
 import { createPresetSnapshot } from "@openfilm/application";
-import { inspectMedia, hashFile, runProcess } from "@openfilm/media";
+import { inspectMedia, hashFile, localPath, runProcess } from "@openfilm/media";
 import { FFmpegRenderer, preparePhotoAmbientFills } from "../src/index.js";
 import { presetPackage } from "../../../tests/fixtures/local-presets/package.js";
 const roots: string[] = [];
@@ -84,7 +84,7 @@ it.each(["contain", "diptych", "moving-diptych"] as const)(
     roots.push(root);
     const assets: MediaAsset[] = [];
     for (const [index, color] of ["0x5090c4", "0xb05030"].entries()) {
-      const path = join(root, `source-${index}.png`);
+      const path = join(root, `合成 source # ${index}.png`);
       await runProcess("ffmpeg", [
         "-v",
         "error",
@@ -167,7 +167,7 @@ it.each(["contain", "diptych", "moving-diptych"] as const)(
     const raw = await preparePhotoAmbientFills([clip], assets, settings, work),
       fill = raw.fills.get(clip.id)!;
     const rawPixels = await pixels(fill.path),
-      sourcePixels = await pixels(new URL(assets[0]!.uri).pathname);
+      sourcePixels = await pixels(localPath(assets[0]!.uri));
     const output = join(root, "graded.mp4");
     await new FFmpegRenderer().render(film, assets, output, settings, {
       quality: "high-detail",
@@ -190,7 +190,7 @@ it.each(["contain", "diptych", "moving-diptych"] as const)(
       regions.push({
         name: "secondary",
         x: 240,
-        raw: sample(await pixels(new URL(assets[1]!.uri).pathname), 80, 40, 90),
+        raw: sample(await pixels(localPath(assets[1]!.uri)), 80, 40, 90),
       });
     for (const frame of [11, 0, 6]) {
       const actual = await pixels(output, frame);
@@ -228,9 +228,7 @@ it.each(["contain", "diptych", "moving-diptych"] as const)(
     await raw.verifySources();
     await raw.assertSourceIdentities();
     for (const asset of assets)
-      expect(await hashFile(new URL(asset.uri).pathname)).toBe(
-        asset.contentHash,
-      );
+      expect(await hashFile(localPath(asset.uri))).toBe(asset.contentHash);
     const manifest = JSON.parse(
       await readFile(`${output}.manifest.json`, "utf8"),
     );
