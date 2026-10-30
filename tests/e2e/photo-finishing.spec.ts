@@ -412,7 +412,7 @@ test("Record Monitor bypass reuses raw ambient pixels and the diptych separator 
       writes.push(sent.url());
   });
   const compare = page.getByRole("button", {
-    name: "Hold to view original",
+    name: uiText("en-US", "cutDesk.compare.hold"),
     exact: true,
   });
   await compare.dispatchEvent("pointerdown", {
