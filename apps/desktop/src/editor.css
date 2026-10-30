@@ -150,6 +150,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow-y: auto;
   background: var(--editor-inset);
 }
 
@@ -164,6 +165,10 @@
 .cut-desk-record .record-frame {
   height: 100%;
   max-width: 100%;
+}
+
+.cut-desk-record:has(.sequence-waveform) .record-monitor {
+  min-height: 6rem;
 }
 
 .cut-desk-monitor-actions {

@@ -944,12 +944,22 @@ export const api = {
     ),
   intelligenceProviders: (signal?: AbortSignal) =>
     request<IntelligenceProviders>("/intelligence/providers", { signal }),
+  sourceWaveforms: (
+    projectId: string,
+    assetIds: string[],
+    signal?: AbortSignal,
+  ) =>
+    post<{
+      projectId: string;
+      entries: import("@openfilm/core").SourceWaveformEvidence[];
+    }>("/intelligence/waveforms", { projectId, assetIds }, signal),
   analyzeIntelligence: (
     assetId: string,
     body: {
       operation: "transcribe" | "waveform" | "scenes";
       language?: "auto" | "zh" | "en" | "ja";
       execution?: "auto" | "cpu" | "gpu";
+      projectId?: string;
     },
   ) =>
     post<{ job: Job }>(
