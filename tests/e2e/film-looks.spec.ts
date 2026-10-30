@@ -191,7 +191,20 @@ test("Expert Record compares the original momentarily or latched without saving 
     Object.assign(window, { openFilmCompareImage: element });
   });
   const writes: string[] = [];
+  const waveformReads: Array<{ projectId: string; assetIds: string[] }> = [];
+  const projectResponse = await request.get(`${base}/api/project`);
+  expect(projectResponse.ok()).toBe(true);
+  const projectId = (await projectResponse.json()).project.id as string;
   page.on("request", (sent) => {
+    // This exact POST reads bounded current-source evidence; every other write
+    // still violates Compare's no-mutation contract.
+    if (
+      sent.method() === "POST" &&
+      new URL(sent.url()).pathname === "/api/intelligence/waveforms"
+    ) {
+      waveformReads.push(sent.postDataJSON());
+      return;
+    }
     if (
       ["POST", "PATCH", "PUT", "DELETE"].includes(sent.method()) &&
       sent.url().includes("/api/")
@@ -287,6 +300,17 @@ test("Expert Record compares the original momentarily or latched without saving 
       .first()
       .evaluate((element) => element.style.filter),
   ).not.toBe("");
+  await expect.poll(() => waveformReads.length).toBeGreaterThan(0);
+  const sourceIds = new Set(
+    before.tracks.flatMap((track) => track.clips.map((clip) => clip.assetId)),
+  );
+  for (const body of waveformReads) {
+    expect(body).toEqual({ projectId, assetIds: expect.any(Array) });
+    expect(body.assetIds.length).toBeGreaterThan(0);
+    expect(body.assetIds.length).toBeLessThanOrEqual(8);
+    expect(new Set(body.assetIds).size).toBe(body.assetIds.length);
+    expect(body.assetIds.every((id) => sourceIds.has(id))).toBe(true);
+  }
   expect(writes).toEqual([]);
   expect((await editor(request)).composition).toEqual(before);
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);

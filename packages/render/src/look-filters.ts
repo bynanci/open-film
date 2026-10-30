@@ -3,10 +3,16 @@ import {
   filmLookMatrix,
   isFilmLookActive,
   type FilmLook,
+  validateFilmLook,
 } from "@openfilm/core";
+import { assertRenderPresetSnapshot } from "./preset-integrity.js";
 
 /** Apply the shared encoded SDR RGB matrix to each decoded source, preserving its alpha. */
 export function filmLookFilters(look?: FilmLook | null): string[] {
+  if (look != null) {
+    look = validateFilmLook(look);
+    if (look.version === 2) assertRenderPresetSnapshot(look.snapshot);
+  }
   if (!isFilmLookActive(look)) return [];
   const matrix = filmLookMatrix(look);
   const channels = [

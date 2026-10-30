@@ -2,10 +2,15 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  canonicalPresetJson,
+  type PresetSnapshot,
   validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
+  validateTitleTextRuns,
+  type TitleTextRuns,
   validateAudioAutomation,
   validateFilmLook,
   validatePrimaryColorCorrection,
@@ -72,6 +77,8 @@ export type TimelineCommand =
       motion?: PhotoMotion | null;
       title?: string | null;
       titleStyle?: TitleStyle | null;
+      titlePresetSnapshot?: PresetSnapshot<"title"> | null;
+      titleRuns?: TitleTextRuns | null;
     }
   | {
       type: "audio.add";
@@ -117,7 +124,12 @@ export type TimelineCommand =
       type: "caption.cue.update";
       trackId: string;
       cueId: string;
-      patch: { text?: string; startMs?: number; endMs?: number };
+      patch: {
+        text?: string;
+        startMs?: number;
+        endMs?: number;
+        textRuns?: TitleTextRuns | null;
+      };
     }
   | { type: "caption.cue.delete"; trackId: string; cueId: string }
   | {
@@ -925,10 +937,28 @@ function applyCaptionCommand(
   const fields = Object.keys(command.patch);
   if (
     !fields.length ||
-    fields.some((field) => !["text", "startMs", "endMs"].includes(field))
+    fields.some(
+      (field) => !["text", "startMs", "endMs", "textRuns"].includes(field),
+    )
   )
     fail("Caption cue edits require text, startMs or endMs.");
+  if (
+    cue.textRuns &&
+    command.patch.text !== undefined &&
+    command.patch.text !== cue.text &&
+    !Object.hasOwn(command.patch, "textRuns")
+  )
+    throw new ApplicationError(
+      "timeline.titleRunsConflict",
+      "Update the bilingual text boundary or explicitly remove its run styling with this text edit.",
+      409,
+    );
   if (Object.hasOwn(command.patch, "text")) cue.text = command.patch.text!;
+  if (Object.hasOwn(command.patch, "textRuns")) {
+    if (command.patch.textRuns === null) delete cue.textRuns;
+    else cue.textRuns = validateTitleTextRuns(command.patch.textRuns, cue.text);
+  }
+  if (cue.textRuns) validateTitleTextRuns(cue.textRuns, cue.text);
   if (Object.hasOwn(command.patch, "startMs"))
     cue.startMs = command.patch.startMs!;
   if (Object.hasOwn(command.patch, "endMs")) cue.endMs = command.patch.endMs!;
@@ -1183,7 +1213,14 @@ export function applyTimelineCommand(
         fail(
           "The paired photo is locked. Unlock it before changing presentation.",
         );
-      const fields = ["layout", "motion", "title", "titleStyle"] as const;
+      const fields = [
+        "layout",
+        "motion",
+        "title",
+        "titleStyle",
+        "titlePresetSnapshot",
+        "titleRuns",
+      ] as const;
       if (!fields.some((key) => Object.hasOwn(command, key)))
         fail("Provide a presentation field to change.");
       if (
@@ -1235,9 +1272,29 @@ export function applyTimelineCommand(
         if (command.motion === null) delete clip.motion;
         else clip.motion = validatePhotoMotion(command.motion);
       }
+      if (
+        clip.titleRuns &&
+        command.title !== undefined &&
+        command.title !== null &&
+        command.title !== clip.title &&
+        !Object.hasOwn(command, "titleRuns")
+      )
+        throw new ApplicationError(
+          "timeline.titleRunsConflict",
+          "Update the bilingual text boundary or explicitly remove its run styling with this text edit.",
+          409,
+        );
+      if (
+        command.title === null &&
+        command.titleRuns !== undefined &&
+        command.titleRuns !== null
+      )
+        fail("A removed title cannot retain bilingual runs.");
       if (command.title !== undefined) {
-        if (command.title === null) delete clip.title;
-        else {
+        if (command.title === null) {
+          delete clip.title;
+          delete clip.titleRuns;
+        } else {
           if (
             typeof command.title !== "string" ||
             !command.title.trim() ||
@@ -1249,6 +1306,32 @@ export function applyTimelineCommand(
           clip.title = command.title;
         }
       }
+      if (command.titlePresetSnapshot !== undefined) {
+        if (command.titlePresetSnapshot === null)
+          delete clip.titlePresetSnapshot;
+        else {
+          const snapshot = validatePresetSnapshot(
+            command.titlePresetSnapshot,
+            "title",
+          );
+          if (
+            !command.titleStyle ||
+            canonicalPresetJson(snapshot.recipe) !==
+              canonicalPresetJson(command.titleStyle)
+          )
+            fail("Preset title style does not match its recipe snapshot.");
+          clip.titlePresetSnapshot = snapshot;
+        }
+      }
+      if (Object.hasOwn(command, "titleRuns")) {
+        if (command.titleRuns === null) delete clip.titleRuns;
+        else
+          clip.titleRuns = validateTitleTextRuns(
+            command.titleRuns,
+            clip.title!,
+          );
+      }
+      if (clip.titleRuns) validateTitleTextRuns(clip.titleRuns, clip.title!);
       if (command.titleStyle !== undefined) {
         if (command.titleStyle === null) delete clip.titleStyle;
         else clip.titleStyle = validateTitleStyle(command.titleStyle);

@@ -109,6 +109,8 @@ export function otioCompatibilityReport(
       if (clip.layout !== undefined) features.push("photo layout");
       if (clip.motion !== undefined) features.push("photo motion");
       if (clip.titleStyle !== undefined) features.push("title style");
+      if (clip.titleRuns !== undefined)
+        features.push("bilingual title typography");
       if (clip.audioAutomation !== undefined) features.push("audio automation");
       if (
         isVisualTrack(track) &&
@@ -190,6 +192,7 @@ function rejectEdits(clip: Clip, format: string): void {
     "layout",
     "motion",
     "titleStyle",
+    "titleRuns",
     "audioAutomation",
   ] as const)
     if (clip[field] !== undefined)

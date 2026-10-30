@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { loadComponent } from "./helpers/vue-sfc-host";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { transformSync } from "esbuild";
@@ -112,6 +113,14 @@ async function mount(locale = "en-US", messages: object = en, clip = legacy) {
     "vue-i18n": { useI18n: () => ({ t: i18n.global.t }) },
     "@openfilm/core": core,
   };
+  dependencies["./BilingualTextControls.vue"] = loadComponent(
+    "apps/desktop/src/components/BilingualTextControls.vue",
+    dependencies,
+  );
+  dependencies["./TitleFinishingControls.vue"] = loadComponent(
+    "apps/desktop/src/components/TitleFinishingControls.vue",
+    dependencies,
+  );
   new Function(
     "require",
     "module",

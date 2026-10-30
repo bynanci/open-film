@@ -1,5 +1,18 @@
 import type {
+  PresetRegistryView,
+  PresetImportReview,
+  PresetInstallInput,
+  PresetRemoveInput,
+  PresetRecoveryReview,
+  PresetRecoveryInput,
+  PresetApplyReview,
+  PresetAcceptance,
+} from "@openfilm/application";
+import type { PresetApplyInput, PresetAcceptInput } from "@openfilm/core";
+import type {
   MotionRequest,
+  NativeTextOverlayRequest,
+  NativeTextInspection,
   MotionGenerationReceipt,
   AudioGenerationReceipt,
 } from "@openfilm/application";
@@ -530,6 +543,34 @@ export const titlePreviewUrl = (
   projectId?: string,
 ): string =>
   `${prefix}/compositions/${encodeURIComponent(compositionId)}/title/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ revision, ...(projectId ? { projectId } : {}) })}`;
+function nativeTextPath(
+  input: NativeTextOverlayRequest,
+  inspection = false,
+): string {
+  const ref = input.reference;
+  const target =
+    ref.kind === "title"
+      ? `title/${encodeURIComponent(ref.clipId)}`
+      : `caption/${encodeURIComponent(ref.trackId)}/${encodeURIComponent(ref.cueId)}`;
+  return `/compositions/${encodeURIComponent(input.compositionId)}/${target}${inspection ? "/inspection" : ".png"}?${new URLSearchParams({ projectId: input.projectId, revision: input.revision })}`;
+}
+export const nativeTextOverlay = (
+  input: NativeTextOverlayRequest,
+  signal: AbortSignal,
+): Promise<Blob> =>
+  fetchDownloadBlob(`${prefix}${nativeTextPath(input)}`, signal);
+export const nativeTextInspection = (
+  input: NativeTextOverlayRequest,
+  signal: AbortSignal,
+): Promise<NativeTextInspection> =>
+  request<NativeTextInspection>(nativeTextPath(input, true), { signal });
+export const photoFillPreviewUrl = (
+  compositionId: string,
+  clipId: string,
+  revision: string,
+  projectId: string,
+): string =>
+  `${prefix}/compositions/${encodeURIComponent(compositionId)}/photo-fill/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ projectId, revision })}`;
 export const captionDownloadUrl = (
   id: string,
   projectId: string,
@@ -729,6 +770,22 @@ async function uploadFiles(
   }
 }
 export const api = {
+  localPresets: (signal?: AbortSignal) =>
+    request<PresetRegistryView>("/presets", { signal }),
+  reviewPresetImport: (document: string, signal?: AbortSignal) =>
+    post<PresetImportReview>("/presets/import/review", { document }, signal),
+  installPreset: (body: PresetInstallInput, signal?: AbortSignal) =>
+    post<PresetRegistryView>("/presets/import/accept", body, signal),
+  removePreset: (body: PresetRemoveInput, signal?: AbortSignal) =>
+    post<PresetRegistryView>("/presets/remove", body, signal),
+  reviewPresetRecovery: (signal?: AbortSignal) =>
+    post<PresetRecoveryReview>("/presets/recovery/review", {}, signal),
+  recoverPresets: (body: PresetRecoveryInput, signal?: AbortSignal) =>
+    post<PresetRegistryView>("/presets/recovery/accept", body, signal),
+  reviewPresetApplication: (body: PresetApplyInput, signal?: AbortSignal) =>
+    post<PresetApplyReview>("/presets/apply/review", body, signal),
+  acceptPresetApplication: (body: PresetAcceptInput, signal?: AbortSignal) =>
+    post<PresetAcceptance>("/presets/apply/accept", body, signal),
   collectCoverage: (body: CollectCoveragePlanInput, signal?: AbortSignal) =>
     post<{ review: CollectCoverageReview }>("/collect/coverage", body, signal),
   proxyCache: (projectId: string, offset = 0, signal?: AbortSignal) =>
@@ -945,12 +1002,22 @@ export const api = {
     ),
   intelligenceProviders: (signal?: AbortSignal) =>
     request<IntelligenceProviders>("/intelligence/providers", { signal }),
+  sourceWaveforms: (
+    projectId: string,
+    assetIds: string[],
+    signal?: AbortSignal,
+  ) =>
+    post<{
+      projectId: string;
+      entries: import("@openfilm/core").SourceWaveformEvidence[];
+    }>("/intelligence/waveforms", { projectId, assetIds }, signal),
   analyzeIntelligence: (
     assetId: string,
     body: {
       operation: "transcribe" | "waveform" | "scenes";
       language?: "auto" | "zh" | "en" | "ja";
       execution?: "auto" | "cpu" | "gpu";
+      projectId?: string;
     },
   ) =>
     post<{ job: Job }>(
@@ -1779,8 +1846,10 @@ export const api = {
     }),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
-  editor: (id: string) =>
-    request<EditorState>(`/compositions/${encodeURIComponent(id)}/editor`),
+  editor: (id: string, signal?: AbortSignal) =>
+    request<EditorState>(`/compositions/${encodeURIComponent(id)}/editor`, {
+      signal,
+    }),
   previewDirection: (id: string, body: SceneDirectionOptions) =>
     post<DirectionReviewPlan>(
       `/compositions/${encodeURIComponent(id)}/direction/preview`,

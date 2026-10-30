@@ -138,6 +138,8 @@ export interface Story {
   beats: StoryBeat[];
   /** Optional Story Graph perspective content. */
   graph?: import("./story-graph.js").StoryGraph;
+  presetSnapshot?: import("./presets.js").PresetSnapshot<"story">;
+  presetPlanSource?: import("./presets.js").PresetPlanSource;
 }
 
 export interface ClipTransform {
@@ -162,7 +164,7 @@ export interface PhotoProtectedRegion extends PhotoFocalPoint {
   width: number;
   height: number;
 }
-export interface PhotoLayout {
+export interface PhotoLayoutV1 {
   version: 1;
   preset: "contain" | "hero" | "diptych";
   focalPoint?: PhotoFocalPoint;
@@ -175,6 +177,19 @@ export interface PhotoLayout {
   /** Space between diptych cells, in composition pixels. */
   gap?: number;
 }
+export interface PhotoAmbientFillV1 {
+  version: 1;
+  kind: "ambient";
+  /** Gaussian sigma relative to the composition's shorter edge; 0..0.05. */
+  blurSigma: number;
+  /** Encoded SDR RGB is multiplied by 1 - dim; 0..0.85. */
+  dim: number;
+}
+export interface PhotoLayoutV2 extends Omit<PhotoLayoutV1, "version"> {
+  version: 2;
+  fill: PhotoAmbientFillV1;
+}
+export type PhotoLayout = PhotoLayoutV1 | PhotoLayoutV2;
 export interface PhotoMotionTransform {
   /** Supported zoom range is 1–10, matching the deterministic renderer adapter. */
   scale: number;
@@ -182,13 +197,30 @@ export interface PhotoMotionTransform {
   x: number;
   y: number;
 }
-export interface PhotoMotion {
+export interface PhotoMotionV1 {
   version: 1;
   preset: "hold" | "push-in" | "pull-out" | "pan";
   easing: "linear" | "ease-in-out";
   from: PhotoMotionTransform;
   to: PhotoMotionTransform;
 }
+export interface PhotoBezierEasingV1 {
+  version: 1;
+  kind: "cubic-bezier";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+export interface PhotoMotionV2 extends Omit<
+  PhotoMotionV1,
+  "version" | "easing"
+> {
+  version: 2;
+  easing: PhotoBezierEasingV1;
+}
+export type PhotoMotion = PhotoMotionV1 | PhotoMotionV2;
+export type PhotoEasing = PhotoMotion["easing"];
 
 /** Accepted direction evidence is retained in a bounded project history. */
 export const MAX_SCENE_DIRECTION_RECEIPTS = 100;
@@ -265,6 +297,7 @@ export interface TitleStyle {
   bottomSafeMargin?: number;
   /** Optional fractional safe-frame margins; absent values retain title defaults. */
   safeArea?: { left?: number; right?: number; top?: number; bottom?: number };
+  finishing?: import("./title-runs.js").TitleFinishing;
 }
 
 export type CaptionCueSource =
@@ -291,6 +324,7 @@ export interface CaptionCue {
   startMs: number;
   endMs: number;
   text: string;
+  textRuns?: import("./title-runs.js").TitleTextRuns;
   source: CaptionCueSource;
   /** Explicit manual-review reasons inherited from transcript mapping. */
   warnings?: CaptionCueWarning[];
@@ -333,12 +367,19 @@ export const FILM_LOOK_PRESET_IDS = [
   "natural",
   "sport",
 ] as const;
-export interface FilmLook {
+export interface BuiltinFilmLook {
   version: 1;
   preset: (typeof FILM_LOOK_PRESET_IDS)[number];
   /** Recipe-strength interpolation on decoded, encoded-SDR RGB, not linear-light color management. */
   strength: number;
 }
+export interface LocalFilmLook {
+  version: 2;
+  preset: "local";
+  strength: number;
+  snapshot: import("./presets.js").PresetSnapshot<"film-look">;
+}
+export type FilmLook = BuiltinFilmLook | LocalFilmLook;
 
 /** Bounded primary correction in encoded SDR RGB; not calibrated scene-linear exposure. */
 export interface PrimaryColorCorrection {
@@ -358,9 +399,11 @@ export interface Clip {
   timelineDuration: number;
   transform?: ClipTransform;
   title?: string;
+  titleRuns?: import("./title-runs.js").TitleTextRuns;
   layout?: PhotoLayout;
   motion?: PhotoMotion;
   titleStyle?: TitleStyle;
+  titlePresetSnapshot?: import("./presets.js").PresetSnapshot<"title">;
   audioAutomation?: AudioAutomation;
   /** Absent inherits the scene/film look; explicit `none` preserves original color. */
   look?: FilmLook;
@@ -381,6 +424,8 @@ export interface Track {
 export interface Composition {
   id: string;
   storyId: string;
+  /** Self-contained StoryPlan preset provenance travels with timeline exports. */
+  storyPresetSnapshot?: import("./presets.js").PresetSnapshot<"story">;
   duration: number;
   tracks: Track[];
   defaultLook?: FilmLook;
@@ -413,6 +458,7 @@ export interface OpenFilmProject {
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
   sceneDirectionReceipts?: SceneDirectionReceipt[];
+  presetApplicationReceipts?: import("./presets.js").PresetApplicationReceipt[];
 }
 
 export interface Event {

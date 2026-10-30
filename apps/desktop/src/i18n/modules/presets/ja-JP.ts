@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: Apache-2.0
+export default {
+  presets: {
+    visualChangeCount: "この範囲の {count} 個の映像クリップが変わります。",
+    titleComparison: "確認したタイトルの表示",
+    property: "設定",
+    before: "変更前",
+    after: "変更後",
+    font: "書体とサイズ",
+    position: "位置",
+    positions: { center: "中央", bottom: "下部" },
+
+    heading: "ローカルプリセット",
+    description:
+      "ローカルのレシピ集を読み込み、ライセンスを確認して保存済みの映像に適用します。",
+    chooseFile: "プリセット JSON を選択（最大 256 KiB）",
+    working: "ローカルプリセットを準備中…",
+    importReview: "プリセットパッケージを確認",
+    author: "作者",
+    source: "出典",
+    license: "申告ライセンス",
+    identity: "レシピの識別情報",
+    acknowledgeLicense: "このパッケージの申告ライセンスと出典を確認しました。",
+    install: "確認したパッケージをインストール",
+    cancel: "キャンセル",
+    empty:
+      "ローカルパッケージは未インストールです。内蔵レシピはエディターで利用できます。",
+    provenance: "ライセンスと出典",
+    apply: "適用…",
+    remove: "削除…",
+    removeReview: "削除内容の確認",
+    removeHint:
+      "インストール済みパッケージを削除しますか？保存済み映像にはレシピが残ります。",
+    confirmRemove: "インストール済みパッケージを削除",
+    refresh: "パッケージを再読み込み",
+    reviewRecovery: "バックアップ復元を確認",
+    recoveryTitle: "ローカルプリセット登録を復元",
+    recoveryHint:
+      "検証済みの前の登録から {count} 個のパッケージを復元します。破損コピーは保持されます。",
+    restore: "確認したバックアップを復元",
+    installed: "ローカルプリセットをインストールしました。",
+    removed: "パッケージを削除しました。保存済み映像のレシピは保持されます。",
+    restored: "前のローカルプリセット登録を復元しました。",
+    applied: "保存済み映像にプリセットを適用しました。",
+    applicationReview: "ローカルプリセットを適用",
+    applyHint: "保存済みの対象を選び、変更を確認してから適用します。",
+    story: "編集済みの元ストーリー",
+    mappingHint:
+      "現在の順序で各レシピビートを既存ビートに対応付けます。ソースの割り当てと保護された選択を維持します。",
+    chooseBeat: "既存ビートを選択",
+    film: "保存済み映像",
+    scope: "ルックの適用範囲",
+    scene: "シーン",
+    clip: "映像クリップ",
+    previewChanges: "変更を確認",
+    reviewFirst: "適用前に現在の対象を確認してください。",
+    exactChange: "確認した「{name}」レシピをこの対象に適用します。",
+    undoHint: "1 回の編集として保存します。取り消すと以前のレシピに戻ります。",
+    accept: "確認した変更を適用",
+    savedLocal:
+      "保存済みのローカルレシピです。再度開く際にインストール元は必要ありません。",
+    localeFallback:
+      "映像の言語が含まれていないため、レシピの既定言語を使用します。",
+    kinds: {
+      "film-look": "フィルムルック",
+      title: "タイトルスタイル",
+      story: "ストーリープラン",
+    },
+  },
+};

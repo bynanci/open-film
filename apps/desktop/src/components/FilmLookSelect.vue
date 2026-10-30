@@ -1,8 +1,14 @@
 <script setup lang="ts">
 // SPDX-License-Identifier: Apache-2.0
 
-import { FILM_LOOK_PRESETS, type FilmLook } from "@openfilm/core";
+import {
+  FILM_LOOK_PRESETS,
+  type FilmLook,
+  type BuiltinFilmLook,
+} from "@openfilm/core";
 import { useI18n } from "vue-i18n";
+import { computed } from "vue";
+import { presetLookLabel } from "../local-presets";
 const props = defineProps<{
   label: string;
   value?: FilmLook;
@@ -11,17 +17,23 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ change: [look: FilmLook | null] }>();
 const { t } = useI18n();
+const selectedValue = computed(() =>
+  props.value?.version === 2
+    ? props.value.snapshot.canonicalId
+    : (props.value?.preset ?? (props.inherit ? "inherit" : "none")),
+);
 function changePreset(event: Event) {
   const select = event.target as HTMLSelectElement;
   const preset = select.value;
   // Keep a rejected command visually on the saved value. Accepted commands
   // publish an optimistic document and update this controlled field normally.
-  select.value = props.value?.preset ?? (props.inherit ? "inherit" : "none");
+  select.value = selectedValue.value;
+  if (preset.startsWith("local:")) return;
   if (preset === "inherit") emit("change", null);
   else
     emit("change", {
       version: 1,
-      preset: preset as FilmLook["preset"],
+      preset: preset as BuiltinFilmLook["preset"],
       strength: props.value?.strength ?? 1,
     });
 }
@@ -40,10 +52,13 @@ function changeStrength(event: Event) {
       <span>{{ label }}</span>
       <select
         :aria-label="label"
-        :value="value?.preset ?? (inherit ? 'inherit' : 'none')"
+        :value="selectedValue"
         :disabled="disabled"
         @change="changePreset"
       >
+        <option v-if="value?.version === 2" :value="value.snapshot.canonicalId">
+          {{ presetLookLabel(value, (key) => t(key)) }}
+        </option>
         <option v-if="inherit" value="inherit">{{ t("looks.inherit") }}</option>
         <option
           v-for="preset in FILM_LOOK_PRESETS"
@@ -69,7 +84,11 @@ function changeStrength(event: Event) {
       <output>{{ Math.round(value.strength * 100) }}%</output>
     </label>
     <p v-if="value" class="film-look-hint">
-      {{ t(`looks.hints.${value.preset}`) }}
+      {{
+        value.version === 2
+          ? t("presets.savedLocal")
+          : t(`looks.hints.${value.preset}`)
+      }}
     </p>
   </div>
 </template>

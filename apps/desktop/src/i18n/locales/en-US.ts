@@ -1,4 +1,5 @@
 import primaryColor from "../modules/primary-color/en-US";
+import presets from "../modules/presets/en-US";
 import collectDelivery from "../modules/collect-delivery/en-US";
 import proxyStorage from "../modules/proxy-storage/en-US";
 import nleHandoff from "../modules/nle-handoff/en-US";
@@ -18,6 +19,7 @@ import motion from "../modules/motion/en-US";
 
 export default {
   ...primaryColor,
+  ...presets,
   ...collectDelivery,
   ...proxyStorage,
   ...cutDesk,

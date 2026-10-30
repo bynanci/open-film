@@ -34,6 +34,12 @@ async function mountPhoto(diptych = false, text = false) {
         sourceUrl: (id: string, version?: string | number) =>
           `/source/${id}?v=${encodeURIComponent(version ?? "")}`,
         titlePreviewUrl: () => "/title.png",
+        photoFillPreviewUrl: (
+          _composition: string,
+          _clip: string,
+          revision: string,
+          project: string,
+        ) => `/fill/${project}/${revision}.png`,
       },
       "../i18n": { formatDuration: String },
     },
@@ -90,7 +96,8 @@ async function mountPhoto(diptych = false, text = false) {
     flatten(root).some(
       (element) =>
         element.props.role === "status" &&
-        element.text.includes("editor.presentation.sourceWarning"),
+        (element.text.includes("editor.presentation.sourceWarning") ||
+          element.text.includes("editor.presentation.fillFailed")),
     );
   const error = async (image: HostNode) => {
     (image.props.onError as () => void)();
@@ -102,6 +109,47 @@ async function mountPhoto(diptych = false, text = false) {
   };
   return { props, images, failed, error, load, controls };
 }
+
+it("requires current ambient readiness and ignores failed images removed by a source reconnect", async () => {
+  const photo = await mountPhoto();
+  photo.props.clip = {
+    ...photo.props.clip,
+    layout: {
+      version: 2,
+      preset: "contain",
+      fill: { version: 1, kind: "ambient", blurSigma: 0.02, dim: 0.45 },
+    },
+  };
+  await settle();
+  const ambient = photo
+    .images()
+    .find((image) => image.props.class === "photo-presentation-ambient");
+  expect(ambient).toBeDefined();
+  await photo.error(ambient!);
+  expect(photo.failed()).toBe(true);
+  photo.props.sourceVersion++;
+  await settle();
+  const current = photo
+    .images()
+    .find((image) => image.props.class === "photo-presentation-ambient")!;
+  expect(current).not.toBe(ambient);
+  await photo.load(current);
+  await photo.load(
+    photo
+      .images()
+      .find((image) => image.props.class !== "photo-presentation-ambient")!,
+  );
+  expect(photo.failed()).toBe(false);
+  await photo.error(ambient!);
+  expect(photo.failed()).toBe(false);
+});
+
+it("retains direct legacy image children for Record readiness and existing Monitor integration", async () => {
+  const photo = await mountPhoto(true);
+  expect(photo.images()).toHaveLength(2);
+  for (const image of photo.images())
+    expect(image.parent?.props.class).toBe("photo-presentation-layers");
+});
 
 it("fades a plain photo's native bold text using the existing local seek clock without fading its source", async () => {
   const photo = await mountPhoto(false, true);

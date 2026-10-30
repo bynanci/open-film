@@ -1312,6 +1312,121 @@ it("seeks disjoint decimal-rate precomps without changing first/last frames or O
   }
 });
 
+it("bakes v2 ambient and Bezier photo recipes through the normal fidelity handoff without changing sources", async () => {
+  const { root, app, composition, image, audio } = await fixture();
+  const path = join(root, "synthetic-portrait.png");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x305090:s=100x200,drawbox=x=20:y=70:w=20:h=50:c=white:t=fill",
+    "-frames:v",
+    "1",
+    "-threads",
+    "1",
+    "-y",
+    path,
+  ]);
+  const source = await inspectMedia({
+    path,
+    uri: pathToFileURL(path).href,
+    name: "synthetic-portrait.png",
+  });
+  source.contentHash = await hashFile(path);
+  app.catalog.upsertAsset(source);
+  const clip = composition.tracks[0]!.clips[0]!;
+  clip.assetId = source.id;
+  clip.sourceIn = 0;
+  clip.sourceOut = 4;
+  clip.layout = {
+    version: 2,
+    preset: "contain",
+    fill: { version: 1, kind: "ambient", blurSigma: 0.02, dim: 0.45 },
+  };
+  clip.motion = {
+    version: 2,
+    preset: "pan",
+    easing: {
+      version: 1,
+      kind: "cubic-bezier",
+      x1: 0.25,
+      y1: 0.1,
+      x2: 0.25,
+      y2: 1,
+    },
+    from: { scale: 1.08, x: -3, y: 0 },
+    to: { scale: 1.08, x: 3, y: 0 },
+  };
+  clip.look = { version: 1, preset: "retro", strength: 1 };
+  composition.graphicScenes = [];
+  composition.captionTracks = [];
+  app.project.timelines = [composition];
+  await app.save();
+  const before = JSON.stringify(app.project),
+    hashes = await Promise.all([
+      hashFile(image),
+      hashFile(audio),
+      hashFile(path),
+    ]);
+  const review = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  expect(review.plan.visualRanges).toEqual([{ startFrame: 0, endFrame: 32 }]);
+  const publication = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+    mode: review.plan.mode,
+  });
+  const file = async (name: string) =>
+    app.handoff.file(
+      publication.id,
+      publication.files.findIndex((item) => item.name === name),
+    );
+  const timeline = JSON.parse(
+    await readFile(await file("timeline.otio"), "utf8"),
+  );
+  expect(timeline.metadata.openfilm.originalComposition).toEqual(composition);
+  const baked = await file("media/precomp-0.mp4");
+  const probe = JSON.parse(
+    (
+      await runProcess("ffprobe", [
+        "-v",
+        "error",
+        "-count_frames",
+        "-show_entries",
+        "stream=nb_read_frames",
+        "-of",
+        "json",
+        baked,
+      ])
+    ).stdout.toString(),
+  );
+  expect(probe.streams[0].nb_read_frames).toBe("32");
+  const rgb = (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      baked,
+      "-frames:v",
+      "1",
+      "-pix_fmt",
+      "rgb24",
+      "-f",
+      "rawvideo",
+      "-",
+    ])
+  ).stdout;
+  expect(rgb[(45 * 160 + 5) * 3 + 2]).toBeGreaterThan(40);
+  expect(JSON.stringify(app.project)).toBe(before);
+  expect(
+    await Promise.all([hashFile(image), hashFile(audio), hashFile(path)]),
+  ).toEqual(hashes);
+});
+
 it("does not inherit primary color or the film look again on already rendered precomps", async () => {
   const { app, composition } = await fixture();
   composition.defaultLook = { version: 1, preset: "retro", strength: 0.8 };
