@@ -34,10 +34,14 @@ export function translateIndependentAudio(
       (command.type === "audio.timing" && command.clipId === clip.id)
     )
       continue;
-    const delta = clip.timelineStart - prior.timelineStart;
+    // Quantize the endpoints, not every incremental delta. This telescopes
+    // across repeated rational-frame moves while retaining the saved offset.
+    const delta =
+      Math.round(clip.timelineStart * 48000) -
+      Math.round(prior.timelineStart * 48000);
     if (delta)
       clip.audioTiming.timelineStartSample =
-        prior.audioTiming.timelineStartSample + Math.round(delta * 48000);
+        prior.audioTiming.timelineStartSample + delta;
   }
 }
 /** Validate the detached final batch. The application supplies authoritative source facts and context. */

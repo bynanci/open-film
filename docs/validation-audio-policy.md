@@ -143,3 +143,19 @@ stem/master summation equality is not an acceptance promise. All files retain
 exact12-second duration and finite decoded measurements. The source-overwrite
 guard caught an initial fixture filename collision; changing only the output
 filename allowed the unchanged measurement assertions to execute and pass.
+
+## Repeated rational-frame movement — 2026-10-30
+
+A public `audio.move` regression exposed cumulative sample rounding: ten
+successive one-frame moves at30000/1001 produced start64037, while the same
+final move once produced64033. Both paths began with an explicitly saved
+17-sample sound offset. The new timing translator subtracts separately rounded
+absolute picture endpoints, so successive deltas telescope and retain the saved
+offset. Source endpoints, effect origin, picture values, Pin checks and the
+single48k clock remain unchanged.
+
+The regression first failed with the exact four-sample difference, then the
+complete five-file solver/application/core/Pin gate passed70/70. A separate
+three-file actual render/canonical-source/private-PCM gate passed30/30 in106.84s
+before this pure translation correction; the final combined full candidate gate
+is still required. No timing tolerance or existing assertion was relaxed.

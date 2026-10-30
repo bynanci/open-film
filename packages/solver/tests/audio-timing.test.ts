@@ -168,6 +168,64 @@ describe("independent sound edit policy", () => {
     expect(clip(after).audioTiming).toEqual(clip(before).audioTiming);
     expect(clip(after, 1).audioTiming!.timelineStartSample).toBe(96000);
   });
+  it("keeps repeated rational-frame moves on one saved sample clock", () => {
+    const before = explicit(),
+      rationalContext = {
+        ...context,
+        timebase: resolveProjectTimebase({
+          width: 640,
+          height: 360,
+          frameRate: 30000 / 1001,
+        }),
+      },
+      frameDuration = 1001 / 30000;
+    const overlay = clip(before, 1);
+    before.composition.tracks[0]!.clips.pop();
+    clip(before).timelineDuration = 8;
+    clip(before).sourceOut = 9;
+    overlay.timelineStart = 1;
+    overlay.timelineDuration = 1;
+    overlay.sourceOut = 6;
+    overlay.audioTiming = {
+      ...overlay.audioTiming!,
+      // A saved non-frame-aligned offset must survive both editing paths.
+      timelineStartSample: 48017,
+      sourceOutSample: 288000,
+    };
+    before.composition.tracks.push({
+      id: "sound",
+      type: "audio",
+      timing: "overlay",
+      clips: [overlay],
+    });
+    let repeated = before;
+    for (let frame = 1; frame <= 10; frame++)
+      repeated = applyTimelineCommand(
+        repeated,
+        assets,
+        {
+          type: "audio.move",
+          clipId: "b",
+          timelineStart: 1 + frame * frameDuration,
+        },
+        rationalContext,
+      );
+    const single = applyTimelineCommand(
+      before,
+      assets,
+      {
+        type: "audio.move",
+        clipId: "b",
+        timelineStart: 1 + 10 * frameDuration,
+      },
+      rationalContext,
+    );
+    const moved = repeated.composition.tracks[1]!.clips[0]!,
+      once = single.composition.tracks[1]!.clips[0]!;
+    expect(moved.timelineStart).toBe(once.timelineStart);
+    expect(moved.audioTiming).toEqual(once.audioTiming);
+    expect(moved.audioTiming!.timelineStartSample).toBe(64033);
+  });
   it.each([
     { type: "clip.split", clipId: "a", sourceTime: 2 },
     { type: "replace", clipId: "a", assetId: "v" },
