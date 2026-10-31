@@ -63,6 +63,7 @@ const guideSlugs = [
   "markers-and-snapping",
   "export-quality",
   "audio-quality",
+  "audio-policy",
 ];
 const localizedReferenceSlugs = [
   "creative-story-templates",
@@ -70,6 +71,7 @@ const localizedReferenceSlugs = [
   "markers-and-snapping",
   "export-quality",
   "audio-quality",
+  "audio-policy",
 ];
 for (const slug of guideSlugs) {
   for (const locale of ["", "en/", "ja/"]) {

@@ -95,8 +95,14 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      audioTimingConflict:
+        "The independent sound range conflicts with this edit. Adjust or explicitly reset sound timing first.",
+      audioCaptionConflict:
+        "This edit would change source-linked caption timing. Edit or delete the affected captions in the same batch.",
+
       pinConflict:
         "A pinned edit cannot fit this change. Release its user pin explicitly or adjust neighboring clips.",
+
       primaryColorLocked:
         "Changing primary color would affect {count} protected clips. Unlock the clips or sources first.",
       titleRunsConflict:

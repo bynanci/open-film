@@ -1,5 +1,12 @@
 <script setup lang="ts">
 // Modified by OpenFilm contributors on 2026-10-26. See LICENSE/NOTICE.
+import { useI18n } from "vue-i18n";
+import {
+  createRecordAudioPlayback,
+  type RecordAudioPlayback,
+  type RecordAudioPlaybackState,
+} from "../recordAudioPlayback";
+import type { RecordAudioPreviewDescriptor } from "@openfilm/application";
 import {
   computed,
   onBeforeUnmount,
@@ -19,6 +26,7 @@ import {
   resolvePrimaryColor,
   resolvePreviewClipGeometry,
   resolveProjectTimebase,
+  sequenceFrameAt,
   sequenceTimeAt,
   timebaseKey,
   timebaseRate,
@@ -28,7 +36,7 @@ import {
   type ProjectSettings,
   type ResolvedSequenceClip,
 } from "@openfilm/core";
-import { sourceUrl, titlePreviewUrl, type SourceStatus } from "../api";
+import { api, sourceUrl, titlePreviewUrl, type SourceStatus } from "../api";
 import { useRecordTransport } from "../composables/useRecordTransport";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
@@ -100,12 +108,226 @@ const resourceOwner = computed(() =>
     assetGeneration.value,
   ]),
 );
+const { t } = useI18n();
+const pcmEnabled = computed(() =>
+  props.composition.tracks.some((track) =>
+    track.clips.some((clip) => !!clip.audioTiming),
+  ),
+);
+const pcmSample = shallowRef(0),
+  pcmState = shallowRef<RecordAudioPlaybackState | "idle">("idle"),
+  pcmDiagnostic = shallowRef("editor.soundTiming.idle"),
+  pcmDescriptor = shallowRef<RecordAudioPreviewDescriptor>();
+const pictureHeld = shallowRef(false);
+let pcmContext: AudioContext | undefined,
+  pcmPlayback: RecordAudioPlayback | undefined,
+  pcmPreparation: AbortController | undefined,
+  pcmGeneration = 0,
+  pcmLoading = false,
+  pcmFreshPreparation = false,
+  pcmObservedAt = 0,
+  gestureResume: Promise<void> | undefined;
+const verifiedSignals = new WeakSet<AbortSignal>();
 const transport = useRecordTransport({
   composition: () => props.composition,
   timebase,
   active: () => props.active,
   ownerKey,
+  continuousSample: () => (pcmEnabled.value ? pcmSample.value : undefined),
 });
+function soundHold() {
+  return (
+    pcmEnabled.value &&
+    transport.playing.value &&
+    transport.shuttleRate.value === 1 &&
+    pcmState.value !== "playing"
+  );
+}
+function updateHold() {
+  transport.buffering.value = pictureHeld.value || soundHold();
+}
+function ensurePcm() {
+  if (pcmPlayback) return pcmPlayback;
+  const Constructor =
+    globalThis.AudioContext ??
+    (
+      globalThis as typeof globalThis & {
+        webkitAudioContext?: typeof AudioContext;
+      }
+    ).webkitAudioContext;
+  if (!Constructor) throw new Error("editor.soundTiming.unsupported");
+  pcmContext = new Constructor({ sampleRate: 48000 });
+  gestureResume =
+    pcmContext.state === "suspended" ? pcmContext.resume() : Promise.resolve();
+  const owner = resourceOwner.value;
+  pcmPlayback = createRecordAudioPlayback({
+    context: pcmContext,
+    readPcm: async (id, start, count, signal) => {
+      signal.throwIfAborted();
+      if (owner !== resourceOwner.value)
+        throw new DOMException("Record owner changed.", "AbortError");
+      if (!verifiedSignals.has(signal)) {
+        if (pcmFreshPreparation) pcmFreshPreparation = false;
+        else {
+          const current = await api.prepareRecordAudioPreview(
+            props.composition.id,
+            props.revision,
+            signal,
+          );
+          if (
+            current.id !== id ||
+            current.revision !== pcmDescriptor.value?.revision ||
+            current.sourceKeyDigest !== pcmDescriptor.value?.sourceKeyDigest
+          )
+            throw new Error("Record PCM generation changed.");
+        }
+        signal.throwIfAborted();
+        if (owner !== resourceOwner.value)
+          throw new DOMException("Record owner changed.", "AbortError");
+        verifiedSignals.add(signal);
+      }
+      return api.recordAudioPcm(id, start, count, signal);
+    },
+    onTime: (sample) => {
+      if (!disposed && !pcmLoading && owner === resourceOwner.value) {
+        pcmObservedAt = pcmContext?.currentTime ?? 0;
+        pcmSample.value = sample;
+      }
+    },
+    onState: (state, key) => {
+      if (disposed || owner !== resourceOwner.value) return;
+      pcmState.value = state;
+      pcmDiagnostic.value = key ?? `editor.soundTiming.${state}`;
+      updateHold();
+      if (state === "failed") transport.pause();
+    },
+  });
+  return pcmPlayback;
+}
+async function startPcm(sample = pcmSample.value) {
+  const stamp = ++pcmGeneration,
+    owner = resourceOwner.value;
+  pcmPreparation?.abort();
+  const controller = new AbortController();
+  pcmPreparation = controller;
+  pcmState.value = "preparing";
+  pcmDiagnostic.value = "editor.soundTiming.preparing";
+  updateHold();
+  try {
+    const playback = ensurePcm();
+    await gestureResume;
+    controller.signal.throwIfAborted();
+    const descriptor = await api.prepareRecordAudioPreview(
+      props.composition.id,
+      props.revision,
+      controller.signal,
+    );
+    if (
+      disposed ||
+      stamp !== pcmGeneration ||
+      owner !== resourceOwner.value ||
+      controller.signal.aborted
+    )
+      return;
+    if (descriptor.revision !== props.revision)
+      throw new Error("Record PCM revision changed.");
+    pcmDescriptor.value = descriptor;
+    if (pictureHeld.value) {
+      pcmState.value = "ready";
+      pcmDiagnostic.value = "editor.soundTiming.ready";
+      updateHold();
+      return;
+    }
+    pcmLoading = true;
+    try {
+      playback.load(descriptor);
+    } finally {
+      pcmLoading = false;
+    }
+    pcmFreshPreparation = true;
+    await playback.play(
+      Math.max(0, Math.min(descriptor.lengthSamples, sample)),
+    );
+  } catch (error) {
+    if (
+      disposed ||
+      stamp !== pcmGeneration ||
+      controller.signal.aborted ||
+      owner !== resourceOwner.value
+    )
+      return;
+    pcmState.value = "failed";
+    pcmDiagnostic.value =
+      error instanceof Error &&
+      error.message === "editor.soundTiming.unsupported"
+        ? "editor.soundTiming.unsupported"
+        : pcmContext?.state === "suspended"
+          ? "editor.soundTiming.resumeRequired"
+          : "editor.soundTiming.previewFailed";
+    transport.pause();
+    updateHold();
+  } finally {
+    if (pcmPreparation === controller) {
+      pcmPreparation = undefined;
+      if (
+        !disposed &&
+        stamp === pcmGeneration &&
+        owner === resourceOwner.value &&
+        !controller.signal.aborted &&
+        !pictureHeld.value &&
+        transport.playing.value &&
+        transport.shuttleRate.value === 1 &&
+        pcmState.value === "ready"
+      )
+        void startPcm(pcmSample.value);
+    }
+  }
+}
+function cancelPcm() {
+  pcmGeneration++;
+  pcmPreparation?.abort();
+  pcmPreparation = undefined;
+  pcmPlayback?.pause();
+  if (pcmState.value !== "failed") {
+    pcmState.value = pcmDescriptor.value ? "ready" : "idle";
+    pcmDiagnostic.value = `editor.soundTiming.${pcmState.value}`;
+  }
+  updateHold();
+}
+function resetPcm() {
+  cancelPcm();
+  pcmPlayback?.dispose();
+  pcmPlayback = undefined;
+  if (pcmContext) void pcmContext.close().catch(() => {});
+  pcmContext = undefined;
+  gestureResume = undefined;
+  pcmDescriptor.value = undefined;
+  pcmSample.value = 0;
+  pcmState.value = "idle";
+  pcmDiagnostic.value = "editor.soundTiming.idle";
+}
+function play() {
+  if (!pcmEnabled.value) {
+    transport.play();
+    return;
+  }
+  try {
+    ensurePcm();
+  } catch {
+    pcmState.value = "failed";
+    pcmDiagnostic.value = "editor.soundTiming.unsupported";
+    transport.pause();
+    return;
+  }
+  transport.play();
+}
+function pause() {
+  if (pcmEnabled.value) cancelPcm();
+  transport.pause();
+}
+function shuttle(direction: -1 | 1) {
+  transport.shuttle(direction);
+}
 const resolved = shallowRef<ReturnType<typeof resolveCompositionFrame>>();
 interface Resource {
   key: string;
@@ -116,6 +338,7 @@ interface Resource {
   failed: boolean;
   running: boolean;
   playGeneration: number;
+  pcmSeekTarget?: number;
 }
 const pictures = new Map<string, Resource>();
 const sounds = new Map<string, Resource>();
@@ -324,13 +547,16 @@ function reconcile(
     layers.value = result.visual.map((entry) => resourceFor(entry));
     // Updating an outgoing tail must not overwrite the current bank's exact time.
     trim(pictures, [...banks.value, ...layers.value]);
-    audible.value = result.audible
-      .filter((entry) => !availability(entry))
-      .map((entry) => resourceFor(entry, sounds));
+    audible.value = pcmEnabled.value
+      ? []
+      : result.audible
+          .filter((entry) => !availability(entry))
+          .map((entry) => resourceFor(entry, sounds));
     trim(sounds, audible.value);
     resolved.value = result;
     const issue = primary ? issueFor(primary) : undefined;
-    transport.buffering.value = issue !== undefined;
+    pictureHeld.value = issue !== undefined;
+    transport.buffering.value = issue !== undefined || soundHold();
     if (issue) {
       if (issue !== "record.not-ready") transport.pause();
       publishIssue(issue, primary);
@@ -379,17 +605,47 @@ const forward = computed(
 function syncPosition(resource: Resource, force: boolean) {
   const element = media(resource);
   if (!element) return;
+  let target = resource.entry.sourceTime;
+  if (
+    !force &&
+    pcmEnabled.value &&
+    transport.shuttleRate.value === 1 &&
+    layers.value.includes(resource)
+  ) {
+    // Integer frames own cuts/captions; normal picture media follows the same
+    // continuous sound position so half-frame rounding cannot cause seek loops.
+    const continuous =
+      pcmSample.value / 48000 +
+      (pcmState.value === "playing" && pcmContext
+        ? Math.max(0, pcmContext.currentTime - pcmObservedAt)
+        : 0);
+    const phase = continuous - (resolved.value?.time ?? 0);
+    const source = resolveClipSourceRange(
+      resource.entry.clip,
+      resource.entry.asset,
+    );
+    target = Math.max(
+      source.sourceIn,
+      Math.min(source.sourceOut, target + phase * source.speed),
+    );
+  }
   const frameRate = resource.entry.asset.frameRate;
   // Without reliable source metadata only explicit operations can resync.
   const tolerance =
     frameRate && Number.isFinite(frameRate) && frameRate > 0
       ? 0.5 / frameRate
       : Infinity;
-  if (
-    force ||
-    Math.abs(element.currentTime - resource.entry.sourceTime) > tolerance
-  )
-    element.currentTime = resource.entry.sourceTime;
+  if (force || Math.abs(element.currentTime - target) > tolerance) {
+    resource.pcmSeekTarget =
+      !force &&
+      pcmEnabled.value &&
+      pcmState.value === "playing" &&
+      transport.shuttleRate.value === 1 &&
+      layers.value.includes(resource)
+        ? target
+        : undefined;
+    element.currentTime = target;
+  }
 }
 function run(resource: Resource, running: boolean) {
   const element = media(resource);
@@ -479,6 +735,7 @@ function bind(resource: Resource, element: unknown) {
 }
 function ready(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
+  resource.pcmSeekTarget = undefined;
   resource.ready = true;
   resource.failed = false;
   // Native canplay also follows a seek. Do not turn a satisfied seek into
@@ -488,6 +745,7 @@ function ready(resource: Resource, event: Event) {
 }
 function failed(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
+  resource.pcmSeekTarget = undefined;
   resource.ready = false;
   resource.failed = true;
   if (banks.value[0] === resource) reconcile();
@@ -498,6 +756,26 @@ function failed(resource: Resource, event: Event) {
 }
 function waiting(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
+  const element = media(resource),
+    target = resource.pcmSeekTarget;
+  if (
+    event.type === "waiting" &&
+    target !== undefined &&
+    element?.seeking &&
+    pcmEnabled.value &&
+    pcmState.value === "playing" &&
+    transport.shuttleRate.value === 1
+  ) {
+    // A buffered corrective picture seek must not restart its master PCM clock.
+    // Cold/unbuffered media and real stalled/error events retain the hold path.
+    for (let i = 0; i < element.buffered.length; i++)
+      if (
+        element.buffered.start(i) <= target &&
+        target < element.buffered.end(i)
+      )
+        return;
+  }
+  resource.pcmSeekTarget = undefined;
   resource.ready = false;
   if (banks.value[0] === resource) reconcile();
 }
@@ -608,6 +886,7 @@ function titleClip(clip: Clip): Clip {
 }
 function positionCommand(command: () => void) {
   if (disposed) return;
+  if (pcmEnabled.value) cancelPcm();
   // A discontinuous position command owns an exact new texture request, even
   // while positive transport intent continues. Retire the sampled request.
   graphicSeekGeneration.value++;
@@ -619,6 +898,13 @@ function positionCommand(command: () => void) {
       reconcile(frame, false, true, "command");
   } finally {
     explicitSeek = false;
+    if (pcmEnabled.value) {
+      pcmSample.value = Math.round(
+        sequenceTimeAt(transport.frame.value, timebase.value) * 48000,
+      );
+      if (transport.playing.value && transport.shuttleRate.value === 1)
+        void startPcm(pcmSample.value);
+    }
   }
 }
 function seek(frame: number) {
@@ -645,6 +931,10 @@ function select(resource: Resource) {
 watch(
   resourceOwner,
   () => {
+    if (pcmPlayback || pcmPreparation) {
+      transport.pause();
+      resetPcm();
+    }
     clearResources();
     gainIssues.clear();
     reconcile();
@@ -668,6 +958,41 @@ watch(
   { flush: "sync" },
 );
 watch(
+  [transport.playing, transport.shuttleRate],
+  ([playing, rate]) => {
+    if (!pcmEnabled.value) return;
+    if (!playing || rate !== 1) {
+      cancelPcm();
+      return;
+    }
+    if (
+      sequenceFrameAt(pcmSample.value / 48000, timebase.value, "floor") !==
+      transport.frame.value
+    )
+      pcmSample.value = Math.round(
+        sequenceTimeAt(transport.frame.value, timebase.value) * 48000,
+      );
+    void startPcm(pcmSample.value);
+  },
+  { flush: "sync" },
+);
+watch(
+  pictureHeld,
+  (held, previous) => {
+    if (
+      !pcmEnabled.value ||
+      !transport.playing.value ||
+      transport.shuttleRate.value !== 1
+    )
+      return;
+    if (held) {
+      pcmPlayback?.pause();
+      updateHold();
+    } else if (previous && !pcmPreparation) void startPcm(pcmSample.value);
+  },
+  { flush: "sync" },
+);
+watch(
   [transport.playing, transport.shuttleRate, transport.buffering],
   () => {
     syncMedia();
@@ -678,12 +1003,16 @@ watch(
 function dispose() {
   if (disposed) return;
   disposed = true;
+  resetPcm();
   transport.dispose();
   clearResources();
 }
 onBeforeUnmount(dispose);
 defineExpose({
   ...transport,
+  play,
+  pause,
+  shuttle,
   seek,
   step,
   previousEdit,
@@ -697,6 +1026,7 @@ defineExpose({
   <div
     class="record-monitor"
     :data-frame="resolved?.frame"
+    :data-audio-preview-id="pcmDescriptor?.id"
     :aria-busy="transport.buffering.value"
   >
     <div
@@ -834,6 +1164,32 @@ defineExpose({
           :active="active"
         />
       </div>
+    </div>
+    <div
+      v-if="pcmEnabled"
+      class="record-audio-status"
+      :data-record-audio-state="pcmState"
+      role="status"
+    >
+      <span>{{
+        t(
+          transport.playing.value && transport.shuttleRate.value !== 1
+            ? "editor.soundTiming.silentShuttle"
+            : pcmDiagnostic,
+        )
+      }}</span>
+      <progress
+        v-if="pcmState === 'preparing'"
+        :aria-label="t('editor.soundTiming.preparing')"
+      />
+      <button
+        v-if="pcmState === 'preparing' || pcmState === 'buffering'"
+        type="button"
+        class="editor-button"
+        @click="pause"
+      >
+        {{ t("editor.soundTiming.cancel") }}
+      </button>
     </div>
     <audio
       v-for="resource in audible"

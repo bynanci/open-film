@@ -30,6 +30,23 @@ candidate/main gates are recorded on [PR72](https://github.com/bynanci/open-film
 and must pass before merge. Rhythm analysis and J/L policy stay separate. See the [waveform guide](docs/sequence-waveforms.md)
 and [validation](docs/validation-sequence-waveforms.md).
 
+D3B1's candidate now carries strict independent sound timing, one shared
+render/Record PCM mix, editing controls and exact project/Collect retention.
+Actual browser Record/WAV capture has zero PCM and seam error at normal play
+and an arbitrary seek; adversarial timing/mix/cache controls reject. The complete
+frozen pre-correction gate passes5436tests. First whole review's bounded handoff
+sample-rounding issue now has native/bake boundary and actual publication
+regressions and passes fresh scoped review. After reviewed Pin integration,
+the first final browser gate exposes a buffered picture-seek/PCM restart loop;
+the narrow tests-first startup correction passes 94 monitor/scheduler/transport
+checks and both unchanged real browser cases at clean `acd8410d` (9.795s), with
+zero PCM/seam error, stale 409 rejection and zero native audio playback. Complete types/build and
+18 official OTIO tests pass on corrected source. D3B1 source implementation is
+complete; the newer startup delta's narrow review and final exact-head hosted
+union gates remain open. D3B2 coverage persistence remains a separate,
+unchecked task. See the [guide](docs/audio-policy.md) and
+[validation](docs/validation-audio-policy.md).
+
 A bounded Phase 1B gesture slice now gives General-mode editors direct
 clip-picture move and proportional corner resize in the existing Story monitor.
 It uses the shared frame-pixel geometry and one acknowledged transform

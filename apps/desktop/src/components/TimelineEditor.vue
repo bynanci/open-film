@@ -85,6 +85,7 @@ import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
+import AudioTimingInspector from "./AudioTimingInspector.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
 import AudioGenerationPanel from "./AudioGenerationPanel.vue";
 import MotionGenerationPanel from "./MotionGenerationPanel.vue";
@@ -310,6 +311,10 @@ async function commitSource(
     return { status: "failed" as const };
   directionPreview.value = null;
   return compositionCommitTransaction(input, [], signal, options);
+}
+async function commitSoundTiming(input: TimelineCommand): Promise<boolean> {
+  const result = await commitSource(input);
+  return result.status === "accepted";
 }
 function templateCommand(
   input: TimelineCommand,
@@ -896,6 +901,32 @@ watch(
   ],
   ([, fontSize]) => {
     captionFontSize.value = fontSize ?? 32;
+  },
+  { immediate: true },
+);
+const captionSafeArea = ref<
+  Record<"left" | "right" | "top" | "bottom", number>
+>({
+  left: 8,
+  right: 8,
+  top: 8,
+  bottom: 12,
+});
+watch(
+  [
+    () => selectedCaptionTrack.value?.id,
+    () => selectedCaptionTrack.value?.style.safeArea?.left,
+    () => selectedCaptionTrack.value?.style.safeArea?.right,
+    () => selectedCaptionTrack.value?.style.safeArea?.top,
+    () => selectedCaptionTrack.value?.style.safeArea?.bottom,
+  ],
+  ([, left, right, top, bottom]) => {
+    captionSafeArea.value = {
+      left: Math.round((left ?? 0.08) * 100),
+      right: Math.round((right ?? 0.08) * 100),
+      top: Math.round((top ?? 0.08) * 100),
+      bottom: Math.round((bottom ?? 0.12) * 100),
+    };
   },
   { immediate: true },
 );
@@ -1487,17 +1518,21 @@ function updateCaptionStyle(key: "fontFamily" | "fontSize", event: Event) {
 }
 function updateCaptionSafeArea(
   side: "left" | "right" | "top" | "bottom",
-  event: Event,
+  event?: Event,
 ) {
   const track = selectedCaptionTrack.value;
   if (!track) return;
-  const target = event.target as HTMLInputElement;
+  const target = event?.target as HTMLInputElement | undefined;
+  const raw =
+    target?.value !== undefined ? target.value : captionSafeArea.value[side];
+  const parsed = Math.max(0, Math.min(30, Number(raw) || 0));
+  captionSafeArea.value[side] = parsed;
   const safeArea = {
-    left: track.style.safeArea?.left ?? 0.08,
-    right: track.style.safeArea?.right ?? 0.08,
-    top: track.style.safeArea?.top ?? 0.08,
-    bottom: track.style.safeArea?.bottom ?? 0.12,
-    [side]: Number(target.value) / 100,
+    left: (captionSafeArea.value.left ?? 8) / 100,
+    right: (captionSafeArea.value.right ?? 8) / 100,
+    top: (captionSafeArea.value.top ?? 8) / 100,
+    bottom: (captionSafeArea.value.bottom ?? 12) / 100,
+    [side]: parsed / 100,
   };
   command({
     type: "caption.track.style",
@@ -4553,6 +4588,27 @@ onBeforeUnmount(() => {
             <p v-if="selectedClip.locked" class="editor-note">
               {{ t("editor.clip.protected") }}
             </p>
+            <AudioTimingInspector
+              v-if="
+                selectedAsset.mediaType === 'audio' ||
+                selectedAsset.mediaType === 'video'
+              "
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :revision="state.revision"
+              :composition-duration="state.composition.duration"
+              :clip="selectedClip"
+              :asset="selectedAsset"
+              :busy="
+                historyBusy ||
+                directionBlocked ||
+                graphicAgentBusy ||
+                graphicAgentPending
+              "
+              :active="active"
+              :source-version="sourceVersion"
+              :commit="commitSoundTiming"
+            />
             <PrimaryColorInspector
               :composition="state.composition"
               :clip="selectedClip"
@@ -5185,12 +5241,7 @@ onBeforeUnmount(() => {
                   >
                     {{ t(`editor.captions.${side}`) }}
                     <input
-                      :value="
-                        Math.round(
-                          (selectedCaptionTrack.style.safeArea?.[side] ??
-                            (side === 'bottom' ? 0.12 : 0.08)) * 100,
-                        )
-                      "
+                      v-model.number="captionSafeArea[side]"
                       type="number"
                       min="0"
                       max="30"

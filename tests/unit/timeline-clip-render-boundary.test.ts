@@ -1,3 +1,4 @@
+import * as recordAudioPlayback from "../../apps/desktop/src/recordAudioPlayback";
 import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -373,6 +374,7 @@ async function mountTimeline(
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
     "../sourceMarks": sourceMarks,
+    "../recordAudioPlayback": recordAudioPlayback,
     "../local-presets": localPresets,
     "../sequenceWaveformCache": sequenceWaveformCache,
     "../sequenceWaveformPreparation": sequenceWaveformPreparation,

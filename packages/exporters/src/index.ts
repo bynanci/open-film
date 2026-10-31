@@ -121,6 +121,8 @@ export function otioCompatibilityReport(
       if (clip.titleRuns !== undefined)
         features.push("bilingual title typography");
       if (clip.audioAutomation !== undefined) features.push("audio automation");
+      if (clip.audioTiming !== undefined)
+        features.push("independent sound timing");
       if (
         isVisualTrack(track) &&
         isFilmLookActive(resolveFilmLook(composition, clip).look)
@@ -204,6 +206,7 @@ function rejectEdits(clip: Clip, format: string): void {
     "titleStyle",
     "titleRuns",
     "audioAutomation",
+    "audioTiming",
   ] as const)
     if (clip[field] !== undefined)
       throw new Error(

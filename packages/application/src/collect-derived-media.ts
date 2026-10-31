@@ -468,7 +468,9 @@ export function remapCollectProject(
     maps = new Map(receipts.map((r) => [r.assetId, r]));
   for (const composition of result.timelines) {
     for (const track of composition.tracks)
-      for (const clip of track.clips)
+      for (const clip of track.clips) {
+        if (clip.audioTiming && maps.has(clip.assetId))
+          fail("An independent sound source clock cannot be rewritten.");
         if (
           clip.userOverrides?.isUserPinned &&
           [
@@ -477,6 +479,7 @@ export function remapCollectProject(
           ].some((id) => maps.has(id))
         )
           fail("A user pinned source clock cannot be rewritten.");
+      }
     for (const scene of composition.graphicScenes ?? [])
       if (
         scene.userOverrides?.isUserPinned &&

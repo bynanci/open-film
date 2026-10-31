@@ -15,6 +15,11 @@ export default {
     nonDropFrame: "ノンドロップフレーム（NDF）",
     timebaseSaving: "シーケンスのタイムベースを保存中…",
     waveform: {
+      suppressed: "主音声を抑制・元の波形を保持",
+      excluded: "副音声を除外・元の波形を保持",
+      muted: "ミュート・元の波形を保持",
+      independent: "独立音声の境界",
+
       title: "シーケンスのソース波形",
       rawPeaks:
         "ゲイン、フェード、ダッキング、ミックスを適用する前のソースピークです。",

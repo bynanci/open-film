@@ -228,3 +228,85 @@ it.each([
 ])("rejects invalid, stale or unbounded evidence %#", (input) => {
   expect(() => project(input)).toThrow();
 });
+
+it("projects raw independent J/L peaks outside picture edges and contribution masks separately", async () => {
+  const { buildAudioMixPlan } = await import("../src/index.js");
+  const independent: Clip = {
+    ...clip,
+    audioTiming: {
+      version: 1,
+      sampleRate: 48000,
+      timelineStartSample: 24000,
+      sourceInSample: 24000,
+      sourceOutSample: 168000,
+    },
+    transform: { volume: 0 },
+  };
+  const secondary = { ...independent, id: "secondary" };
+  const mixPlan = buildAudioMixPlan(
+    {
+      id: "cut",
+      storyId: "s",
+      duration: 4,
+      tracks: [{ id: "v", type: "video", clips: [independent, secondary] }],
+    },
+    [asset],
+    {
+      timebase,
+      coverage: [
+        {
+          version: 1,
+          bindingId: "b",
+          compositionId: "cut",
+          primaryClipId: clip.id,
+          secondaryClipId: secondary.id,
+          startSample: 60000,
+          endSample: 96000,
+          policy: {
+            version: 1,
+            mode: "replace-primary",
+            role: "ambience",
+            gain: 0.5,
+          },
+        },
+      ],
+    },
+  );
+  const result = project({ clip: independent, mixPlan });
+  expect(result.peaks).toEqual([0, 0.2, 0.8, 0, 0.4, 1, 0, 0]);
+  expect(result.audioStart).toBe(0.5);
+  expect(result.audioEnd).toBe(3.5);
+  expect(result.audible).toEqual([
+    false,
+    true,
+    true,
+    false,
+    true,
+    true,
+    true,
+    false,
+  ]);
+  expect(result.suppressed).toEqual([
+    false,
+    false,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+  ]);
+  expect(result.excluded).toEqual(Array(8).fill(false));
+  const other = project({ clip: secondary, mixPlan });
+  expect(other.peaks).toEqual(result.peaks);
+  expect(other.excluded).toEqual([
+    false,
+    true,
+    true,
+    false,
+    true,
+    true,
+    true,
+    false,
+  ]);
+});

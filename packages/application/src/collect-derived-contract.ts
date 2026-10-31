@@ -145,6 +145,7 @@ export function validateDerivedCollectManifest(
     "source.user-pinned",
     "source.opaque-reference",
     "source.evidence-bound",
+    "source.independent-audio",
     "source.range-invalid",
     "source.unused",
   ];

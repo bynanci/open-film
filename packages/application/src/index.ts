@@ -1,3 +1,5 @@
+import { RecordAudioPreviewService } from "./record-audio-preview.js";
+export * from "./record-audio-preview.js";
 import { PrimaryColorReviewService } from "./primary-color-review.js";
 export {
   PrimaryColorReviewService,
@@ -94,6 +96,7 @@ import {
   createProject,
   resolveProjectTimebase,
   projectSettingsWithTimebase,
+  createExportProfile,
   ApplicationError,
   errorInfo,
   migrateProject,
@@ -395,6 +398,7 @@ export class OpenFilmApplication {
   readonly visualQa: VisualQaService;
   readonly handoff: NleHandoffService;
   readonly audioQuality: AudioQualityService;
+  readonly recordAudioPreview: RecordAudioPreviewService;
   readonly primaryColorReview: PrimaryColorReviewService;
   readonly audioGeneration: AudioGenerationService;
   readonly motionGeneration: MotionGenerationService;
@@ -413,6 +417,7 @@ export class OpenFilmApplication {
 
   readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
+  private recordAudioProgress?: (progress: number) => void;
   private persistedProject: string;
   private persistenceConflict = false;
   private generation = 0;
@@ -513,6 +518,7 @@ export class OpenFilmApplication {
               recordJob: false,
               trackActiveJob: false,
               snapshot: options.snapshot,
+              audioMixContext: options.audioMixContext,
             },
           ),
       });
@@ -571,6 +577,33 @@ export class OpenFilmApplication {
             trackActiveJob: false,
             compositionOverride: composition,
           }),
+      );
+      this.recordAudioPreview = new RecordAudioPreviewService(
+        this,
+        (composition, outputPath, options) =>
+          this.renderFilm(
+            composition.id,
+            {
+              signal: options.signal,
+              maximumOutputBytes: options.maximumOutputBytes,
+              audioOnly: true,
+              exportProfile: createExportProfile({
+                ratio: "16:9",
+                width: 160,
+                height: 90,
+                frameRate: this.project.settings.frameRate,
+                format: "wav",
+              }),
+              onProgress: (progress) => this.recordAudioProgress?.(progress),
+            },
+            false,
+            {
+              outputPath,
+              compositionOverride: composition,
+              recordJob: false,
+              trackActiveJob: false,
+            },
+          ),
       );
       const readProject = () => this.project;
       this.handoff = new NleHandoffService({
@@ -952,8 +985,8 @@ export class OpenFilmApplication {
     }
   }
 
-  async save(): Promise<void> {
-    this.saveSync();
+  async save(assertCurrent?: () => void): Promise<void> {
+    this.saveSync(assertCurrent);
   }
 
   async runMotionGeneration(
@@ -1032,6 +1065,51 @@ export class OpenFilmApplication {
         signal,
       );
     } finally {
+      this.activeJobs--;
+    }
+  }
+
+  async runRecordAudioPreview(
+    compositionId: string,
+    baseRevision: string,
+    signal?: AbortSignal,
+    jobId = randomUUID(),
+  ) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    const job: Job = {
+      id: jobId,
+      type: "record-audio-preview",
+      status: "running",
+      progress: 0,
+      createdAt: new Date().toISOString(),
+    };
+    this.catalog.saveJob(job);
+    this.recordAudioProgress = (progress) => {
+      job.progress = Math.min(0.99, Math.max(job.progress ?? 0, progress));
+      this.catalog.saveJob(job);
+    };
+    try {
+      const descriptor = await this.recordAudioPreview.prepare(
+        compositionId,
+        baseRevision,
+        signal,
+      );
+      job.status = "completed";
+      job.progress = 1;
+      this.catalog.saveJob(job);
+      return descriptor;
+    } catch (error) {
+      job.status = signal?.aborted ? "cancelled" : "failed";
+      this.catalog.saveJob(job);
+      throw error;
+    } finally {
+      this.recordAudioProgress = undefined;
       this.activeJobs--;
     }
   }
@@ -1255,6 +1333,7 @@ export class OpenFilmApplication {
       console.error("Primary color review close cleanup failed.", error);
     });
     void this.motionGeneration.dispose().catch(() => undefined);
+    this.recordAudioPreview.dispose();
     this.graphics.close();
     this.textOverlays.close();
     this.photoPresentation.close();
@@ -2097,6 +2176,7 @@ export class OpenFilmApplication {
       trackActiveJob?: boolean;
       compositionOverride?: Composition;
       snapshot?: RenderOptions["snapshot"];
+      audioMixContext?: RenderOptions["audioMixContext"];
     } = {},
   ): Promise<string> {
     let exportProfile: ExportProfile | undefined;
@@ -2197,7 +2277,15 @@ export class OpenFilmApplication {
     try {
       const assets = this.compositionAssets(composition);
       const sourceIds = options.audioOnly
-        ? audioSourceAssetIds(composition, assets, options.audioRole)
+        ? audioSourceAssetIds(
+            composition,
+            assets,
+            options.audioRole,
+            context.audioMixContext ?? {
+              timebase: resolveProjectTimebase(this.project.settings),
+              coverage: [],
+            },
+          )
         : options.videoOnly
           ? visualSourceAssetIds(composition, assets)
           : undefined;
@@ -2261,6 +2349,7 @@ export class OpenFilmApplication {
           audioOnly: options.audioOnly,
           videoOnly: options.videoOnly,
           audioRole: options.audioRole,
+          audioMixContext: context.audioMixContext,
           snapshot: approved,
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;
@@ -2371,6 +2460,7 @@ export class OpenFilmApplication {
 export {
   TimelineEditor,
   TimelineEditorError,
+  type AudioHandleFacts,
   type TimelineEditorState,
   type TimelineEditInput,
   type DirectionReviewPlan,

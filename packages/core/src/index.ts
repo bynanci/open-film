@@ -33,6 +33,8 @@ export * from "./proxy-cache.js";
 export * from "./collect-delivery.js";
 
 export * from "./user-overrides.js";
+
+export * from "./audio-policy.js";
 export * from "./primary-color.js";
 export * from "./presets.js";
 export * from "./preset-json.js";

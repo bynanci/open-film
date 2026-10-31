@@ -2,6 +2,53 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    soundTiming: {
+      title: "音声タイミング",
+      linked: "映像と連動",
+      independent: "独立した音声",
+      currentRange: "音声範囲：",
+      milliseconds: "ミリ秒",
+      sampleRemainder: "開始／終了の追加サンプル（1ミリ秒＝48サンプル）",
+      verifiedSource: "検証済みソース音声：",
+      startOffset: "音声開始を調整（ミリ秒）",
+      endOffset: "音声終了を調整（ミリ秒）",
+      apply: "音声タイミングを適用",
+      saving: "音声タイミングを保存中…",
+      reset: "音声タイミングをリセット",
+      resetHint: "リセットすると音声は映像と連動する範囲に戻ります：",
+      splitHint:
+        "v1 は独立音声の分割・置換に対応していません。先に音声タイミングを明示的にリセットしてください。",
+      clockHint:
+        "開始を負にすると J カット、終了を正にすると L カットになります。開始の移動はフェード、エンベロープ、ダッキングの基準も移動します。",
+      locked:
+        "クリップとソースのロックを解除してから音声タイミングを編集してください。",
+      missingStream:
+        "検証済みの音声ストリームがありません。ソースを検査または再リンクしてください。",
+      checking: "デコード後のソース余白を検証中…",
+      sourceUnavailable:
+        "ソース音声の余白を検証できませんでした。検査または再リンクして再試行してください。",
+      invalidRange:
+        "ソースと動画の範囲内で −60000〜60000 の整数ミリ秒を指定してください。既存のフェードとダッキングも範囲内に必要です。",
+      saveFailed:
+        "音声タイミングは保存されていません。ソース、ロック、エフェクトを確認して再試行してください。",
+      recordAudition:
+        "保存済みの独立音声ミックスは Record で試聴してください。",
+      idle: "再生すると保存済みミックスを準備します。",
+      preparing: "保存済みミックスを準備中…",
+      ready: "保存済みミックスの準備ができました。",
+      playing: "保存済みミックスを再生中。",
+      buffering: "PCM 読み込み中は映像と音声を同じ位置で保持します…",
+      previewFailed:
+        "音声プレビューが利用できないか古くなっています。再生を再試行するか WAV／MP4 を書き出してください。",
+      resumeRequired:
+        "音声の再生操作が必要です。もう一度再生を押してください。",
+      invalidPcm: "準備した音声の PCM 形式が無効です。再準備してください。",
+      unsupported:
+        "WebAudio が利用できません。このミックスは WAV または MP4 で書き出してください。",
+      silentShuttle:
+        "独立音声のシャトル再生は無音です。通常の 1× 再生は保存済みミックスを使用します。",
+      cancel: "音声の準備をキャンセル",
+    },
     pins: {
       affected: "対象の固定編集：{owners}。",
       pinned: "編集を固定済み",

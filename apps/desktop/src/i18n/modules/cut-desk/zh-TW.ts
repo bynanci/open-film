@@ -15,6 +15,11 @@ export default {
     nonDropFrame: "非丟格（NDF）",
     timebaseSaving: "正在儲存序列時間基準…",
     waveform: {
+      suppressed: "主音訊已抑制・保留來源波形",
+      excluded: "次音訊已排除・保留來源波形",
+      muted: "已靜音・保留來源波形",
+      independent: "獨立聲音邊界",
+
       title: "序列來源波形",
       rawPeaks: "原始來源峰值，尚未套用增益、淡入淡出、自動壓低或混音。",
       viewport: "波形顯示範圍",

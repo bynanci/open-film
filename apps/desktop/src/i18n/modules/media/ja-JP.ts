@@ -212,6 +212,7 @@ export default {
         photoMotion: "写真のモーション",
         titleStyle: "タイトルの書体とレイアウト",
         audioAutomation: "音声フェード、音量カーブ、ダッキング",
+        audioTiming: "独立した音声タイミング",
         overlayTiming: "映像を移動しない音楽の編集",
         userPins: "ユーザー固定の意図（メタデータのみ）",
         clipLocks: "クリップのロックとストーリーの区切り",

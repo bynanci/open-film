@@ -77,8 +77,14 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      audioTimingConflict:
+        "此編輯與獨立聲音範圍衝突。請先調整或明確重設聲音時序。",
+      audioCaptionConflict:
+        "此編輯會改變來源連結字幕的對應。請在同一批次編輯或刪除受影響字幕。",
+
       pinConflict:
         "此調整無法保留釘選編輯。請明確解除使用者釘選，或調整相鄰片段。",
+
       primaryColorLocked:
         "這項基本色彩變更會影響 {count} 個受保護片段。請先解鎖片段或來源。",
       titleRunsConflict:

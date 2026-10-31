@@ -1,3 +1,7 @@
+import {
+  translateIndependentAudio,
+  validateAudioEdit,
+} from "./audio-timing.js";
 import { placeDirectEdit, solveIncremental } from "./pinned-placement.js";
 import {
   applyOverridePolicy,
@@ -19,6 +23,9 @@ import {
   validateTitleTextRuns,
   type TitleTextRuns,
   validateAudioAutomation,
+  validateAudioTiming,
+  resolveAudioInterval,
+  type AudioTimingV1,
   validateFilmLook,
   validatePrimaryColorCorrection,
   primaryColorCoefficients,
@@ -112,6 +119,7 @@ export type TimelineCommand =
       volume?: number;
       generationId?: string;
     }
+  | { type: "audio.timing"; clipId: string; timing: AudioTimingV1 | null }
   | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
   | { type: "audio.move"; clipId: string; timelineStart: number }
   | { type: "trim"; clipId: string; sourceIn: number; sourceOut: number }
@@ -483,7 +491,7 @@ function filmClips(document: EditorDocument): Clip[] {
  */
 function constrainAudioAutomation(clip: Clip, duration: number): void {
   const automation = clip.audioAutomation;
-  if (!automation) return;
+  if (!automation || clip.audioTiming) return;
   const next = structuredClone(automation);
   if (next.fadeIn !== undefined) next.fadeIn = Math.min(next.fadeIn, duration);
   if (next.fadeOut !== undefined)
@@ -565,6 +573,12 @@ function updateDuration(
     for (const clip of track.clips) {
       const remaining = document.composition.duration - clip.timelineStart;
       if (remaining < clip.timelineDuration - EPSILON) {
+        if (clip.audioTiming)
+          throw new ApplicationError(
+            "timeline.audioTimingConflict",
+            "Shortening the film would truncate independent sound. Explicitly reset or edit its sound timing first.",
+            409,
+          );
         if (clip.locked || findAsset(assets, clip.assetId).state.locked)
           fail(
             `Shortening the film would truncate locked audio "${clip.id}". Unlock or trim it explicitly first.`,
@@ -909,12 +923,15 @@ function captionTrackById(
 function commitCaptionTracks(
   next: EditorDocument,
   tracks: CaptionTrack[],
+  deferred = false,
 ): EditorDocument {
   const composition = structuredClone(next.composition);
   if (tracks.length) composition.captionTracks = tracks;
   else delete composition.captionTracks;
   try {
-    next.composition = validateComposition(composition);
+    next.composition = deferred
+      ? composition
+      : validateComposition(composition);
   } catch (error) {
     fail(error instanceof Error ? error.message : "Caption track is invalid.");
   }
@@ -924,17 +941,18 @@ function commitCaptionTracks(
 function applyCaptionCommand(
   next: EditorDocument,
   command: CaptionTimelineCommand,
+  deferred = false,
 ): EditorDocument {
   const tracks = structuredClone(next.composition.captionTracks ?? []);
   if (command.type === "caption.track.add") {
     tracks.push(structuredClone(command.track));
-    return commitCaptionTracks(next, tracks);
+    return commitCaptionTracks(next, tracks, deferred);
   }
   if (command.type === "caption.track.remove") {
     const index = tracks.findIndex((item) => item.id === command.trackId);
     if (index < 0) fail(`Caption track "${command.trackId}" was not found.`);
     tracks.splice(index, 1);
-    return commitCaptionTracks(next, tracks);
+    return commitCaptionTracks(next, tracks, deferred);
   }
   const track = captionTrackById(tracks, command.trackId);
   if (command.type === "caption.track.style") {
@@ -942,18 +960,18 @@ function applyCaptionCommand(
     if (style.role !== "subtitle")
       fail("Caption styling requires the subtitle role.");
     track.style = style;
-    return commitCaptionTracks(next, tracks);
+    return commitCaptionTracks(next, tracks, deferred);
   }
   if (command.type === "caption.cue.add") {
     track.cues.push(structuredClone(command.cue));
     track.cues.sort((first, second) => first.startMs - second.startMs);
-    return commitCaptionTracks(next, tracks);
+    return commitCaptionTracks(next, tracks, deferred);
   }
   if (command.type === "caption.cue.delete") {
     const index = track.cues.findIndex((item) => item.id === command.cueId);
     if (index < 0) fail(`Caption cue "${command.cueId}" was not found.`);
     track.cues.splice(index, 1);
-    return commitCaptionTracks(next, tracks);
+    return commitCaptionTracks(next, tracks, deferred);
   }
   const cue = track.cues.find((item) => item.id === command.cueId);
   if (!cue) fail(`Caption cue "${command.cueId}" was not found.`);
@@ -987,7 +1005,7 @@ function applyCaptionCommand(
   if (Object.hasOwn(command.patch, "endMs")) cue.endMs = command.patch.endMs!;
   cue.manualRevision += 1;
   track.cues.sort((first, second) => first.startMs - second.startMs);
-  return commitCaptionTracks(next, tracks);
+  return commitCaptionTracks(next, tracks, deferred);
 }
 
 /** Server-owned mutation context. Legacy solver callers are automatic. */
@@ -996,6 +1014,30 @@ export function applyTimelineCommand(
   assets: MediaAsset[],
   command: TimelineCommand,
   context: TimelineEditContext = {},
+): EditorDocument {
+  return applyTimelineCommandInternal(
+    document,
+    assets,
+    command,
+    context,
+    false,
+  );
+}
+/** Internal transaction seam: callers must validateAudioEdit on their complete candidate before publishing. */
+export function applyTimelineCommandInBatch(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  command: TimelineCommand,
+  context: TimelineEditContext,
+): EditorDocument {
+  return applyTimelineCommandInternal(document, assets, command, context, true);
+}
+function applyTimelineCommandInternal(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  command: TimelineCommand,
+  context: TimelineEditContext,
+  deferred: boolean,
 ): EditorDocument {
   const origin = context.origin ?? "automatic";
   const writes = directOverrideTargets([command]);
@@ -1057,6 +1099,11 @@ export function applyTimelineCommand(
       mode: command.mode,
     });
     if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
+    if (!deferred)
+      validateAudioEdit(document, result.document, assets, [command], {
+        origin,
+        timebase: context.timebase!,
+      });
     return result.document;
   }
   const constrained =
@@ -1068,7 +1115,13 @@ export function applyTimelineCommand(
   // the complete anchored cut, where its actual final duration is known.
   let next = command.type.startsWith("user-pin.")
     ? structuredClone(document)
-    : applyTimelineCommandRaw(document, assets, command, !constrained);
+    : applyTimelineCommandRaw(
+        document,
+        assets,
+        command,
+        deferred,
+        !constrained,
+      );
   if (constrained) {
     if (!context.timebase)
       pinConflict(
@@ -1084,6 +1137,7 @@ export function applyTimelineCommand(
     if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
     next = result.document;
   }
+  translateIndependentAudio(document, next, command);
   next = applyOverridePolicy(document, next, [command], {
     origin,
     timebase: context.timebase!,
@@ -1101,6 +1155,11 @@ export function applyTimelineCommand(
     if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
     return result.document;
   }
+  if (!deferred)
+    validateAudioEdit(document, next, assets, [command], {
+      origin,
+      timebase: context.timebase!,
+    });
   return next;
 }
 
@@ -1109,6 +1168,7 @@ function applyTimelineCommandRaw(
   document: EditorDocument,
   assets: MediaAsset[],
   command: TimelineCommand,
+  deferred = false,
   reconcileOverlays = true,
 ): EditorDocument {
   const next = structuredClone(document);
@@ -1221,7 +1281,8 @@ function applyTimelineCommandRaw(
   if (command.type === "look") return applyLookCommand(next, assets, command);
   if (command.type === "primary-color")
     return applyPrimaryColorCommand(next, assets, command);
-  if (isCaptionCommand(command)) return applyCaptionCommand(next, command);
+  if (isCaptionCommand(command))
+    return applyCaptionCommand(next, command, deferred);
   if (command.type === "audio.add") {
     if (
       !command.clipId.trim() ||
@@ -1322,6 +1383,8 @@ function applyTimelineCommandRaw(
   const asset = findAsset(assets, clip.assetId);
   if (track.timing === "overlay" && asset.state.locked)
     fail(`Source "${asset.name}" is locked. Unlock it before editing audio.`);
+  const pendingCaptions = deferred ? next.composition.captionTracks : undefined;
+  if (deferred) delete next.composition.captionTracks;
   switch (command.type) {
     case "presentation": {
       if (
@@ -1479,6 +1542,12 @@ function applyTimelineCommandRaw(
       break;
     }
 
+    case "audio.timing":
+      if (asset.state.locked)
+        fail("Unlock the source before editing sound timing.");
+      if (command.timing === null) delete clip.audioTiming;
+      else clip.audioTiming = validateAudioTiming(command.timing);
+      break;
     case "audio.configure":
       if (asset.mediaType !== "audio" && asset.mediaType !== "video")
         fail("Audio automation requires an audio or video source.");
@@ -1492,7 +1561,12 @@ function applyTimelineCommandRaw(
         );
       clip.audioAutomation = validateAudioAutomation(
         command.automation,
-        clip.timelineDuration,
+        deferred
+          ? undefined
+          : clip.audioTiming
+            ? resolveAudioInterval(clip, asset, next.composition.duration)
+                .automationDurationSeconds
+            : clip.timelineDuration,
       );
       break;
     case "audio.move":
@@ -1512,6 +1586,12 @@ function applyTimelineCommandRaw(
       break;
 
     case "clip.split": {
+      if (clip.audioTiming)
+        throw new ApplicationError(
+          "timeline.audioTimingConflict",
+          "Reset sound timing to relink audio before splitting this clip.",
+          409,
+        );
       if (
         clip.audioAutomation &&
         (clip.audioAutomation.fadeIn ||
@@ -1708,6 +1788,12 @@ function applyTimelineCommandRaw(
     }
     case "delete":
     case "replace": {
+      if (command.type === "replace" && clip.audioTiming)
+        throw new ApplicationError(
+          "timeline.audioTimingConflict",
+          "Reset sound timing to relink audio before replacing this clip.",
+          409,
+        );
       const beat = next.story.beats.find((beat) => beat.id === clip.beatId);
       const required = beat?.constraints?.some(
         (constraint) =>
@@ -1758,6 +1844,7 @@ function applyTimelineCommandRaw(
     default:
       fail("Unknown timeline command.");
   }
+  if (pendingCaptions) next.composition.captionTracks = pendingCaptions;
   return next;
 }
 

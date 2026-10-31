@@ -989,3 +989,11 @@ export {
   sceneCacheIdentity,
 } from "./intelligence.js";
 export type { SceneDetectionOptions } from "./intelligence.js";
+
+export {
+  CANONICAL_AUDIO_FILTER,
+  inspectCanonicalAudio,
+  assertCanonicalAudioCurrent,
+  withCanonicalAudioFacts,
+  type CanonicalAudioFacts,
+} from "./canonical-audio.js";

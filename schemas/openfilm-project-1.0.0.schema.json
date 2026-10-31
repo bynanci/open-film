@@ -532,6 +532,7 @@
     "clip": {
       "type": "object",
       "properties": {
+        "audioTiming": false,
         "userOverrides": false,
         "id": {
           "type": "string",

@@ -51,6 +51,7 @@ export default {
       locked: "素材或片段保護會保留原檔。",
       opaqueReference: "場景或版面依賴需要完整來源。",
       evidenceBound: "逐字稿、來源證據或擴充資料需要保留原始時間。",
+      independentAudio: "獨立聲音時間需要保留完整原檔與原始聲音時鐘。",
       rangeInvalid: "已儲存的來源區間需要先檢查。",
       unused: "此來源仍被引用，但找不到明確的片段使用區間。",
     },

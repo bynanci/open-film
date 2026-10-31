@@ -37,6 +37,8 @@ export const applicationErrorCodes = [
   "timeline.conflict",
   "timeline.invalidEdit",
   "timeline.pinConflict",
+  "timeline.audioTimingConflict",
+  "timeline.audioCaptionConflict",
   "timeline.captionRangeConflict",
   "timeline.titleRunsConflict",
   "title.busy",

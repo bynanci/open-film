@@ -2,6 +2,49 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    soundTiming: {
+      title: "Sound timing",
+      linked: "Linked to picture",
+      independent: "Independent sound",
+      currentRange: "Sound range:",
+      milliseconds: "ms",
+      sampleRemainder: "additional samples at start / end (48 samples per ms)",
+      verifiedSource: "Verified source audio:",
+      startOffset: "Adjust sound start (ms)",
+      endOffset: "Adjust sound end (ms)",
+      apply: "Apply sound timing",
+      saving: "Saving sound timing…",
+      reset: "Reset sound timing",
+      resetHint: "Reset returns sound to the linked picture range:",
+      splitHint:
+        "Independent sound cannot be split or replaced in v1. Explicitly reset sound timing first.",
+      clockHint:
+        "Negative start makes a J cut; positive end makes an L cut. Moving sound start also moves its fade, envelope and duck clock.",
+      locked: "Unlock this clip and its source before changing sound timing.",
+      missingStream: "No verified audio stream. Inspect or relink this source.",
+      checking: "Checking decoded source handles…",
+      sourceUnavailable:
+        "Source audio handles could not be verified. Inspect or relink the source and retry.",
+      invalidRange:
+        "Use integer offsets from −60000 to 60000 ms within the source and film. Existing fades and duck regions must fit.",
+      saveFailed:
+        "Sound timing was not saved. Review the source, locks and effects, then retry.",
+      recordAudition: "Use Record to audition the saved independent sound mix.",
+      idle: "Play to prepare the saved sound mix.",
+      preparing: "Preparing saved sound mix…",
+      ready: "Saved sound mix ready.",
+      playing: "Playing saved sound mix.",
+      buffering: "Holding picture and sound while PCM loads…",
+      previewFailed:
+        "Sound preview is unavailable or stale. Retry Play, or export WAV/MP4.",
+      resumeRequired: "Audio needs a playback gesture. Press Play again.",
+      invalidPcm: "Prepared sound has an invalid PCM shape. Prepare again.",
+      unsupported:
+        "WebAudio is unavailable. Use WAV or MP4 export for this sound mix.",
+      silentShuttle:
+        "Shuttle is silent for independent sound. Normal 1× Play uses the saved mix.",
+      cancel: "Cancel sound preparation",
+    },
     pins: {
       affected: "Affected pinned edits: {owners}.",
       pinned: "Pinned edit",

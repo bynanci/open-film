@@ -1,4 +1,9 @@
 import {
+  AUDIO_PROJECT_SCHEMA_VERSION,
+  validateAudioTiming,
+  resolveAudioTimingRange,
+} from "./audio-policy.js";
+import {
   PINNED_PROJECT_SCHEMA_VERSION,
   validateUserOverrideState,
 } from "./user-overrides.js";
@@ -1247,11 +1252,38 @@ function composition(
       });
       optional(clip, "motion", clipPath, photoMotion);
       optional(clip, "titleStyle", clipPath, titleStyle);
+      let soundDuration = length;
+      if (Object.hasOwn(clip, "audioTiming")) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          clip,
+          "audioTiming",
+        )!;
+        if (!descriptor.enumerable || !("value" in descriptor))
+          fail(`${clipPath}.audioTiming`, "expected own JSON data");
+        const timing = validateAudioTiming(descriptor.value);
+        const speed = Number(
+          (clip.transform as Record<string, unknown> | undefined)?.speed ?? 1,
+        );
+        let samples: number;
+        try {
+          samples = resolveAudioTimingRange(
+            timing,
+            speed,
+            duration,
+          ).lengthSamples;
+        } catch {
+          fail(
+            `${clipPath}.audioTiming`,
+            "independent sound exceeds composition bounds",
+          );
+        }
+        soundDuration = samples / 48000;
+      }
       optional(clip, "titlePresetSnapshot", clipPath, (value) =>
         validatePresetSnapshot(value, "title"),
       );
       optional(clip, "audioAutomation", clipPath, (v, p) =>
-        audioAutomation(v, p, length),
+        audioAutomation(v, p, soundDuration),
       );
       optional(clip, "look", clipPath, filmLook);
       optional(clip, "primaryColor", clipPath, primaryColor);
@@ -1305,7 +1337,8 @@ export function validateProject(
   const data = object(value, path);
   if (
     data.schemaVersion !== PROJECT_SCHEMA_VERSION &&
-    data.schemaVersion !== PINNED_PROJECT_SCHEMA_VERSION
+    data.schemaVersion !== PINNED_PROJECT_SCHEMA_VERSION &&
+    data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION
   ) {
     string(data.schemaVersion, `${path}.schemaVersion`);
     if (!/^\d+\.\d+\.\d+$/.test(String(data.schemaVersion)))
@@ -1317,6 +1350,26 @@ export function validateProject(
       `${path}.schemaVersion`,
       `unsupported schema version ${String(data.schemaVersion)}; this application supports ${PROJECT_SCHEMA_VERSION}. Use migrateProject for a documented older version.`,
     );
+  }
+  if (
+    data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION &&
+    Array.isArray(data.timelines)
+  ) {
+    data.timelines.forEach((raw, i) => {
+      const cut = object(raw, `project.timelines[${i}]`);
+      if (Array.isArray(cut.tracks))
+        cut.tracks.forEach((raw, j) => {
+          const track = object(raw, `project.timelines[${i}].tracks[${j}]`);
+          if (Array.isArray(track.clips))
+            track.clips.forEach((raw, k) => {
+              if (Object.hasOwn(object(raw, "clip"), "audioTiming"))
+                fail(
+                  `project.timelines[${i}].tracks[${j}].clips[${k}].audioTiming`,
+                  "requires project schema 1.2.0",
+                );
+            });
+        });
+    });
   }
   if (
     data.schemaVersion === PROJECT_SCHEMA_VERSION &&

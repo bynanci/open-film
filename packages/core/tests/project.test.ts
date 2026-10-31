@@ -191,7 +191,12 @@ describe("versioned projects", () => {
     expect(legacy.schemaVersion).toBe("0.1.0");
     migrated.stories[0]!.title = "New";
     expect(legacy.stories[0]!.title).toBe("A day");
-    expect(supportedProjectVersions()).toEqual(["0.1.0", "1.0.0", "1.1.0"]);
+    expect(supportedProjectVersions()).toEqual([
+      "0.1.0",
+      "1.0.0",
+      "1.1.0",
+      "1.2.0",
+    ]);
   });
 
   it("does not repair malformed existing settings during migration", () => {

@@ -1,4 +1,6 @@
 import type {
+  AudioHandleFacts,
+  RecordAudioPreviewDescriptor,
   PresetRegistryView,
   PresetImportReview,
   PresetInstallInput,
@@ -770,6 +772,63 @@ async function uploadFiles(
   }
 }
 export const api = {
+  audioHandles: (
+    compositionId: string,
+    clipId: string,
+    baseRevision: string,
+    signal?: AbortSignal,
+  ) =>
+    request<AudioHandleFacts>(
+      `/compositions/${encodeURIComponent(compositionId)}/clips/${encodeURIComponent(clipId)}/audio-handles?${new URLSearchParams({ baseRevision })}`,
+      { signal },
+    ),
+  prepareRecordAudioPreview: (
+    compositionId: string,
+    baseRevision: string,
+    signal?: AbortSignal,
+  ) =>
+    post<RecordAudioPreviewDescriptor>(
+      `/compositions/${encodeURIComponent(compositionId)}/record-audio-preview`,
+      { baseRevision },
+      signal,
+    ),
+  recordAudioPcm: async (
+    id: string,
+    startSample: number,
+    count: number,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> => {
+    const connection = prefix,
+      response = await fetch(
+        `${connection}/record-audio-preview/${encodeURIComponent(id)}/pcm?${new URLSearchParams({ startSample: String(startSample), count: String(count) })}`,
+        { signal },
+      );
+    if (!response.ok) {
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        body = {};
+      }
+      throw responseError(body, response.status);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (connection !== prefix || signal?.aborted)
+      throw new DOMException("Record audio connection changed.", "AbortError");
+    if (
+      response.headers.get("X-OpenFilm-PCM-Sample-Rate") !== "48000" ||
+      response.headers.get("X-OpenFilm-PCM-Channels") !== "2" ||
+      response.headers.get("X-OpenFilm-PCM-Format") !== "pcm_s24le" ||
+      response.headers.get("X-OpenFilm-PCM-Start-Sample") !==
+        String(startSample) ||
+      response.headers.get("X-OpenFilm-PCM-Frame-Count") !== String(count) ||
+      bytes.length !== count * 6
+    )
+      throw new ApiError("Record PCM response has an invalid shape.", 502, {
+        code: "workspace.invalidResponse",
+      });
+    return bytes;
+  },
   localPresets: (signal?: AbortSignal) =>
     request<PresetRegistryView>("/presets", { signal }),
   reviewPresetImport: (document: string, signal?: AbortSignal) =>

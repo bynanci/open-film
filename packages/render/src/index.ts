@@ -1,3 +1,5 @@
+import { compileAudioMixPlan } from "./audio-plan.js";
+export { compileAudioMixPlan } from "./audio-plan.js";
 import { renderPresetSnapshots } from "./preset-integrity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
@@ -82,6 +84,10 @@ export {
   titleOverlayCacheKey,
 } from "./titles.js";
 import {
+  buildAudioMixPlan,
+  resolveProjectTimebase,
+  type AudioMixContext,
+  type AudioMixPlan,
   graphicSceneAssetIds,
   projectFrameRate,
   resolveClipSourceRange,
@@ -107,6 +113,10 @@ import {
   type TitleStyle,
 } from "@openfilm/core";
 import {
+  inspectCanonicalAudio,
+  assertCanonicalAudioCurrent,
+  withCanonicalAudioFacts,
+  type CanonicalAudioFacts,
   checkAbort,
   hashFile,
   localPath,
@@ -137,6 +147,8 @@ export interface RenderSnapshot {
   assertCurrent: () => void;
 }
 export interface RenderOptions {
+  /** Trusted internal adapter only; never forwarded from generic HTTP input. */
+  audioMixContext?: AudioMixContext;
   signal?: AbortSignal;
   /** Application-owned bound for private delivery validation intermediates. */
   maximumOutputBytes?: number;
@@ -210,7 +222,26 @@ export function audioSourceAssetIds(
   composition: Composition,
   assets: MediaAsset[],
   role?: AudioAutomation["role"],
+  context?: AudioMixContext,
 ): Set<string> {
+  if (
+    context?.coverage.length ||
+    composition.tracks.some((t) => t.clips.some((c) => c.audioTiming))
+  ) {
+    const plan = buildAudioMixPlan(
+      composition,
+      assets,
+      context ?? { timebase: resolveProjectTimebase(defaults), coverage: [] },
+    );
+    return new Set(
+      plan.segments
+        .filter(
+          (segment) =>
+            segment.baseGain !== 0 && (!role || segment.role === role),
+        )
+        .map((segment) => segment.assetId),
+    );
+  }
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
   return new Set(
     composition.tracks
@@ -277,9 +308,35 @@ function outputFrameFilters(profile: ExportProfile): string[] {
 export function validateRenderClipCapabilities(
   composition: Composition,
   assets: readonly MediaAsset[],
-  options: Pick<RenderOptions, "audioOnly" | "videoOnly" | "audioRole"> = {},
+  options: Pick<
+    RenderOptions,
+    "audioOnly" | "videoOnly" | "audioRole" | "audioMixContext"
+  > = {},
 ): void {
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  const audioPlan =
+    options.audioMixContext?.coverage.length ||
+    composition.tracks.some((t) => t.clips.some((c) => c.audioTiming))
+      ? buildAudioMixPlan(
+          composition,
+          assets,
+          options.audioMixContext ?? {
+            timebase: resolveProjectTimebase(defaults),
+            coverage: [],
+          },
+        )
+      : undefined;
+  const admitted =
+    audioPlan &&
+    new Set(
+      audioPlan.segments
+        .filter(
+          (s) =>
+            s.baseGain !== 0 &&
+            (!options.audioRole || s.role === options.audioRole),
+        )
+        .map((s) => s.clipId),
+    );
   for (const track of composition.tracks)
     for (const clip of track.clips) {
       if (options.audioOnly && track.type === "titles") continue;
@@ -304,10 +361,12 @@ export function validateRenderClipCapabilities(
         continue;
       if (
         options.audioOnly &&
-        ((clip.transform?.volume ?? 1) === 0 ||
-          !hasAudio(asset) ||
-          (options.audioRole &&
-            clipAudioRole(track.type, clip) !== options.audioRole))
+        (admitted
+          ? !admitted.has(clip.id)
+          : (clip.transform?.volume ?? 1) === 0 ||
+            !hasAudio(asset) ||
+            (options.audioRole &&
+              clipAudioRole(track.type, clip) !== options.audioRole))
       )
         continue;
       const issue = previewIssue(asset);
@@ -476,9 +535,38 @@ export class FFmpegRenderer {
       1,
       Math.round(outputDuration * outputFrameRate),
     );
+    const audioContext = options.audioMixContext
+      ? {
+          timebase: structuredClone(options.audioMixContext.timebase),
+          coverage: options.audioMixContext.coverage,
+        }
+      : { timebase: resolveProjectTimebase(settings), coverage: [] };
+    const newAudioPath =
+      !videoOnly &&
+      (audioContext.coverage.length > 0 ||
+        composition.tracks.some((t) => t.clips.some((c) => c.audioTiming)));
+    const audioPlan: AudioMixPlan | undefined = newAudioPath
+      ? buildAudioMixPlan(composition, assets, audioContext)
+      : undefined;
+    const admitted =
+      audioPlan &&
+      new Set(
+        audioPlan.segments
+          .filter(
+            (s) =>
+              s.baseGain !== 0 &&
+              (!options.audioRole || s.role === options.audioRole),
+          )
+          .map((s) => s.clipId),
+      );
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
     const usedIds = audioOnly
-      ? audioSourceAssetIds(composition, assets, options.audioRole)
+      ? audioSourceAssetIds(
+          composition,
+          assets,
+          options.audioRole,
+          audioContext,
+        )
       : videoOnly
         ? visualSourceAssetIds(composition, assets)
         : new Set(
@@ -565,6 +653,7 @@ export class FFmpegRenderer {
       audioOnly,
       videoOnly,
       audioRole: options.audioRole,
+      audioMixContext: audioContext,
     });
     for (const track of composition.tracks)
       for (const clip of track.clips) {
@@ -579,10 +668,12 @@ export class FFmpegRenderer {
           continue;
         if (
           audioOnly &&
-          ((clip.transform?.volume ?? 1) === 0 ||
-            !hasAudio(asset) ||
-            (options.audioRole &&
-              clipAudioRole(track.type, clip) !== options.audioRole))
+          (admitted
+            ? !admitted.has(clip.id)
+            : (clip.transform?.volume ?? 1) === 0 ||
+              !hasAudio(asset) ||
+              (options.audioRole &&
+                clipAudioRole(track.type, clip) !== options.audioRole))
         )
           continue;
         if (
@@ -641,6 +732,46 @@ export class FFmpegRenderer {
           "Source changed after crop approval; review a new export frame.",
         );
     }
+    const audioFacts: CanonicalAudioFacts[] = [];
+    if (audioPlan) {
+      const soundIds = new Set(
+        audioPlan.segments
+          .filter((s) => !options.audioRole || s.role === options.audioRole)
+          .map((s) => s.assetId),
+      );
+      const verified = [...assets];
+      for (const id of soundIds) {
+        const index = verified.findIndex((a) => a.id === id),
+          facts = await inspectCanonicalAudio(verified[index]!, options.signal);
+        audioFacts.push(facts);
+        verified[index] = withCanonicalAudioFacts(verified[index]!, facts);
+      }
+      buildAudioMixPlan(composition, verified, audioContext);
+      for (const binding of audioContext.coverage)
+        for (const clipId of [
+          binding.primaryClipId,
+          ...(binding.policy.mode === "keep-primary"
+            ? []
+            : [binding.secondaryClipId]),
+        ]) {
+          const segment = audioPlan.segments.find((s) => s.clipId === clipId),
+            fact =
+              segment && audioFacts.find((f) => f.assetId === segment.assetId);
+          if (
+            segment &&
+            fact &&
+            Math.round(
+              segment.sourceInSeconds * 48000 +
+                (binding.endSample - segment.automationStartSample) *
+                  segment.speed,
+            ) > fact.lengthSamples
+          )
+            throw new Error(
+              "Coverage window exceeds actual decoded source audio.",
+            );
+        }
+      assertCanonicalAudioCurrent(audioFacts);
+    }
     snapshot?.assertCurrent();
     await mkdir(dirname(output), { recursive: true });
     await validateRenderTargets(output);
@@ -691,6 +822,7 @@ export class FFmpegRenderer {
           `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
         ];
     const audioLabels: string[] = [];
+    const audioInputs = new Map<string, number>();
     let videoLabel = "base";
     let inputIndex = 0;
     let sequence = 0;
@@ -801,10 +933,12 @@ export class FFmpegRenderer {
           }
           if (
             audioOnly &&
-            ((clip.transform?.volume ?? 1) === 0 ||
-              !hasAudio(asset) ||
-              (options.audioRole &&
-                clipAudioRole(track.type, clip) !== options.audioRole))
+            (admitted
+              ? !admitted.has(clip.id)
+              : (clip.transform?.volume ?? 1) === 0 ||
+                !hasAudio(asset) ||
+                (options.audioRole &&
+                  clipAudioRole(track.type, clip) !== options.audioRole))
           )
             continue;
           const issue = previewIssue(asset);
@@ -842,6 +976,7 @@ export class FFmpegRenderer {
             localPath(asset.uri),
           );
           const input = inputIndex++;
+          if (admitted?.has(clip.id)) audioInputs.set(clip.id, input);
           if (visual) {
             const label = `visual${suffix}`;
             const geometry = resolveClipGeometry(clip.transform);
@@ -928,7 +1063,7 @@ export class FFmpegRenderer {
             videoLabel = merged;
           }
           if (!audioOnly) pendingTitles.push(addTitle);
-          if (!videoOnly && hasAudio(asset)) {
+          if (!audioPlan && !videoOnly && hasAudio(asset)) {
             const label = `audio${suffix}`;
             const audioFilters = [
               `atrim=start=${number(sourceIn)}:end=${number(sourceOut)}`,
@@ -1068,6 +1203,19 @@ export class FFmpegRenderer {
           : ["format=yuv420p"];
         filters.push(`[${videoLabel}]${finalVideoFilters.join(",")}[vout]`);
       }
+      if (audioPlan) {
+        const selected = {
+          ...audioPlan,
+          segments: audioPlan.segments.filter(
+            (s) =>
+              admitted!.has(s.clipId) &&
+              (!options.audioRole || s.role === options.audioRole),
+          ),
+        };
+        const graph = compileAudioMixPlan(selected, composition, audioInputs);
+        filters.push(...graph.filters);
+        audioLabels.push(...graph.labels);
+      }
       if (!videoOnly && audioLabels.length)
         filters.push(
           `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=${number(composition.duration)}[aout]`,
@@ -1185,6 +1333,38 @@ export class FFmpegRenderer {
         (await stat(temporaryOutput)).size >= options.maximumOutputBytes
       )
         throw new Error("Render output reached its private byte bound.");
+      if (audioPlan && audioOnly) {
+        const result = await runProcess(
+          "ffprobe",
+          [
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=duration_ts,time_base,sample_rate,channels,codec_name",
+            "-of",
+            "json",
+            temporaryOutput,
+          ],
+          { signal: options.signal },
+        );
+        const stream = JSON.parse(result.stdout.toString("utf8")).streams?.[0];
+        const [a = NaN, b = NaN] = String(stream?.time_base)
+          .split("/")
+          .map(Number);
+        if (
+          stream?.codec_name !== "pcm_s24le" ||
+          Number(stream.sample_rate) !== 48000 ||
+          stream.channels !== 2 ||
+          Math.round(((Number(stream.duration_ts) * a) / b) * 48000) !==
+            audioPlan.durationSamples
+        )
+          throw new Error(
+            "Rendered PCM is truncated or has an invalid audio shape.",
+          );
+      }
+      assertCanonicalAudioCurrent(audioFacts);
       await verifyRenderSources(sources);
       await ambient.verifySources();
       const manifestPath = join(work, "manifest.json");
@@ -1202,6 +1382,15 @@ export class FFmpegRenderer {
         encoding,
         {
           format: audioOnly ? "wav" : "mp4",
+          ...(audioPlan
+            ? {
+                audioPolicy: {
+                  version: 1 as const,
+                  sampleRate: 48000 as const,
+                  planSha256: sha256(audioPlan),
+                },
+              }
+            : {}),
           fontBindings,
           fontDiagnostics,
           ...(videoOnly ? { videoOnly } : {}),
@@ -1245,19 +1434,23 @@ export class FFmpegRenderer {
       await ambient.assertSourceIdentities();
       await publishRenderPair(temporaryOutput, manifestPath, output, work, {
         assertCurrent:
-          snapshot &&
-          (() => {
-            checkAbort(options.signal);
-            snapshot.assertCurrent();
-            for (const source of sources) {
-              const current = statSync(localPath(source.uri));
-              if (
-                current.size !== source.size ||
-                current.mtime.toISOString() !== source.modifiedAt
-              )
-                throw new Error(`Source changed during render: ${source.name}`);
-            }
-          }),
+          snapshot || audioFacts.length
+            ? () => {
+                checkAbort(options.signal);
+                assertCanonicalAudioCurrent(audioFacts);
+                snapshot?.assertCurrent();
+                for (const source of sources) {
+                  const current = statSync(localPath(source.uri));
+                  if (
+                    current.size !== source.size ||
+                    current.mtime.toISOString() !== source.modifiedAt
+                  )
+                    throw new Error(
+                      `Source changed during render: ${source.name}`,
+                    );
+                }
+              }
+            : undefined,
       });
       return output;
     } catch (error) {

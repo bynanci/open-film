@@ -242,6 +242,154 @@ async function fixture() {
   await app.save();
   return { root, app, composition, image, audio };
 }
+it.each([false, true])(
+  "publishes a rounded canonical endpoint through the real handoff service (bakeAudio=%s)",
+  async (bakeAudio) => {
+    const { app, composition, image, audio } = await fixture(),
+      clip = composition.tracks[0]!.clips[0]!;
+    app.project.settings.frameRate = 30;
+    app.project.schemaVersion = "1.2.0";
+    composition.duration = 1;
+    composition.tracks = [composition.tracks[0]!];
+    composition.captionTracks = [];
+    composition.graphicScenes = [];
+    clip.timelineDuration = 1;
+    clip.sourceIn = 0;
+    clip.sourceOut = 3;
+    clip.transform = { speed: 3 };
+    clip.audioTiming = {
+      version: 1,
+      sampleRate: 48000,
+      timelineStartSample: 0,
+      sourceInSample: 0,
+      sourceOutSample: 144001,
+    };
+    app.project.timelines = [composition];
+    await app.save();
+    const before = await readFile(join(app.directory, "project.json")),
+      hashes = await Promise.all([hashFile(image), hashFile(audio)]),
+      original = structuredClone(composition),
+      review = app.reviewHandoff(composition.id, { bakeAudio }),
+      publication = await app.exportHandoff({
+        projectId: review.projectId,
+        compositionId: composition.id,
+        revision: review.revision,
+        bakeAudio,
+      }),
+      file = (name: string) =>
+        app.handoff.file(
+          publication.id,
+          publication.files.findIndex((item) => item.name === name),
+        );
+    expect(
+      publication.plan.items.find((item) => item.feature === "audioTiming"),
+    ).toMatchObject({ startFrame: 0, endFrame: 30 });
+    const otio = JSON.parse(
+      await readFile(await file("timeline.otio"), "utf8"),
+    );
+    expect(otio.metadata.openfilm.originalComposition).toEqual(original);
+    if (bakeAudio) {
+      const picture = JSON.parse(
+        (
+          await runProcess("ffprobe", [
+            "-v",
+            "error",
+            "-count_frames",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=nb_read_frames",
+            "-of",
+            "json",
+            await file("reference.mp4"),
+          ])
+        ).stdout.toString(),
+      );
+      expect(picture.streams[0].nb_read_frames).toBe("30");
+      const sound = JSON.parse(
+        (
+          await runProcess("ffprobe", [
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=duration_ts,time_base,sample_rate,codec_name",
+            "-of",
+            "json",
+            await file("media/full-mix.wav"),
+          ])
+        ).stdout.toString(),
+      );
+      expect(sound.streams[0]).toMatchObject({
+        duration_ts: 48000,
+        time_base: "1/48000",
+        sample_rate: "48000",
+        codec_name: "pcm_s24le",
+      });
+      const decoded = await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        await file("media/full-mix.wav"),
+        "-map",
+        "0:a:0",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-c:a",
+        "pcm_s24le",
+        "-f",
+        "s24le",
+        "pipe:1",
+      ]);
+      expect(decoded.stdout.length).toBe(48000 * 6);
+      expect(decoded.stdout.some((byte) => byte !== 0)).toBe(true);
+    } else {
+      expect(
+        publication.files.some((item) => item.name === "reference.mp4"),
+      ).toBe(false);
+      const copied = publication.files.find(
+        (item) => item.name.startsWith("media/") && item.name.endsWith(".mp4"),
+      );
+      expect(copied).toBeDefined();
+      expect(await hashFile(await file(copied!.name))).toBe(hashes[0]);
+    }
+    expect(await readFile(join(app.directory, "project.json"))).toEqual(before);
+    expect(await Promise.all([hashFile(image), hashFile(audio)])).toEqual(
+      hashes,
+    );
+    if (process.env.OPENFILM_AUDIO_EVIDENCE_DIR) {
+      const evidence = join(
+        process.env.OPENFILM_AUDIO_EVIDENCE_DIR,
+        `handoff-rounded-${bakeAudio ? "baked" : "native"}`,
+      );
+      await cp(
+        join(app.directory, "cache", "nle-handoff-published", publication.id),
+        evidence,
+        { recursive: true },
+      );
+      await writeFile(
+        join(evidence, "canonical-range-evidence.json"),
+        JSON.stringify({
+          sourceHashes: hashes,
+          originalComposition: original,
+          plan: publication.plan,
+          decodedReferenceFrames: bakeAudio ? 30 : null,
+          decodedFullMixSamples: bakeAudio ? 48000 : null,
+          sourceFiles: await Promise.all(
+            [
+              "packages/core/src/audio-policy.ts",
+              "packages/core/src/validation.ts",
+              "packages/exporters/src/handoff.ts",
+              "packages/exporters/tests/audio-policy.test.ts",
+              "tests/integration/nle-handoff.test.ts",
+            ].map(async (path) => ({ path, sha256: await hashFile(path) })),
+          ),
+        }),
+      );
+    }
+  },
+);
 it.each(["title-track", "attached-title", "caption"])(
   "rejects an over-8K %s reference before review approval while retaining native metadata",
   async (kind) => {

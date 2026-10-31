@@ -51,6 +51,7 @@ it("ignores installed documentation dependencies while still requiring every own
       "markers-and-snapping",
       "export-quality",
       "audio-quality",
+      "audio-policy",
     ]) {
       write(`docs/${slug}.md`, "繁體中文");
       write(`docs/en/${slug}.md`, "English reference");

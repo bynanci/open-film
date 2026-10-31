@@ -15,6 +15,11 @@ export default {
     nonDropFrame: "Non-drop-frame (NDF)",
     timebaseSaving: "Saving sequence timebase…",
     waveform: {
+      suppressed: "Primary suppressed · raw peaks retained",
+      excluded: "Secondary excluded · raw peaks retained",
+      muted: "Muted · raw peaks retained",
+      independent: "Independent sound boundaries",
+
       title: "Sequence source waveforms",
       rawPeaks: "Raw source peaks before gain, fades, ducking and mixing.",
       viewport: "Waveform window",

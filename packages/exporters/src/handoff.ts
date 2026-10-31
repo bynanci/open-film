@@ -9,6 +9,7 @@ import {
   resolvePrimaryColor,
   isPrimaryColorActive,
   assertPrimaryColorSettings,
+  resolveAudioTimingRange,
   type Composition,
 } from "@openfilm/core";
 export type HandoffMode = "preserve-editability" | "preserve-visual-fidelity";
@@ -226,6 +227,8 @@ export function createHandoffPlan(
         "titlePresetSnapshot",
         "titleRuns",
         "audioAutomation",
+        "audioTiming",
+        "userOverrides",
         "look",
         "primaryColor",
         "locked",
@@ -318,6 +321,21 @@ export function createHandoffPlan(
           "audio",
           "Envelope/ducking remains exact metadata unless full mix is selected",
         );
+      if (clip.audioTiming) {
+        const { timing, endSample } = resolveAudioTimingRange(
+          clip.audioTiming,
+          clip.transform?.speed ?? 1,
+          composition.duration,
+        );
+        add(
+          clip.id,
+          "audioTiming",
+          timing.timelineStartSample / 48000,
+          endSample / 48000,
+          "audio",
+          "Independent sound timing is exact OpenFilm metadata; recreate manually or select the full audio mix",
+        );
+      }
       if (audio) continue;
       if (track.type === "overlay" || track.type === "titles")
         add(
