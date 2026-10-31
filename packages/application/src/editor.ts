@@ -23,6 +23,9 @@ import {
   resolveTitleStyle,
   validateAudioAutomation,
   validateAudioTiming,
+  validateClipCoverage,
+  validateCoverageProposal,
+  validateCoverageAudioBindings,
   promoteAudioProject,
   validateFilmLook,
   validatePrimaryColorCorrection,
@@ -399,6 +402,17 @@ function command(value: unknown, index: number): TimelineCommand {
     }
     return structuredClone(data) as TimelineCommand;
   }
+  if (type === "coverage.apply-proposal") {
+    keys(data, ["type", "proposal"], path);
+    nested(data.proposal, `${path}.proposal`, validateCoverageProposal);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type === "coverage.set-bindings") {
+    keys(data, ["type", "bindings"], path);
+    if (data.bindings !== null)
+      nested(data.bindings, `${path}.bindings`, validateCoverageAudioBindings);
+    return structuredClone(data) as TimelineCommand;
+  }
   if (type === "beat" || type === "regenerate-beat")
     nonempty(data.beatId, `${path}.beatId`);
   else nonempty(data.clipId, `${path}.clipId`);
@@ -476,6 +490,11 @@ function command(value: unknown, index: number): TimelineCommand {
       fields.push("timing");
       if (data.timing !== null)
         nested(data.timing, `${path}.timing`, validateAudioTiming);
+      break;
+    case "coverage.set-clip":
+      fields.push("coverage");
+      if (data.coverage !== null)
+        nested(data.coverage, `${path}.coverage`, validateClipCoverage);
       break;
     case "audio.configure":
       fields.push("automation");
@@ -1881,9 +1900,16 @@ export class TimelineEditor {
         }
       }
       const audioAware =
-        parsed.commands.some((c) => c.type === "audio.timing") ||
+        parsed.commands.some(
+          (c) =>
+            c.type === "audio.timing" ||
+            c.type === "coverage.set-clip" ||
+            c.type === "coverage.apply-proposal" ||
+            c.type === "coverage.set-bindings",
+        ) ||
+        Boolean(before.composition.coverageAudioBindings?.length) ||
         before.composition.tracks.some((t) =>
-          t.clips.some((c) => c.audioTiming),
+          t.clips.some((c) => c.audioTiming || c.coverage),
         );
       const audioFacts: CanonicalAudioFacts[] = [];
       if (audioAware) {

@@ -86,6 +86,7 @@ export {
 } from "./titles.js";
 import {
   buildAudioMixPlan,
+  resolveCompositionCoverageBindings,
   resolveProjectTimebase,
   type AudioMixContext,
   type AudioMixPlan,
@@ -225,15 +226,15 @@ export function audioSourceAssetIds(
   role?: AudioAutomation["role"],
   context?: AudioMixContext,
 ): Set<string> {
+  const timebase = context?.timebase ?? resolveProjectTimebase(defaults);
+  const coverage =
+    context?.coverage ??
+    resolveCompositionCoverageBindings(composition, timebase);
   if (
-    context?.coverage.length ||
+    coverage.length ||
     composition.tracks.some((t) => t.clips.some((c) => c.audioTiming))
   ) {
-    const plan = buildAudioMixPlan(
-      composition,
-      assets,
-      context ?? { timebase: resolveProjectTimebase(defaults), coverage: [] },
-    );
+    const plan = buildAudioMixPlan(composition, assets, { timebase, coverage });
     return new Set(
       plan.segments
         .filter(
@@ -315,15 +316,20 @@ export function validateRenderClipCapabilities(
   > = {},
 ): void {
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  const timebase =
+    options.audioMixContext?.timebase ?? resolveProjectTimebase(defaults);
+  const coverage =
+    options.audioMixContext?.coverage ??
+    resolveCompositionCoverageBindings(composition, timebase);
   const audioPlan =
-    options.audioMixContext?.coverage.length ||
+    coverage.length ||
     composition.tracks.some((t) => t.clips.some((c) => c.audioTiming))
       ? buildAudioMixPlan(
           composition,
           assets,
           options.audioMixContext ?? {
-            timebase: resolveProjectTimebase(defaults),
-            coverage: [],
+            timebase,
+            coverage,
           },
         )
       : undefined;
@@ -536,12 +542,15 @@ export class FFmpegRenderer {
       1,
       Math.round(outputDuration * outputFrameRate),
     );
-    const audioContext = options.audioMixContext
-      ? {
-          timebase: structuredClone(options.audioMixContext.timebase),
-          coverage: options.audioMixContext.coverage,
-        }
-      : { timebase: resolveProjectTimebase(settings), coverage: [] };
+    const timebase =
+      options.audioMixContext?.timebase ?? resolveProjectTimebase(settings);
+    const coverage =
+      options.audioMixContext?.coverage ??
+      resolveCompositionCoverageBindings(composition, timebase);
+    const audioContext = {
+      timebase: structuredClone(timebase),
+      coverage,
+    };
     const newAudioPath =
       !videoOnly &&
       (audioContext.coverage.length > 0 ||

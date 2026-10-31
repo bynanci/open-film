@@ -281,10 +281,16 @@ export function promoteAudioProject(project: OpenFilmProject): OpenFilmProject {
   const next = structuredClone(project);
   if (
     (next.schemaVersion === "1.0.0" || next.schemaVersion === "1.1.0") &&
-    next.timelines.some((c) =>
-      c.tracks.some((t) =>
-        t.clips.some((clip) => Object.hasOwn(clip, "audioTiming")),
-      ),
+    next.timelines.some(
+      (c) =>
+        Boolean(c.coverageAudioBindings?.length) ||
+        c.tracks.some((t) =>
+          t.clips.some(
+            (clip) =>
+              Object.hasOwn(clip, "audioTiming") ||
+              Object.hasOwn(clip, "coverage"),
+          ),
+        ),
     )
   )
     next.schemaVersion = AUDIO_PROJECT_SCHEMA_VERSION;

@@ -285,17 +285,24 @@ export function placeDirectEdit(
   // Overlays remain absolute, and must never be silently trimmed by old ripple code.
   for (const { clip, track } of clips(before))
     if (track.timing === "overlay" && !authorized.has(clip.id)) {
+      const copy = structuredClone(clip);
+      if (
+        copy.coverage?.primaryClipId &&
+        !spine(next).some((e) => e.clip.id === copy.coverage!.primaryClipId)
+      ) {
+        delete copy.coverage.primaryClipId;
+      }
       const destination = next.composition.tracks.find(
         (t) => t.id === track.id,
       );
       if (destination) {
         const index = destination.clips.findIndex((c) => c.id === clip.id);
-        if (index < 0) destination.clips.push(structuredClone(clip));
-        else destination.clips[index] = structuredClone(clip);
+        if (index < 0) destination.clips.push(copy);
+        else destination.clips[index] = copy;
       } else
         next.composition.tracks.push({
           ...structuredClone(track),
-          clips: [structuredClone(clip)],
+          clips: [copy],
         });
     }
   next.composition.duration = Math.max(

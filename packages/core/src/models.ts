@@ -409,6 +409,7 @@ export interface Clip {
   titlePresetSnapshot?: import("./presets.js").PresetSnapshot<"title">;
   audioAutomation?: AudioAutomation;
   audioTiming?: AudioTimingV1;
+  coverage?: import("./coverage.js").ClipCoverage;
   /** Absent inherits the scene/film look; explicit `none` preserves original color. */
   look?: FilmLook;
   primaryColor?: PrimaryColorCorrection;
@@ -443,6 +444,8 @@ export interface Composition {
   graphicScenes?: import("./graphic-scenes.js").GraphicScene[];
   /** Optional provenance bindings for editable GraphicScene story templates. */
   graphicSceneTemplates?: import("./graphic-scene-templates.js").GraphicSceneTemplateRecord[];
+  /** Audio coverage bindings between primary narrative clips and secondary B-roll clips. */
+  coverageAudioBindings?: readonly import("./audio-policy.js").CoverageAudioBindingV1[];
 }
 
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;

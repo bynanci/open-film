@@ -389,3 +389,66 @@ it.each(["current-film", "entire-project"] as const)(
     expect(await hashFile(source)).toBe(asset.contentHash);
   },
 );
+
+it("persists clip coverage and coverage audio bindings across project save and reopen, and roundtrips undo/redo", async () => {
+  const { app } = await fixture(false);
+  const editor = new TimelineEditor(app);
+  const current = app.project.timelines[0]!;
+  const initial = editor.get(current.id);
+
+  const edited = await editor.edit(current.id, {
+    baseRevision: initial.revision,
+    commands: [
+      {
+        type: "coverage.set-clip",
+        clipId: "sound-1",
+        coverage: {
+          version: 1,
+          role: "b-roll-overlay",
+          primaryClipId: "same-source-legacy",
+          audioPolicy: { version: 1, mode: "keep-primary" },
+        },
+      },
+    ],
+  });
+
+  expect(edited.composition.tracks[0]!.clips[0]!.coverage).toEqual({
+    version: 1,
+    role: "b-roll-overlay",
+    primaryClipId: "same-source-legacy",
+    audioPolicy: { version: 1, mode: "keep-primary" },
+  });
+  expect(edited.canUndo).toBe(true);
+
+  // Undo returns to state without coverage
+  const undone = await editor.undo(current.id, edited.revision);
+  expect(undone.composition.tracks[0]!.clips[0]!.coverage).toBeUndefined();
+  expect(undone.canRedo).toBe(true);
+
+  // Redo restores coverage
+  const redone = await editor.redo(current.id, undone.revision);
+  expect(redone.composition.tracks[0]!.clips[0]!.coverage).toEqual({
+    version: 1,
+    role: "b-roll-overlay",
+    primaryClipId: "same-source-legacy",
+    audioPolicy: { version: 1, mode: "keep-primary" },
+  });
+
+  // Save project and reopen from disk
+  await app.save();
+  const fileContent = JSON.parse(
+    await readFile(join(app.directory, "project.json"), "utf8"),
+  );
+  expect(fileContent.schemaVersion).toBe("1.2.0");
+
+  const reopened = await OpenFilmApplication.open(app.directory);
+  cleanup.push(() => reopened.close());
+  expect(reopened.project.schemaVersion).toBe("1.2.0");
+  const reopenedClip = reopened.project.timelines[0]!.tracks[0]!.clips[0]!;
+  expect(reopenedClip.coverage).toEqual({
+    version: 1,
+    role: "b-roll-overlay",
+    primaryClipId: "same-source-legacy",
+    audioPolicy: { version: 1, mode: "keep-primary" },
+  });
+});

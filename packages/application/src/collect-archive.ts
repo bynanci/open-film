@@ -293,7 +293,7 @@ export async function writeStoredZip(
     await writeChunk(writer, end);
     writer.end();
     await writerFinished;
-    const file = await open(output, constants.O_RDONLY);
+    const file = await open(output, "r+");
     try {
       await file.sync();
     } finally {

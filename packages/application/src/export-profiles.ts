@@ -30,6 +30,7 @@ import type {
 } from "@openfilm/core";
 import {
   ApplicationError,
+  resolveCompositionCoverageBindings,
   resolveProjectTimebase,
   frameAlignedDuration,
   validateExportProfile,
@@ -1271,11 +1272,13 @@ export class ExportProfileService {
     composition: Composition,
     assets: MediaAsset[],
   ): AudioAutomation["role"][] {
+    const timebase = resolveProjectTimebase(this.options.getProject().settings);
+    const coverage = resolveCompositionCoverageBindings(composition, timebase);
     return STEM_ROLES.filter(
       (role) =>
         audioSourceAssetIds(composition, assets, role, {
-          timebase: resolveProjectTimebase(this.options.getProject().settings),
-          coverage: [],
+          timebase,
+          coverage,
         }).size > 0,
     );
   }
@@ -1479,9 +1482,11 @@ export class ExportProfileService {
     composition: Composition,
     assets: MediaAsset[],
   ): MediaAsset[] {
+    const timebase = resolveProjectTimebase(this.options.getProject().settings);
+    const coverage = resolveCompositionCoverageBindings(composition, timebase);
     const ids = audioSourceAssetIds(composition, assets, undefined, {
-      timebase: resolveProjectTimebase(this.options.getProject().settings),
-      coverage: [],
+      timebase,
+      coverage,
     });
     return assets.filter((asset) => ids.has(asset.id));
   }

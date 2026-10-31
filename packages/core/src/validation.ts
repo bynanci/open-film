@@ -2,7 +2,9 @@ import {
   AUDIO_PROJECT_SCHEMA_VERSION,
   validateAudioTiming,
   resolveAudioTimingRange,
+  validateCoverageAudioBindings,
 } from "./audio-policy.js";
+import { validateClipCoverage } from "./coverage.js";
 import {
   PINNED_PROJECT_SCHEMA_VERSION,
   validateUserOverrideState,
@@ -1183,6 +1185,9 @@ function composition(
       trackIds.add(validated.id);
     });
   });
+  optional(data, "coverageAudioBindings", path, (value) => {
+    validateCoverageAudioBindings(value);
+  });
   tracks.forEach((entry, i) => {
     const trackPath = `${path}.tracks[${i}]`;
     const track = object(entry, trackPath);
@@ -1285,6 +1290,9 @@ function composition(
       optional(clip, "audioAutomation", clipPath, (v, p) =>
         audioAutomation(v, p, soundDuration),
       );
+      optional(clip, "coverage", clipPath, (v, p) => {
+        validateClipCoverage(v, p);
+      });
       optional(clip, "look", clipPath, filmLook);
       optional(clip, "primaryColor", clipPath, primaryColor);
       if (
@@ -1357,6 +1365,11 @@ export function validateProject(
   ) {
     data.timelines.forEach((raw, i) => {
       const cut = object(raw, `project.timelines[${i}]`);
+      if (Object.hasOwn(cut, "coverageAudioBindings"))
+        fail(
+          `project.timelines[${i}].coverageAudioBindings`,
+          "requires project schema 1.2.0",
+        );
       if (Array.isArray(cut.tracks))
         cut.tracks.forEach((raw, j) => {
           const track = object(raw, `project.timelines[${i}].tracks[${j}]`);
@@ -1365,6 +1378,11 @@ export function validateProject(
               if (Object.hasOwn(object(raw, "clip"), "audioTiming"))
                 fail(
                   `project.timelines[${i}].tracks[${j}].clips[${k}].audioTiming`,
+                  "requires project schema 1.2.0",
+                );
+              if (Object.hasOwn(object(raw, "clip"), "coverage"))
+                fail(
+                  `project.timelines[${i}].tracks[${j}].clips[${k}].coverage`,
                   "requires project schema 1.2.0",
                 );
             });

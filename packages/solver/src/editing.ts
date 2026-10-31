@@ -53,6 +53,13 @@ import {
   type FilmLook,
   type CaptionCue,
   type CaptionTrack,
+  type ClipCoverage,
+  type CoverageProposal,
+  type CoverageAudioBindingV1,
+  validateClipCoverage,
+  validateCoverageProposal,
+  validateCoverageAudioBindings,
+  resolveCompositionCoverageBindings,
 } from "@openfilm/core";
 import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
@@ -120,6 +127,19 @@ export type TimelineCommand =
       generationId?: string;
     }
   | { type: "audio.timing"; clipId: string; timing: AudioTimingV1 | null }
+  | {
+      type: "coverage.set-clip";
+      clipId: string;
+      coverage: ClipCoverage | null;
+    }
+  | {
+      type: "coverage.apply-proposal";
+      proposal: CoverageProposal;
+    }
+  | {
+      type: "coverage.set-bindings";
+      bindings: readonly CoverageAudioBindingV1[] | null;
+    }
   | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
   | { type: "audio.move"; clipId: string; timelineStart: number }
   | { type: "trim"; clipId: string; sourceIn: number; sourceOut: number }
@@ -630,6 +650,21 @@ function remove(
   const { track } = findClip(document, clip.id);
   const end = clip.timelineStart + clip.timelineDuration;
   track.clips = track.clips.filter((item) => item.id !== clip.id);
+  if (document.composition.coverageAudioBindings) {
+    document.composition.coverageAudioBindings =
+      document.composition.coverageAudioBindings.filter(
+        (b) => b.primaryClipId !== clip.id && b.secondaryClipId !== clip.id,
+      );
+    if (!document.composition.coverageAudioBindings.length)
+      delete document.composition.coverageAudioBindings;
+  }
+  for (const t of document.composition.tracks) {
+    for (const other of t.clips) {
+      if (other.coverage?.primaryClipId === clip.id) {
+        delete other.coverage.primaryClipId;
+      }
+    }
+  }
   if (track.timing === "overlay") {
     if (!track.clips.length)
       document.composition.tracks = document.composition.tracks.filter(
@@ -1138,6 +1173,23 @@ function applyTimelineCommandInternal(
     next = result.document;
   }
   translateIndependentAudio(document, next, command);
+  if (
+    context.timebase &&
+    command.type !== "coverage.set-bindings" &&
+    (command.type.startsWith("coverage.") ||
+      next.composition.tracks.some((t) => t.clips.some((c) => c.coverage)) ||
+      Boolean(document.composition.coverageAudioBindings?.length))
+  ) {
+    const derived = resolveCompositionCoverageBindings(
+      next.composition,
+      context.timebase,
+    );
+    if (derived.length) {
+      next.composition.coverageAudioBindings = [...derived];
+    } else {
+      delete next.composition.coverageAudioBindings;
+    }
+  }
   next = applyOverridePolicy(document, next, [command], {
     origin,
     timebase: context.timebase!,
@@ -1371,6 +1423,37 @@ function applyTimelineCommandRaw(
   }
   if (command.type === "regenerate-beat")
     return regenerate(next, assets, command.beatId, command.mode);
+  if (command.type === "coverage.apply-proposal") {
+    const proposal = validateCoverageProposal(command.proposal);
+    if (proposal.compositionId !== next.composition.id)
+      fail("Coverage proposal composition does not match active composition.");
+    const { clip: primary } = findClip(next, proposal.primaryClipId);
+    const { clip: bRoll } = findClip(next, proposal.bRollClipId);
+    const primaryAsset = findAsset(assets, primary.assetId);
+    const bRollAsset = findAsset(assets, bRoll.assetId);
+    if (primaryAsset.state.locked || bRollAsset.state.locked)
+      fail("Unlock sources before applying coverage proposal.");
+    if (primary.locked || bRoll.locked)
+      fail("Unlock clips before applying coverage proposal.");
+    primary.coverage = { version: 1, role: "primary-narrative" };
+    bRoll.coverage = {
+      version: 1,
+      role: "b-roll-overlay",
+      primaryClipId: primary.id,
+      audioPolicy: proposal.audioPolicy,
+    };
+    return next;
+  }
+  if (command.type === "coverage.set-bindings") {
+    if (command.bindings === null) {
+      delete next.composition.coverageAudioBindings;
+    } else {
+      next.composition.coverageAudioBindings = [
+        ...validateCoverageAudioBindings(command.bindings),
+      ];
+    }
+    return next;
+  }
   const { clip, track } = findClip(next, command.clipId);
   if (command.type === "lock") {
     if (typeof command.locked !== "boolean")
@@ -1548,6 +1631,20 @@ function applyTimelineCommandRaw(
       if (command.timing === null) delete clip.audioTiming;
       else clip.audioTiming = validateAudioTiming(command.timing);
       break;
+    case "coverage.set-clip": {
+      if (asset.state.locked)
+        fail("Unlock the source before editing coverage.");
+      if (command.coverage === null) {
+        delete clip.coverage;
+      } else {
+        clip.coverage = validateClipCoverage(command.coverage, "coverage");
+        if (clip.coverage.primaryClipId) {
+          const { clip: primary } = findClip(next, clip.coverage.primaryClipId);
+          if (primary.id === clip.id) fail("A clip cannot cover itself.");
+        }
+      }
+      break;
+    }
     case "audio.configure":
       if (asset.mediaType !== "audio" && asset.mediaType !== "video")
         fail("Audio automation requires an audio or video source.");
