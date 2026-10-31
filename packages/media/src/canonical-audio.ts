@@ -93,8 +93,6 @@ export async function inspectCanonicalAudio(
   const decoded = await runProcess(
     "ffmpeg",
     [
-      "-v",
-      "error",
       "-nostdin",
       "-threads",
       "1",
@@ -105,7 +103,7 @@ export async function inspectCanonicalAudio(
       "0:a:0",
       "-vn",
       "-af",
-      CANONICAL_AUDIO_FILTER,
+      `${CANONICAL_AUDIO_FILTER},astats=measure_perchannel=none:measure_overall=Number_of_samples`,
       "-c:a",
       "pcm_s24le",
       "-progress",
@@ -117,11 +115,18 @@ export async function inspectCanonicalAudio(
     ],
     { signal, timeoutMs: 900000, maxOutputBytes: 1024 * 1024 },
   );
+  const astatsMatch = decoded.stderr.match(/Number of samples:\s*(\d+)/);
+  const parsedSamples = astatsMatch ? Number(astatsMatch[1]) : undefined;
   const ends = [
     ...decoded.stdout.toString("utf8").matchAll(/^out_time_us=(\d+)$/gm),
   ];
   const microseconds = Number(ends.at(-1)?.[1]);
-  let lengthSamples = Math.round((microseconds * 48000) / 1000000);
+  let lengthSamples =
+    parsedSamples !== undefined &&
+    Number.isSafeInteger(parsedSamples) &&
+    parsedSamples > 0
+      ? parsedSamples
+      : Math.round((microseconds * 48000) / 1000000);
   const declaredCandidate = (val: unknown): number | undefined => {
     if (val === undefined || val === null || val === "N/A") return undefined;
     const num = Number(val);
@@ -136,8 +141,9 @@ export async function inspectCanonicalAudio(
       ? Math.round(declaredSeconds * 48000)
       : undefined;
   if (
+    parsedSamples === undefined &&
     declaredSamples !== undefined &&
-    Math.abs(declaredSamples - lengthSamples) <= 48
+    Math.abs(declaredSamples - lengthSamples) <= 1024
   ) {
     lengthSamples = declaredSamples;
   }
