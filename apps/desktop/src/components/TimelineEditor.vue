@@ -904,6 +904,32 @@ watch(
   },
   { immediate: true },
 );
+const captionSafeArea = ref<
+  Record<"left" | "right" | "top" | "bottom", number>
+>({
+  left: 8,
+  right: 8,
+  top: 8,
+  bottom: 12,
+});
+watch(
+  [
+    () => selectedCaptionTrack.value?.id,
+    () => selectedCaptionTrack.value?.style.safeArea?.left,
+    () => selectedCaptionTrack.value?.style.safeArea?.right,
+    () => selectedCaptionTrack.value?.style.safeArea?.top,
+    () => selectedCaptionTrack.value?.style.safeArea?.bottom,
+  ],
+  ([, left, right, top, bottom]) => {
+    captionSafeArea.value = {
+      left: Math.round((left ?? 0.08) * 100),
+      right: Math.round((right ?? 0.08) * 100),
+      top: Math.round((top ?? 0.08) * 100),
+      bottom: Math.round((bottom ?? 0.12) * 100),
+    };
+  },
+  { immediate: true },
+);
 const selectedCaptionCue = computed(() =>
   selectedCaptionTrack.value?.cues.find(
     (cue) => cue.id === selectedCaptionCueId.value,
@@ -1492,17 +1518,21 @@ function updateCaptionStyle(key: "fontFamily" | "fontSize", event: Event) {
 }
 function updateCaptionSafeArea(
   side: "left" | "right" | "top" | "bottom",
-  event: Event,
+  event?: Event,
 ) {
   const track = selectedCaptionTrack.value;
   if (!track) return;
-  const target = event.target as HTMLInputElement;
+  const target = event?.target as HTMLInputElement | undefined;
+  const raw =
+    target?.value !== undefined ? target.value : captionSafeArea.value[side];
+  const parsed = Math.max(0, Math.min(30, Number(raw) || 0));
+  captionSafeArea.value[side] = parsed;
   const safeArea = {
-    left: track.style.safeArea?.left ?? 0.08,
-    right: track.style.safeArea?.right ?? 0.08,
-    top: track.style.safeArea?.top ?? 0.08,
-    bottom: track.style.safeArea?.bottom ?? 0.12,
-    [side]: Number(target.value) / 100,
+    left: (captionSafeArea.value.left ?? 8) / 100,
+    right: (captionSafeArea.value.right ?? 8) / 100,
+    top: (captionSafeArea.value.top ?? 8) / 100,
+    bottom: (captionSafeArea.value.bottom ?? 12) / 100,
+    [side]: parsed / 100,
   };
   command({
     type: "caption.track.style",
@@ -5211,12 +5241,7 @@ onBeforeUnmount(() => {
                   >
                     {{ t(`editor.captions.${side}`) }}
                     <input
-                      :value="
-                        Math.round(
-                          (selectedCaptionTrack.style.safeArea?.[side] ??
-                            (side === 'bottom' ? 0.12 : 0.08)) * 100,
-                        )
-                      "
+                      v-model.number="captionSafeArea[side]"
                       type="number"
                       min="0"
                       max="30"

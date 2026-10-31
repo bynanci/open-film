@@ -14,7 +14,11 @@ export interface CanonicalAudioFacts {
   lengthSamples: number;
   probe: {
     streams: { codec_type?: string; start_time?: string; duration?: string }[];
-    format?: { start_time?: string; format_name?: string };
+    format?: {
+      start_time?: string;
+      format_name?: string;
+      duration?: string;
+    };
   };
 }
 function sourceHashSync(path: string): string {
@@ -118,12 +122,19 @@ export async function inspectCanonicalAudio(
   ];
   const microseconds = Number(ends.at(-1)?.[1]);
   let lengthSamples = Math.round((microseconds * 48000) / 1000000);
-  const declaredSamples = Number.isFinite(Number(stream.duration))
-    ? Math.round(Number(stream.duration) * 48000)
+  const rawDeclared =
+    stream.duration !== undefined && stream.duration !== "N/A"
+      ? stream.duration
+      : probe.format?.duration !== undefined &&
+          probe.format.duration !== "N/A"
+        ? probe.format.duration
+        : asset.duration;
+  const declaredSamples = Number.isFinite(Number(rawDeclared))
+    ? Math.round(Number(rawDeclared) * 48000)
     : undefined;
   if (
     declaredSamples !== undefined &&
-    Math.abs(declaredSamples - lengthSamples) <= 1
+    Math.abs(declaredSamples - lengthSamples) <= 2
   ) {
     lengthSamples = declaredSamples;
   }
