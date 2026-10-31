@@ -1,0 +1,18 @@
+# Governance-sensitive paths require maintainer attention.
+# Enforce review through branch protection or a ruleset, not this file alone.
+/LICENSE @bynanci
+/LICENSES/ @bynanci
+/NOTICE @bynanci
+/docs/licensing.md @bynanci
+/docs/adr/ @bynanci
+/TRADEMARKS.md @bynanci
+/COMMERCIAL.md @bynanci
+/GOVERNANCE.md @bynanci
+/DCO.md @bynanci
+/CONTRIBUTING.md @bynanci
+/CONTRIBUTING.zh-TW.md @bynanci
+/CONTRIBUTING.ja.md @bynanci
+/.github/PULL_REQUEST_TEMPLATE.md @bynanci
+/.github/CODEOWNERS @bynanci
+/.github/workflows/ @bynanci
+/scripts/ci/check-license-governance.mjs @bynanci

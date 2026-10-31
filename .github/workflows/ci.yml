@@ -22,6 +22,7 @@ jobs:
           node-version: 24.14.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm test:license
       - run: pnpm format:check
       - run: pnpm test:i18n
       - run: pnpm test:docs-i18n

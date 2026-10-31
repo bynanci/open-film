@@ -57,3 +57,14 @@ App 與文件的正式語系為英文、繁體中文和日文。README 與主要
 請遵守[行為準則](CODE_OF_CONDUCT.md)。漏洞請依 [SECURITY.md](SECURITY.md) 私下回報，不要放在公開 issue。產品問題請參閱 [SUPPORT.md](SUPPORT.zh-TW.md)，缺陷與功能建議請使用 issue 表單。
 
 除非另有說明，提交納入本專案的貢獻均採 Apache-2.0。請確認你有權提交程式碼和媒體。標示第三方材料並保留其授權與署名；貢獻不會移轉著作權。詳見[授權說明](docs/licensing.md)、LICENSE 與 NOTICE。
+
+## 貢獻來源聲明與 DCO
+
+此政策採用後首次提交的貢獻，其每個新 commit 都必須由貢獻者本人以
+`git commit -s` 加入 DCO 1.1 簽署聲明。提交前請先閱讀
+[DCO.md](DCO.md)。這是對貢獻來源及授權權限的聲明，不代表移轉著作權，
+也不提供專屬商業再授權的權利。
+
+使用第三方或 AI 輔助程式碼前，應確認來源、使用權及必要聲明；
+若涉及雇主持有權利的程式碼，需先取得適當授權。詳見
+[GOVERNANCE.md](GOVERNANCE.md)。

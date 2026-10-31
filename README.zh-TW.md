@@ -57,3 +57,7 @@ OpenFilm 面向單一使用者的本機工作站，不是多使用者或面向�
 ## 授權
 
 OpenFilm 第一方程式碼採用 [Apache-2.0](LICENSE)。第三方元件與媒體各自遵循其授權條款，詳見 [NOTICE](NOTICE) 與[授權說明](docs/licensing.md)。
+
+Apache-2.0 允許商業使用與分支開發。程式碼授權與官方品牌身分是不同的事項，請參閱
+[品牌使用政策](TRADEMARKS.md)、[商業使用說明](COMMERCIAL.md)與
+[專案治理](GOVERNANCE.md)。這些文件不修改 Apache-2.0 的授權條件。

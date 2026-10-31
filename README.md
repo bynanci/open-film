@@ -57,3 +57,8 @@ You may write community reports in English, Traditional Chinese or Japanese. Do 
 ## License
 
 OpenFilm's first-party code is licensed under [Apache-2.0](LICENSE). Third-party components and media keep their own license terms; see [NOTICE](NOTICE) and the [licensing guide](docs/licensing.md).
+
+OpenFilm's Apache-2.0 source may be forked and used commercially. For the
+distinction between source rights and official project identity, see the
+[branding policy](TRADEMARKS.md), [commercial use guide](COMMERCIAL.md) and
+[project governance](GOVERNANCE.md). These documents do not amend Apache-2.0.
