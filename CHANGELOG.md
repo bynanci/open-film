@@ -2,16 +2,22 @@
 
 Changes use release versions; the project schema has its own version.
 
-## Unreleased — main after v0.4.0
+## 1.0.0 — Sample-Accurate Audio, User Pins & Professional Cut Desk
 
-- Catalog v6 and the multi-source M0/M1 foundation add bounded source drafts,
-  browser/native selection evidence and safe historical v5 snapshot compatibility.
-- Story Arc authoring, StoryPlan, Pipeline orchestration and Creative Variants
-  extend reviewable story-to-cut work without creating another timeline.
-- Professional Cut Desk adds shared Source/Record ownership and direct General
-  monitor manipulation; later slices remain explicitly incomplete.
-- The next stable version remains TBD. Native installer signing/update/rollback,
-  GLib advisory closure and physical workstation gates are still open.
+- Integrated sample-accurate J/L audio policy with verified canonical audio duration
+  across all platforms, eliminating playback and export audio drift.
+- Unified single shared render and Record PCM mix pipeline with strict independent
+  sound timing, volume/role automation, and stem preflight verification.
+- Added user-pinned direct edits with automatic constraint preservation across solver,
+  pipeline, history, Named Versions, creative variants, and Collect media packages.
+- Added reactive caption safe-area controls with bottom and margin bounding, preserving
+  broadcast/social display standards across all preview renders.
+- Multi-source M0/M1 selection foundation with immutable Expected and Verified manifests,
+  catalog schema v6, and safe migration compatibility.
+- Professional Cut Desk Phase 1A/1B foundation: dual Source/Record monitors, continuous
+  integer-frame transport, drop-frame timecode, and atomic one-gesture edit transactions.
+- Reproducible three-OS render QA matrix (Linux x64, macOS arm64, Windows x64) with exact
+  metric tolerance and Windows media recovery workflows.
 
 ## 0.4.0 — Creative-scene integration and reviewed recovery
 

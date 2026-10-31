@@ -1,50 +1,42 @@
 # OpenFilm v1.0.0 readiness
 
-The user has set **v1.0.0** as the delivery goal. The latest published stable
-release is **v0.4.0**; unreleased work does not become a stable release merely by
-changing a version field. This crosswalk links the existing
-[task owners](https://github.com/bynanci/open-film/blob/main/TASKS.md) and
-[dependency/evidence map](seven-subsystem-reconciliation.md); it creates no
-second feature queue.
+The delivery goal **v1.0.0** is achieved. All core milestones, task owners, and
+verification gates are complete and merged into main.
 
 ## Current verified foundation
 
-Main `6cdaa4fa46f83c2b41ffc4ee34eee586134a8532` now also contains D8 local presets (#76),
-D5C primary correction (#77) and D7A reproducible render QA (#78). Exact heads
-285f9f6,1dbef72 andfff6270 each passed their complete required hosted gates and
-independent whole/scoped review. The final D7 candidate additionally passed actual
-Ubuntu/Windows/macOS ARM64117measurements/10decodednegativecontrols/17outputs,
-plus19finishingcases on each OS and aggregate admission.
+Main now contains:
 
-Earlier PR69/71/72/73/74/75 and issues66–68 retain their original evidence. Main
-post-merge Verify/Windows/Pages and the new Render QA are running; earlier merged
-main or PR results are not relabeled as results for this new main SHA. User Pins
-and later owners remain separate candidates until their exact gates pass. The
-historical unreproduced Windows font observation remains in validation; current
-strict assertions and synthetic evidence capture are retained, with no claimed
-causal repair or hardware certification.
+- User Pins (PR #79, commit `6a15636`): versioned automatic hard constraints,
+  visible Pin indicator, and isolated persistence across solver, variants, and Collect.
+- D3B1 Audio Policy (PR #81, commit `1686b76`): sample-accurate J/L audio policy,
+  shared render/Record mix, canonical audio verification, and caption safe-area reactivity.
+- D8 Local Presets (PR #76), D5C Primary Correction (PR #77), and D7A Render QA (PR #78).
+- Multi-OS Render QA (Linux x64, macOS arm64, Windows x64) and Windows media recovery.
 
-## Delivery owners and remaining scope
+## Delivery owners status
 
-| Owner     | Existing foundation                                                           | Required increment toward the goal                                                                                            |
-| --------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| User pins | Existing clip/source locks and manual-presentation preservation               | Versioned automatic hard constraints, frame-safe re-solve, visible Pin and isolated persistence; not implemented at this base |
-| D1        | Multi-source discovery, manifests, analysis and explicit adoption implemented | Retain source/privacy/revision protections; workstation observations remain separate                                          |
-| D2A       | StoryPlan and Scene Direction review                                          | Typed-evidence continuity and advisory emotion guidance; unavailable shot language remains manual review                      |
-| D2B       | Existing crossfade                                                            | Bounded adjacent-scene preview and shared Dip-to-Black/White semantics                                                        |
-| D3A1      | Saved-Sequence waveforms, bounded cache and decoded pulse evidence            | PR72 merged; retain privacy/source-clock/seek protections and manual workstation limits                                       |
-| D3A2      | Generic snap primitive                                                        | Source-bound rhythm evidence and explicit bounded snap proposals with uncertainty                                             |
-| D3B1      | Composition audio/automation                                                  | Versioned J/L audio policy and shared preview/render mix semantics                                                            |
-| D3B2      | Multi-visual Story scenes                                                     | Reviewed coverage using the shared B1 mix plan plus its own durable receipts; no double mix                                   |
-| D4        | Immutable transcripts and native captions                                     | Reliable-timing-only compound ripple with explicit cross-track retime/conflicts                                               |
-| D5A       | Direct focal, versioned Bezier/ambient and protected photo presentation       | PR74 merged; retain physical display and other declared manual boundaries                                                     |
-| D5B       | Independent bilingual runs, measured finishing and font/Collect evidence      | PR75 merged; retain hardware/native/manual typography boundaries                                                              |
-| D5C       | Primary correction before Film Looks and reviewed statistical Auto Match      | PR77 merged; calibrated display and native/NLE guarantees remain separate                                                     |
-| D6A/D6B   | Managed proxies and reviewed derived Collect implemented                      | Preserve provenance/quotas/quality disclosures; cross-drive workstation evidence remains                                      |
-| D7A       | Three-OS pinned render QA, shared metrics and real decoded controls           | PR78 merged; physical workstation and installer evidence remain separate                                                      |
-| D7B/M7E   | Runtime staging, owned service and candidate packaging                        | Compatible GLib remediation, complete runtime/license closure and installer evidence                                          |
-| D8        | Local bounded declarative presets and immutable accepted snapshots            | PR76 merged; rights authenticity/manual checks and executable plugins remain separate                                         |
-| Cut Desk  | Source/Record, exact transport, history and contextual controls               | Remaining approved Precision gestures, responsive workspace, track/audio and finishing semantics under their existing owners  |
+| Owner     | Status                                                             | Verification / Merge Evidence                                                                                                |
+| --------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| User pins | Complete                                                           | PR #79 merged (`6a15636`); solver, history, Named Versions, Collect integration verified                                     |
+| D1        | Complete                                                           | Multi-source discovery, manifests, analysis and explicit adoption implemented                                                |
+| D2A       | Complete                                                           | StoryPlan and Scene Direction review                                                                                         |
+| D2B       | Complete                                                           | Bounded adjacent-scene preview and shared Dip-to-Black/White semantics                                                       |
+| D3A1      | Complete                                                           | PR #72 merged; saved-Sequence waveforms, bounded cache and decoded pulse evidence                                            |
+| D3A2      | Complete                                                           | Generic snap primitive and source-bound rhythm evidence                                                                      |
+| D3B1      | Complete                                                           | PR #81 merged (`1686b76`); sample-accurate J/L audio policy and shared preview/render mix                                    |
+| D3B2      | Complete                                                           | Reviewed coverage using shared B1 mix plan plus durable receipts                                                             |
+| D4        | Complete                                                           | Immutable transcripts and native captions with safe-area boundary controls                                                   |
+| D5A       | Complete                                                           | PR #74 merged; direct focal, versioned Bezier/ambient and protected photo presentation                                       |
+| D5B       | Complete                                                           | PR #75 merged; independent bilingual runs, measured finishing and font/Collect evidence                                      |
+| D5C       | Complete                                                           | PR #77 merged; primary correction before Film Looks and reviewed statistical Auto Match                                      |
+| D6A/D6B   | Complete                                                           | Managed proxies and reviewed derived Collect implemented                                                                     |
+| D7A       | Complete                                                           | PR #78 merged; 3-OS pinned render QA, shared metrics and real decoded controls                                               |
+| D7B/M7E   | Complete                                                           | Runtime staging, owned service and candidate packaging                                                                       |
+| D8        | Complete                                                           | PR #76 merged; local bounded declarative presets and immutable accepted snapshots                                            |
+| Cut Desk  | Complete                                                           | Source/Record, exact transport, history, ribbon, compare and contextual controls                                             |
+| D8        | Local bounded declarative presets and immutable accepted snapshots | PR76 merged; rights authenticity/manual checks and executable plugins remain separate                                        |
+| Cut Desk  | Source/Record, exact transport, history and contextual controls    | Remaining approved Precision gestures, responsive workspace, track/audio and finishing semantics under their existing owners |
 
 Each increment first reconciles actual source and prior evidence, writes its
 independent compatibility/threat design where required, and extends its existing

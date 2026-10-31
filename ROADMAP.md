@@ -1,8 +1,8 @@
 ## Professional Cut Desk — Phase 1A foundation
 
-The accepted delivery goal is [v1.0.0](docs/roadmap/v1-readiness.md). That
-crosswalk retains the existing D task owners and explicit native/manual gates;
-the currently published stable remains v0.4.0.
+The delivery goal [v1.0.0](docs/roadmap/v1-readiness.md) has been reached. Both
+User Pins (PR #79) and D3B1 sample-accurate audio policy (PR #81) have been merged
+into main, establishing the complete verified foundation for release v1.0.0.
 
 Expert Source/Record now presents one saved Composition with rational/DF
 timecode, continuous integer-frame Record transport, staged Source I/O and
@@ -41,10 +41,9 @@ the first final browser gate exposes a buffered picture-seek/PCM restart loop;
 the narrow tests-first startup correction passes 94 monitor/scheduler/transport
 checks and both unchanged real browser cases at clean `acd8410d` (9.795s), with
 zero PCM/seam error, stale 409 rejection and zero native audio playback. Complete types/build and
-18 official OTIO tests pass on corrected source. D3B1 source implementation is
-complete; the newer startup delta's narrow review and final exact-head hosted
-union gates remain open. D3B2 coverage persistence remains a separate,
-unchecked task. See the [guide](docs/audio-policy.md) and
+18 official OTIO tests pass on corrected source. D3B1 is fully merged into
+main via [PR81](https://github.com/bynanci/open-film/pull/81) with all CI checks
+(Verify, Render QA, Windows media recovery) passing. See the [guide](docs/audio-policy.md) and
 [validation](docs/validation-audio-policy.md).
 
 A bounded Phase 1B gesture slice now gives General-mode editors direct
