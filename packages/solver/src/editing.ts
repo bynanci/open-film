@@ -248,6 +248,17 @@ export type TimelineCommand =
       };
     }
   | {
+      type: "track.update";
+      trackId: string;
+      patch: {
+        locked?: boolean;
+        target?: boolean;
+        muted?: boolean;
+        solo?: boolean;
+        visible?: boolean;
+      };
+    }
+  | {
       type: "regenerate-beat";
       beatId: string;
       mode:
@@ -1293,6 +1304,43 @@ function applyTimelineCommandRaw(
   const next = structuredClone(document);
   if (command.type === "user-pin.set" || command.type === "user-pin.resolve")
     return next;
+  if (command.type === "track.update") {
+    const track = next.composition.tracks.find((t) => t.id === command.trackId);
+    if (!track) fail(`Track "${command.trackId}" was not found.`);
+    if (command.patch.locked !== undefined) {
+      if (typeof command.patch.locked !== "boolean")
+        fail("Track locked state must be a boolean.");
+      track.locked = command.patch.locked;
+    }
+    if (command.patch.target !== undefined) {
+      if (typeof command.patch.target !== "boolean")
+        fail("Track target state must be a boolean.");
+      if (command.patch.target) {
+        for (const other of next.composition.tracks) {
+          if (other.type === track.type && other.id !== track.id) {
+            other.target = false;
+          }
+        }
+      }
+      track.target = command.patch.target;
+    }
+    if (command.patch.muted !== undefined) {
+      if (typeof command.patch.muted !== "boolean")
+        fail("Track muted state must be a boolean.");
+      track.muted = command.patch.muted;
+    }
+    if (command.patch.solo !== undefined) {
+      if (typeof command.patch.solo !== "boolean")
+        fail("Track solo state must be a boolean.");
+      track.solo = command.patch.solo;
+    }
+    if (command.patch.visible !== undefined) {
+      if (typeof command.patch.visible !== "boolean")
+        fail("Track visible state must be a boolean.");
+      track.visible = command.patch.visible;
+    }
+    return next;
+  }
   if (
     command.type === "graphic.scene.upsert" ||
     command.type === "graphic.scene.remove"
@@ -1601,6 +1649,8 @@ function applyTimelineCommandRaw(
     const { clip: clipB, track: trackB } = findClip(next, command.clipIdB);
     if (trackA !== trackB)
       fail("Roll edit requires both clips to be on the same track.");
+    if (trackA.locked)
+      fail(`Cannot roll edit: track "${trackA.id}" is locked.`);
     const indexA = trackA.clips.indexOf(clipA);
     const indexB = trackA.clips.indexOf(clipB);
     if (
@@ -1679,10 +1729,16 @@ function applyTimelineCommandRaw(
     if (!track) {
       const preferredType = asset.mediaType === "audio" ? "audio" : "video";
       track =
+        next.composition.tracks.find(
+          (t) => t.target && t.type === preferredType,
+        ) ??
         next.composition.tracks.find((t) => t.type === preferredType) ??
+        next.composition.tracks.find((t) => t.target) ??
         next.composition.tracks[0];
     }
     if (!track) fail("Composition has no tracks to insert media into.");
+    if (track.locked)
+      fail(`Cannot insert edit: track "${track.id}" is locked.`);
 
     const ids = new Set(allClips(next).map((c) => c.id));
     let newId = `${asset.id}-insert-1`;
@@ -1784,10 +1840,16 @@ function applyTimelineCommandRaw(
     if (!track) {
       const preferredType = asset.mediaType === "audio" ? "audio" : "video";
       track =
+        next.composition.tracks.find(
+          (t) => t.target && t.type === preferredType,
+        ) ??
         next.composition.tracks.find((t) => t.type === preferredType) ??
+        next.composition.tracks.find((t) => t.target) ??
         next.composition.tracks[0];
     }
     if (!track) fail("Composition has no tracks to overwrite media onto.");
+    if (track.locked)
+      fail(`Cannot overwrite edit: track "${track.id}" is locked.`);
 
     const overwriteStart = command.timelineStart;
     const overwriteEnd = overwriteStart + duration;
@@ -1919,9 +1981,17 @@ function applyTimelineCommandRaw(
   if (command.type === "lock") {
     if (typeof command.locked !== "boolean")
       fail("Clip lock must be true or false.");
+    if (track.locked)
+      fail(
+        `Track "${track.id}" is locked. Unlock the track before modifying clip locks.`,
+      );
     clip.locked = command.locked;
     return next;
   }
+  if (track.locked)
+    fail(
+      `Track "${track.id}" is locked. Unlock the track before editing clips on it.`,
+    );
   if (clip.locked)
     fail(`Clip "${clip.id}" is locked. Unlock it before editing.`);
   const asset = findAsset(assets, clip.assetId);

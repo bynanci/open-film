@@ -3260,3 +3260,116 @@ button.editor-beat-heading:hover {
     animation: none !important;
   }
 }
+
+/* Cut Desk Track Controls */
+.cut-desk-track-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--editor-surface, #1e1e24);
+  border-bottom: 1px solid var(--editor-border, #33333d);
+}
+
+.cut-desk-track-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--editor-inset, #16161a);
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  color: var(--editor-foreground, #f0f0f4);
+}
+
+.cut-desk-track-header.is-target {
+  border-color: var(--editor-accent, #60a5fa);
+}
+
+.cut-desk-track-header.is-locked {
+  opacity: 0.85;
+}
+
+.cut-desk-track-header.is-hidden {
+  opacity: 0.6;
+}
+
+.cut-desk-track-header .track-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--editor-border, #33333d);
+  color: var(--editor-muted, #9999a4);
+  letter-spacing: 0.05em;
+}
+
+.cut-desk-track-header .track-title {
+  flex: 1 1 0;
+  min-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+}
+
+.cut-desk-track-header .track-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cut-desk-track-header .track-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 3px;
+  border: 1px solid var(--editor-border, #33333d);
+  background: transparent;
+  color: var(--editor-muted, #9999a4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cut-desk-track-header .track-btn:hover:not(:disabled) {
+  border-color: var(--editor-accent, #60a5fa);
+  color: var(--editor-foreground, #f0f0f4);
+}
+
+.cut-desk-track-header .track-btn.active {
+  background: var(--editor-accent, #60a5fa);
+  border-color: var(--editor-accent, #60a5fa);
+  color: #0f172a;
+}
+
+.cut-desk-track-header .track-btn.track-mute-btn.active {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.cut-desk-track-header .track-btn.track-solo-btn.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #0f172a;
+}
+
+.cut-desk-track-header .track-btn.track-lock-btn.active {
+  background: #eab308;
+  border-color: #eab308;
+  color: #0f172a;
+}
+
+@media (pointer: coarse) {
+  .cut-desk-track-header .track-btn {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 0.85rem;
+  }
+}

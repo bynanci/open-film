@@ -143,6 +143,21 @@ export default {
         help: "Press ? to toggle this reference sheet",
       },
     },
+    tracks: {
+      label: "Timeline tracks",
+      controlsFor: "Controls for track {id}",
+      target: "Target track {id}",
+      targetHint:
+        "Active destination track for insert and overwrite operations",
+      lock: "Lock track {id}",
+      lockHint: "Lock track to protect all its clips from edits",
+      visible: "Toggle visibility for track {id}",
+      visibleHint: "Show or hide track visuals in preview and export",
+      mute: "Mute track {id}",
+      muteHint: "Mute track audio in playback and mix",
+      solo: "Solo track {id}",
+      soloHint: "Solo track audio, silencing un-soloed tracks",
+    },
     issues: {
       "not-ready": "Waiting for Record media…",
       "source-missing": "Record source is missing. Your edits are safe.",

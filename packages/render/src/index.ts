@@ -245,9 +245,15 @@ export function audioSourceAssetIds(
     );
   }
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  const hasSolo = composition.tracks.some((t) => t.solo === true);
   return new Set(
     composition.tracks
-      .filter((track) => track.type !== "titles")
+      .filter(
+        (track) =>
+          track.type !== "titles" &&
+          !track.muted &&
+          (!hasSolo || track.solo === true),
+      )
       .flatMap((track) =>
         track.clips.flatMap((clip) => {
           const asset = assetMap.get(clip.assetId);
@@ -274,7 +280,8 @@ export function visualSourceAssetIds(
         (track) =>
           track.type !== "titles" &&
           track.type !== "audio" &&
-          track.type !== "music",
+          track.type !== "music" &&
+          track.visible !== false,
       )
       .flatMap((track) =>
         track.clips.flatMap((clip) =>
@@ -842,7 +849,9 @@ export class FFmpegRenderer {
       const photoClips = audioOnly
         ? []
         : composition.tracks
-            .filter((track) => track.type === "video")
+            .filter(
+              (track) => track.type === "video" && track.visible !== false,
+            )
             .flatMap((track) => track.clips);
       const ambient = await preparePhotoAmbientFills(
         photoClips,
@@ -854,6 +863,7 @@ export class FFmpegRenderer {
       for (const [id, asset] of ambient.assetOverrides) assetMap.set(id, asset);
       for (const track of composition.tracks) {
         if (audioOnly && track.type === "titles") continue;
+        if (!audioOnly && track.visible === false) continue;
         const clips = [...track.clips].sort(
           (a, b) => a.timelineStart - b.timelineStart,
         );
