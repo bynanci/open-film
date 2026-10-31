@@ -3,7 +3,10 @@
  * not the contributor's legal identity, copyright title, or actual authorization.
  */
 export function footerTrailers(message) {
-  const lines = String(message ?? "").replace(/\r\n/g, "\n").trimEnd().split("\n");
+  const lines = String(message ?? "")
+    .replace(/\r\n/g, "\n")
+    .trimEnd()
+    .split("\n");
   const trailerPattern = /^([A-Za-z][A-Za-z0-9-]*):[ \t]*(.+)$/;
   let start = lines.length;
   while (start > 0 && trailerPattern.test(lines[start - 1])) {
@@ -28,17 +31,20 @@ function identity(value) {
 }
 
 export function validateDcoCommit(commit) {
-  const sha = typeof commit?.sha === "string" ? commit.sha.slice(0, 12) : "unknown";
+  const sha =
+    typeof commit?.sha === "string" ? commit.sha.slice(0, 12) : "unknown";
   const errors = [];
   const author = commit?.commit?.author;
-  const authorEmail = typeof author?.email === "string" ? author.email.trim().toLowerCase() : "";
+  const authorEmail =
+    typeof author?.email === "string" ? author.email.trim().toLowerCase() : "";
   if (!authorEmail) errors.push(sha + ": missing commit author email");
 
   const trailers = footerTrailers(commit?.commit?.message);
   const signoffs = [];
   const coauthors = [];
   for (const trailer of trailers) {
-    if (trailer.key !== "signed-off-by" && trailer.key !== "co-authored-by") continue;
+    if (trailer.key !== "signed-off-by" && trailer.key !== "co-authored-by")
+      continue;
     const parsed = identity(trailer.value);
     if (!parsed) {
       errors.push(sha + ": malformed " + trailer.key + " trailer");
@@ -57,7 +63,9 @@ export function validateDcoCommit(commit) {
     }
     for (const email of new Set(coauthors)) {
       if (!signed.has(email)) {
-        errors.push(sha + ": co-author " + email + " has no matching DCO sign-off");
+        errors.push(
+          sha + ": co-author " + email + " has no matching DCO sign-off",
+        );
       }
     }
   }

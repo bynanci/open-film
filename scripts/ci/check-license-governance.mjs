@@ -50,7 +50,6 @@ if (
   }
 }
 
-
 const historicalLicenseBlobs = {
   LICENSE: "d645695673349e3947e8e5ae42332d0ac3164cd7",
   "LICENSES/Apache-2.0.txt": "d645695673349e3947e8e5ae42332d0ac3164cd7",
@@ -65,7 +64,9 @@ for (const [path, expected] of Object.entries(historicalLicenseBlobs)) {
     .update(bytes)
     .digest("hex");
   if (actual !== expected) {
-    failures.push(path + " no longer matches the pinned historical license text.");
+    failures.push(
+      path + " no longer matches the pinned historical license text.",
+    );
   }
 }
 
@@ -78,7 +79,9 @@ for (const rootName of ["apps", "packages", "templates"]) {
     if (!existsSync(filePath(relative))) continue;
     const manifest = JSON.parse(contents(relative));
     if (manifest.license !== "Apache-2.0") {
-      failures.push(relative + " has inconsistent first-party license metadata.");
+      failures.push(
+        relative + " has inconsistent first-party license metadata.",
+      );
     }
   }
 }
@@ -88,7 +91,9 @@ if (
   existsSync(filePath(nativeManifestPath)) &&
   !/^license\s*=\s*"Apache-2.0"\s*$/m.test(contents(nativeManifestPath))
 ) {
-  failures.push(nativeManifestPath + " lacks the expected first-party license.");
+  failures.push(
+    nativeManifestPath + " lacks the expected first-party license.",
+  );
 }
 
 const pkg = JSON.parse(contents("package.json"));

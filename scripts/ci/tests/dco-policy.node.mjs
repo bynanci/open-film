@@ -11,28 +11,40 @@ function commit(message, email = "contributor@example.org") {
 
 test("accepts a genuine author sign-off at the end of a commit message", () => {
   const result = validateDcoCommit(
-    commit("feat: add editor feature\n\nSigned-off-by: Contributor <contributor@example.org>"),
+    commit(
+      "feat: add editor feature\n\nSigned-off-by: Contributor <contributor@example.org>",
+    ),
   );
   assert.equal(result.valid, true);
 });
 
 test("accepts a CRLF-formatted message and case-insensitive trailer key", () => {
   const result = validateDcoCommit(
-    commit("fix: issue\r\n\r\nsigned-off-by: Contributor <CONTRIBUTOR@example.org>"),
+    commit(
+      "fix: issue\r\n\r\nsigned-off-by: Contributor <CONTRIBUTOR@example.org>",
+    ),
   );
   assert.equal(result.valid, true);
 });
 
 test("rejects unsigned contributions", () => {
-  assert.equal(validateDcoCommit(commit("feat: add editor feature")).valid, false);
+  assert.equal(
+    validateDcoCommit(commit("feat: add editor feature")).valid,
+    false,
+  );
 });
 
 test("rejects a sign-off embedded inside a quoted message body", () => {
   const result = validateDcoCommit(
-    commit("feat: example\nQuoted lines:\nSigned-off-by: Contributor <contributor@example.org>"),
+    commit(
+      "feat: example\nQuoted lines:\nSigned-off-by: Contributor <contributor@example.org>",
+    ),
   );
   assert.equal(result.valid, false);
-  assert.deepEqual(footerTrailers("message\nSigned-off-by: Person <p@example.org>"), []);
+  assert.deepEqual(
+    footerTrailers("message\nSigned-off-by: Person <p@example.org>"),
+    [],
+  );
 });
 
 test("rejects a sign-off for someone other than the commit author", () => {
@@ -50,24 +62,32 @@ test("requires a sign-off for each named co-author", () => {
   assert.equal(validateDcoCommit(commit(message)).valid, false);
   assert.equal(
     validateDcoCommit(
-      commit(message + "\nSigned-off-by: Collaborator <collaborator@example.org>"),
+      commit(
+        message + "\nSigned-off-by: Collaborator <collaborator@example.org>",
+      ),
     ).valid,
     true,
   );
 });
 
 test("rejects malformed sign-off and missing author email", () => {
-  const malformed = validateDcoCommit(commit("feat: example\n\nSigned-off-by: Nobody"));
+  const malformed = validateDcoCommit(
+    commit("feat: example\n\nSigned-off-by: Nobody"),
+  );
   assert.equal(malformed.valid, false);
   assert.equal(
-    validateDcoCommit(commit("feat: example\n\nSigned-off-by: Person <p@example.org>", "")).valid,
+    validateDcoCommit(
+      commit("feat: example\n\nSigned-off-by: Person <p@example.org>", ""),
+    ).valid,
     false,
   );
 });
 
 test("does not require an exact name match when the email is the same", () => {
   const result = validateDcoCommit(
-    commit("docs: add guide\n\nSigned-off-by: Legal Name <contributor@example.org>"),
+    commit(
+      "docs: add guide\n\nSigned-off-by: Legal Name <contributor@example.org>",
+    ),
   );
   assert.equal(result.valid, true);
 });

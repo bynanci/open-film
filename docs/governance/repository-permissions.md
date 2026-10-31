@@ -16,14 +16,14 @@ See the [licensing guide](../licensing.md) and the
 
 ## Access roles (target state)
 
-| Role | GitHub access | Duties |
-| --- | --- | --- |
-| Repository owner (@bynanci) | Admin; use strong MFA/passkeys | Policy, emergency recovery, official release approval |
-| Additional trusted maintainer (if appointed) | Write or Maintain; least privilege | Review code and sensitive changes, validate releases |
-| Community contributor | Fork and open PR; no upstream write | Tests, changes, DCO self-attestation, source provenance |
-| Issue triager | Triage only | Organize reports without changing code or release settings |
-| CI on untrusted PRs | GITHUB_TOKEN read-only; no secrets | Build/test/report, no deployment or mutation |
-| Official release workflow | Narrow, event-scoped publish rights | Release reviewed artifacts only after required gates |
+| Role                                         | GitHub access                       | Duties                                                     |
+| -------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Repository owner (@bynanci)                  | Admin; use strong MFA/passkeys      | Policy, emergency recovery, official release approval      |
+| Additional trusted maintainer (if appointed) | Write or Maintain; least privilege  | Review code and sensitive changes, validate releases       |
+| Community contributor                        | Fork and open PR; no upstream write | Tests, changes, DCO self-attestation, source provenance    |
+| Issue triager                                | Triage only                         | Organize reports without changing code or release settings |
+| CI on untrusted PRs                          | GITHUB_TOKEN read-only; no secrets  | Build/test/report, no deployment or mutation               |
+| Official release workflow                    | Narrow, event-scoped publish rights | Release reviewed artifacts only after required gates       |
 
 Do not make all contributors collaborators with Write access. Review collaborator
 permissions quarterly and immediately after role changes. Require MFA, avoid
