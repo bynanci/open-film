@@ -121,6 +121,10 @@ function candidates(style: {
 const familyKey = (value: string): string =>
   value.toLowerCase().replace(/[\s_-]/gu, "");
 
+export function clearFontCache(): void {
+  fontCache.clear();
+}
+
 async function loadFont(
   style: { fontFamily?: string; fontWeight?: number },
   options: { fontPath?: string } = {},
@@ -146,22 +150,27 @@ async function loadFont(
   let cached = fontCache.get(path);
   if (!cached || cached.signature !== signature) {
     const buffer = await readFile(path);
-    try {
-      const { create } = nativeRequire("fontkit") as typeof import("fontkit");
-      cached = {
-        signature,
-        buffer,
-        sha256: digest(buffer),
-        collection: create(buffer),
-      };
-    } catch {
-      throw new Error(
-        "The selected title font cannot be read. Choose a valid local OpenType or TrueType font.",
-      );
+    const sha256 = digest(buffer);
+    if (!cached || cached.sha256 !== sha256) {
+      try {
+        const { create } = nativeRequire("fontkit") as typeof import("fontkit");
+        cached = {
+          signature,
+          buffer,
+          sha256,
+          collection: create(buffer),
+        };
+      } catch {
+        throw new Error(
+          "The selected title font cannot be read. Choose a valid local OpenType or TrueType font.",
+        );
+      }
+      fontCache.set(path, cached);
+      // Full CJK collections are large; keep at most four recently selected files.
+      if (fontCache.size > 4) fontCache.delete(fontCache.keys().next().value!);
+    } else {
+      cached.signature = signature;
     }
-    fontCache.set(path, cached);
-    // Full CJK collections are large; keep at most four recently selected files.
-    if (fontCache.size > 4) fontCache.delete(fontCache.keys().next().value!);
   }
   const available =
     "fonts" in cached.collection

@@ -77,6 +77,7 @@ export {
   type RenderFontUsage,
 } from "./manifest.js";
 export {
+  clearFontCache,
   createTitleOverlay,
   validateTitleOutputDimensions,
   inspectTitleOverlay,
@@ -1225,8 +1226,12 @@ export class FFmpegRenderer {
           `anullsrc=r=48000:cl=stereo,atrim=duration=${number(composition.duration)}[aout]`,
         );
       args.push(
+        "-filter_threads",
+        "1",
         "-filter_complex_threads",
         "1",
+        "-sws_flags",
+        "+accurate_rnd+bitexact",
         "-filter_complex",
         filters.join(";"),
       );
@@ -1240,6 +1245,9 @@ export class FFmpegRenderer {
           encoding.video,
           "-threads",
           "1",
+          ...(encoding.video === "libx264"
+            ? ["-x264opts", "threads=1:lookahead_threads=1:sliced_threads=0"]
+            : []),
           "-preset",
           encoding.preset,
           "-crf",

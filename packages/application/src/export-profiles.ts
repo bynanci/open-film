@@ -893,6 +893,8 @@ export class ExportProfileService {
         "-v",
         "error",
         "-nostdin",
+        "-threads",
+        "1",
         "-i",
         videoPath,
         "-vf",
