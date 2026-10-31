@@ -27,7 +27,7 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         keyboard/pointer cancellation, context fencing and output immutability.
   - [x] Complete the remaining solver-backed pointer-centred Precision zoom/pan
         and snap-bypass gestures without introducing a second timeline. ([validation](docs/validation-cut-desk-phase-1b.md))
-- [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
+- [x] Phase 1C: complete responsive/resizable workspace and accessibility program. ([validation](docs/validation-cut-desk-phase-1c.md))
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
   - [x] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
