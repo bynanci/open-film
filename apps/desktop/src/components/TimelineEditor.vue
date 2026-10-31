@@ -3305,6 +3305,105 @@ onBeforeUnmount(() => {
       }}</span>
       <span v-if="timebaseError" role="alert">{{ timebaseError }}</span>
     </EditDecisionRibbon>
+    <div
+      v-if="
+        expertMode &&
+        editMode !== 'transcript' &&
+        state?.composition.tracks.length
+      "
+      class="cut-desk-track-controls"
+      role="toolbar"
+      :aria-label="t('cutDesk.tracks.label')"
+    >
+      <div
+        v-for="track in state.composition.tracks"
+        :key="track.id"
+        class="cut-desk-track-header"
+        :class="{
+          'is-locked': track.locked,
+          'is-target': track.target,
+          'is-muted': track.muted,
+          'is-solo': track.solo,
+          'is-hidden': track.visible === false,
+        }"
+        :data-testid="`track-header-${track.id}`"
+      >
+        <span class="track-badge">{{ track.type.toUpperCase() }}</span>
+        <span class="track-title" :title="track.id">{{ track.id }}</span>
+        <div
+          class="track-btn-group"
+          role="group"
+          :aria-label="t('cutDesk.tracks.controlsFor', { id: track.id })"
+        >
+          <button
+            type="button"
+            class="track-btn track-target-btn"
+            :class="{ active: track.target }"
+            :aria-pressed="!!track.target"
+            :aria-label="t('cutDesk.tracks.target', { id: track.id })"
+            :title="t('cutDesk.tracks.targetHint')"
+            :disabled="historyBusy"
+            @click="toggleTrackTarget(track)"
+          >
+            T
+          </button>
+          <button
+            type="button"
+            class="track-btn track-lock-btn"
+            :class="{ active: track.locked }"
+            :aria-pressed="!!track.locked"
+            :aria-label="t('cutDesk.tracks.lock', { id: track.id })"
+            :title="t('cutDesk.tracks.lockHint')"
+            :disabled="historyBusy"
+            @click="toggleTrackLock(track)"
+          >
+            <Icon :name="track.locked ? 'lock' : 'unlock'" :size="12" />
+          </button>
+          <button
+            v-if="['video', 'overlay', 'titles'].includes(track.type)"
+            type="button"
+            class="track-btn track-visible-btn"
+            :class="{ active: track.visible !== false }"
+            :aria-pressed="track.visible !== false"
+            :aria-label="t('cutDesk.tracks.visible', { id: track.id })"
+            :title="t('cutDesk.tracks.visibleHint')"
+            :disabled="historyBusy"
+            @click="toggleTrackVisible(track)"
+          >
+            <Icon
+              :name="track.visible === false ? 'eye-off' : 'eye'"
+              :size="12"
+            />
+          </button>
+          <button
+            v-if="['audio', 'music', 'video'].includes(track.type)"
+            type="button"
+            class="track-btn track-mute-btn"
+            :class="{ active: track.muted }"
+            :aria-pressed="!!track.muted"
+            :aria-label="t('cutDesk.tracks.mute', { id: track.id })"
+            :title="t('cutDesk.tracks.muteHint')"
+            :disabled="historyBusy"
+            @click="toggleTrackMute(track)"
+          >
+            M
+          </button>
+          <button
+            v-if="['audio', 'music', 'video'].includes(track.type)"
+            type="button"
+            class="track-btn track-solo-btn"
+            :class="{ active: track.solo }"
+            :aria-pressed="!!track.solo"
+            :aria-label="t('cutDesk.tracks.solo', { id: track.id })"
+            :title="t('cutDesk.tracks.soloHint')"
+            :disabled="historyBusy"
+            @click="toggleTrackSolo(track)"
+          >
+            S
+          </button>
+        </div>
+      </div>
+    </div>
     <AudioQualityPanel
       v-if="audioQualityOpen"
       id="audio-quality-panel"
@@ -4673,101 +4772,6 @@ onBeforeUnmount(() => {
               >
                 {{ t("editor.source.locate") }}<Icon name="arrow" :size="14" />
               </button>
-            </div>
-          </div>
-          <div
-            v-if="state?.composition.tracks.length"
-            class="cut-desk-track-controls"
-            role="toolbar"
-            :aria-label="t('cutDesk.tracks.label')"
-          >
-            <div
-              v-for="track in state.composition.tracks"
-              :key="track.id"
-              class="cut-desk-track-header"
-              :class="{
-                'is-locked': track.locked,
-                'is-target': track.target,
-                'is-muted': track.muted,
-                'is-solo': track.solo,
-                'is-hidden': track.visible === false,
-              }"
-              :data-testid="`track-header-${track.id}`"
-            >
-              <span class="track-badge">{{ track.type.toUpperCase() }}</span>
-              <span class="track-title" :title="track.id">{{ track.id }}</span>
-              <div
-                class="track-btn-group"
-                role="group"
-                :aria-label="t('cutDesk.tracks.controlsFor', { id: track.id })"
-              >
-                <button
-                  type="button"
-                  class="track-btn track-target-btn"
-                  :class="{ active: track.target }"
-                  :aria-pressed="!!track.target"
-                  :aria-label="t('cutDesk.tracks.target', { id: track.id })"
-                  :title="t('cutDesk.tracks.targetHint')"
-                  :disabled="historyBusy"
-                  @click="toggleTrackTarget(track)"
-                >
-                  T
-                </button>
-                <button
-                  type="button"
-                  class="track-btn track-lock-btn"
-                  :class="{ active: track.locked }"
-                  :aria-pressed="!!track.locked"
-                  :aria-label="t('cutDesk.tracks.lock', { id: track.id })"
-                  :title="t('cutDesk.tracks.lockHint')"
-                  :disabled="historyBusy"
-                  @click="toggleTrackLock(track)"
-                >
-                  <Icon :name="track.locked ? 'lock' : 'unlock'" :size="12" />
-                </button>
-                <button
-                  v-if="['video', 'overlay', 'titles'].includes(track.type)"
-                  type="button"
-                  class="track-btn track-visible-btn"
-                  :class="{ active: track.visible !== false }"
-                  :aria-pressed="track.visible !== false"
-                  :aria-label="t('cutDesk.tracks.visible', { id: track.id })"
-                  :title="t('cutDesk.tracks.visibleHint')"
-                  :disabled="historyBusy"
-                  @click="toggleTrackVisible(track)"
-                >
-                  <Icon
-                    :name="track.visible === false ? 'eye-off' : 'eye'"
-                    :size="12"
-                  />
-                </button>
-                <button
-                  v-if="['audio', 'music', 'video'].includes(track.type)"
-                  type="button"
-                  class="track-btn track-mute-btn"
-                  :class="{ active: track.muted }"
-                  :aria-pressed="!!track.muted"
-                  :aria-label="t('cutDesk.tracks.mute', { id: track.id })"
-                  :title="t('cutDesk.tracks.muteHint')"
-                  :disabled="historyBusy"
-                  @click="toggleTrackMute(track)"
-                >
-                  M
-                </button>
-                <button
-                  v-if="['audio', 'music', 'video'].includes(track.type)"
-                  type="button"
-                  class="track-btn track-solo-btn"
-                  :class="{ active: track.solo }"
-                  :aria-pressed="!!track.solo"
-                  :aria-label="t('cutDesk.tracks.solo', { id: track.id })"
-                  :title="t('cutDesk.tracks.soloHint')"
-                  :disabled="historyBusy"
-                  @click="toggleTrackSolo(track)"
-                >
-                  S
-                </button>
-              </div>
             </div>
           </div>
           <div
