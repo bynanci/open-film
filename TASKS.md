@@ -205,9 +205,10 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D3A1 crosswalk: the nested Professional Cut Desk Phase 3 item is authoritative for background
   waveform preparation and Sequence projection through the existing source-range
   and rational-frame contract.
-- [ ] D3A2: after an analysis/reliability design, add source-hash-bound
+- [x] D3A2: after an analysis/reliability design, add source-hash-bound
       onset/downbeat/phrase evidence and an explicit bounded solver snap proposal;
       do not imply the existing generic snap primitive produces beat markers.
+      See [validation](docs/validation-rhythm-analysis-snapping.md).
 - D3B1 crosswalk: the nested Professional Cut Desk Phase 3 item is authoritative for J/L-cut
   mechanics and explicit embedded-audio policy on the existing Composition.
 - [x] D3B2: after a Story/solver coverage design, add reviewable A-roll/B-roll

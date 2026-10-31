@@ -620,4 +620,12 @@ export {
   type BuildMicroPreviewOptions,
 } from "./micro-preview.js";
 
+export {
+  projectClipRhythmLandmarks,
+  buildRhythmSnapProposal,
+  applyRhythmSnapProposalToDocument,
+  applyRhythmSnap,
+  type BuildRhythmSnapOptions,
+} from "./rhythm.js";
+
 export { validateAudioEdit } from "./audio-timing.js";

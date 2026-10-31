@@ -229,6 +229,18 @@ export default {
       conflict:
         "The micro-preview transition conflicts with locked clips or protected boundaries.",
     },
+    rhythm: {
+      invalidEvidence:
+        "The rhythm analysis evidence is invalid or corrupted. Re-analyze the audio source to continue.",
+      invalidProposal:
+        "The rhythm snap proposal is invalid or contains malformed data. Recalculate snap to continue.",
+      staleProposal:
+        "The timeline or clip changed after this rhythm snap proposal was generated. Recalculate snap before accepting.",
+      sourceMismatch:
+        "The media source hash has changed since rhythm analysis. Re-analyze the updated audio source.",
+      conflict:
+        "The rhythm snap edit conflicts with locked clips, protected media, or invalid cut boundaries.",
+    },
     glossary: {
       storageBusy:
         "Another OpenFilm window or process is updating your global glossary. Try again after it finishes.",
