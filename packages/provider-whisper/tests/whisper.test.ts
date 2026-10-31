@@ -20,7 +20,9 @@ import { hashFile, runProcess } from "@openfilm/media";
 import type { MediaAsset } from "@openfilm/core";
 import { LocalWhisperProvider, validateWhisperResult } from "../src/index.js";
 
-const python = process.env.OPENFILM_TEST_PYTHON ?? "python3";
+const python =
+  process.env.OPENFILM_TEST_PYTHON ??
+  (process.platform === "win32" ? "python" : "python3");
 const fixture = fileURLToPath(
   new URL("../../../tests/fixtures/whisper-protocol.py", import.meta.url),
 );

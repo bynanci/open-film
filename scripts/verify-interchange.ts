@@ -32,7 +32,9 @@ if (keep) {
       "Interchange artifact directory must be empty to avoid overwriting existing files.",
     );
 }
-const python = process.env.OPENFILM_OTIO_PYTHON ?? "python3";
+const python =
+  process.env.OPENFILM_OTIO_PYTHON ??
+  (process.platform === "win32" ? "python" : "python3");
 const verifier = fileURLToPath(
   new URL("../tests/interchange/resolve/verify.py", import.meta.url),
 );

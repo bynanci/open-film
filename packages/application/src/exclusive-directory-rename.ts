@@ -42,16 +42,46 @@ function checkedPath(path: string, windows: boolean): string {
   return windows ? win32.toNamespacedPath(path) : path;
 }
 
+const POSIX_ERRNO_MAP: Record<number, string> = {
+  1: "EPERM",
+  2: "ENOENT",
+  5: "EIO",
+  12: "ENOMEM",
+  13: "EACCES",
+  16: "EBUSY",
+  17: "EEXIST",
+  18: "EXDEV",
+  20: "ENOTDIR",
+  21: "EISDIR",
+  22: "EINVAL",
+  28: "ENOSPC",
+  30: "EROFS",
+  31: "EMLINK",
+  36: "ENAMETOOLONG",
+  38: "ENOSYS",
+  39: "ENOTEMPTY",
+  40: "ELOOP",
+  95: "ENOTSUP",
+};
+
 function posixFailure(
   errno: number,
   syscall: string,
   source: string,
   destination: string,
 ): RenameError {
-  const code =
-    Number.isSafeInteger(errno) && errno > 0
-      ? getSystemErrorName(-errno)
-      : "EIO";
+  let code = POSIX_ERRNO_MAP[errno];
+  if (!code && Number.isSafeInteger(errno) && errno > 0) {
+    try {
+      const systemName = getSystemErrorName(-errno);
+      if (!systemName.startsWith("Unknown system error")) {
+        code = systemName;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  code ??= "EIO";
   const native = Object.assign(new Error(`${syscall} failed: ${code}`), {
     code,
     errno: -errno,

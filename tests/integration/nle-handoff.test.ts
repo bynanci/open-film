@@ -883,7 +883,10 @@ it("hands off native cuts plus measured graphic/caption precomps and an aligned 
   const listed = await runProcess("tar", ["-tf", tar]);
   expect(listed.stdout.toString()).toContain("media/precomp-0.mp4");
   const output = join(root, "official-otio.json");
-  await runProcess(process.env.OPENFILM_OTIO_PYTHON ?? "python3", [
+  const python =
+    process.env.OPENFILM_OTIO_PYTHON ??
+    (process.platform === "win32" ? "python" : "python3");
+  await runProcess(python, [
     "-c",
     `import opentimelineio as o,json,sys; t=o.adapters.read_from_file(sys.argv[1]); r=o.adapters.read_from_string(o.adapters.write_to_string(t,adapter_name='otio_json'),adapter_name='otio_json'); assert r.duration()==t.duration(); assert json.loads(o.adapters.write_to_string(r,adapter_name='otio_json'))==json.loads(o.adapters.write_to_string(t,adapter_name='otio_json'));  json.dump({'duration':r.duration().to_seconds(),'clips':len(list(r.find_clips()))},open(sys.argv[2],'w'))`,
     await app.handoff.file(publication.id, otioIndex),
