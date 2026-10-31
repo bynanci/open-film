@@ -23,6 +23,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:license
+      - run: pnpm test:provenance
       - run: pnpm format:check
       - run: pnpm test:i18n
       - run: pnpm test:docs-i18n

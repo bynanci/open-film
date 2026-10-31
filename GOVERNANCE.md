@@ -45,3 +45,17 @@ cannot retroactively remove existing, valid license grants.
 Governance policies describe intended project practice. Their effectiveness
 depends on actual permissions, applicable law, maintainer review, and
 repository settings; they do not promise absolute control over forks.
+
+## Enforcement and repository access
+
+After merging this proposal, the trusted [contributor provenance workflow](.github/workflows/contributor-provenance.yml)
+checks the signed-off contribution history without running code from
+untrusted PRs. The separate [access-control guide](docs/governance/repository-permissions.md)
+defines a least-privilege role model, repository ruleset setup, release
+permissions, and validation gates. It does **not** claim that GitHub settings
+are configured merely because these files exist. The owner must activate and
+test branch rules separately.
+
+A sole maintainer cannot approve their own PR as the required code owner.
+Do not enable one required independent approval until a second qualified
+reviewer is available; otherwise normal maintenance may be deadlocked.

@@ -28,3 +28,22 @@ Check employer authorization, external snippets, generated code, model assets,
 fonts and media before submitting. Include relevant upstream copyrights,
 licenses and attribution. A DCO sign-off does not replace legal review of
 material whose rights are unclear.
+
+## Enforcement in incoming pull requests
+
+Once the policy workflow is merged into the default branch, incoming PRs
+must satisfy the **Contributor provenance / DCO sign-off** job before merge.
+The job checks each PR commit and any Co-authored-by trailers for matching
+Signed-off-by entries. It uses the GitHub API, without executing PR code.
+The policy does not retroactively invalidate commits already merged upstream.
+Open PRs should complete their sign-offs before a future merge.
+
+A failed sign-off must be corrected by the actual contributor. For a local
+commit that has not been shared, run:
+
+    git commit --amend --no-edit -s
+
+For a published branch, coordinate history rewriting with collaborators;
+do not forge another person's signature. Sign-offs are self-attestations,
+not a legal identity verification or copyright assignment. See
+[repository permissions](docs/governance/repository-permissions.md).

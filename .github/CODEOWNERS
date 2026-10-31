@@ -16,3 +16,9 @@
 /.github/CODEOWNERS @bynanci
 /.github/workflows/ @bynanci
 /scripts/ci/check-license-governance.mjs @bynanci
+/docs/en/licensing.md @bynanci
+/docs/governance/ @bynanci
+/docs/en/governance/ @bynanci
+/scripts/ci/dco-policy.mjs @bynanci
+/scripts/ci/check-pr-provenance.mjs @bynanci
+/scripts/ci/tests/ @bynanci

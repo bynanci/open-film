@@ -39,6 +39,21 @@ a distinctive alternate project name may be necessary.
 6. Defer any CLA, additional commercial relicensing, or licensing change
    until there is a documented contributor-rights assessment and review.
 
+## Operational guardrails (proposed)
+
+The rollout also includes a separate, read-only contributor-provenance job
+triggered from the trusted default branch; a parser checks DCO trailers in
+GitHub's PR commit metadata without running untrusted code. The byte identity
+of historical Apache and GPL license texts is pinned in a CI check, and
+workspace package metadata is validated against the declared first-party
+license. See [repository permissions](../governance/repository-permissions.md).
+
+Actual GitHub repository rulesets, CODEOWNERS enforcement, collaborator access
+and release approvals require separate administrator configuration. Avoid
+requiring approval from a sole maintainer, who cannot approve their own PR.
+This is not a claim that a CLA, copyright assignment or trademark
+registration is already in place.
+
 ## Consequences
 
 Maintainers have auditable source/license guardrails and a clearer path to
