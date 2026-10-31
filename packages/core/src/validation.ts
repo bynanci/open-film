@@ -1277,6 +1277,11 @@ function composition(
       "overlay",
     ]);
     optional(track, "timing", trackPath, (v, p) => choice(v, p, ["overlay"]));
+    optional(track, "locked", trackPath, (v, p) => boolean(v, p));
+    optional(track, "target", trackPath, (v, p) => boolean(v, p));
+    optional(track, "muted", trackPath, (v, p) => boolean(v, p));
+    optional(track, "solo", trackPath, (v, p) => boolean(v, p));
+    optional(track, "visible", trackPath, (v, p) => boolean(v, p));
     array(track.clips, `${trackPath}.clips`).forEach((clipEntry, j) => {
       const clipPath = `${trackPath}.clips[${j}]`;
       const clip = object(clipEntry, clipPath);

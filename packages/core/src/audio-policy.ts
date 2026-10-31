@@ -464,7 +464,9 @@ export function buildAudioMixPlan(
   const assetMap = new Map(assets.map((asset) => [asset.id, asset])),
     occurrences = new Map<string, Occurrence>();
   let explicit = false;
-  for (const [trackIndex, track] of composition.tracks.entries())
+  const hasSolo = composition.tracks.some((t) => t.solo === true);
+  for (const [trackIndex, track] of composition.tracks.entries()) {
+    const isMuted = track.muted === true || (hasSolo && !track.solo);
     for (const [clipIndex, clip] of track.clips.entries()) {
       if (occurrences.size >= MAX_AUDIO_SEGMENTS)
         fail("audioPlan", "occurrence budget exceeded");
@@ -473,8 +475,9 @@ export function buildAudioMixPlan(
       const asset = assetMap.get(clip.assetId);
       if (!asset) fail("audioPlan", `missing source for ${clip.id}`);
       explicit ||= Object.hasOwn(clip, "audioTiming");
-      const playable = track.type !== "titles" && hasAudioStream(asset);
-      if (!playable && Object.hasOwn(clip, "audioTiming"))
+      const hasStream = track.type !== "titles" && hasAudioStream(asset);
+      const playable = hasStream && !isMuted;
+      if (!hasStream && Object.hasOwn(clip, "audioTiming"))
         fail("audioTiming", "source has no usable audio stream");
       occurrences.set(clip.id, {
         clip,
@@ -491,6 +494,7 @@ export function buildAudioMixPlan(
           : {}),
       });
     }
+  }
   const secondaries = new Map<string, CoverageAudioBindingV1[]>(),
     replacements = new Map<string, CoverageAudioBindingV1[]>();
   const primaries = new Set(coverage.map((b) => b.primaryClipId));

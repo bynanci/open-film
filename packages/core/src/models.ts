@@ -426,6 +426,16 @@ export interface Track {
   /** Overlay tracks never ripple the visual story when their clips change. */
   timing?: "overlay";
   clips: Clip[];
+  /** When true, edits on this track are rejected and clips cannot be modified. */
+  locked?: boolean;
+  /** Target track for new clip insertions or overwrites. */
+  target?: boolean;
+  /** When true, track audio is muted during playback and render export. */
+  muted?: boolean;
+  /** When true, only soloed audio tracks are mixed during playback and render export. */
+  solo?: boolean;
+  /** When false, track visual content is omitted from playback and render output. Default true. */
+  visible?: boolean;
 }
 
 export interface Composition {

@@ -29,7 +29,8 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         and snap-bypass gestures without introducing a second timeline. ([validation](docs/validation-cut-desk-phase-1b.md))
 - [x] Phase 1C: complete responsive/resizable workspace and accessibility program. ([validation](docs/validation-cut-desk-phase-1c.md))
 - [x] Phase 2: professional edit semantics (Roll, Slip, Slide, Insert, Overwrite, Lift, Batch) with authoritative single-timeline solver, locked range guards, and multi-locale keyboard mappings. ([validation](docs/validation-cut-desk-phase-2.md))
-- [ ] Phase 3–4: track controls, native distribution and finishing tools.
+- [x] Phase 3: track controls (target, lock, mute, solo, visibility) and persistence operating strictly on the authoritative single Composition. ([validation](docs/validation-cut-desk-phase-3.md))
+- [ ] Phase 4: native distribution and finishing tools.
   - [x] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
         Implementation and independent review corrections are complete.

@@ -220,7 +220,7 @@ export function applyOverridePolicy(
   }
   if (!direct) return next;
   for (const command of commands) {
-    if (command.type === "lock") continue;
+    if (command.type === "lock" || command.type === "track.update") continue;
     if (
       command.type === "user-pin.set" ||
       command.type === "user-pin.resolve"

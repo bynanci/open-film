@@ -154,8 +154,11 @@ export function resolveCompositionFrame(
     }
   }
 
+  const hasSolo = composition.tracks.some((t) => t.solo === true);
+
   for (const [trackIndex, track] of composition.tracks.entries()) {
     if (track.type === "titles") continue;
+    const isMuted = track.muted === true || (hasSolo && !track.solo);
     // The renderer finds fade successors chronologically. Output layers still
     // retain their saved track and clip order, including unsorted clips.
     const chronological = track.clips
@@ -230,13 +233,17 @@ export function resolveCompositionFrame(
           : range;
       const active = frame >= range.startFrame && frame < range.endFrame;
       const visualActive =
-        isVisual && frame >= displayed.startFrame && frame < displayed.endFrame;
+        isVisual &&
+        track.visible !== false &&
+        frame >= displayed.startFrame &&
+        frame < displayed.endFrame;
       const probe = asset.metadata["openfilm.ffprobe"] as
         { streams?: { codec_type?: string }[] } | undefined;
       const volume = clip.transform?.volume ?? 1;
       finite(volume, "Volume");
       const audibleActive =
         active &&
+        !isMuted &&
         volume > 0 &&
         (asset.mediaType === "audio" ||
           Boolean(

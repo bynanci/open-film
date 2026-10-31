@@ -145,6 +145,20 @@ export default {
         help: "? キーでこのショートカット一覧を切替",
       },
     },
+    tracks: {
+      label: "タイムライントラック",
+      controlsFor: "トラック {id} のコントロール",
+      target: "ターゲットトラック {id}",
+      targetHint: "挿入および上書き操作のターゲット宛先トラック",
+      lock: "トラック {id} をロック",
+      lockHint: "トラックをロックして全クリップの編集を保護",
+      visible: "トラック {id} の表示/非表示を切り替え",
+      visibleHint: "プレビューおよび出力でトラックの映像を表示/非表示",
+      mute: "トラック {id} をミュート",
+      muteHint: "再生およびミックスでトラック音声をミュート",
+      solo: "トラック {id} をソロ",
+      soloHint: "トラック音声をソロ再生し他のトラックを消音",
+    },
     issues: {
       "not-ready": "レコードのメディアを待機中…",
       "source-missing":
