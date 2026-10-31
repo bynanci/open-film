@@ -1,10 +1,10 @@
 // Modified by OpenFilm contributors on 2026-10-31. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { createHash } from "node:crypto";
 import {
   ApplicationError,
   MAX_CONTINUITY_RECEIPTS,
+  fnv1a64Mix,
   validateContinuityReceipt,
   type ContinuityOverride,
   type ContinuityProposal,
@@ -27,8 +27,8 @@ export interface ContinuityAcceptanceInput {
   overrides: ContinuityOverride[];
 }
 
-function sha256(data: string): string {
-  return createHash("sha256").update(data).digest("hex");
+function computeDigest(data: string): string {
+  return fnv1a64Mix(data);
 }
 
 function canonicalStringify(value: unknown): string {
@@ -196,8 +196,10 @@ export class ContinuityService {
       }
     }
 
-    const fingerprint = sha256(canonicalStringify(input.overrides));
-    const acceptedRevision = sha256(canonicalStringify(nextDoc.composition));
+    const fingerprint = computeDigest(canonicalStringify(input.overrides));
+    const acceptedRevision = computeDigest(
+      canonicalStringify(nextDoc.composition),
+    );
 
     const receipt: ContinuityReceipt = {
       version: 1,

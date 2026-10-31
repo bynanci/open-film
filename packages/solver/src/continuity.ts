@@ -1,7 +1,6 @@
 // Modified by OpenFilm contributors on 2026-10-31. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { createHash } from "node:crypto";
 import {
   type Clip,
   type MediaAsset,
@@ -11,6 +10,7 @@ import {
   type ContinuityDiagnostic,
   type ContinuityOverride,
   type ContinuityProposal,
+  fnv1a64Mix,
   validateContinuityProposal,
 } from "@openfilm/core";
 import {
@@ -25,8 +25,8 @@ export interface ContinuityAnalysisOptions {
   brief?: string;
 }
 
-function sha256(data: string): string {
-  return createHash("sha256").update(data).digest("hex");
+function computeDigest(data: string): string {
+  return fnv1a64Mix(data);
 }
 
 function canonicalStringify(value: unknown): string {
@@ -180,7 +180,7 @@ export function analyzeContinuity(
       !next.hasShotScale ||
       !next.hasEyeline
     ) {
-      const diagId = sha256(
+      const diagId = computeDigest(
         `missingShotLanguage:${curr.beat.id}:${next.beat.id}`,
       );
       const existing = overridesMap.get(diagId);
@@ -219,7 +219,9 @@ export function analyzeContinuity(
       const isPanClash = p1 === "pan" && p2 === "pan";
 
       if (isPanClash) {
-        const diagId = sha256(`motionClash:${curr.beat.id}:${next.beat.id}`);
+        const diagId = computeDigest(
+          `motionClash:${curr.beat.id}:${next.beat.id}`,
+        );
         const existing = overridesMap.get(diagId);
 
         diagnostics.push({
@@ -270,7 +272,7 @@ export function analyzeContinuity(
     if (d1 > 0 && d2 > 0) {
       const ratio = Math.max(d1, d2) / Math.min(d1, d2);
       if (ratio >= 3.5) {
-        const diagId = sha256(
+        const diagId = computeDigest(
           `durationMismatch:${curr.beat.id}:${next.beat.id}`,
         );
         const existing = overridesMap.get(diagId);
@@ -317,7 +319,9 @@ export function analyzeContinuity(
         Math.max(curr.density, next.density) /
         Math.min(curr.density, next.density);
       if (densityRatio >= 3.0) {
-        const diagId = sha256(`densitySpike:${curr.beat.id}:${next.beat.id}`);
+        const diagId = computeDigest(
+          `densitySpike:${curr.beat.id}:${next.beat.id}`,
+        );
         const existing = overridesMap.get(diagId);
 
         diagnostics.push({
@@ -367,13 +371,13 @@ export function analyzeContinuity(
     (d) => d.severity === "manual-review",
   ).length;
 
-  const baseRevision = sha256(
+  const baseRevision = computeDigest(
     canonicalStringify({
       story: document.story,
       composition: document.composition,
     }),
   );
-  const contextSignature = sha256(
+  const contextSignature = computeDigest(
     canonicalStringify({
       beatsCount: document.story.beats.length,
       tracksCount: document.composition.tracks.length,
@@ -382,7 +386,7 @@ export function analyzeContinuity(
     }),
   );
 
-  const proposalId = sha256(
+  const proposalId = computeDigest(
     `continuityProposal:${document.story.id}:${document.composition.id}:${baseRevision}:${contextSignature}:${diagnostics.length}`,
   );
 
@@ -415,7 +419,7 @@ export function applyContinuityOverrides(
 ): { document: EditorDocument; appliedActions: unknown[] } {
   validateContinuityProposal(proposal);
 
-  const currentRevision = sha256(
+  const currentRevision = computeDigest(
     canonicalStringify({
       story: document.story,
       composition: document.composition,
