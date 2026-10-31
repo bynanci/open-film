@@ -79,6 +79,13 @@ export function directOverrideTargets(
         { kind: "clip", clipId: command.proposal.primaryClipId },
         { kind: "clip", clipId: command.proposal.bRollClipId },
       ];
+    if (command.type === "roll")
+      return [
+        { kind: "clip", clipId: command.clipIdA },
+        { kind: "clip", clipId: command.clipIdB },
+      ];
+    if (command.type === "batch")
+      return directOverrideTargets(command.commands);
     if ("clipId" in command) return [{ kind: "clip", clipId: command.clipId }];
     return [];
   });
@@ -146,7 +153,8 @@ export function applyOverridePolicy(
   );
   const released = new Set<string>();
   for (const command of commands) {
-    if (command.type === "delete") released.add(`clip:${command.clipId}`);
+    if (command.type === "delete" || command.type === "lift")
+      released.add(`clip:${command.clipId}`);
     if (command.type === "graphic.scene.remove")
       released.add(`graphic-scene:${command.sceneId}`);
     if (command.type === "user-pin.set" && !command.pinned)
@@ -269,7 +277,11 @@ export function applyOverridePolicy(
       const owner = entry.owner,
         previous = old.get(key)?.owner;
       const categories: UserLockedAttribute[] = ["timing"];
-      if (["trim", "speed", "clip.split"].includes(command.type))
+      if (
+        ["trim", "speed", "clip.split", "roll", "slip", "slide"].includes(
+          command.type,
+        )
+      )
         categories.push("inOutRange");
       if (command.type === "presentation" && Object.hasOwn(command, "motion"))
         categories.push("motionPreset");

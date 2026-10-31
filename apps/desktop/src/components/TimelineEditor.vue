@@ -23,6 +23,7 @@ import {
   resolveProjectTimebase,
   formatSequenceTimecode,
   sequenceFrameAt,
+  sequenceTimeAt,
   timebaseKey,
   type Clip,
   type CaptionTrack,
@@ -608,6 +609,79 @@ async function splitRecord(owner: RecordOwner) {
     if (ownsRecord(owner)) reportError(cause);
   } finally {
     recordSplitPending.value = false;
+  }
+}
+async function insertRecord(owner: RecordOwner) {
+  if (!ownsRecord(owner) || cutDeskBlocked.value) return;
+  const monitor = recordMonitor.value;
+  if (!monitor) return;
+  const frame = monitor.frame;
+  const latest = state.value;
+  if (!latest || latest.revision !== owner.revision) return;
+  const sourceClip = selectedClip.value;
+  if (!sourceClip) return;
+  const time = sequenceTimeAt(frame, projectTimebase.value);
+  const sourceIn = sourceClip.sourceIn ?? 0;
+  const sourceOut =
+    sourceClip.sourceOut ?? sourceIn + sourceClip.timelineDuration;
+  try {
+    await compositionCommitTransaction({
+      type: "insert",
+      assetId: sourceClip.assetId,
+      timelineStart: time,
+      sourceIn,
+      sourceOut,
+    });
+  } catch (cause) {
+    if (ownsRecord(owner)) reportError(cause);
+  }
+}
+async function overwriteRecord(owner: RecordOwner) {
+  if (!ownsRecord(owner) || cutDeskBlocked.value) return;
+  const monitor = recordMonitor.value;
+  if (!monitor) return;
+  const frame = monitor.frame;
+  const latest = state.value;
+  if (!latest || latest.revision !== owner.revision) return;
+  const sourceClip = selectedClip.value;
+  if (!sourceClip) return;
+  const time = sequenceTimeAt(frame, projectTimebase.value);
+  const sourceIn = sourceClip.sourceIn ?? 0;
+  const sourceOut =
+    sourceClip.sourceOut ?? sourceIn + sourceClip.timelineDuration;
+  try {
+    await compositionCommitTransaction({
+      type: "overwrite",
+      assetId: sourceClip.assetId,
+      timelineStart: time,
+      sourceIn,
+      sourceOut,
+    });
+  } catch (cause) {
+    if (ownsRecord(owner)) reportError(cause);
+  }
+}
+async function liftRecord(owner: RecordOwner) {
+  if (!ownsRecord(owner) || cutDeskBlocked.value) return;
+  const monitor = recordMonitor.value;
+  if (!monitor) return;
+  const frame = monitor.frame;
+  const latest = state.value;
+  if (!latest || latest.revision !== owner.revision) return;
+  const primary = resolveCompositionFrame(
+    latest.composition,
+    latest.assets,
+    frame,
+    projectTimebase.value,
+  ).primary;
+  if (!primary) return;
+  try {
+    await compositionCommitTransaction({
+      type: "lift",
+      clipId: primary.clip.id,
+    });
+  } catch (cause) {
+    if (ownsRecord(owner)) reportError(cause);
   }
 }
 const recordBindings = computed(() => {
@@ -1991,6 +2065,10 @@ function deleteSelected() {
   if (selectedClip.value)
     command({ type: "delete", clipId: selectedClip.value.id });
 }
+function liftSelected() {
+  if (selectedClip.value)
+    command({ type: "lift", clipId: selectedClip.value.id });
+}
 function editBeat() {
   if (!selectedBeat.value) return;
   const fields = {
@@ -2324,6 +2402,15 @@ function keyboard(event: KeyboardEvent) {
     } else if (key === "b") {
       event.preventDefault();
       if (!event.repeat) void splitRecord(recordOwner.value);
+    } else if (event.key === ",") {
+      event.preventDefault();
+      if (!event.repeat) void insertRecord(recordOwner.value);
+    } else if (event.key === ".") {
+      event.preventDefault();
+      if (!event.repeat) void overwriteRecord(recordOwner.value);
+    } else if (event.key === ";") {
+      event.preventDefault();
+      if (!event.repeat) void liftRecord(recordOwner.value);
     } else if (key === "m") {
       event.preventDefault();
     }
@@ -2341,6 +2428,10 @@ function keyboard(event: KeyboardEvent) {
   if (event.key === "Delete" || event.key === "Backspace") {
     event.preventDefault();
     deleteSelected();
+  }
+  if (event.key === ";") {
+    event.preventDefault();
+    liftSelected();
   }
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     event.preventDefault();
