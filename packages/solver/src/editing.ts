@@ -63,6 +63,9 @@ import {
   applyTranscriptRipple,
   validateTranscriptRippleProposal,
   type TranscriptRippleProposal,
+  fnv1a64Mix,
+  validateRhythmSnapProposal,
+  type RhythmSnapProposal,
 } from "@openfilm/core";
 import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
@@ -146,6 +149,10 @@ export type TimelineCommand =
   | {
       type: "transcript.ripple";
       proposal: TranscriptRippleProposal;
+    }
+  | {
+      type: "rhythm.snap";
+      proposal: RhythmSnapProposal;
     }
   | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
   | { type: "audio.move"; clipId: string; timelineStart: number }
@@ -406,7 +413,7 @@ function clipAssetIds(clip: Clip): string[] {
     ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
   ];
 }
-function findClip(
+export function findClip(
   document: EditorDocument,
   id: string,
 ): { clip: Clip; track: Track } {
@@ -1465,6 +1472,61 @@ function applyTimelineCommandRaw(
     const proposal = validateTranscriptRippleProposal(command.proposal);
     next.composition = applyTranscriptRipple(next.composition, proposal);
     return next;
+  }
+  if (command.type === "rhythm.snap") {
+    const proposal = validateRhythmSnapProposal(command.proposal);
+    if (proposal.compositionId !== next.composition.id)
+      fail(
+        "Rhythm snap proposal composition does not match active composition.",
+      );
+    const currentRevision = fnv1a64Mix(
+      canonicalPresetJson({ composition: next.composition }),
+    );
+    if (proposal.baseRevision !== currentRevision) {
+      throw new ApplicationError(
+        "rhythm.staleProposal",
+        "Rhythm snap proposal base revision does not match current composition revision.",
+      );
+    }
+    const { clip } = findClip(next, proposal.clipId);
+    const speed = clip.transform?.speed ?? 1;
+    const sourceIn = clip.sourceIn ?? 0;
+    if (proposal.targetEdge === "cut") {
+      const sourceTime =
+        sourceIn + (proposal.snappedTime - clip.timelineStart) * speed;
+      return applyTimelineCommandRaw(
+        next,
+        assets,
+        { type: "clip.split", clipId: clip.id, sourceTime },
+        deferred,
+        reconcileOverlays,
+      );
+    }
+    if (proposal.targetEdge === "out") {
+      const newDuration = proposal.snappedTime - clip.timelineStart;
+      const sourceOut = sourceIn + newDuration * speed;
+      return applyTimelineCommandRaw(
+        next,
+        assets,
+        { type: "trim", clipId: clip.id, sourceIn, sourceOut },
+        deferred,
+        reconcileOverlays,
+      );
+    }
+    if (proposal.targetEdge === "in") {
+      const sourceOut =
+        clip.sourceOut ?? sourceIn + clip.timelineDuration * speed;
+      const shift = proposal.snappedTime - clip.timelineStart;
+      const newSourceIn = sourceIn + shift * speed;
+      return applyTimelineCommandRaw(
+        next,
+        assets,
+        { type: "trim", clipId: clip.id, sourceIn: newSourceIn, sourceOut },
+        deferred,
+        reconcileOverlays,
+      );
+    }
+    fail(`Unsupported rhythm snap targetEdge: "${proposal.targetEdge}".`);
   }
   const { clip, track } = findClip(next, command.clipId);
   if (command.type === "lock") {

@@ -39,6 +39,7 @@ export * from "./coverage.js";
 export * from "./transcript-ripple.js";
 export * from "./continuity.js";
 export * from "./micro-preview.js";
+export * from "./rhythm.js";
 export * from "./primary-color.js";
 export * from "./presets.js";
 export * from "./preset-json.js";
