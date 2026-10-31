@@ -96,5 +96,7 @@ for (const failure of failures) {
 if (failures.length > 0) {
   process.exitCode = 1;
 } else {
-  console.log("License governance: Apache-2.0 and project policy checks passed.");
+  console.log(
+    "License governance: Apache-2.0 and project policy checks passed.",
+  );
 }

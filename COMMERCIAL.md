@@ -43,8 +43,8 @@ of Origin (DCO) to document provenance; **DCO sign-off is not an assignment
 of copyright or a grant of exclusive relicensing rights**.
 
 Apache-2.0 already permits commercial use and certain proprietary downstream
-distributions. If the project later wants *separate proprietary licensing on
-terms beyond rights already granted*, it must verify rights in each relevant
+distributions. If the project later wants _separate proprietary licensing on
+terms beyond rights already granted_, it must verify rights in each relevant
 contribution and obtain any necessary permissions or contributor agreements.
 A repository license label or maintainer status is not a substitute for
 chain-of-title evidence. Historical GPL-3.0-only grants and third-party

@@ -15,11 +15,22 @@ distribute, or sell code that the license grants.
   applicable law. This document does not assert a registered trademark, an
   exclusive right to a common name, or ownership of every contributed asset.
 - The underlying logo files retain their applicable copyright licenses.
-  Trademark considerations about *branding* do not cancel permission to
+  Trademark considerations about _branding_ do not cancel permission to
   reproduce copyright-licensed files.
 
 The maintainer should complete a jurisdiction-specific name/logo clearance
 search before asserting exclusive rights or seeking trademark registration.
+
+## Known naming collision (2026-10-31)
+
+An independent project at [openfilm/openfilm](https://github.com/openfilm/openfilm)
+also publishes a video product called OpenFilm at
+[openfilm.dev](https://openfilm.dev/) and has its own published
+[trademark policy](https://github.com/openfilm/openfilm/blob/main/TRADEMARK.md).
+This is evidence of overlapping market use, **not** a determination of
+registration, infringement, ownership, or legal priority. Before commercial
+branding or asserting exclusivity, check existing rights in each intended
+market and consider adopting a more distinctive identifier.
 
 ## Uses that generally do not require special approval
 
@@ -37,8 +48,8 @@ lawful uses remain available regardless of this policy.
 ## Uses that require a separate branding review
 
 Where the project has enforceable rights in the relevant identifier, obtain
-written permission before using its name or identifying logo as the *primary
-brand* of a materially modified fork, paid service, or independent commercial
+written permission before using its name or identifying logo as the _primary
+brand_ of a materially modified fork, paid service, or independent commercial
 product. Do not suggest that a third-party product is "official", "certified",
 sponsored, or supported by OpenFilm without authorization.
 

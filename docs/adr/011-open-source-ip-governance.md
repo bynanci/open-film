@@ -15,6 +15,15 @@ Apache-2.0 permits commercial forks and proprietary derivatives. Adding a
 "non-commercial" or "no competing products" restriction would conflict with
 the project's selected license and with the Open Source Definition.
 
+## Identity collision to resolve
+
+As of 2026-10-31, a separate project at
+https://github.com/openfilm/openfilm publicly markets a video editor named
+OpenFilm and publishes a trademark policy. This decision makes no claim of
+registered rights or priority over that project. Brand/name clearance in the
+intended jurisdictions is a prerequisite to asserting exclusive brand rights;
+a distinctive alternate project name may be necessary.
+
 ## Decision
 
 1. Keep the original root LICENSE, archived LICENSES texts, NOTICE, and
