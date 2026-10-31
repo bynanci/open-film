@@ -16,6 +16,8 @@ export type NleFeatureId =
   | "look"
   | "primaryColor"
   | "crossfade"
+  | "dip-to-black"
+  | "dip-to-white"
   | "titles"
   | "photoLayout"
   | "photoMotion"
@@ -60,6 +62,8 @@ const metadataFeatures: NleFeatureId[] = [
   "volumeMute",
   "transform",
   "crossfade",
+  "dip-to-black",
+  "dip-to-white",
   "titles",
   "photoLayout",
   "photoMotion",

@@ -322,6 +322,12 @@ function discard() {
           >
             <option value="cut">{{ t("scenePlan.cut") }}</option>
             <option value="crossfade">{{ t("scenePlan.crossfade") }}</option>
+            <option value="dip-to-black">
+              {{ t("scenePlan.dipToBlack") }}
+            </option>
+            <option value="dip-to-white">
+              {{ t("scenePlan.dipToWhite") }}
+            </option>
           </select></label
         >
       </fieldset>

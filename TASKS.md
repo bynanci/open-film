@@ -198,9 +198,10 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D2 crosswalk: the nested D2A item under the existing emotional-overlay/
   shot-proposal owner is authoritative for typed-evidence continuity diagnostics,
   advisory emotion guidance and `manual-review` when shot language is absent.
-- [ ] D2B: after a transition compatibility design, add bounded adjacent-scene
+- [x] D2B: after a transition compatibility design, add bounded adjacent-scene
       micro-preview and Dip-to-Black/White through the existing transition owner;
       reuse rather than rebuild the implemented crossfade.
+      See [validation](docs/validation-scene-micro-preview-dips.md).
 - D3A1 crosswalk: the nested Professional Cut Desk Phase 3 item is authoritative for background
   waveform preparation and Sequence projection through the existing source-range
   and rational-frame contract.

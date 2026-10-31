@@ -1163,6 +1163,18 @@ defineExpose({
           :frame-height="settings.height"
           :active="active"
         />
+        <div
+          v-if="
+            resolved?.transitionOverlay &&
+            resolved.transitionOverlay.opacity > 0
+          "
+          class="record-dip-overlay"
+          :style="{
+            backgroundColor: resolved.transitionOverlay.color,
+            opacity: resolved.transitionOverlay.opacity,
+            zIndex: 9990,
+          }"
+        />
       </div>
     </div>
     <div
@@ -1217,6 +1229,11 @@ defineExpose({
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+.record-dip-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 .record-layer,
 .record-title {

@@ -614,4 +614,10 @@ export {
   type ContinuityAnalysisOptions,
 } from "./continuity.js";
 
+export {
+  buildMicroPreviewProposal,
+  sampleMicroPreviewFrame,
+  type BuildMicroPreviewOptions,
+} from "./micro-preview.js";
+
 export { validateAudioEdit } from "./audio-timing.js";

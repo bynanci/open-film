@@ -840,6 +840,8 @@ export default {
       transitionLabel: "片段轉場",
       cut: "直接切換",
       crossfade: "交叉淡化",
+      dipToBlack: "淡入淡出至黑色",
+      dipToWhite: "淡入淡出至白色",
       fadeDuration: "淡化（秒）",
       fadeDurationLabel: "交叉淡化時長",
       scale: "縮放",

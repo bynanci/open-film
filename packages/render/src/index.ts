@@ -1024,11 +1024,23 @@ export class FFmpegRenderer {
             // Extending the outgoing frame through the next fade creates a real overlap
             // without shifting the editable timeline or changing its duration.
             const next = clips[clipIndex + 1];
+            const isContiguous =
+              next && Math.abs(next.timelineStart - start - duration) < 0.05;
+            let tailDuration = 0;
+            if (isContiguous && next?.transition) {
+              if (next.transition.type === "crossfade") {
+                tailDuration = next.transition.duration;
+              } else if (
+                next.transition.type === "dip-to-black" ||
+                next.transition.type === "dip-to-white"
+              ) {
+                tailDuration = next.transition.duration / 2;
+              }
+            }
             const outgoingTail =
-              next?.transition?.type === "crossfade" &&
-              Math.abs(next.timelineStart - start - duration) < 0.05
+              tailDuration > 0
                 ? Math.min(
-                    next.transition.duration,
+                    tailDuration,
                     composition.duration - start - duration,
                   )
                 : 0;
@@ -1057,7 +1069,7 @@ export class FFmpegRenderer {
               warnings.push(...presentation.warnings);
               visualInput = presentation.label;
             }
-            if (fade > 0)
+            if (fade > 0 && clip.transition?.type === "crossfade")
               transform.push(`fade=t=in:st=0:d=${number(fade)}:alpha=1`);
             const trim =
               asset.mediaType === "image"
@@ -1071,6 +1083,26 @@ export class FFmpegRenderer {
               `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
+
+            if (
+              fade > 0 &&
+              (clip.transition?.type === "dip-to-black" ||
+                clip.transition?.type === "dip-to-white")
+            ) {
+              const dipColor =
+                clip.transition.type === "dip-to-black" ? "black" : "white";
+              const dipLabel = `dip${suffix}`;
+              const dipHalf = fade / 2;
+              const dipEnd = endFrame(fade);
+              filters.push(
+                `color=c=${dipColor}:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(fade)},format=rgba,fade=t=in:st=0:d=${number(dipHalf)}:alpha=1,fade=t=out:st=${number(dipHalf)}:d=${number(dipHalf)}:alpha=1,setpts=PTS-STARTPTS+${startFrame}[${dipLabel}]`,
+              );
+              const dipMerged = `dipmerged${suffix}`;
+              filters.push(
+                `[${videoLabel}][${dipLabel}]overlay=x=0:y=0:eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${dipEnd})'[${dipMerged}]`,
+              );
+              videoLabel = dipMerged;
+            }
           }
           if (!audioOnly) pendingTitles.push(addTitle);
           if (!audioPlan && !videoOnly && hasAudio(asset)) {
@@ -1497,12 +1529,14 @@ function validateClip(clip: Clip, duration: number): void {
       throw new Error(`Transform ${key} must be finite`);
   if (
     clip.transition &&
-    (clip.transition.type !== "crossfade" ||
+    ((clip.transition.type !== "crossfade" &&
+      clip.transition.type !== "dip-to-black" &&
+      clip.transition.type !== "dip-to-white") ||
       !Number.isFinite(clip.transition.duration) ||
       clip.transition.duration < 0 ||
       clip.transition.duration > clip.timelineDuration)
   )
-    throw new Error("Crossfade must fit within the clip duration");
+    throw new Error("Transition must fit within the clip duration");
 }
 
 export async function renderComposition(

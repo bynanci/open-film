@@ -549,8 +549,16 @@ function command(value: unknown, index: number): TimelineCommand {
     }
     case "transition":
       fields.push("transition", "duration");
-      if (data.transition !== "cut" && data.transition !== "crossfade")
-        invalid(`${path}.transition`, "expected cut or crossfade");
+      if (
+        data.transition !== "cut" &&
+        data.transition !== "crossfade" &&
+        data.transition !== "dip-to-black" &&
+        data.transition !== "dip-to-white"
+      )
+        invalid(
+          `${path}.transition`,
+          "expected cut, crossfade, dip-to-black, or dip-to-white",
+        );
       if (Object.hasOwn(data, "duration"))
         positive(data.duration, `${path}.duration`);
       break;
