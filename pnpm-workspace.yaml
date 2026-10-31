@@ -6,3 +6,5 @@ allowBuilds:
   esbuild: true
   koffi: false
 verifyDepsBeforeRun: false
+overrides:
+  minimatch: ^11.0.3

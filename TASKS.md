@@ -14,25 +14,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [x] Hosted Linux Rust/Tauri/archive/build gate passes; local Cargo remains unavailable.
       Physical desktop/workstation verification remains below.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
-  - [ ] Persist user-pinned direct edits as versioned Clip/GraphicScene hard
+  - [x] Persist user-pinned direct edits as versioned Clip/GraphicScene hard
         constraints through solver/pipeline, history, Named Versions, variants
-        and Collect; add visible Pin and explicit Unlock & Re-solve. Existing
-        source/clip locks do not implement this requested override contract.
-        Candidate Tasks1–8 and the current finishing-owner integration are
-        implemented, with focused solver/application/schema/actual-media
-        evidence. The first whole-branch review found measured-audio authority,
-        same-ID candidate retention and premature overlay validation defects;
-        the coordinated correction wave also preserves optional variant fields.
-        Full audio integration additionally exposed MotionGeneration and
-        GraphicScene producers entering through the direct-edit API. Their
-        candidate correction uses a package-internal automatic capability and
-        binds request replay to its authority, while preserving the shared
-        writer and typed Look/primary source-lock conflicts.
-        The subsequent hosted source-lock regression is reproduced and corrected
-        at the solver ingress: explicit pin changes check every owner/source;
-        ordinary edits retain the existing operation-specific Cut Desk matrix.
-        Scoped correction review and complete exact-head hosted gates remain
-        open; see [User Pin validation](docs/validation-user-pins.md).
+        and Collect; add visible Pin and explicit Unlock & Re-solve. Merged to
+        main via PR #79. See [User Pin validation](docs/validation-user-pins.md).
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
         transaction boundaries; preserve cancellation, locks, Undo/Redo,
@@ -52,27 +37,11 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         its merged-main Verify/Windows/Pages gates also pass. See the
         [guide](docs/sequence-waveforms.md) and
         [decoded MP4 evidence](docs/validation-sequence-waveforms.md).
-  - [ ] D3B1: after an edit/audio compatibility design, add the versioned
+  - [x] D3B1: after an edit/audio compatibility design, add the versioned
         audio-policy primitive/evaluator for J/L mechanics; default B-roll to
         `keep-primary`, with explicit role/gain modes and no coverage persistence
-        or implicit/double mix in this slice.
-        Candidate Tasks 1–8 now cover strict schema/timing, atomic edits, shared
-        render/PCM preparation and Record/Inspector controls (156 focused Task 6
-        checks plus typecheck/i18n pass), whole-project/Collect retention and
-        independent short-gap/origin clock proof. Actual Record/WAV PCM and seam
-        error are zero in two focused browser cases; eight negative controls
-        reject. The complete frozen pre-correction candidate passes5436/5436
-        tests in408files; first whole review found one rounded handoff-endpoint
-        mismatch, now covered by native/bake neighbor and real-publication tests.
-        Independent scoped handoff correction review passes at `dfd0ded1`.
-        Reviewed Pin `c260deaa` integration passes 81 focused joins; its first final
-        browser gate exposed a buffered picture-seek/PCM restart loop (1/2RED).
-        A tests-first startup correction passes 94 monitor/scheduler/transport
-        checks and the unchanged two-case real browser gate at clean `acd8410d` (9.795s,
-        zero PCM/seam error, stale 409 rejection, zero native audio playback); types/build and
-        18 official OTIO tests pass. Source implementation is complete. Narrow startup
-        review and final exact-head hosted union gates remain open; this
-        checkbox stays unchecked. See the [guide](docs/audio-policy.md) and
+        or implicit/double mix in this slice. Merged to main via PR #81 with all
+        CI checks green. See the [guide](docs/audio-policy.md) and
         [measured evidence](docs/validation-audio-policy.md).
   - [x] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
         quota/eviction, rebuild and health UI through the existing generator.

@@ -48,7 +48,7 @@ async function fixture() {
   const pkg = "node_modules/.pnpm/included@1.0.0/node_modules/included";
   await writeFile(
     join(root, "package.json"),
-    '{"name":"openfilm","version":"0.4.0","license":"Apache-2.0"}',
+    '{"name":"openfilm","version":"1.0.0","license":"Apache-2.0"}',
   );
   await writeFile(
     join(root, "pnpm-lock.yaml"),
@@ -187,7 +187,7 @@ const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 function manifest(): RuntimeManifest {
   return {
     schemaVersion: 1,
-    appVersion: "0.4.0",
+    appVersion: "1.0.0",
     nodeVersion: "24.19.0",
     platform: "linux",
     architecture: "x64",

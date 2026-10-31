@@ -83,7 +83,7 @@ async function fixture() {
     licenseSha256: await runtimeHash(notice),
   };
   const inputs: RuntimeInputs = {
-    appVersion: "0.4.0",
+    appVersion: "1.0.0",
     nodeVersion: process.versions.node,
     platform: process.platform as RuntimeInputs["platform"],
     architecture: process.arch as RuntimeInputs["architecture"],
@@ -291,7 +291,7 @@ it("hash-covers attribution/SPDX receipts while retaining full first-party histo
     join(f.repository, "package.json"),
     JSON.stringify({
       name: "openfilm",
-      version: "0.4.0",
+      version: "1.0.0",
       license: "Apache-2.0",
       type: "module",
     }),

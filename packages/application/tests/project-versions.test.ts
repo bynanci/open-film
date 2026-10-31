@@ -655,7 +655,7 @@ describe("named project versions", () => {
       baseRevision: firstRevision,
       requestId: "10000000-0000-4000-8000-000000000001",
     });
-    expect(first.softwareVersion).toBe("0.4.0");
+    expect(first.softwareVersion).toBe("1.0.0");
     const immutableRecord = await readFile(
       join(directory, "versions", first.id, "record.json"),
       "utf8",
