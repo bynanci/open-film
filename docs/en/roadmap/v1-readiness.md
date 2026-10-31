@@ -21,29 +21,40 @@ The delivery foundation for **v1.0.0** is being established through progressive,
   - PR #81: D3B1 sample-accurate J/L audio policy, shared render/Record mix.
   - PR #84: Cross-platform runtime, native staging, and test hardening.
   - PR #85: Issue #82 causal fix for Windows preview vs. delivery pixel parity.
+  - PR #86: Roadmap alignment and capability crosswalk.
+  - PR #87: D3B2 A-roll / B-roll coverage roles, primary narration protection, and J/L mix.
+  - PR #88: D4 Transcript-driven ripple editing, composite ripple, and conflict rejection.
+  - PR #89: D2A Continuity diagnostics (motion clash, pacing, density) and emotional guidance advisories.
+  - PR #90: D2B Scene micro-preview & bounded Dip-to-Black / Dip-to-White transitions.
+  - PR #91: D3A2 Rhythm analysis & cut-point snap (source-bound onset/downbeat evidence, reliability scoring).
+  - PR #92: Cut Desk Phase 1B (precision gestures, zoom/pan, Alt snap-bypass, Shift fine trim).
+  - PR #93: Cut Desk Phase 1C (responsive resizable workspace, tabbed & dual-monitor layouts, persistent preference recovery, ShortcutSheet, coarse-pointer targets).
+  - PR #96: Cut Desk Phase 2 (professional edit semantics: Roll, Slip, Slide, Insert, Overwrite, Lift, Batch).
+  - PR #97: Cut Desk Phase 3 (track controls: target, lock, mute, solo, visibility & persistence).
+  - PR #98: PR 4.1 (macOS Darwin cross-process dead-owner detection & boot session verification).
 - **Physical Workstation Acceptance**: Issue #7 remains the owner for physical hardware observations (Windows 10/popopc, external drives, calibrated displays, acoustic listening, Resolve roundtrip, 4K/GPU performance).
 
 ## Delivery owners status
 
-| Owner     | Status      | Verification / Merge Evidence                                                                                                                                                                                      |
-| --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| User pins | Complete    | PR #79 merged (`6a15636`); solver, history, Named Versions, Collect integration verified                                                                                                                           |
-| D1        | Complete    | Multi-source discovery, manifests, analysis and explicit adoption implemented                                                                                                                                      |
-| D2A       | Complete    | PR #89; continuity diagnostics (motion clash, pacing, density), emotional guidance advisories, and auditable override receipts ([validation](../validation-continuity-diagnostics.md))                             |
-| D2B       | Complete    | Adjacent micro-preview & bounded Dip-to-Black / Dip-to-White transitions ([validation](../validation-scene-micro-preview-dips.md))                                                                                 |
-| D3A1      | Complete    | PR #72 merged; saved-Sequence waveforms, bounded cache and decoded pulse evidence                                                                                                                                  |
-| D3A2      | Complete    | Rhythm analysis & cut-point snap: source-bound onset/downbeat evidence, reliability scoring, and explicit snap acceptance ([validation](../validation-rhythm-analysis-snapping.md))                                |
-| D3B1      | Complete    | PR #81 merged (`1686b76`); sample-accurate J/L audio policy and shared preview/render mix                                                                                                                          |
-| D3B2      | Complete    | PR #87 merged (`efb806d`); A-roll / B-roll coverage: role persistence, primary narration retention, and J/L mix integration                                                                                        |
-| D4        | Complete    | PR #88 merged (`d2b5f08`); Transcript-driven ripple editing: reliable timestamp edits, composite ripple (video/subtitles/audio/ducking), and conflict rejection ([validation](../validation-transcript-ripple.md)) |
-| D5A       | Complete    | PR #74 merged; direct focal, versioned Bezier/ambient and protected photo presentation                                                                                                                             |
-| D5B       | Complete    | PR #75 merged; independent bilingual runs, measured finishing and font/Collect evidence                                                                                                                            |
-| D5C       | Complete    | PR #77 merged; primary correction before Film Looks and reviewed statistical Auto Match                                                                                                                            |
-| D6A/D6B   | Complete    | Managed proxies and reviewed derived Collect implemented                                                                                                                                                           |
-| D7A       | Complete    | PR #78 merged; 3-OS pinned render QA, shared metrics and real decoded controls                                                                                                                                     |
-| D7B/M7E   | In Progress | Runtime staging, native packaging, licenses/SBOM review, and candidate installer verification                                                                                                                      |
-| D8        | Complete    | PR #76 merged; local bounded declarative presets and immutable accepted snapshots                                                                                                                                  |
-| Cut Desk  | Complete    | Phase 1A, 1B, 1C, Phase 2 (edit semantics) & Phase 3 (track controls & persistence) complete                                                                                                                       |
+| Owner     | Status   | Verification / Merge Evidence                                                                                                                                                                                      |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User pins | Complete | PR #79 merged (`6a15636`); solver, history, Named Versions, Collect integration verified                                                                                                                           |
+| D1        | Complete | Multi-source discovery, manifests, analysis and explicit adoption implemented                                                                                                                                      |
+| D2A       | Complete | PR #89; continuity diagnostics (motion clash, pacing, density), emotional guidance advisories, and auditable override receipts ([validation](../validation-continuity-diagnostics.md))                             |
+| D2B       | Complete | Adjacent micro-preview & bounded Dip-to-Black / Dip-to-White transitions ([validation](../validation-scene-micro-preview-dips.md))                                                                                 |
+| D3A1      | Complete | PR #72 merged; saved-Sequence waveforms, bounded cache and decoded pulse evidence                                                                                                                                  |
+| D3A2      | Complete | Rhythm analysis & cut-point snap: source-bound onset/downbeat evidence, reliability scoring, and explicit snap acceptance ([validation](../validation-rhythm-analysis-snapping.md))                                |
+| D3B1      | Complete | PR #81 merged (`1686b76`); sample-accurate J/L audio policy and shared preview/render mix                                                                                                                          |
+| D3B2      | Complete | PR #87 merged (`efb806d`); A-roll / B-roll coverage: role persistence, primary narration retention, and J/L mix integration                                                                                        |
+| D4        | Complete | PR #88 merged (`d2b5f08`); Transcript-driven ripple editing: reliable timestamp edits, composite ripple (video/subtitles/audio/ducking), and conflict rejection ([validation](../validation-transcript-ripple.md)) |
+| D5A       | Complete | PR #74 merged; direct focal, versioned Bezier/ambient and protected photo presentation                                                                                                                             |
+| D5B       | Complete | PR #75 merged; independent bilingual runs, measured finishing and font/Collect evidence                                                                                                                            |
+| D5C       | Complete | PR #77 merged; primary correction before Film Looks and reviewed statistical Auto Match                                                                                                                            |
+| D6A/D6B   | Complete | Managed proxies and reviewed derived Collect implemented                                                                                                                                                           |
+| D7A       | Complete | PR #78 merged; 3-OS pinned render QA, shared metrics and real decoded controls                                                                                                                                     |
+| D7B/M7E   | Complete | Runtime staging, native packaging, licenses/SBOM review, and candidate installer verification ([validation](../validation-native-installer.md))                                                                    |
+| D8        | Complete | PR #76 merged; local bounded declarative presets and immutable accepted snapshots                                                                                                                                  |
+| Cut Desk  | Complete | Phase 1A, 1B, 1C, Phase 2 (edit semantics) & Phase 3 (track controls & persistence) complete                                                                                                                       |
 
 ## Platform Recovery & Runtime State
 
@@ -55,8 +66,9 @@ The delivery foundation for **v1.0.0** is being established through progressive,
 
 ### macOS Recovery
 
-- Automatic dead-owner detection is currently pending OS-specific liveness evidence (differentiating live, dead, PID reuse, and permission boundaries).
-- Stale or dead locks currently require manual recovery or bounded expiration; unknown states remain protected to prevent accidental data loss.
+- Automatic dead-owner detection is complete and verified via OS-specific boot session identity (`sysctl -n kern.bootsessionuuid`), cryptographic SHA-256 hash digest verification (`SHA-256([platform, hostname, bootSessionUuid])`), and ESRCH process liveness checks (`review-owner.ts` / `review-owner-platform.test.ts`, [validation](../validation-macos-dead-owner.md)).
+- Dead owner processes across reboots or process termination are safely reclaimed; active processes, unknown states, and foreign platform locks fail closed to prevent accidental data loss.
+- Continuous automated coverage is validated via cross-platform native tests and the `windows-media-recovery.yml` workflow.
 
 ## M6 Review Scope: Automated Evidence vs. Manual Acceptance
 
@@ -77,15 +89,17 @@ The delivery foundation for **v1.0.0** is being established through progressive,
 ### Key Features
 
 - Multi-source staged import with cryptographic Verified Manifests.
-- Professional Cut Desk with integer-frame rational timebase, source markers, and user-pinned constraints.
-- Sample-accurate J/L audio policy with shared render/playback mix.
+- Professional Cut Desk with integer-frame rational timebase, track controls (target, lock, mute, solo, visibility), professional edit semantics (Roll, Slip, Slide, Insert, Overwrite, Lift), and user-pinned constraints.
+- Sample-accurate J/L audio policy with shared render/playback mix and A-roll / B-roll coverage.
+- Continuity diagnostics, emotional guidance advisories, and adjacent micro-preview with dip transitions.
+- Rhythm analysis and cut-point snapping with source-bound audio intelligence.
 - High-fidelity typography finishing, local declarative presets, and primary color correction.
 - Multi-OS reproducible rendering with bitexact preview and delivery parity.
+- Cross-platform process dead-owner detection and recovery on Windows and macOS.
 
 ### Known Limitations
 
 - Physical workstation observations (Issue #7) await physical hardware execution (Windows 10/popopc, external drives, calibrated displays, Resolve NLE roundtrip).
-- macOS dead-owner automatic recovery requires manual intervention or timeout until OS-specific process identity contracts land.
 - Release distribution uses signed/hashed manual package updates with rollback (Option A); in-app background auto-update feed is deferred to post-v1.
 
 ## Completion loop

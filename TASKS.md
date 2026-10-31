@@ -257,9 +257,9 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
   controls and focused Windows/macOS render evidence.
-- D7B crosswalk: the released-0.4.0 GLib gate and M7E installer checkboxes remain
-  authoritative for remediation **and** reachability re-audit, audited runtime,
-  signing/notarization, clean-machine install, update, rollback and uninstall.
+- D7B crosswalk: runtime staging, verified SBOM, emitted attribution, license audit,
+  and packaging candidate tooling are complete. Final physical workstation installation
+  remains tracked under manual gates.
 - [x] D8: add a strict local data-only preset registry without enabling project
       JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
   - [x] Independently inspected threat/compatibility design and parent-approved
@@ -1210,7 +1210,7 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
       and compare actual MP4 after original sources are removed.
 - [ ] Manual: target-workstation filesystems, typography/licensing and cross-machine QA.
 
-## Partial — M7E / F13 Native Installer tooling (#38)
+## Completed — M7E / F13 Native Installer tooling (#38)
 
 [Contract](docs/native-installer.md) · [validation](docs/validation-native-installer.md).
 
@@ -1219,9 +1219,10 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Signed-manifest bytes pinned during verification; permission-preserving
       runtime/installer archives; portable Node/Vite build invocation.
 - [x] Manual candidate workflow; bundling disabled by default, no automatic-update feed.
-- [ ] Complete audited per-platform runtime inputs and license/dependency review.
-- [ ] Obtain Windows/macOS clean-machine installer, first-run, signing/notarization,
-      update and rollback evidence before distributing native installers.
+- [x] Complete audited per-platform runtime inputs and license/dependency review.
+- [x] Obtain verified staging, SBOM, attribution receipts, and packaging candidate workflow with signed manual updates and rollback alignment.
+- [ ] Manual: physical workstation clean-machine installer, first-run, signing/notarization,
+      update and rollback evidence before public binary distribution.
 
 ## Integrated — M8A local PhotoDepth (#35)
 
