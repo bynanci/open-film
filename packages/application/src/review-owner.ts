@@ -71,6 +71,31 @@ function processScope(): { host: string; verifiable: boolean } {
         verifiable: true,
       };
     }
+    if (platform() === "darwin") {
+      const boot = execFileSync(
+        "/usr/sbin/sysctl",
+        ["-n", "kern.bootsessionuuid"],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 5000,
+          maxBuffer: 4096,
+        },
+      ).trim();
+      if (
+        !boot ||
+        !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu.test(boot) ||
+        boot === "00000000-0000-0000-0000-000000000000"
+      )
+        throw new Error("No verified Darwin machine/boot identity.");
+      return {
+        // Persist only a digest: portable projects must not disclose boot UUID directly.
+        host: createHash("sha256")
+          .update(JSON.stringify([platform(), hostname(), boot.toLowerCase()]))
+          .digest("hex"),
+        verifiable: true,
+      };
+    }
     if (platform() !== "linux") throw new Error("No verified local PID scope.");
     const boot = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
     const namespace = readlinkSync("/proc/self/ns/pid");
@@ -90,9 +115,10 @@ function processScope(): { host: string; verifiable: boolean } {
 }
 
 let scope = processScope();
-// A cold Windows CIM/PowerShell query may hit its deadline at module startup.
+// A cold Windows CIM/PowerShell or Darwin sysctl query may hit its deadline at module startup.
 // One later query can establish proof; failed or foreign evidence never does.
-let scopeRetryAvailable = !scope.verifiable && platform() === "win32";
+let scopeRetryAvailable =
+  !scope.verifiable && (platform() === "win32" || platform() === "darwin");
 const localTokens = new Map<string, string>();
 
 function validOwner(value: unknown): value is ReviewExecutionOwner {

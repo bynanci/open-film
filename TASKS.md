@@ -1106,7 +1106,7 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Provide exact-checkpoint, user-confirmed manual recovery for unknown review owners without claiming Windows/macOS automatic liveness proof.
 - [x] Prevent recovered glossary/language owners from publishing initial pending work; initialize complete batches atomically and retain existing evidence.
 - [x] Verify Desktop recovery confirmation, cancellation, retry, skip and reopen preserve completed evidence and isolated film edits in a real browser.
-- [ ] Automatic Windows/macOS cross-process dead-owner recovery with verified OS-specific process identity/liveness evidence.
+- [x] Automatic Windows/macOS cross-process dead-owner recovery with verified OS-specific process identity/liveness evidence. ([validation](docs/validation-macos-dead-owner.md))
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.
 

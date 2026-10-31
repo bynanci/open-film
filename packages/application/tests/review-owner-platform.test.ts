@@ -152,8 +152,67 @@ it("bounds failed scope revalidation and never probes foreign owners or loses lo
   expect(cold.reviewOwnerState(queued)).toBe("alive");
 });
 
-it("does not authorize recovery on an unverified platform", async () => {
+it("shares Darwin OS evidence across executions without storing the boot UUID", async () => {
   evidence.platform = "darwin";
+  evidence.output = machine;
+  const first = await loadOwnerModule();
+  const owner = first.createReviewOwner();
+  const second = await loadOwnerModule();
+  expect(second.reviewOwnerState(owner)).toBe("alive");
+  expect(second.ownsReviewOwner(owner)).toBe(false);
+  expect(owner.host).not.toContain(machine);
+});
+
+it("probes stopped process on Darwin and reports dead when process is missing", async () => {
+  evidence.platform = "darwin";
+  evidence.output = machine;
+  const first = await loadOwnerModule();
+  const owner = first.createReviewOwner();
+  const stopped = { ...owner, pid: process.pid + 1 };
+  const probe = vi.spyOn(process, "kill").mockImplementation(() => {
+    throw Object.assign(new Error("No such local PID"), { code: "ESRCH" });
+  });
+  const second = await loadOwnerModule();
+  expect(second.reviewOwnerState(stopped)).toBe("dead");
+  expect(probe).toHaveBeenCalledWith(stopped.pid, 0);
+});
+
+it("does not probe a Darwin owner from another boot", async () => {
+  evidence.platform = "darwin";
+  evidence.output = machine;
+  const first = await loadOwnerModule();
+  const owner = { ...first.createReviewOwner(), pid: process.pid + 1 };
+  evidence.output = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const second = await loadOwnerModule();
+  const probe = vi.spyOn(process, "kill");
+  expect(second.reviewOwnerState(owner)).toBe("unknown");
+  expect(probe).not.toHaveBeenCalled();
+});
+
+it.each(["not a uuid", "00000000-0000-0000-0000-000000000000", ""])(
+  "keeps malformed Darwin evidence unverifiable: %s",
+  async (output) => {
+    evidence.platform = "darwin";
+    evidence.output = output;
+    const first = await loadOwnerModule();
+    const owner = first.createReviewOwner();
+    const second = await loadOwnerModule();
+    expect(first.ownsReviewOwner(owner)).toBe(true);
+    expect(second.reviewOwnerState(owner)).toBe("unknown");
+  },
+);
+
+it("keeps unavailable Darwin evidence unknown across executions", async () => {
+  evidence.platform = "darwin";
+  evidence.error = true;
+  const first = await loadOwnerModule();
+  const owner = first.createReviewOwner();
+  const second = await loadOwnerModule();
+  expect(second.reviewOwnerState(owner)).toBe("unknown");
+});
+
+it("does not authorize recovery on an unverified platform", async () => {
+  evidence.platform = "freebsd";
   const first = await loadOwnerModule();
   const owner = first.createReviewOwner();
   const second = await loadOwnerModule();
