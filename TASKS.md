@@ -1408,4 +1408,4 @@ trust and workstation checkboxes remain open. See the [contract](docs/native-ins
 
 ### 2026-10-30 Windows export parity follow-up
 
-- [ ] Diagnose and repair the strict Windows PNG/MP4 export parity observations. Main Windows run 41113344781 fails the assignment-swap fixture, while Verify and three-platform Render QA pass. Preserve strict assertions and synthetic-only exact-source evidence; a green rerun alone is not a causal fix. See [validation](docs/validation-export-profiles.md#2026-10-30--current-windows-parity-failure-remains-open).
+- [x] Diagnose and repair the strict Windows PNG/MP4 export parity observations (fixes #82, PR #85). Causal fix bounded filter threading (-filter_threads 1), swscale rounding (+accurate_rnd+bitexact), libx264 lookahead threads (threads=1:lookahead_threads=1:sliced_threads=0), single-threaded input frame extraction, and fontCache SHA-256 validation. Retained full strict byte-for-byte RGB equality assertions; all 14 CI checks (including 3-platform Render QA and windows-ffmpeg9) pass. See [validation](docs/validation-export-profiles.md#2026-10-31--causal-repair-of-windows-preview-and-delivery-pixel-mismatch-issue-82).

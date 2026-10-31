@@ -1,8 +1,12 @@
 ## Professional Cut Desk — Phase 1A foundation
 
-The delivery goal [v1.0.0](docs/roadmap/v1-readiness.md) has been reached. Both
-User Pins (PR #79) and D3B1 sample-accurate audio policy (PR #81) have been merged
-into main, establishing the complete verified foundation for release v1.0.0.
+The delivery foundation for [v1.0.0](docs/roadmap/v1-readiness.md) is being
+established through progressive, verified increments. Core foundations including
+User Pins (PR #79), D3B1 sample-accurate audio policy (PR #81), and Issue #82
+Windows pixel parity (PR #85) are merged into main, establishing the verified
+baseline while remaining core increments (Batch 2: D3B2, D4, D2A, D2B, D3A2;
+Batch 3: Cut Desk 1B/1C/2/3; Batch 4: native release) are tracked toward v1.0.0
+production readiness.
 
 Expert Source/Record now presents one saved Composition with rational/DF
 timecode, continuous integer-frame Record transport, staged Source I/O and
