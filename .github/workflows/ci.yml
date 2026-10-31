@@ -23,6 +23,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:license
+      # TEMPORARY: emit the exact Prettier diff so the PR can be corrected.
+      - name: Diagnose formatting of governance files
+        run: |
+          pnpm exec prettier --write COMMERCIAL.md TRADEMARKS.md scripts/ci/check-license-governance.mjs
+          git diff -- COMMERCIAL.md TRADEMARKS.md scripts/ci/check-license-governance.mjs
       - run: pnpm format:check
       - run: pnpm test:i18n
       - run: pnpm test:docs-i18n
