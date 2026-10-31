@@ -213,6 +213,14 @@ export default {
       rippleConflict:
         "Transcript ripple edit conflicts with locked media or user pins.",
     },
+    continuity: {
+      invalidProposal:
+        "The continuity review proposal is invalid or contains malformed data. Refresh diagnostics to continue.",
+      staleProposal:
+        "The timeline or story changed after this continuity diagnostic was generated. Refresh diagnostics before accepting.",
+      conflict:
+        "Continuity adjustment conflicts with locked clips, user pins, or protected media.",
+    },
     glossary: {
       storageBusy:
         "Another OpenFilm window or process is updating your global glossary. Try again after it finishes.",

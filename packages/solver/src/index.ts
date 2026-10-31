@@ -608,4 +608,10 @@ export * from "./user-overrides.js";
 
 export * from "./pinned-placement.js";
 
+export {
+  analyzeContinuity,
+  applyContinuityOverrides,
+  type ContinuityAnalysisOptions,
+} from "./continuity.js";
+
 export { validateAudioEdit } from "./audio-timing.js";

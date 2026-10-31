@@ -5,6 +5,7 @@ import {
   validateCoverageAudioBindings,
 } from "./audio-policy.js";
 import { validateClipCoverage } from "./coverage.js";
+import { MAX_CONTINUITY_RECEIPTS } from "./continuity.js";
 import {
   PINNED_PROJECT_SCHEMA_VERSION,
   validateUserOverrideState,
@@ -862,6 +863,83 @@ function sceneDirectionReceipts(value: unknown, path: string): void {
   });
 }
 
+function continuityReceiptsValidation(value: unknown, path: string): void {
+  const receipts = array(value, path);
+  if (receipts.length > MAX_CONTINUITY_RECEIPTS)
+    fail(
+      path,
+      `at most ${MAX_CONTINUITY_RECEIPTS} continuity receipts are supported`,
+    );
+  const requests = new Set<string>();
+  receipts.forEach((entry, index) => {
+    const receiptPath = `${path}[${index}]`;
+    const receipt = presentationObject(entry, receiptPath, [
+      "version",
+      "proposalId",
+      "requestId",
+      "fingerprint",
+      "compositionId",
+      "storyId",
+      "baseRevision",
+      "contextSignature",
+      "acceptedAt",
+      "acceptedRevision",
+      "overrides",
+      "diagnosticsCount",
+    ]);
+    versionOne(receipt, receiptPath);
+    for (const key of [
+      "proposalId",
+      "fingerprint",
+      "baseRevision",
+      "contextSignature",
+      "acceptedRevision",
+    ])
+      directionDigest(receipt[key], `${receiptPath}.${key}`);
+    receiptIdentifier(receipt.requestId, `${receiptPath}.requestId`);
+    if (/[\u0080-\u009f]/u.test(String(receipt.requestId)))
+      fail(
+        `${receiptPath}.requestId`,
+        "expected an ID without control characters",
+      );
+    for (const key of ["compositionId", "storyId"])
+      string(receipt[key], `${receiptPath}.${key}`);
+    const requestId = String(receipt.requestId);
+    if (requests.has(requestId))
+      fail(`${receiptPath}.requestId`, "duplicate acceptance request receipt");
+    requests.add(requestId);
+    timestamp(receipt.acceptedAt, `${receiptPath}.acceptedAt`);
+    number(receipt.diagnosticsCount, `${receiptPath}.diagnosticsCount`);
+    const overridePath = `${receiptPath}.overrides`;
+    const overrides = array(receipt.overrides, overridePath);
+    overrides.forEach((item, itemIndex) => {
+      const itemPath = `${overridePath}[${itemIndex}]`;
+      const override = presentationObject(item, itemPath, [
+        "diagnosticId",
+        "action",
+        "userNote",
+        "suggestedDirection",
+      ]);
+      string(override.diagnosticId, `${itemPath}.diagnosticId`);
+      choice(override.action, `${itemPath}.action`, [
+        "override",
+        "dismiss",
+        "accept-direction",
+      ]);
+      if (override.userNote !== undefined)
+        string(override.userNote, `${itemPath}.userNote`);
+      if (override.suggestedDirection !== undefined)
+        choice(override.suggestedDirection, `${itemPath}.suggestedDirection`, [
+          "contain",
+          "hero",
+          "hold",
+          "push-in",
+          "pan",
+        ]);
+    });
+  });
+}
+
 function strings(value: unknown, path: string, unique = false): string[] {
   const values = array(value, path).map((item, i) =>
     string(item, `${path}[${i}]`),
@@ -1484,6 +1562,7 @@ export function validateProject(
     });
   });
   optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
+  optional(data, "continuityReceipts", path, continuityReceiptsValidation);
   optional(data, "presetApplicationReceipts", path, (value) =>
     validatePresetReceipts(value, String(data.id)),
   );

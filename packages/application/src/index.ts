@@ -54,6 +54,8 @@ import { StoryGraphService } from "./story-graph.js";
 export * from "./story-graph.js";
 import { StoryPlanService } from "./story-plan.js";
 export * from "./story-plan.js";
+import { ContinuityService } from "./continuity.js";
+export * from "./continuity.js";
 import { PipelineService } from "./pipeline-orchestrator.js";
 export * from "./pipeline-orchestrator.js";
 import { CreativeVariantService } from "./creative-variants.js";
@@ -407,6 +409,7 @@ export class OpenFilmApplication {
   readonly collectMedia: CollectMediaService;
   readonly storyGraph: StoryGraphService;
   readonly storyPlan: StoryPlanService;
+  readonly continuity: ContinuityService;
   readonly pipeline: PipelineService;
   readonly creativeVariants: CreativeVariantService;
   readonly sourceDraft: SourceDraftService;
@@ -542,6 +545,7 @@ export class OpenFilmApplication {
       this.storyPlan = new StoryPlanService(this, (next, assertCurrent) =>
         this.publishProject(next, assertCurrent),
       );
+      this.continuity = new ContinuityService(this);
       this.pipeline = new PipelineService(this);
       this.creativeVariants = new CreativeVariantService(this, (next) =>
         this.publishProject(next),

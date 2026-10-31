@@ -465,6 +465,7 @@ export interface OpenFilmProject {
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
   sceneDirectionReceipts?: SceneDirectionReceipt[];
+  continuityReceipts?: import("./continuity.js").ContinuityReceipt[];
   presetApplicationReceipts?: import("./presets.js").PresetApplicationReceipt[];
 }
 
