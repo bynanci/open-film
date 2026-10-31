@@ -13,7 +13,7 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
       retain first-run failures and rerun the complete sequence after compatibility corrections.
 - [x] Hosted Linux Rust/Tauri/archive/build gate passes; local Cargo remains unavailable.
       Physical desktop/workstation verification remains below.
-- [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
+- [x] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures. ([validation](docs/validation-cut-desk-phase-1b.md))
   - [x] Persist user-pinned direct edits as versioned Clip/GraphicScene hard
         constraints through solver/pipeline, history, Named Versions, variants
         and Collect; add visible Pin and explicit Unlock & Re-solve. Merged to
@@ -25,8 +25,8 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
   - [x] Add the Expert Edit Decision Ribbon and diagnostic film-look compare
         workflow from the active Composition resolver; preserve media identity,
         keyboard/pointer cancellation, context fencing and output immutability.
-  - [ ] Complete the remaining solver-backed pointer-centred Precision zoom/pan
-        and snap-bypass gestures without introducing a second timeline.
+  - [x] Complete the remaining solver-backed pointer-centred Precision zoom/pan
+        and snap-bypass gestures without introducing a second timeline. ([validation](docs/validation-cut-desk-phase-1b.md))
 - [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
   - [x] D3A1: project existing source peaks into Sequence time with shared
