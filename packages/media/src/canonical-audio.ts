@@ -125,8 +125,7 @@ export async function inspectCanonicalAudio(
   const rawDeclared =
     stream.duration !== undefined && stream.duration !== "N/A"
       ? stream.duration
-      : probe.format?.duration !== undefined &&
-          probe.format.duration !== "N/A"
+      : probe.format?.duration !== undefined && probe.format.duration !== "N/A"
         ? probe.format.duration
         : asset.duration;
   const declaredSamples = Number.isFinite(Number(rawDeclared))
