@@ -384,6 +384,17 @@ async function mountTimeline(
     "../clipTransformInteraction": clipTransformInteraction,
     "../i18n": i18n,
     "../duration": { durationStatus },
+    "../preferences": {
+      preferences: vue.reactive({
+        theme: "system",
+        workspaceMode: "expert",
+        defaultFilmLocale: "en-US",
+        cutDeskMonitorLayout: "tabbed",
+        cutDeskSplitRatio: 0.5,
+      }),
+      setCutDeskSplitRatio: vi.fn(),
+      setCutDeskMonitorLayout: vi.fn(),
+    },
     "../nativeBenchmark": {
       nativeBenchmark: createNativeBenchmark({
         isNative: () => false,
@@ -423,6 +434,10 @@ async function mountTimeline(
       },
     },
     "./SourceDetails.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./ShortcutSheet.vue": {
       __esModule: true,
       default: { render: () => null },
     },
