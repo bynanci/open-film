@@ -2,6 +2,8 @@
 
 The delivery foundation for **v1.0.0** is being established through progressive, verified increments. Core engine milestones and verified baselines are merged into main, while remaining editing increments, workstation validation, and distribution gates are tracked under their respective owners.
 
+For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md) and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md). Status was reconciled against [`main`](https://github.com/bynanci/open-film/commit/main); dated validation records retain the results of their original runs.
+
 ## Release & Version Status
 
 - **Codebase Package Version**: `1.0.0` (declared in `package.json`).
@@ -32,6 +34,7 @@ The delivery foundation for **v1.0.0** is being established through progressive,
   - PR #96: Cut Desk Phase 2 (professional edit semantics: Roll, Slip, Slide, Insert, Overwrite, Lift, Batch).
   - PR #97: Cut Desk Phase 3 (track controls: target, lock, mute, solo, visibility & persistence).
   - PR #98: PR 4.1 (macOS Darwin cross-process dead-owner detection & boot session verification).
+  - PR #99: Finalize v1.0.0 readiness, native distribution, and roadmap alignment.
 - **Physical Workstation Acceptance**: Issue #7 remains the owner for physical hardware observations (Windows 10/popopc, external drives, calibrated displays, acoustic listening, Resolve roundtrip, 4K/GPU performance).
 
 ## Delivery owners status
@@ -102,20 +105,22 @@ The delivery foundation for **v1.0.0** is being established through progressive,
 - Physical workstation observations (Issue #7) await physical hardware execution (Windows 10/popopc, external drives, calibrated displays, Resolve NLE roundtrip).
 - Release distribution uses signed/hashed manual package updates with rollback (Option A); in-app background auto-update feed is deferred to post-v1.
 
-## Completion loop
+## Contributing to release readiness
 
-1. Implement the next existing owner with tests that expose the missing behavior.
-2. Verify real synthetic media, decoded timing/pixels/audio, source identities,
-   locks, history, autosave/reopen and project-switch/cancellation boundaries.
-3. Obtain a fresh whole-branch review, correct blockers with regressions and run
-   complete available gates plus exact-candidate hosted checks.
-4. Merge only the verified candidate under the user's standing authorization;
-   record exact base/head/main and actual deployment results, then continue.
-5. Keep unimplemented slices and unexecuted observations explicitly open.
+1. Choose an open item from the current tasks and confirm its scope in an issue
+   or the linked design before substantial implementation.
+2. Reuse the existing project and editing contracts. Include focused regressions
+   for changed behavior, compatibility and failure recovery.
+3. Submit a reviewable pull request with the checks performed and any platform
+   or manual verification that remains outstanding.
+4. Update the task status after the change is merged. Preserve earlier results
+   in dated validation records and add new evidence for the relevant revision.
 
-This goal never authorizes a second timeline, arbitrary project JS/HTML/remote
-resources, source overwrite, unconsented provider upload or publication of
-private media. Fixtures/artifacts are synthetic or appropriately licensed.
+Changes must preserve original media, reviewable editing decisions and explicit
+consent for remote providers. Use generated or appropriately licensed fixtures;
+private media and credentials do not belong in public reports. Follow the
+[contributing guide](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md)
+for the development workflow.
 
 ## Release exit conditions
 
@@ -136,7 +141,6 @@ private media. Fixtures/artifacts are synthetic or appropriately licensed.
 Issue #7 remains the owner of outstanding physical workstation observations.
 Hosted Windows 2022 and Linux/ARM64-macOS CI are automated platform evidence;
 they do not stand in for physical Windows 10/popopc, external drives, calibrated
-displays, listening, Resolve or 4K/GPU acceptance. When code and candidate tooling
-are ready, the remaining workstation procedure and evidence inputs must be
-concrete before requesting them. A stable v1 tag and release follow the actual
-exit decision.
+displays, listening, Resolve or 4K/GPU acceptance. The release maintainer should document the candidate, workstation procedure and
+remaining observations before a release decision. Publish a stable v1 tag only
+after the applicable exit conditions are satisfied.

@@ -2,70 +2,109 @@
 
 [English](CONTRIBUTING.md) · [繁體中文](CONTRIBUTING.zh-TW.md) · [日本語](CONTRIBUTING.ja.md)
 
-OpenFilm welcomes bug fixes, tests, documentation, reusable story templates and adapters. Keep changes focused on a user problem, explain the behavior that changes, and include evidence reviewers can reproduce.
+You can help OpenFilm by improving a guide, translating a screen, reproducing a bug, or changing code. A useful contribution explains the problem and gives someone else a way to check the result.
 
-## Propose and submit a change
+## Choose a starting point
 
-- Use an issue for substantial feature work so scope, user need and constraints can be discussed first. Small, well-scoped fixes can go directly to a pull request.
-- Work on a branch or fork and open a pull request against main. Keep each PR reviewable and state any compatibility, project-data or migration impact.
-- Use the repository's pull request template. Report exact checks run and their results; identify checks and platform gates that were not run.
-- Do not claim performance, creative quality or external-editor compatibility without reproducible evidence.
+- **New to the project:** try the [source setup](README.md), correct an unclear instruction, or reproduce an existing issue with generated media.
+- **Documentation and translation:** improve one guide or a few interface messages. Mention any related translation that still needs help.
+- **Bug fixes:** describe the failing behavior and keep the fix focused. Add a regression test when it can demonstrate the bug.
+- **New features or architecture changes:** open a [feature request](https://github.com/bynanci/open-film/issues/new?template=feature_request.yml) first to discuss the user need and scope before a large implementation.
 
-## Development workflow
+Small fixes can go directly to a pull request. For usage questions, see [Support](SUPPORT.md). Report vulnerabilities through [Security](SECURITY.md), not a public bug report.
 
-Use Node.js 24.14.0 or newer, pnpm 11.11.0, FFmpeg and FFprobe. Perl or system ExifTool improves metadata extraction. Follow setup in the [README](README.md) and use pnpm install with the frozen lockfile for reproducible dependencies.
+## Set up your workspace
 
-For relevant changes, run:
+The application uses Node.js **24.14.0 or newer** and pnpm **11.11.0**. Running media workflows also needs FFmpeg and FFprobe. Perl or a system ExifTool improves metadata extraction.
 
-    pnpm lint
-    pnpm format:check
-    pnpm typecheck
-    pnpm test
-    pnpm build
+From the repository root:
 
-For UI changes, run the browser suite after installing Playwright Chromium. For Rust changes, run cargo fmt, clippy with warnings denied and cargo test in apps/desktop/src-tauri; these require native host dependencies. Exporter changes should include the OpenTimelineIO interchange checks. Documentation changes should keep local links valid and run pnpm test:docs-i18n when README or localized guide files change.
+```sh
+pnpm install --frozen-lockfile
+pnpm dev
+```
 
-In the PR description, list the exact commands, environment and concise results. Separate automated evidence from physical-device, private-media, hardware, NLE or editorial review that remains outstanding.
+`pnpm dev` starts the local service and browser workspace. It does not launch the native Tauri shell or create an installer. Native development has additional Rust and platform dependencies; follow the [desktop guide](apps/desktop/README.md).
 
-## Design boundaries
+The latest published release, **v0.4.0**, is a source release. `main` contains unreleased development, and signed Windows/macOS installers are not yet published. When reporting a result, identify the tag or commit you tested; an installer candidate is not a released installer.
 
-- Keep core models and algorithms independent of Vue, Tauri, Node, filesystem, SQLite and media executables. Put runtime integration in adapters.
-- Reference originals and store edit operations. Never overwrite source media or silently discard edits during export.
-- Validate public project/schema changes, document migrations and reject unknown versions rather than guessing.
-- Preserve timestamp confidence, provenance and timezone uncertainty.
-- Remote providers require explicit, scoped opt-in. The basic workflow stays local.
-- Bound import work, paginate catalog reads, expose clear job states and return actionable errors.
+### Documentation only
 
-See [architecture](docs/architecture.md) and [integration contracts](docs/CONTRACTS.md). Record substantial architecture changes in a short ADR under docs/adr/ with context, decision, consequences and validation needs.
+You do not need FFmpeg, Rust, or private media to improve documentation. The website has its own npm lockfile. Run these commands from the repository root:
 
-## Documentation and evidence
+```sh
+npm --prefix docs ci
+npm --prefix docs run build
+pnpm test:docs-i18n
+```
 
-Use the [documentation map](docs/index.md) to choose a category. User guides belong with the workflow they explain; architecture decisions go in docs/adr/; release notes go in docs/releases/; product research goes in research/; dated validation evidence stays in its existing validation record. The website sidebar groups these records without moving their source files, so existing links remain stable.
+The first two commands are equivalent to `npm ci` and `npm run build` inside `docs/`. Do not replace `docs/package-lock.json` with a pnpm lockfile. If you only have Node and npm installed, `node scripts/check-doc-locales.mjs` runs the same locale check as `pnpm test:docs-i18n`.
 
-The official app and documentation locales are English, Traditional Chinese and Japanese. Keep the README and the main user guides aligned across these locales. Detailed contracts and validation evidence are maintained primarily in English; a translation may summarize and link to the canonical record, but must preserve commands, identifiers, measurements, commit references and test results. See the [language policy](docs/i18n.md).
+## Check the part you changed
 
-Validation records describe one run. Preserve their commit, OS/tool versions, commands, results, failures and manual gates. Add later results as a new dated entry or record; update current status in ROADMAP.md and TASKS.md instead of rewriting old evidence. Redact private paths, credentials, GPS and non-shareable media.
+Choose checks that exercise your change. A documentation-only PR does not need local media, native, or external-editor QA. CI runs the repository's required checks independently.
 
-## Tests and fixtures
+| Change                                   | Useful local checks                                                                                                                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Repository documentation or translations | Check links and language counterparts; run `pnpm test:docs-i18n`. Build the docs site for website content, links, navigation, or configuration changes.                                          |
+| Interface translations                   | Run `pnpm test:i18n`; inspect affected screens for wrapping and missing messages.                                                                                                                |
+| TypeScript logic or local service        | Run `pnpm lint`, `pnpm typecheck`, and the relevant Vitest tests. Use `pnpm test:contracts` for shared contract or schema changes.                                                               |
+| UI behavior                              | Run the code checks above and the relevant Playwright spec; check keyboard interaction and any changed layout.                                                                                   |
+| Media, import, or rendering              | Run the affected integration tests; use `pnpm test:media` for changes spanning the media pipeline. Verify source files remain unchanged where relevant.                                          |
+| Export or interchange                    | Run exporter regressions and `pnpm test:interchange` when interchange behavior changes. See the [interchange setup](tests/interchange/resolve/README.md) for Python/OpenTimelineIO requirements. |
+| Rust or native shell                     | Run `pnpm test:native` with the platform dependencies installed, then check the affected native behavior on that platform.                                                                       |
+| Build or dependency configuration        | Run the relevant checks and `pnpm build`; include the platform and tool versions if they affect the result.                                                                                      |
 
-Add focused regression coverage with behavior changes. Keep package-domain tests beside their package; use temporary directories and generated media from fixtures/sample-media/ for media/application integration. Browser tests should use the real local service. Check original hashes when changing import or rendering behavior.
+For example, these commands run a focused domain test and a focused browser test:
 
-Do not commit personal photos, faces, transcripts, GPS traces, credentials or private .openfilm projects. Use generated fixtures or media whose license permits redistribution, and include required attribution and license information.
+```sh
+pnpm exec vitest run packages/core/tests/timebase.test.ts
+pnpm exec playwright install chromium
+pnpm test:e2e tests/e2e/editing.spec.ts
+```
 
-## Conduct, security and licensing
+Use the file relevant to your change. Browser tests require media tools and start their own local services; stop an existing `pnpm dev` first. On Linux, Playwright may also require system browser dependencies.
 
-Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities using [SECURITY.md](SECURITY.md), not a public issue. Use [SUPPORT.md](SUPPORT.md) for product questions and the issue forms for bug reports or feature requests.
+After installing the root dependencies, check formatting of changed files with `pnpm exec prettier --check <files>`; `pnpm format:check` checks the whole repository. For broad code changes, the full commands are `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
 
-Unless explicitly stated otherwise, contributions submitted for inclusion are licensed under Apache-2.0. Confirm you have the right to contribute code and included media. Identify third-party material and preserve its license and attribution; contributing does not transfer copyright ownership. See [licensing](docs/licensing.md), LICENSE and NOTICE.
+Report the commands you actually ran and their results. If a relevant check needs hardware or software you do not have, say so in the PR. A passing parser test, browser suite, or Linux build does not establish a real Resolve import, native installer behavior, or camera-format compatibility.
+
+## Open a pull request
+
+1. Work on a fork or branch and target `main`.
+2. Explain the problem, the resulting behavior, and the scope of the change. Link an issue if there is one.
+3. List relevant checks and results. For UI changes, a screenshot or short recording can help; use shareable test material.
+4. Mention project-format changes, migration needs, or known limitations. State which documentation or translations were updated.
+
+Keep each PR small enough to review. You can open a draft while working or ask for help with a test or translation; you do not need to complete unrelated platform checks first.
+
+## Development boundaries
+
+- Keep domain models and algorithms independent of Vue, Tauri, Node, filesystem access, SQLite, and media executables. Put runtime integration in adapters.
+- Reference original media and store edit operations. Do not overwrite sources or silently discard edits.
+- Validate project and schema versions; document migrations and reject unsupported versions clearly.
+- Preserve timestamp provenance, confidence, and timezone uncertainty.
+- Keep the basic workflow local. Remote providers need explicit consent for the data and operation involved.
+- Bound import work, paginate catalog reads, and make job states and recovery actions understandable.
+
+See [architecture](docs/en/architecture.md) and [integration contracts](docs/en/CONTRACTS.md). For a substantial design change, add a short ADR under `docs/adr/` explaining the context, decision, and consequences.
+
+## Documentation and test material
+
+Use the [documentation map](docs/en/index.md) to find the right place. User guides explain workflows; `docs/adr/` records design decisions; `docs/releases/` records releases; `research/` holds product research.
+
+Keep the main guides and repository handbooks aligned in English, Traditional Chinese, and Japanese. Each `README.md` has sibling `README.zh-TW.md` and `README.ja.md` files. Reference records under `docs/` also have English mirrors under `docs/en/`; update both when the locale check requires it. Preserve commands, identifiers, measurements, and evidence links in translations. See the [language policy](docs/en/i18n.md).
+
+Dated validation records describe a specific run. Add new results as dated entries instead of rewriting old results; use the roadmap for current status. Record only the environment and evidence needed to support the claim.
+
+Use generated fixtures from [sample media](fixtures/sample-media/README.md) or media licensed for redistribution. Do not commit personal footage, private projects, transcripts, GPS traces, or credentials. Redact names and personal paths in logs and screenshots. Include required attribution for any third-party media, fonts, models, or code.
+
+## Conduct and licensing
+
+Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Unless explicitly stated otherwise, contributions submitted for inclusion are licensed under [Apache-2.0](LICENSE); you retain your copyright. Confirm you have the right to contribute the code and material, and preserve third-party licenses and attribution. See [LICENSE](LICENSE), [NOTICE](NOTICE), and the [licensing guide](docs/en/licensing.md).
 
 ## Contribution provenance and DCO
 
-For contributions first submitted after this policy is adopted, every new
-commit must carry the contributor's own DCO 1.1 sign-off. Use `git commit -s`
-and read [DCO.md](DCO.md) before submitting. The sign-off confirms the right
-to contribute under the applicable open-source license; it does not assign
-copyright or grant exclusive commercial relicensing rights.
+For contributions first submitted after this policy is adopted, every new commit must carry the contributor's own DCO 1.1 sign-off. Use `git commit -s` and read [DCO.md](DCO.md) before submitting. The sign-off confirms the right to contribute under the applicable open-source license; it does not assign copyright or grant exclusive commercial relicensing rights.
 
-Before importing third-party or AI-assisted source, verify provenance,
-permission and required notices. If employer-owned code is involved, confirm
-authorization to contribute. See [GOVERNANCE.md](GOVERNANCE.md).
+Before importing third-party or AI-assisted source, verify provenance, permission and required notices. If employer-owned code is involved, confirm authorization to contribute. See [GOVERNANCE.md](GOVERNANCE.md).

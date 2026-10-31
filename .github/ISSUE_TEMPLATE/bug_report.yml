@@ -1,67 +1,80 @@
 name: Bug report
-description: Report a reproducible problem with OpenFilm.
+description: Tell us what went wrong and how to reproduce it.
 title: "[Bug]: "
 body:
   - type: markdown
     attributes:
-      value: >
-        Do not include private media, project databases, source paths, GPS data,
-        credentials or vulnerability details. Use generated fixtures where possible.
-  - type: dropdown
-    id: language
+      value: |
+        English, 繁體中文, and 日本語 are welcome. You do not need to know the cause.
+        For usage questions, see [Support](https://github.com/bynanci/open-film/blob/main/SUPPORT.md).
+        Report vulnerabilities through [Security](https://github.com/bynanci/open-film/blob/main/SECURITY.md), not this public form.
+        Do not attach private media, project databases, credentials, GPS, or unredacted logs. A generated sample is usually enough.
+  - type: textarea
+    id: problem
     attributes:
-      label: Preferred language
-      options:
-        - English
-        - 繁體中文
-        - 日本語
-        - Other
+      label: What happened?
+      description: What were you trying to do, and what happened instead?
+      placeholder: A short description of the problem and any visible error message.
     validations:
       required: true
-  - type: input
-    id: version
+  - type: textarea
+    id: expected
     attributes:
-      label: Release or commit
-      description: Include the release tag or full commit SHA.
-      placeholder: v0.4.0 or a full commit SHA
-    validations:
-      required: true
-  - type: dropdown
-    id: platform
-    attributes:
-      label: Environment
-      options:
-        - Windows
-        - macOS
-        - Linux
-        - Browser development workflow
-        - Other
+      label: What did you expect?
+      description: Describe the result you expected. Link a guide if it describes different behavior.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Include the smallest reproducible sequence and sanitized command output.
-      placeholder: 1. ...
+      description: Give the smallest sequence you know. If the issue is intermittent or you cannot reproduce it yet, say so.
+      placeholder: |
+        1. Open or create ...
+        2. Choose ...
+        3. Observe ...
+        Does it happen every time?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenFilm version or commit
+      description: A release tag or short commit is enough. In a source checkout, run git rev-parse --short HEAD. Write "unknown" if needed.
+      placeholder: v0.4.0, a commit, or unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: launch
+    attributes:
+      label: How do you run OpenFilm?
+      options:
+        - Browser development workspace (pnpm dev)
+        - Native development shell (Tauri)
+        - CLI
+        - Installer candidate
+        - Other or unsure
     validations:
       required: true
   - type: textarea
-    id: expected
+    id: environment
     attributes:
-      label: Expected behavior
+      label: Environment
+      description: Include the OS/version and browser when relevant. For setup or media problems, add known Node, pnpm, FFmpeg, or codec details. Do not include personal paths.
+      placeholder: "Example: Windows 11, Chrome; or macOS, native shell. Unknown details are okay."
     validations:
       required: true
   - type: textarea
-    id: actual
+    id: checks
     attributes:
-      label: Actual behavior
+      label: What have you already checked?
+      description: Optional. Mention a workaround, a related issue, or whether a generated sample has the same problem. Do not rerun risky operations on your only copy of a project.
     validations:
-      required: true
+      required: false
   - type: textarea
     id: evidence
     attributes:
-      label: Additional evidence
-      description: Remove usernames, absolute paths, GPS, private media and credentials from logs or screenshots.
+      label: Relevant logs, screenshots, or a small sample
+      description: Optional. Share only what helps reproduce the issue and what you have permission to make public. Remove names, personal paths, GPS, and credentials. Full projects and private footage are not required.
     validations:
       required: false

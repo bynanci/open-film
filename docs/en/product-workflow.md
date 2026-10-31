@@ -1,10 +1,10 @@
 # Making a film in OpenFilm
 
-OpenFilm is an open-source, local-first, story-first media composer. The workspace
-is organized around making a film, not operating a media toolchain. All work stays
-on the local machine.
+Follow five steps: **Add media → Organize → Story → Edit → Export**. You will finish with an OpenFilm project you can reopen and a playable MP4, or an export for further work in another editor.
 
-## Start with a film
+The basic workflow runs locally and needs no cloud account or AI. Optional remote providers require configuration and your consent before data is sent. First-time users should complete [setup and startup](getting-started.md). This page describes current `main`; check the [release notes](https://github.com/bynanci/open-film/releases) for features in a published version.
+
+## Before you begin: create a project
 
 Welcome offers **Create Film**, **Open Project** and recent films. Recent entries
 report whether their saved location is currently available; opening a missing
@@ -20,13 +20,17 @@ The interface language and film language are independent. Changing the interface
 updates buttons and guidance immediately. Changing the film language updates
 known default template text, while custom titles and intents remain unchanged.
 
-## Add and organize memories
+## 1. Add media
 
 **Add Media** accepts folders or selected files. Native desktop uses local pickers
 and file paths. Browser-selected files and drops are copied into the project on
 the local service; they are not uploaded to a cloud. Original files remain intact.
 The compact Activity area reports progress, completion and files needing attention,
 and offers cancellation for active import and render jobs.
+
+**Expected result:** Library contains thumbnails and import results. Resolve failed or unsupported sources reported in Activity before continuing. See [camera source support](source-support.md) for format requirements.
+
+## 2. Organize media
 
 The Library provides All, Moments, Similar, Favorites, Rejected and Missing views.
 Choose a thumbnail to inspect it. Mark favorites, reject unwanted shots or lock
@@ -38,7 +42,9 @@ The progress row—Add Media, Organize, Story, Edit, Export—shows useful next 
 and attention states. It is not a locked wizard: navigation stays available, with
 empty-state guidance when a later step needs a story or composition first.
 
-## Build the story
+**Expected result:** You have identified the moments to keep, rejected unwanted sources and know which sources still need attention.
+
+## 3. Build the story
 
 Create a story from the film's chosen template and duration defaults. The Story
 board lists beats with titles, timing and selected-memory counts. Choose a beat
@@ -49,12 +55,15 @@ Refreshing suggestions re-ranks the beat's existing candidate scope using curren
 preferences. It does not replace selected memories or change other beats. Creating
 the cut takes the story into **Edit**.
 
-## Edit and preview
+**Expected result:** Story beats, important media and duration intentions have become an editable cut. For more detailed scene design, read [story templates](creative-story-templates.md) and [scene-script planning](scene-script-planning.md).
+
+## 4. Edit and preview
 
 Clips remain grouped by story beat. Select a photo to change its hold and framing;
-select a video to trim, adjust speed/volume, frame it or set a cut/crossfade. Audio
-offers its supported trim and volume controls. Use drag or Earlier/Later to reorder.
-Locks protect important clips from replacement, deletion and regeneration.
+select a video to trim, adjust speed/volume or change its framing. Photos and video
+clips support Cut, Crossfade, Dip to Black and Dip to White. Audio offers its
+supported trim and volume controls. Use drag or Earlier/Later to reorder. Locks
+protect important clips from replacement, deletion and regeneration.
 
 The duration display keeps actual, target and maximum visible. **Fit to target**
 offers explainable changes measured from the current film. Preview inspects a
@@ -69,23 +78,28 @@ retains the draft and offers review/reapply or an explicit discard; a language
 change does not reset the editor. Preview renders the current film; later edits
 mark that preview stale until rendered again.
 
-Keyboard shortcuts: Space plays/pauses, arrows select nearby clips, Delete removes
-an eligible selected clip, Ctrl/Cmd+Z undoes and Ctrl/Cmd+Shift+Z redoes. Inputs and
-dialogs retain normal typing and keyboard behavior. Earlier/Later provide an
-accessible reorder alternative to drag.
+In the standard Story view, Space plays/pauses, Left/Right selects adjacent clips,
+and Delete removes an eligible selected clip. Ctrl/Cmd+Z undoes and
+Ctrl/Cmd+Shift+Z redoes.
 
-## Finish or continue editing
+Expert mode offers Tabbed monitor and Dual monitor layouts. Select the Source or
+Record monitor first; Space controls playback and Left/Right steps through frames
+in the active monitor. Outside Transcript view, press `?` to open the shortcut
+reference. Inputs and dialogs retain normal typing and keyboard behavior.
+Earlier/Later provide an accessible reorder alternative to drag.
+
+**Expected result:** Changes are saved and you have watched a current preview. Add [captions](composition-captions.md), check [audio quality](audio-quality.md) or use [precision editing](precision-editing.md) as needed. Use [named versions](named-versions.md) to keep a comparable checkpoint across editing sessions.
+
+## 5. Export and check
 
 Export begins with goals: **Watch / Share** creates an MP4; **Continue editing**
 offers the existing NLE destinations. Advanced exposes the existing interchange
 formats. MP4 export renders the current saved film and provides its local output
 and browser download. It never copies an out-of-date preview as a finished film.
 
-The Resolve card uses the shared compatibility model. Native cut layout and parser
-checks are implemented, but real Resolve import is still a manual verification
-gate. Speed, volume/mute, transforms, crossfades and titles need manual recreation.
-The export report describes the particular file's limitations. See
-[the compatibility matrix](../nle-compatibility.md) for technical evidence.
+When continuing in another editor, keep the export report and prepare the referenced media. Standard interchange preserves supported cut structure; advanced effects may survive only as metadata and need recreation in the destination. A rendered handoff has its own editability limits. Read [NLE handoff](nle-handoff.md) and the [compatibility matrix](nle-compatibility.md). Actual Resolve import still requires workstation verification.
+
+**Expected result:** You have an output file, its location and a compatibility report. Play the MP4 and check the opening, ending, captions, sound and representative transitions. Close and reopen the project to check that saved edits and sources are available. See [export quality](export-quality.md) to adjust compression.
 
 ## When a drive disappears
 
@@ -95,5 +109,16 @@ filename alone never confirms identity. Reconnecting sources preserves the cut.
 Browser-managed copies move with the project; externally referenced media may need
 relinking. Physical removable-drive behavior still requires platform QA.
 
-For implementation details, see [internationalization](../i18n.md),
-[the design system](../design-system.md), and [the desktop guide](https://github.com/bynanci/open-film/blob/main/apps/desktop/README.md).
+See [media portability and relinking](media-portability.md) for the complete recovery workflow. To deliver a project with referenced sources or move to another computer, use [Collect Media](collect-media.md) and back up external originals separately.
+
+## Known limits
+
+- The local service is designed for one user's workstation, not multi-user collaboration or direct internet exposure.
+- Preview of raw 360 media, DNG, HDR and some codecs depends on the source and installed tools. Follow the specific conditions in [source support](source-support.md).
+- You can save an over-limit cut, but it must fit the maximum before rendering. Source duration and protection settings also constrain automatic composition.
+- Transcription, local models and supported [speech generation](provider-generation.md) are optional. Basic editing remains available without them; remote services may charge separately.
+- Automated checks do not replace playback, listening and external-editor verification on your actual computer.
+
+## Next steps and reporting problems
+
+See the [desktop guide](https://github.com/bynanci/open-film/blob/main/apps/desktop/README.md) for other ways to work. Follow [Support](https://github.com/bynanci/open-film/blob/main/SUPPORT.md) when reporting a problem, including your version, platform and reproduction steps. Omit private media, full source paths and credentials. For documentation fixes, translations and code contributions, read [Contributing](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md).

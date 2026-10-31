@@ -42,6 +42,7 @@ const tokenizeForJapanese = (text: string) =>
     .map(({ segment }) => segment);
 
 const gettingStarted = keepExisting([
+  guide("安裝與開始使用", "getting-started"),
   guide("製作流程", "product-workflow"),
   guide("Collect Media 可攜套件", "collect-media"),
   guide("專案格式", "project-format"),
@@ -50,12 +51,6 @@ const gettingStarted = keepExisting([
 ]);
 
 const editing = keepExisting([
-  guide("故事圖譜與視角", "en/validation-story-graph"),
-  guide("故事提案", "en/validation-story-plan"),
-  guide("導引工作流程", "en/validation-pipeline-orchestration"),
-  guide("Pipeline 工作台", "en/validation-pipeline-workbench"),
-  guide("變更影響與增量執行", "en/validation-change-impact"),
-  guide("創意方案與 A/B 評審", "en/validation-creative-variants"),
   guide("故事模板", "creative-story-templates"),
   guide("精準剪輯", "precision-editing"),
   guide("標記與吸附", "markers-and-snapping"),
@@ -68,6 +63,7 @@ const editing = keepExisting([
   guide("字幕", "en/composition-captions"),
   guide("逐字稿編輯", "en/transcript-editing"),
   guide("可審閱建議", "en/review-suggestions"),
+  guide("命名版本", "en/named-versions"),
 ]);
 
 const exportDocs = keepExisting([
@@ -100,6 +96,10 @@ const concepts = keepExisting([
 
 const validation = keepExisting([
   guide("穩定版驗證", "en/validation-stable-release"),
+  guide("故事圖譜驗證", "en/validation-story-graph"),
+  guide("故事提案驗證", "en/validation-story-plan"),
+  guide("Pipeline 編排驗證", "en/validation-pipeline-orchestration"),
+  guide("Pipeline 工作台驗證", "en/validation-pipeline-workbench"),
   guide(
     "故事圖譜與管線全流程驗收",
     "en/validation-story-graph-pipeline-acceptance",
@@ -118,6 +118,7 @@ const validation = keepExisting([
 ]);
 
 const englishGettingStarted = keepExisting([
+  guide("Install and get started", "en/getting-started"),
   guide("Film-making workflow", "en/product-workflow"),
   guide("Collect Media packages", "en/collect-media"),
   guide("Project format", "en/project-format"),
@@ -125,6 +126,7 @@ const englishGettingStarted = keepExisting([
   guide("Camera sources and preview limits", "en/source-support"),
 ]);
 const japaneseGettingStarted = keepExisting([
+  guide("導入と使い始め方", "ja/getting-started"),
   guide("映画制作の流れ", "ja/product-workflow"),
   guide("Collect Media パッケージ", "ja/collect-media"),
   guide("プロジェクト形式", "ja/project-format"),
@@ -132,23 +134,45 @@ const japaneseGettingStarted = keepExisting([
   guide("カメラソースとプレビュー", "ja/source-support"),
 ]);
 const englishAdditionalDocs = keepExisting([
-  guide("Story Graph & perspectives", "en/validation-story-graph"),
-  guide("Storyboard proposal", "en/validation-story-plan"),
-  guide("Pipeline orchestration", "en/validation-pipeline-orchestration"),
-  guide("Pipeline workbench", "en/validation-pipeline-workbench"),
-  guide("Change impact & incremental runs", "en/validation-change-impact"),
-  guide("Creative variants & A/B review", "en/validation-creative-variants"),
-  guide(
-    "Story Graph × Pipeline acceptance",
-    "en/validation-story-graph-pipeline-acceptance",
-  ),
   guide("Creative story templates", "en/creative-story-templates"),
   guide("Local data-only presets", "en/local-presets"),
   guide("Precision editing", "en/precision-editing"),
   guide("Source markers and snapping", "en/markers-and-snapping"),
+  guide("Film looks", "en/film-looks"),
+  guide("PhotoDepth", "en/photo-depth"),
+  guide("Native text controls", "en/native-text-controls"),
+  guide("Captions", "en/composition-captions"),
+  guide("Transcript editing", "en/transcript-editing"),
+  guide("Review suggestions", "en/review-suggestions"),
+  guide("Named versions", "en/named-versions"),
   guide("Audio quality", "en/audio-quality"),
   guide("Independent sound timing", "en/audio-policy"),
   guide("MP4 compression quality", "en/export-quality"),
+]);
+const englishValidation = keepExisting([
+  guide("Stable release validation", "en/validation-stable-release"),
+  guide("Story Graph validation", "en/validation-story-graph"),
+  guide("Story proposal validation", "en/validation-story-plan"),
+  guide(
+    "Pipeline orchestration validation",
+    "en/validation-pipeline-orchestration",
+  ),
+  guide("Pipeline workbench validation", "en/validation-pipeline-workbench"),
+  guide(
+    "Story Graph × Pipeline acceptance",
+    "en/validation-story-graph-pipeline-acceptance",
+  ),
+  guide("Change impact validation", "en/validation-change-impact"),
+  guide("Creative variants validation", "en/validation-creative-variants"),
+  guide("Visual QA validation", "en/validation-visual-qa"),
+  guide("Export profiles validation", "en/validation-export-profiles"),
+  guide("PhotoDepth validation", "en/validation-photo-depth"),
+  guide("Film looks validation", "en/validation-film-looks"),
+  guide("Local presets validation", "en/validation-local-presets"),
+  guide("Audio quality validation", "en/validation-audio-quality"),
+  guide("Media recovery validation", "en/validation-media-analysis-recovery"),
+  guide("NLE handoff validation", "en/validation-nle-handoff"),
+  guide("Workstation QA", "en/workstation-qa"),
 ]);
 const japaneseEditing = keepExisting([
   guide("クリエイティブストーリーテンプレート", "ja/creative-story-templates"),
@@ -171,25 +195,34 @@ const englishReference = keepExisting([
   guide("Licensing", "en/licensing"),
 ]);
 
-const listedDocumentation = new Set(
-  [
+const listedDocumentation = {
+  "zh-TW": [
     ...gettingStarted,
     ...editing,
     ...exportDocs,
     ...intelligence,
     ...concepts,
     ...validation,
+  ],
+  "en-US": [
     ...englishGettingStarted,
-    ...japaneseGettingStarted,
     ...englishAdditionalDocs,
+    ...englishReference,
+    ...englishValidation,
+  ],
+  "ja-JP": [
+    ...japaneseGettingStarted,
     ...japaneseEditing,
     ...japaneseExportDocs,
     ...englishReference,
-  ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\//, "")),
-);
+    ...englishValidation,
+    guide("国際化", "ja/i18n"),
+  ],
+};
 const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
 const localizedSlugs = new Set([
   "index.md",
+  "getting-started.md",
   "product-workflow.md",
   "collect-media.md",
   "project-format.md",
@@ -258,6 +291,11 @@ const contractFileNames = new Set([
   "relink_contracts.md",
 ]);
 const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
+  const listed = new Set(
+    listedDocumentation[locale].map(({ link }) =>
+      link.slice(1).replace(/^(?:en|ja)\//, ""),
+    ),
+  );
   const grouped = new Map<string, ReturnType<typeof guide>[]>();
   const collect = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
@@ -285,7 +323,7 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
         continue;
       }
       const slug = relativePath.replace(/\.md$/, "");
-      if (listedDocumentation.has(slug)) continue;
+      if (listed.has(slug)) continue;
       const directorySection = relativePath.includes("/")
         ? relativePath.split("/")[0]
         : "root";
@@ -345,7 +383,7 @@ export default defineConfig({
         "Official OpenFilm documentation for the story-first, local-first media editor.",
       themeConfig: {
         nav: [
-          { text: "English technical docs", link: "/en/product-workflow" },
+          { text: "Get started", link: "/en/getting-started" },
           {
             text: "GitHub",
             link: "https://github.com/bynanci/open-film",
@@ -357,6 +395,7 @@ export default defineConfig({
           group("Getting started", englishGettingStarted, false),
           group("Editing and export", englishAdditionalDocs),
           group("Technical references", englishReference),
+          group("Validation records", englishValidation),
           ...englishFallbackGroups("en-US"),
         ],
         outline: { label: "On this page", level: [2, 3] },
@@ -383,7 +422,7 @@ export default defineConfig({
         "ストーリー重視、ローカルファーストのメディアエディター OpenFilm の公式ドキュメント。",
       themeConfig: {
         nav: [
-          { text: "ドキュメント", link: "/ja/product-workflow" },
+          { text: "スタートガイド", link: "/ja/getting-started" },
           {
             text: "GitHub",
             link: "https://github.com/bynanci/open-film",
@@ -397,6 +436,7 @@ export default defineConfig({
           group("書き出し", japaneseExportDocs),
           group("言語と翻訳", keepExisting([guide("国際化", "ja/i18n")])),
           group("その他の技術資料", englishReference),
+          group("検証記録", englishValidation),
           ...englishFallbackGroups("ja-JP"),
         ],
         outline: { label: "このページの内容", level: [2, 3] },
@@ -425,7 +465,7 @@ export default defineConfig({
     siteTitle: "OpenFilm",
     i18nRouting: false,
     nav: [
-      { text: "文件", link: "/product-workflow" },
+      { text: "開始使用", link: "/getting-started" },
       {
         text: "GitHub",
         link: "https://github.com/bynanci/open-film",

@@ -1,47 +1,48 @@
 name: Feature request
-description: Explain a user problem and the outcome that would help.
+description: Describe a task you want to complete and the improvement that would help.
 title: "[Feature]: "
 body:
   - type: markdown
     attributes:
-      value: >
-        Describe the problem and constraints first. OpenFilm prioritizes local
-        ownership, explicit review and non-destructive editing.
-  - type: dropdown
-    id: language
-    attributes:
-      label: Preferred language
-      options:
-        - English
-        - 繁體中文
-        - 日本語
-        - Other
-    validations:
-      required: true
+      value: |
+        English, 繁體中文, and 日本語 are welcome.
+        Start with the user problem; an implementation plan is optional.
+        OpenFilm focuses on local ownership, reviewable decisions, and non-destructive editing.
+        For usage questions, see [Support](https://github.com/bynanci/open-film/blob/main/SUPPORT.md).
+        Please keep private media and personal information out of this public form.
   - type: textarea
     id: problem
     attributes:
-      label: User problem
-      description: What task is difficult today, and who encounters it?
+      label: What task is difficult today?
+      description: Who encounters this problem, when does it happen, and what makes it difficult?
+      placeholder: "When I try to ... I have to ... This makes it difficult to ..."
     validations:
       required: true
   - type: textarea
     id: outcome
     attributes:
-      label: Desired outcome
-      description: Describe observable behavior without prescribing an implementation.
+      label: What would a useful result look like?
+      description: Describe what someone should be able to do and how they could tell it works.
     validations:
       required: true
   - type: textarea
-    id: constraints
+    id: alternatives
     attributes:
-      label: Constraints and trade-offs
-      description: Include offline use, privacy, media ownership, compatibility or accessibility needs.
+      label: Current workaround or related features
+      description: Optional. How do you handle this now? Link existing issues or features you have checked.
     validations:
       required: false
   - type: textarea
-    id: alternatives
+    id: context
     attributes:
-      label: Current workaround or alternatives
+      label: Environment and constraints
+      description: Optional. Include relevant platform, media format, offline use, privacy, compatibility, or accessibility needs. Do not attach private projects or media.
+    validations:
+      required: false
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Possible approach
+      description: Optional. Share a sketch or idea if you have one; you do not need a technical design to make a request.
     validations:
       required: false
