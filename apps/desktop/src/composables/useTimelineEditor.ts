@@ -176,6 +176,19 @@ export function useTimelineEditor(
     for (const command of commands) {
       if ("clipId" in command && command.type !== "lock")
         ids.add(command.clipId);
+      if (command.type === "roll") {
+        ids.add(command.clipIdA);
+        ids.add(command.clipIdB);
+      }
+      if (command.type === "batch") {
+        for (const sub of command.commands) {
+          if ("clipId" in sub && sub.type !== "lock") ids.add(sub.clipId);
+          if (sub.type === "roll") {
+            ids.add(sub.clipIdA);
+            ids.add(sub.clipIdB);
+          }
+        }
+      }
       if (command.type === "graphic.scene.upsert") scenes.add(command.scene.id);
       if (command.type === "graphic.scene.remove") scenes.add(command.sceneId);
       if (

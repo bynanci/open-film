@@ -154,6 +154,47 @@ export type TimelineCommand =
       type: "rhythm.snap";
       proposal: RhythmSnapProposal;
     }
+  | {
+      type: "roll";
+      clipIdA: string;
+      clipIdB: string;
+      delta: number;
+    }
+  | {
+      type: "slip";
+      clipId: string;
+      delta: number;
+    }
+  | {
+      type: "slide";
+      clipId: string;
+      delta: number;
+    }
+  | {
+      type: "insert";
+      assetId: string;
+      timelineStart: number;
+      sourceIn?: number;
+      sourceOut?: number;
+      trackId?: string;
+    }
+  | {
+      type: "overwrite";
+      assetId: string;
+      timelineStart: number;
+      sourceIn?: number;
+      sourceOut?: number;
+      trackId?: string;
+    }
+  | {
+      type: "lift";
+      clipId: string;
+    }
+  | {
+      type: "batch";
+      commands: readonly TimelineCommand[];
+      transactionId?: string;
+    }
   | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
   | { type: "audio.move"; clipId: string; timelineStart: number }
   | { type: "trim"; clipId: string; sourceIn: number; sourceOut: number }
@@ -1157,9 +1198,21 @@ function applyTimelineCommandInternal(
   }
   const constrained =
     pinned &&
-    ["trim", "speed", "duration", "delete", "replace", "reorder"].includes(
-      command.type,
-    );
+    [
+      "trim",
+      "speed",
+      "duration",
+      "delete",
+      "replace",
+      "reorder",
+      "roll",
+      "slip",
+      "slide",
+      "insert",
+      "overwrite",
+      "lift",
+      "batch",
+    ].includes(command.type);
   // Raw ripple is only a proposal. Reconcile saved overlays after restoring
   // the complete anchored cut, where its actual final duration is known.
   let next = command.type.startsWith("user-pin.")
@@ -1527,6 +1580,340 @@ function applyTimelineCommandRaw(
       );
     }
     fail(`Unsupported rhythm snap targetEdge: "${proposal.targetEdge}".`);
+  }
+  if (command.type === "batch") {
+    let current = next;
+    for (const sub of command.commands) {
+      current = applyTimelineCommandRaw(
+        current,
+        assets,
+        sub,
+        deferred,
+        reconcileOverlays,
+      );
+    }
+    return current;
+  }
+  if (command.type === "roll") {
+    finite(command.delta, "Roll delta", -Infinity);
+    if (Math.abs(command.delta) <= EPSILON) return next;
+    const { clip: clipA, track: trackA } = findClip(next, command.clipIdA);
+    const { clip: clipB, track: trackB } = findClip(next, command.clipIdB);
+    if (trackA !== trackB)
+      fail("Roll edit requires both clips to be on the same track.");
+    const indexA = trackA.clips.indexOf(clipA);
+    const indexB = trackA.clips.indexOf(clipB);
+    if (
+      indexB !== indexA + 1 ||
+      Math.abs(
+        clipA.timelineStart + clipA.timelineDuration - clipB.timelineStart,
+      ) > EPSILON
+    )
+      fail("Roll edit requires adjacent clips on the same track.");
+    if (clipA.locked) fail(`Cannot roll edit: clip "${clipA.id}" is locked.`);
+    if (clipB.locked) fail(`Cannot roll edit: clip "${clipB.id}" is locked.`);
+    const assetA = findAsset(assets, clipA.assetId);
+    const assetB = findAsset(assets, clipB.assetId);
+    if (assetA.state.locked)
+      fail(`Source "${assetA.name}" is locked. Unlock it before roll editing.`);
+    if (assetB.state.locked)
+      fail(`Source "${assetB.name}" is locked. Unlock it before roll editing.`);
+    const speedA = clipA.transform?.speed ?? 1;
+    const speedB = clipB.transform?.speed ?? 1;
+    const newDurationA = clipA.timelineDuration + command.delta;
+    const newDurationB = clipB.timelineDuration - command.delta;
+    if (newDurationA < EPSILON)
+      fail(
+        "Roll edit cannot shorten the outgoing clip to zero or negative duration.",
+      );
+    if (newDurationB < EPSILON)
+      fail(
+        "Roll edit cannot shorten the incoming clip to zero or negative duration.",
+      );
+    const boundsA = sourceBounds(clipA, assetA);
+    const newSourceOutA = boundsA.sourceOut + command.delta * speedA;
+    if (newSourceOutA > sourceDuration(assetA) + EPSILON)
+      fail(`Roll edit exceeds available duration of source "${assetA.name}".`);
+    if (newSourceOutA <= boundsA.sourceIn + EPSILON)
+      fail("Roll edit cannot shorten source duration to zero.");
+    const boundsB = sourceBounds(clipB, assetB);
+    const newSourceInB = boundsB.sourceIn + command.delta * speedB;
+    if (newSourceInB < -EPSILON)
+      fail(`Roll edit exceeds start of source "${assetB.name}".`);
+    if (newSourceInB >= boundsB.sourceOut - EPSILON)
+      fail("Roll edit cannot shorten source duration to zero.");
+
+    clipA.timelineDuration = newDurationA;
+    clipA.sourceOut = newSourceOutA;
+    constrainAudioAutomation(clipA, newDurationA);
+
+    clipB.timelineStart += command.delta;
+    clipB.timelineDuration = newDurationB;
+    clipB.sourceIn = Math.max(0, newSourceInB);
+    constrainAudioAutomation(clipB, newDurationB);
+
+    return next;
+  }
+  if (command.type === "insert") {
+    const asset = findAsset(assets, command.assetId);
+    if (asset.state.locked)
+      fail(`Source "${asset.name}" is locked. Unlock it before inserting.`);
+    if (asset.state.rejected || !renderable(asset))
+      fail(`Source "${asset.name}" must be supported and non-rejected.`);
+    finite(command.timelineStart, "Insert timeline start", 0);
+    const speed = 1;
+    const sourceIn = command.sourceIn ?? 0;
+    const sourceOut =
+      command.sourceOut ??
+      (asset.mediaType === "image" ? 4 : sourceDuration(asset));
+    finite(sourceIn, "Source in", 0);
+    finite(sourceOut, "Source out", sourceIn, true);
+    if (sourceOut > sourceDuration(asset) + EPSILON)
+      fail(`Source out exceeds duration of "${asset.name}".`);
+    const duration = (sourceOut - sourceIn) / speed;
+    finite(duration, "Insert duration", 0, true);
+
+    let track = command.trackId
+      ? next.composition.tracks.find((t) => t.id === command.trackId)
+      : undefined;
+    if (!track) {
+      const preferredType = asset.mediaType === "audio" ? "audio" : "video";
+      track =
+        next.composition.tracks.find((t) => t.type === preferredType) ??
+        next.composition.tracks[0];
+    }
+    if (!track) fail("Composition has no tracks to insert media into.");
+
+    const ids = new Set(allClips(next).map((c) => c.id));
+    let newId = `${asset.id}-insert-1`;
+    let counter = 1;
+    while (ids.has(newId)) newId = `${asset.id}-insert-${++counter}`;
+
+    const newClip: Clip = {
+      id: newId,
+      assetId: asset.id,
+      sourceIn,
+      sourceOut,
+      timelineStart: command.timelineStart,
+      timelineDuration: duration,
+    };
+
+    const targetClip = track.clips.find(
+      (c) =>
+        c.timelineStart < command.timelineStart - EPSILON &&
+        c.timelineStart + c.timelineDuration > command.timelineStart + EPSILON,
+    );
+
+    let rightClip: Clip | undefined;
+    if (targetClip) {
+      if (targetClip.locked)
+        fail(
+          `Cannot insert: clip "${targetClip.id}" at insert position is locked.`,
+        );
+      const targetSpeed = targetClip.transform?.speed ?? 1;
+      const leftDuration = command.timelineStart - targetClip.timelineStart;
+      const rightDuration = targetClip.timelineDuration - leftDuration;
+      const originalSourceIn = targetClip.sourceIn ?? 0;
+      const originalSourceOut =
+        targetClip.sourceOut ??
+        originalSourceIn + targetClip.timelineDuration * targetSpeed;
+      const splitSourceTime = originalSourceIn + leftDuration * targetSpeed;
+
+      let rightId = `${targetClip.id}-split-1`;
+      let splitCounter = 1;
+      while (ids.has(rightId))
+        rightId = `${targetClip.id}-split-${++splitCounter}`;
+
+      rightClip = {
+        ...structuredClone(targetClip),
+        id: rightId,
+        sourceIn: splitSourceTime,
+        sourceOut: originalSourceOut,
+        timelineStart: command.timelineStart + duration,
+        timelineDuration: rightDuration,
+      };
+      delete rightClip.transition;
+
+      targetClip.sourceOut = splitSourceTime;
+      targetClip.timelineDuration = leftDuration;
+      constrainAudioAutomation(targetClip, leftDuration);
+    }
+
+    // Ripple all downstream clips
+    for (const other of filmClips(next)) {
+      if (
+        other.timelineStart >= command.timelineStart - EPSILON &&
+        (!targetClip || other.id !== targetClip.id)
+      ) {
+        other.timelineStart += duration;
+      }
+    }
+
+    if (targetClip) {
+      track.clips.push(newClip, rightClip!);
+    } else {
+      track.clips.push(newClip);
+    }
+
+    track.clips.sort((a, b) => a.timelineStart - b.timelineStart);
+    updateDuration(next, assets, reconcileOverlays);
+    return next;
+  }
+  if (command.type === "overwrite") {
+    const asset = findAsset(assets, command.assetId);
+    if (asset.state.locked)
+      fail(`Source "${asset.name}" is locked. Unlock it before overwriting.`);
+    if (asset.state.rejected || !renderable(asset))
+      fail(`Source "${asset.name}" must be supported and non-rejected.`);
+    finite(command.timelineStart, "Overwrite timeline start", 0);
+    const speed = 1;
+    const sourceIn = command.sourceIn ?? 0;
+    const sourceOut =
+      command.sourceOut ??
+      (asset.mediaType === "image" ? 4 : sourceDuration(asset));
+    finite(sourceIn, "Source in", 0);
+    finite(sourceOut, "Source out", sourceIn, true);
+    if (sourceOut > sourceDuration(asset) + EPSILON)
+      fail(`Source out exceeds duration of "${asset.name}".`);
+    const duration = (sourceOut - sourceIn) / speed;
+    finite(duration, "Overwrite duration", 0, true);
+
+    let track = command.trackId
+      ? next.composition.tracks.find((t) => t.id === command.trackId)
+      : undefined;
+    if (!track) {
+      const preferredType = asset.mediaType === "audio" ? "audio" : "video";
+      track =
+        next.composition.tracks.find((t) => t.type === preferredType) ??
+        next.composition.tracks[0];
+    }
+    if (!track) fail("Composition has no tracks to overwrite media onto.");
+
+    const overwriteStart = command.timelineStart;
+    const overwriteEnd = overwriteStart + duration;
+
+    // Validate that no overlapping clips are locked
+    for (const existing of track.clips) {
+      const existStart = existing.timelineStart;
+      const existEnd = existStart + existing.timelineDuration;
+      const overlaps = !(
+        existEnd <= overwriteStart + EPSILON ||
+        existStart >= overwriteEnd - EPSILON
+      );
+      if (overlaps && existing.locked) {
+        fail(
+          `Cannot overwrite: clip "${existing.id}" in the overwrite region is locked.`,
+        );
+      }
+    }
+
+    const ids = new Set(allClips(next).map((c) => c.id));
+    let newId = `${asset.id}-overwrite-1`;
+    let counter = 1;
+    while (ids.has(newId)) newId = `${asset.id}-overwrite-${++counter}`;
+
+    const newClip: Clip = {
+      id: newId,
+      assetId: asset.id,
+      sourceIn,
+      sourceOut,
+      timelineStart: overwriteStart,
+      timelineDuration: duration,
+    };
+
+    const remainingClips: Clip[] = [];
+    for (const existing of track.clips) {
+      const existStart = existing.timelineStart;
+      const existEnd = existStart + existing.timelineDuration;
+      const overlaps = !(
+        existEnd <= overwriteStart + EPSILON ||
+        existStart >= overwriteEnd - EPSILON
+      );
+      if (!overlaps) {
+        remainingClips.push(existing);
+        continue;
+      }
+      const existingSpeed = existing.transform?.speed ?? 1;
+      const existingSourceIn = existing.sourceIn ?? 0;
+      const existingSourceOut =
+        existing.sourceOut ??
+        existingSourceIn + existing.timelineDuration * existingSpeed;
+
+      // Case A: completely engulfed -> discarded
+      if (
+        existStart >= overwriteStart - EPSILON &&
+        existEnd <= overwriteEnd + EPSILON
+      ) {
+        continue;
+      }
+      // Case B: punch hole in middle -> split into left and right
+      if (
+        existStart < overwriteStart - EPSILON &&
+        existEnd > overwriteEnd + EPSILON
+      ) {
+        const leftDuration = overwriteStart - existStart;
+        const leftSourceOut = existingSourceIn + leftDuration * existingSpeed;
+        existing.sourceOut = leftSourceOut;
+        existing.timelineDuration = leftDuration;
+        constrainAudioAutomation(existing, leftDuration);
+        remainingClips.push(existing);
+
+        let rightId = `${existing.id}-split-1`;
+        let splitCounter = 1;
+        while (ids.has(rightId))
+          rightId = `${existing.id}-split-${++splitCounter}`;
+        const rightDuration = existEnd - overwriteEnd;
+        const rightSourceIn =
+          existingSourceIn + (overwriteEnd - existStart) * existingSpeed;
+        const rightClip: Clip = {
+          ...structuredClone(existing),
+          id: rightId,
+          sourceIn: rightSourceIn,
+          sourceOut: existingSourceOut,
+          timelineStart: overwriteEnd,
+          timelineDuration: rightDuration,
+        };
+        delete rightClip.transition;
+        constrainAudioAutomation(rightClip, rightDuration);
+        remainingClips.push(rightClip);
+        continue;
+      }
+      // Case C: overlaps right side of existing (trim end)
+      if (
+        existStart < overwriteStart - EPSILON &&
+        existEnd <= overwriteEnd + EPSILON
+      ) {
+        const leftDuration = overwriteStart - existStart;
+        const leftSourceOut = existingSourceIn + leftDuration * existingSpeed;
+        existing.sourceOut = leftSourceOut;
+        existing.timelineDuration = leftDuration;
+        constrainAudioAutomation(existing, leftDuration);
+        remainingClips.push(existing);
+        continue;
+      }
+      // Case D: overlaps left side of existing (trim start)
+      if (
+        existStart >= overwriteStart - EPSILON &&
+        existEnd > overwriteEnd + EPSILON
+      ) {
+        const shiftDuration = overwriteEnd - existStart;
+        const rightDuration = existing.timelineDuration - shiftDuration;
+        const rightSourceIn = existingSourceIn + shiftDuration * existingSpeed;
+        existing.sourceIn = rightSourceIn;
+        existing.timelineStart = overwriteEnd;
+        existing.timelineDuration = rightDuration;
+        delete existing.transition;
+        constrainAudioAutomation(existing, rightDuration);
+        remainingClips.push(existing);
+        continue;
+      }
+    }
+
+    remainingClips.push(newClip);
+    remainingClips.sort((a, b) => a.timelineStart - b.timelineStart);
+    track.clips = remainingClips;
+    updateDuration(next, assets, reconcileOverlays);
+    return next;
   }
   const { clip, track } = findClip(next, command.clipId);
   if (command.type === "lock") {
@@ -2017,6 +2404,149 @@ function applyTimelineCommandRaw(
           ),
         ];
       }
+      break;
+    }
+    case "slip": {
+      finite(command.delta, "Slip delta", -Infinity);
+      if (Math.abs(command.delta) <= EPSILON) break;
+      if (asset.state.locked)
+        fail(
+          `Source "${asset.name}" is locked. Unlock it before slip editing.`,
+        );
+      const speed = clip.transform?.speed ?? 1;
+      const sourceDelta = command.delta * speed;
+      const { sourceIn, sourceOut } = sourceBounds(clip, asset);
+      const newSourceIn = sourceIn + sourceDelta;
+      const newSourceOut = sourceOut + sourceDelta;
+      if (newSourceIn < -EPSILON)
+        fail(`Cannot slip past the start of source "${asset.name}".`);
+      if (newSourceOut > sourceDuration(asset) + EPSILON)
+        fail(`Cannot slip past the end of source "${asset.name}".`);
+      clip.sourceIn = Math.max(0, newSourceIn);
+      clip.sourceOut = Math.min(sourceDuration(asset), newSourceOut);
+      break;
+    }
+    case "slide": {
+      finite(command.delta, "Slide delta", -Infinity);
+      if (Math.abs(command.delta) <= EPSILON) break;
+      if (asset.state.locked)
+        fail(
+          `Source "${asset.name}" is locked. Unlock it before slide editing.`,
+        );
+      const index = track.clips.indexOf(clip);
+      const prev = index > 0 ? track.clips[index - 1] : undefined;
+      const nextClip =
+        index < track.clips.length - 1 ? track.clips[index + 1] : undefined;
+      const prevAdjacent = prev
+        ? Math.abs(
+            prev.timelineStart + prev.timelineDuration - clip.timelineStart,
+          ) <= EPSILON
+        : false;
+      const nextAdjacent = nextClip
+        ? Math.abs(
+            clip.timelineStart + clip.timelineDuration - nextClip.timelineStart,
+          ) <= EPSILON
+        : false;
+      if (!prevAdjacent && !nextAdjacent)
+        fail(
+          "Slide edit requires at least one adjacent neighbour on the track.",
+        );
+
+      let newDurationPrev: number | undefined;
+      let newSourceOutPrev: number | undefined;
+      let newDurationNext: number | undefined;
+      let newSourceInNext: number | undefined;
+
+      if (prevAdjacent && prev) {
+        if (prev.locked)
+          fail(`Cannot slide edit: preceding clip "${prev.id}" is locked.`);
+        const assetPrev = findAsset(assets, prev.assetId);
+        if (assetPrev.state.locked)
+          fail(
+            `Source "${assetPrev.name}" is locked. Unlock it before slide editing.`,
+          );
+        const speedPrev = prev.transform?.speed ?? 1;
+        newDurationPrev = prev.timelineDuration + command.delta;
+        if (newDurationPrev < EPSILON)
+          fail(
+            "Slide edit cannot shorten preceding clip to zero or negative duration.",
+          );
+        const boundsPrev = sourceBounds(prev, assetPrev);
+        newSourceOutPrev = boundsPrev.sourceOut + command.delta * speedPrev;
+        if (newSourceOutPrev > sourceDuration(assetPrev) + EPSILON)
+          fail(
+            `Slide edit exceeds available duration of source "${assetPrev.name}".`,
+          );
+        if (newSourceOutPrev <= boundsPrev.sourceIn + EPSILON)
+          fail("Slide edit cannot shorten preceding source to zero duration.");
+      }
+      if (nextAdjacent && nextClip) {
+        if (nextClip.locked)
+          fail(`Cannot slide edit: following clip "${nextClip.id}" is locked.`);
+        const assetNext = findAsset(assets, nextClip.assetId);
+        if (assetNext.state.locked)
+          fail(
+            `Source "${assetNext.name}" is locked. Unlock it before slide editing.`,
+          );
+        const speedNext = nextClip.transform?.speed ?? 1;
+        newDurationNext = nextClip.timelineDuration - command.delta;
+        if (newDurationNext < EPSILON)
+          fail(
+            "Slide edit cannot shorten following clip to zero or negative duration.",
+          );
+        const boundsNext = sourceBounds(nextClip, assetNext);
+        newSourceInNext = boundsNext.sourceIn + command.delta * speedNext;
+        if (newSourceInNext < -EPSILON)
+          fail(`Slide edit exceeds start of source "${assetNext.name}".`);
+        if (newSourceInNext >= boundsNext.sourceOut - EPSILON)
+          fail("Slide edit cannot shorten following source to zero duration.");
+      }
+
+      clip.timelineStart += command.delta;
+      if (
+        prevAdjacent &&
+        prev &&
+        newDurationPrev !== undefined &&
+        newSourceOutPrev !== undefined
+      ) {
+        prev.timelineDuration = newDurationPrev;
+        prev.sourceOut = newSourceOutPrev;
+        constrainAudioAutomation(prev, newDurationPrev);
+      }
+      if (
+        nextAdjacent &&
+        nextClip &&
+        newDurationNext !== undefined &&
+        newSourceInNext !== undefined
+      ) {
+        nextClip.timelineStart += command.delta;
+        nextClip.timelineDuration = newDurationNext;
+        nextClip.sourceIn = Math.max(0, newSourceInNext);
+        constrainAudioAutomation(nextClip, newDurationNext);
+      }
+      break;
+    }
+    case "lift": {
+      if (clip.locked)
+        fail(`Locked clip "${clip.id}" cannot be lifted. Unlock it first.`);
+      track.clips = track.clips.filter((item) => item.id !== clip.id);
+      if (next.composition.coverageAudioBindings) {
+        next.composition.coverageAudioBindings =
+          next.composition.coverageAudioBindings.filter(
+            (b) => b.primaryClipId !== clip.id && b.secondaryClipId !== clip.id,
+          );
+        if (!next.composition.coverageAudioBindings.length)
+          delete next.composition.coverageAudioBindings;
+      }
+      for (const t of next.composition.tracks) {
+        for (const other of t.clips) {
+          if (other.coverage?.primaryClipId === clip.id) {
+            delete other.coverage.primaryClipId;
+          }
+        }
+      }
+      // No ripple to downstream clips: leaves a gap.
+      updateDuration(next, assets, reconcileOverlays);
       break;
     }
     default:
