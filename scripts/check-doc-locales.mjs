@@ -52,6 +52,7 @@ for (const readme of readmes) {
 }
 
 const guideSlugs = [
+  "getting-started",
   "product-workflow",
   "collect-media",
   "project-format",
@@ -66,6 +67,7 @@ const guideSlugs = [
   "audio-policy",
 ];
 const localizedReferenceSlugs = [
+  "getting-started",
   "creative-story-templates",
   "precision-editing",
   "markers-and-snapping",

@@ -3,55 +3,64 @@ layout: home
 
 hero:
   name: OpenFilm
-  text: 把回憶剪成一部電影
-  tagline: 開源、離線優先的故事型媒體編輯器。從整理照片與影片，到規劃故事、剪輯和輸出，原始檔案始終保持不變。
+  text: 從素材到故事，再到影片
+  tagline: 開源、本機優先的媒體編輯器。整理照片、影片與錄音，規劃故事、剪輯並輸出，同時保留原始素材。
   actions:
     - theme: brand
-      text: 開始製作
+      text: 安裝與開始使用
+      link: /getting-started
+    - theme: alt
+      text: 製作第一部影片
       link: /product-workflow
     - theme: alt
-      text: 查看 GitHub
+      text: GitHub
       link: https://github.com/bynanci/open-film
 
 features:
-  - title: 素材留在本機
-    details: 專案與媒體在你的電腦上管理，不需要雲端帳號，也不會修改原始檔案。
-  - title: 先說故事，再剪輯
-    details: 先整理事件、選擇素材並安排節奏，再進入時間軸完成影片。
-  - title: 每一步都可檢視
-    details: AI 輔助與自動化結果都能先預覽、調整，再套用到作品。
-  - title: 開放格式與工具
-    details: 以可攜的專案資料與互通格式，保留工作流程的彈性。
+  - title: 本機優先
+    details: 基本製作流程不需要雲端帳號。專案與素材由本機管理；選用遠端服務前，須先設定服務並同意資料傳送。
+  - title: 從故事開始
+    details: 先整理時刻、選擇重要素材與安排段落，再建立可編輯的剪輯。
+  - title: 檢視後再採用
+    details: 預覽建議、確認變更並保留編輯控制權，原始照片、影片與錄音不會被改寫。
+  - title: 可攜的作品
+    details: 輸出可播放的 MP4，或以支援的交換格式與媒體套件，接續其他工具的製作流程。
 ---
 
-## 開始使用
+## 目前可用的版本
 
-從[製作流程](/product-workflow)了解如何建立專案、匯入素材、整理故事、剪輯與輸出。再依照需求查看[媒體搬移與重新連結](/media-portability)、[相機來源支援](/source-support)及[專案格式](/project-format)。
+最新已發布的穩定版本是 **v0.4.0**；`main` 是尚未發布的開發版本，本網站也包含這些新功能的說明。目前尚未提供可散布的原生桌面安裝程式，請依[開始使用](getting-started.md)從原始碼啟動。發行差異請看 [GitHub Releases](https://github.com/bynanci/open-film/releases)，後續方向請看 [Roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)。
 
-## 文件分類
+## 選擇你的起點
 
-### 使用流程與剪輯指南
+| 你想做的事            | 從這裡開始                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 在電腦上啟動 OpenFilm | [環境需求、啟動與第一部影片](getting-started.md)                                                                                                              |
+| 完成一部影片          | [加入素材 → 整理 → 故事 → 剪輯 → 輸出](product-workflow.md)                                                                                                   |
+| 確認素材能否使用      | [相機與來源支援](source-support.md)                                                                                                                           |
+| 移動專案或找回素材    | [媒體搬移與重新連結](media-portability.md)、[Collect Media 套件](collect-media.md)                                                                            |
+| 修正問題或參與開發    | [支援方式](https://github.com/bynanci/open-film/blob/main/SUPPORT.zh-TW.md)、[貢獻指南](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.zh-TW.md) |
 
-[故事模板](/creative-story-templates)、[精準剪輯](/precision-editing)、[標記與吸附](/markers-and-snapping)、[字幕](/en/composition-captions)、[音訊品質](/audio-quality)、[序列波形](/en/sequence-waveforms)和[視覺品質檢查](/en/validation-visual-qa)說明功能行為、適用條件與限制。
+## 使用指南
 
-### 匯出與素材可攜
+### 故事與剪輯
 
-[輸出品質](/export-quality)、[Collect Media 套件](/collect-media)、[OpenTimelineIO/NLE 相容性](/en/nle-compatibility)及[Resolve 工作站 QA](/en/resolve-workstation-qa)涵蓋輸出格式、媒體搬移與外部剪輯軟體的驗證邊界。
+[故事模板](creative-story-templates.md)、[精準剪輯](precision-editing.md)、[標記與吸附](markers-and-snapping.md)、[音訊品質](audio-quality.md)與[獨立聲音時間](audio-policy.md)說明實際操作與適用限制。進一步可閱讀[字幕](en/composition-captions.md)、[逐字稿編輯](en/transcript-editing.md)、[本機預設](en/local-presets.md)與[命名版本](en/named-versions.md)。
 
-### 架構、格式與整合契約
+### 輸出與接續製作
 
-閱讀[架構](/en/architecture)、[專案格式](/project-format)、[整合契約](/en/CONTRACTS)、[編輯契約](/en/EDITING_CONTRACTS)及[國際化](/i18n)。程式介面和技術契約目前以英文為主。
+從[輸出品質](export-quality.md)選擇 MP4 品質，利用[Collect Media](collect-media.md)整理可攜素材。需要進入其他剪輯器時，先閱讀 [NLE 交接指南](en/nle-handoff.md)及[相容性說明](en/nle-compatibility.md)；交換格式不保證每項效果都能保持可編輯。
 
-### Roadmap、決策與研究
+## 使用範圍與限制
 
-[目前 roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)、[v1.0.0 就緒狀態](/en/roadmap/v1-readiness)、[工作項目清單](https://github.com/bynanci/open-film/blob/main/TASKS.md)、[架構決策紀錄](/en/adr/001-monorepo)與[研究索引](https://github.com/bynanci/open-film/tree/main/research)用來查閱方向、決策與尚待驗證的假設。研究和歷史計畫不代表已接受的功能承諾。
+OpenFilm 以單一使用者的本機工作站為設計範圍。基本匯入、故事整理、剪輯與輸出不依賴 AI；選用的本機模型需要額外設定，遠端供應商則需要明確啟用、資料同意與各自的服務費用。細節見[轉錄設定](en/transcription.md)與[語音生成](en/provider-generation.md)。
 
-### 發行與驗證紀錄
+相機格式、硬體效能和外部剪輯器的相容性各有條件。遇到功能不支援時，請先查對應指南；開發中的功能與未完成的發布條件列在 [v1.0.0 就緒狀態](en/roadmap/v1-readiness.md)。
 
-左側目錄將發行說明、架構決策、安全文件、參考流程與驗證紀錄分開列出。驗證頁保留當時的 commit、平台、工具版本、命令、結果及未通過的人工 gate；[目前狀態以 roadmap 和 task 清單為準](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)。
+## 開發、證據與社群
 
-## 文件語言與貢獻
+程式碼採 [Apache-2.0 授權](https://github.com/bynanci/open-film/blob/main/LICENSE)。從[架構](en/architecture.md)、[專案格式](project-format.md)與[整合契約](en/CONTRACTS.md)了解設計；開發環境、檢查命令及提交方式集中在[貢獻指南](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.zh-TW.md)。
 
-網站提供繁體中文、英文與日文。主要使用指南有三語保存版本；架構契約、roadmap、release 與驗證證據目前多以英文維護。翻譯以 Git 中的 Markdown 為準，不使用瀏覽器即時翻譯。新增或修改翻譯時，請保留命令、路徑、識別碼、量測值及證據連結，並遵循[文件語言政策](/i18n)。
+Roadmap、研究與驗證紀錄各自保存方向、假設和執行證據。側欄的「驗證紀錄」包含當時的平台、commit、測試結果及待完成的人工檢查，供查核與重現使用。
 
-歡迎透過 [GitHub](https://github.com/bynanci/open-film) 提交文件修正；貢獻流程與回報方式列在[貢獻指南](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md)。
+主要使用指南提供繁體中文、英文與日文的保存版本。部分技術契約與歷史驗證紀錄目前以英文維護；翻譯規則見[文件語言政策](i18n.md)。歡迎回報錯誤、改善文件、補充翻譯或提交程式碼。回報時請使用可公開的重現素材，避免附上私人影片、原始路徑或憑證。

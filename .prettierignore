@@ -1,6 +1,5 @@
 pnpm-lock.yaml
 Cargo.lock
-docs/PROJECT_BRIEF.md
 coverage
 dist
 node_modules

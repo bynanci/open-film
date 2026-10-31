@@ -1,26 +1,27 @@
-## Summary
+## Problem and change
 
-<!-- Describe the user-visible change and why it is needed. -->
+<!-- What problem does this solve, and what will users or contributors see after the change?
+English, 繁體中文, and 日本語 are welcome. -->
 
-## Scope and related work
+## Scope
 
-- Related issue or roadmap item:
-- Affected package, workflow or document:
-- Compatibility, project-data or migration impact:
+<!-- List the affected workflow, package, or document. Link a related issue if there is one.
+Mention compatibility or project-format changes only when relevant. -->
 
-## Validation
+## Checks
 
-- [ ] Commands run and results are listed below.
-- [ ] Untested platform, media, accessibility or manual gates are stated.
-- [ ] User-facing documentation and available translations are updated.
-- [ ] Screenshots use generated or shareable media and contain no private data.
+<!-- List the commands you actually ran and their results. Explain any relevant check you could not run.
+Choose checks for this change; see CONTRIBUTING.md.
+Documentation-only changes do not need local media, native, or external-editor QA.
+For UI changes, a screenshot or short recording is helpful when it demonstrates the result. -->
 
-Commands and results:
+## Notes for reviewers
 
-<!-- Include exact commands, candidate commit/platform where relevant, and concise results. -->
+<!-- Optional: known limitations, follow-up work, or help needed with a test or translation.
+If this changes user behavior, link the updated guide and note any translations still needed.
+If this adds third-party code, media, fonts, or models, identify the license and attribution. -->
 
-## Privacy and licensing
-
+- [ ] I have removed credentials and private information from this PR and its attachments.
 - [ ] No credentials, private media, personal paths or GPS data are included.
 - [ ] New media, fonts, model files or other third-party material have reviewed license and attribution.
 

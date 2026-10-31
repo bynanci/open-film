@@ -3,55 +3,64 @@ layout: home
 
 hero:
   name: OpenFilm
-  text: Turn memories into a film
-  tagline: An open-source, offline-first, story-driven media editor. Organize photos and videos, shape a story, edit and export while keeping original files untouched.
+  text: From media to story to film
+  tagline: An open-source, local-first media editor. Organize photos, video and recordings, shape a story, edit and export while keeping your originals intact.
   actions:
     - theme: brand
-      text: Start making
+      text: Install and get started
+      link: /en/getting-started
+    - theme: alt
+      text: Make your first film
       link: /en/product-workflow
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/bynanci/open-film
 
 features:
-  - title: Your media stays local
-    details: Manage projects and media on your computer. No cloud account is required, and source files remain untouched.
-  - title: Story before timeline
-    details: Organize moments, choose media and shape the story before moving into the timeline.
-  - title: Review every step
-    details: Preview and adjust AI-assisted work before applying it to your film.
-  - title: Open formats and tools
-    details: Keep your workflow flexible with portable project data and interoperable formats.
+  - title: Local first
+    details: The basic workflow needs no cloud account. Projects and media are managed locally; optional remote services require configuration and consent before data is sent.
+  - title: Start with the story
+    details: Organize moments, select important media and arrange beats before creating an editable cut.
+  - title: Review before adopting
+    details: Preview suggestions, confirm changes and keep control of the edit. Original photos, videos and recordings are not rewritten.
+  - title: Portable work
+    details: Export a playable MP4, or use supported interchange formats and media packages to continue working in other tools.
 ---
 
-## Start here
+## Current availability
 
-Follow the [film-making workflow](/en/product-workflow) to create a project, import media, organize the story, edit and export. Then read about [media portability](/en/media-portability), [camera source support](/en/source-support) and the [project format](/en/project-format).
+The latest published stable release is **v0.4.0**. `main` is unreleased development, and this site also documents those newer features. A distributable native desktop installer is not available yet; follow [Getting started](getting-started.md) to run from source. See [GitHub Releases](https://github.com/bynanci/open-film/releases) for release differences and the [Roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md) for future direction.
 
-## Documentation map
+## Choose a starting point
 
-### User workflows and editing guides
+| What you want to do                   | Start here                                                                                                                                           |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run OpenFilm on your computer         | [Requirements, setup and a first film](getting-started.md)                                                                                           |
+| Complete a film                       | [Add media → Organize → Story → Edit → Export](product-workflow.md)                                                                                  |
+| Check whether your media is supported | [Camera sources and preview limits](source-support.md)                                                                                               |
+| Move a project or reconnect media     | [Media portability](media-portability.md), [Collect Media packages](collect-media.md)                                                                |
+| Get help or contribute                | [Support](https://github.com/bynanci/open-film/blob/main/SUPPORT.md), [Contributing](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md) |
 
-[Story templates](/en/creative-story-templates), [precision editing](/en/precision-editing), [markers and snapping](/en/markers-and-snapping), [captions](/en/composition-captions), [audio quality](/en/audio-quality), [sequence waveforms](/en/sequence-waveforms) and [Visual QA](/en/validation-visual-qa) describe behavior, prerequisites and known limits.
+## User guides
 
-### Export and media portability
+### Story and editing
 
-[Export quality](/en/export-quality), [Collect Media packages](/en/collect-media), [OpenTimelineIO/NLE compatibility](/en/nle-compatibility) and [Resolve workstation QA](/en/resolve-workstation-qa) cover output formats, moving media and the evidence required for external-editor claims.
+[Story templates](creative-story-templates.md), [precision editing](precision-editing.md), [markers and snapping](markers-and-snapping.md), [audio quality](audio-quality.md) and [independent sound timing](audio-policy.md) explain the controls and their limits. Continue with [captions](composition-captions.md), [transcript editing](transcript-editing.md), [local presets](local-presets.md) and [named versions](named-versions.md) when you need them.
 
-### Architecture, formats and integration contracts
+### Export and finishing
 
-Read [architecture](/en/architecture), [project format](/en/project-format), [integration contracts](/en/CONTRACTS), [editing contracts](/en/EDITING_CONTRACTS) and [internationalization](/en/i18n). Technical contracts and implementation references are maintained primarily in English.
+Use [export quality](export-quality.md) to choose MP4 settings and [Collect Media](collect-media.md) to prepare portable sources. Before moving to another editor, read the [NLE handoff guide](nle-handoff.md) and [compatibility guide](nle-compatibility.md). Interchange formats do not preserve every effect as an editable operation.
 
-### Roadmap, decisions and research
+## Scope and limits
 
-Use the [current roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md), [v1.0.0 readiness](/en/roadmap/v1-readiness), [task list](https://github.com/bynanci/open-film/blob/main/TASKS.md), [architecture decisions](/en/adr/001-monorepo) and [research index](https://github.com/bynanci/open-film/tree/main/research) to review direction, decisions and unverified hypotheses. Research and historical plans are not accepted feature commitments.
+OpenFilm is designed for one user's local workstation. Basic import, story organization, editing and export do not depend on AI. Optional local models need additional setup; remote providers require explicit activation, data consent and their own service charges. See [transcription setup](transcription.md) and [speech generation](provider-generation.md).
 
-### Release and validation records
+Camera formats, hardware performance and external-editor compatibility have specific requirements. Check the relevant guide when a feature is unavailable. Development work and remaining release conditions are listed in [v1.0.0 readiness](roadmap/v1-readiness.md).
 
-The sidebar groups release notes, architecture decisions, security documents, reference workflows and validation records separately. Validation pages preserve the commit, platform, tool versions, commands, results and open manual gates for that run. Use the [roadmap and task list for current status](https://github.com/bynanci/open-film/blob/main/ROADMAP.md).
+## Development, evidence and community
 
-## Languages and contributing
+The code is licensed under [Apache-2.0](https://github.com/bynanci/open-film/blob/main/LICENSE). Read [architecture](architecture.md), [project format](project-format.md) and [integration contracts](CONTRACTS.md) to understand the design. Development setup, checks and submission instructions live in [Contributing](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md).
 
-The site provides saved Traditional Chinese, English and Japanese Markdown pages. The main user guides have all three versions; architecture contracts, roadmaps, releases and validation evidence are currently maintained mostly in English. Git contains the translated files; pages are not translated at runtime. Keep commands, paths, identifiers, measurements and evidence links unchanged when translating. See the [documentation language policy](/en/i18n).
+Roadmaps, research and validation records preserve direction, hypotheses and execution evidence separately. The sidebar's validation section records the platform, commit, test results and outstanding manual checks for each run so that findings can be assessed and reproduced.
 
-Documentation fixes are welcome through [GitHub](https://github.com/bynanci/open-film). The contribution workflow and reporting guidance are in [Contributing](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md).
+The main user guides have saved Traditional Chinese, English and Japanese versions. Some technical documents and historical validation records are maintained in English; see the [documentation language policy](i18n.md). Bug reports, documentation improvements, translations and code contributions are welcome. Use shareable reproduction media and omit private films, original paths and credentials from reports.
