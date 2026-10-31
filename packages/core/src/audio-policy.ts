@@ -314,30 +314,28 @@ export function audioSourceEndSample(asset: MediaAsset): number {
           duration?: string | number;
           start_time?: string | number;
         }[];
-        format?: { start_time?: string | number };
+        format?: { start_time?: string | number; duration?: string | number };
       }
     | undefined;
   const stream = probe?.streams?.find(
     (stream) => stream.codec_type === "audio",
   );
+  const positive = (val: unknown): number | undefined => {
+    if (val === undefined || val === null || val === "N/A") return undefined;
+    const num = Number(val);
+    return Number.isFinite(num) && num > 0 ? num : undefined;
+  };
   const declared =
-    stream?.duration === undefined
-      ? asset.duration
-      : Number(stream.duration) +
-        Number(stream.start_time ?? probe?.format?.start_time ?? 0) -
-        Number(probe?.format?.start_time ?? 0);
-  if (
-    !hasAudioStream(asset) ||
-    declared === undefined ||
-    !Number.isFinite(declared) ||
-    declared <= 0
-  )
+    positive(stream?.duration) ??
+    positive(probe?.format?.duration) ??
+    positive(asset.duration);
+  if (!hasAudioStream(asset) || declared === undefined)
     fail(
       "audioTiming",
       "usable audio source duration is unavailable; inspect or relink the source",
     );
   return sample(
-    Math.floor(declared * AUDIO_SAMPLE_RATE + 1e-7),
+    Math.round(declared * AUDIO_SAMPLE_RATE),
     "audioTiming.sourceDuration",
   );
 }
@@ -369,11 +367,15 @@ export function resolveAudioInterval(
       speed,
       compositionDuration,
     );
-  if (timing.sourceOutSample > audioSourceEndSample(asset))
-    fail(
-      "audioTiming",
-      "requested sound handle exceeds available source audio",
-    );
+  const available = audioSourceEndSample(asset);
+  if (timing.sourceOutSample > available) {
+    if (timing.sourceOutSample - available > 1) {
+      fail(
+        "audioTiming",
+        "requested sound handle exceeds available source audio",
+      );
+    }
+  }
   return {
     clipId: clip.id,
     assetId: asset.id,

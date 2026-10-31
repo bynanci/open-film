@@ -122,18 +122,22 @@ export async function inspectCanonicalAudio(
   ];
   const microseconds = Number(ends.at(-1)?.[1]);
   let lengthSamples = Math.round((microseconds * 48000) / 1000000);
-  const rawDeclared =
-    stream.duration !== undefined && stream.duration !== "N/A"
-      ? stream.duration
-      : probe.format?.duration !== undefined && probe.format.duration !== "N/A"
-        ? probe.format.duration
-        : asset.duration;
-  const declaredSamples = Number.isFinite(Number(rawDeclared))
-    ? Math.round(Number(rawDeclared) * 48000)
-    : undefined;
+  const declaredCandidate = (val: unknown): number | undefined => {
+    if (val === undefined || val === null || val === "N/A") return undefined;
+    const num = Number(val);
+    return Number.isFinite(num) && num > 0 ? num : undefined;
+  };
+  const declaredSeconds =
+    declaredCandidate(stream.duration) ??
+    declaredCandidate(probe.format?.duration) ??
+    declaredCandidate(asset.duration);
+  const declaredSamples =
+    declaredSeconds !== undefined
+      ? Math.round(declaredSeconds * 48000)
+      : undefined;
   if (
     declaredSamples !== undefined &&
-    Math.abs(declaredSamples - lengthSamples) <= 2
+    Math.abs(declaredSamples - lengthSamples) <= 48
   ) {
     lengthSamples = declaredSamples;
   }
