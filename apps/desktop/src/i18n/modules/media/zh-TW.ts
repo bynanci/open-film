@@ -193,6 +193,8 @@ export default {
         volumeMute: "音量與靜音",
         transform: "縮放、旋轉與位置",
         crossfade: "交叉淡化",
+        "dip-to-black": "黑場過渡",
+        "dip-to-white": "白場過渡",
         titles: "標題與疊加畫面",
         look: "影片風格",
         primaryColor: "基礎色彩",
