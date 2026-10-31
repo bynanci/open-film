@@ -4,6 +4,7 @@ import {
   resolveAudioInterval,
   validateAudioAutomation,
   validateComposition,
+  validateCoverageAudioBindings,
   type Clip,
   type MediaAsset,
 } from "@openfilm/core";
@@ -56,12 +57,33 @@ export function validateAudioEdit(
     current = clips(after),
     byAsset = new Map(assets.map((a) => [a.id, a]));
   if (
-    ![...previous.values(), ...current.values()].some((c) => c.audioTiming) &&
-    !commands.some((c) => c.type === "audio.timing")
+    ![...previous.values(), ...current.values()].some(
+      (c) => c.audioTiming || c.coverage,
+    ) &&
+    !commands.some(
+      (c) =>
+        c.type === "audio.timing" ||
+        c.type === "coverage.set-clip" ||
+        c.type === "coverage.apply-proposal" ||
+        c.type === "coverage.set-bindings",
+    ) &&
+    !before.composition.coverageAudioBindings?.length &&
+    !after.composition.coverageAudioBindings?.length
   )
     return;
   if (!context.timebase)
     conflict("Independent sound requires the authoritative project clock.");
+  if (after.composition.coverageAudioBindings) {
+    try {
+      validateCoverageAudioBindings(after.composition.coverageAudioBindings);
+    } catch (error) {
+      conflict(
+        error instanceof Error
+          ? error.message
+          : "Coverage audio bindings are invalid.",
+      );
+    }
+  }
   const targeted = new Set(
     commands.flatMap((c) => ("clipId" in c ? [c.clipId] : [])),
   );

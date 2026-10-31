@@ -13,6 +13,7 @@ import {
 import { dirname, join } from "node:path";
 import {
   ApplicationError,
+  resolveCompositionCoverageBindings,
   resolveProjectTimebase,
   type Composition,
 } from "@openfilm/core";
@@ -349,9 +350,11 @@ export class RecordAudioPreviewService {
         projectIdentity = await lstat(join(this.app.directory, "project.json")),
         generation = this.app.projectGeneration,
         settings = JSON.stringify(this.app.project.settings),
+        timebase = resolveProjectTimebase(this.app.project.settings),
+        coverage = resolveCompositionCoverageBindings(composition, timebase),
         ids = audioSourceAssetIds(composition, state.assets, undefined, {
-          timebase: resolveProjectTimebase(this.app.project.settings),
-          coverage: [],
+          timebase,
+          coverage,
         }),
         sources: Source[] = [];
       for (const asset of state.assets.filter((a) => ids.has(a.id))) {

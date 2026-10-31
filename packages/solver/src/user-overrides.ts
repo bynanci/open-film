@@ -74,6 +74,11 @@ export function directOverrideTargets(
       return [{ kind: "graphic-scene", sceneId: command.scene.id }];
     if (command.type === "graphic.scene.remove")
       return [{ kind: "graphic-scene", sceneId: command.sceneId }];
+    if (command.type === "coverage.apply-proposal")
+      return [
+        { kind: "clip", clipId: command.proposal.primaryClipId },
+        { kind: "clip", clipId: command.proposal.bRollClipId },
+      ];
     if ("clipId" in command) return [{ kind: "clip", clipId: command.clipId }];
     return [];
   });

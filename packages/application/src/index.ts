@@ -94,6 +94,7 @@ import { pathToFileURL } from "node:url";
 import {
   graphicSceneAssetIds,
   createProject,
+  resolveCompositionCoverageBindings,
   resolveProjectTimebase,
   projectSettingsWithTimebase,
   createExportProfile,
@@ -2276,15 +2277,21 @@ export class OpenFilmApplication {
     if (trackActiveJob) this.activeJobs++;
     try {
       const assets = this.compositionAssets(composition);
+      const timebase = resolveProjectTimebase(this.project.settings);
+      const coverage = resolveCompositionCoverageBindings(
+        composition,
+        timebase,
+      );
+      const audioMixContext = context.audioMixContext ?? {
+        timebase,
+        coverage,
+      };
       const sourceIds = options.audioOnly
         ? audioSourceAssetIds(
             composition,
             assets,
             options.audioRole,
-            context.audioMixContext ?? {
-              timebase: resolveProjectTimebase(this.project.settings),
-              coverage: [],
-            },
+            audioMixContext,
           )
         : options.videoOnly
           ? visualSourceAssetIds(composition, assets)
@@ -2349,7 +2356,7 @@ export class OpenFilmApplication {
           audioOnly: options.audioOnly,
           videoOnly: options.videoOnly,
           audioRole: options.audioRole,
-          audioMixContext: context.audioMixContext,
+          audioMixContext,
           snapshot: approved,
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;
