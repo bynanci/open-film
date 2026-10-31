@@ -550,9 +550,9 @@ The first actual pinned Windows capture at `a1eb754b82d84b041563d4994cca8525ff2d
 ### 2026-10-31 — Causal repair of Windows preview and delivery pixel mismatch (Issue #82)
 
 Root causes identified and repaired:
+
 1. `FFmpegRenderer.render` previously only enforced `-filter_complex_threads 1`, omitting `-filter_threads 1` and `-sws_flags +accurate_rnd+bitexact`. On Windows systems, `swscale` slice multithreading caused non-deterministic rounding and boundary artifacts across horizontal slice boundaries during complex filter operations.
 2. In `FFmpegRenderer.render`, `libx264` had `-threads 1`, but x264 defaults to multi-threaded lookahead and sliced threads unless explicitly bounded. Added `-x264opts threads=1:lookahead_threads=1:sliced_threads=0` to guarantee deterministic frame lookahead and slice processing.
 3. In `ExportProfileService.extractFrame`, `-threads 1` was positioned after `-i videoPath`, leaving input H.264 decoding multithreaded. Moved `-threads 1` prior to `-i videoPath` so decoder threading is bounded to a single thread.
 4. In `packages/render/src/titles.ts` (`loadFont`), font cache invalidation previously relied exclusively on `mtimeMs` and `size`. Rapid file overwrite (such as swapping fonts across identical-length font candidates or on NTFS filesystems with timestamp granularity issues) led to stale font cache reuse. Added SHA-256 buffer hash validation to `loadFont` cache lookup and exported `clearFontCache()`.
 5. Full strict decoded-RGB byte-for-byte equality assertions (`decodedRgb` and `decodedRgbFrame`) are preserved without relaxing any tolerance or applying workarounds.
-
