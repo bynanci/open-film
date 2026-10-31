@@ -174,6 +174,13 @@ export default {
         "逐字稿漣漪剪輯需要經過驗證的時序；估算的時間無法進行自動剪輯。",
       rippleConflict: "逐字稿漣漪剪輯與鎖定的素材或使用者釘選衝突。",
     },
+    continuity: {
+      invalidProposal:
+        "連續性診斷提案無效或資料格式錯誤。請重新整理診斷以繼續。",
+      staleProposal:
+        "時間軸或故事在產生此連續性診斷後已變更。接受前請先重新整理診斷。",
+      conflict: "連續性調整與鎖定的片段、使用者釘選或受保護素材衝突。",
+    },
     glossary: {
       storageBusy:
         "另一個 OpenFilm 視窗或程序正在更新全域詞彙表，請等候完成後再試。",

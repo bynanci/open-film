@@ -368,10 +368,10 @@ M9 StoryPlan and M10 Pipeline Workbench are reused.
       verification; exact results are recorded in the validation document.
 - [x] Review the supplied cinema-foundation v1.1.0/v1.0.0 guidance and verify
       their manifests; record available reference contracts and provenance.
-- [ ] Review/adapt the supplied emotional-overlay and shot-proposal contracts,
+- [x] Review/adapt the supplied emotional-overlay and shot-proposal contracts,
       including scene/shot ID mapping and sidecar revisions, before runtime integration.
-  - [ ] D2A: derive motion/duration/density continuity diagnostics from typed
-        saved evidence; missing shot-scale/eyeline evidence stays manual review.
+  - [x] D2A: derive motion/duration/density continuity diagnostics from typed
+        saved evidence; missing shot-scale/eyeline evidence stays manual review ([validation](docs/validation-continuity-diagnostics.md)).
 - [x] Refine story setup with authored-order preview, field validation and
       draft/focus recovery; keep the existing project/schema/edit contracts.
 - [x] Correct storyboard covered duration and cross-story mapping, distinguish

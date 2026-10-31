@@ -25,25 +25,25 @@ The delivery foundation for **v1.0.0** is being established through progressive,
 
 ## Delivery owners status
 
-| Owner     | Status      | Verification / Merge Evidence                                                                                                        |
-| --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| User pins | Complete    | PR #79 merged (`6a15636`); solver, history, Named Versions, Collect integration verified                                             |
-| D1        | Complete    | Multi-source discovery, manifests, analysis and explicit adoption implemented                                                        |
-| D2A       | Open        | Continuity diagnostics & emotional guidance: story arc / scene direction suggestions, evidence bases, and manual overrides           |
-| D2B       | Open        | Adjacent micro-preview & bounded Dip-to-Black / Dip-to-White transitions                                                             |
-| D3A1      | Complete    | PR #72 merged; saved-Sequence waveforms, bounded cache and decoded pulse evidence                                                    |
-| D3A2      | Open        | Rhythm analysis & cut-point snap: source-bound onset/downbeat evidence, reliability scoring, and explicit snap acceptance            |
-| D3B1      | Complete    | PR #81 merged (`1686b76`); sample-accurate J/L audio policy and shared preview/render mix                                            |
-| D3B2      | Open        | A-roll / B-roll coverage: role persistence, primary narration retention, and J/L mix integration                                     |
-| D4        | Open        | Transcript-driven ripple editing: reliable timestamp edits, composite ripple (video/subtitles/audio/ducking), and conflict rejection |
-| D5A       | Complete    | PR #74 merged; direct focal, versioned Bezier/ambient and protected photo presentation                                               |
-| D5B       | Complete    | PR #75 merged; independent bilingual runs, measured finishing and font/Collect evidence                                              |
-| D5C       | Complete    | PR #77 merged; primary correction before Film Looks and reviewed statistical Auto Match                                              |
-| D6A/D6B   | Complete    | Managed proxies and reviewed derived Collect implemented                                                                             |
-| D7A       | Complete    | PR #78 merged; 3-OS pinned render QA, shared metrics and real decoded controls                                                       |
-| D7B/M7E   | In Progress | Runtime staging, native packaging, licenses/SBOM review, and candidate installer verification                                        |
-| D8        | Complete    | PR #76 merged; local bounded declarative presets and immutable accepted snapshots                                                    |
-| Cut Desk  | In Progress | Phase 1A complete; Phase 1B precision zoom/pan, Phase 1C resizable/a11y, Phase 2 pro edit ops, Phase 3 track controls                |
+| Owner     | Status      | Verification / Merge Evidence                                                                                                                                                                                      |
+| --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User pins | Complete    | PR #79 merged (`6a15636`); solver, history, Named Versions, Collect integration verified                                                                                                                           |
+| D1        | Complete    | Multi-source discovery, manifests, analysis and explicit adoption implemented                                                                                                                                      |
+| D2A       | Complete    | PR #89; continuity diagnostics (motion clash, pacing, density), emotional guidance advisories, and auditable override receipts ([validation](../validation-continuity-diagnostics.md))                             |
+| D2B       | Open        | Adjacent micro-preview & bounded Dip-to-Black / Dip-to-White transitions                                                                                                                                           |
+| D3A1      | Complete    | PR #72 merged; saved-Sequence waveforms, bounded cache and decoded pulse evidence                                                                                                                                  |
+| D3A2      | Open        | Rhythm analysis & cut-point snap: source-bound onset/downbeat evidence, reliability scoring, and explicit snap acceptance                                                                                          |
+| D3B1      | Complete    | PR #81 merged (`1686b76`); sample-accurate J/L audio policy and shared preview/render mix                                                                                                                          |
+| D3B2      | Complete    | PR #87 merged (`efb806d`); A-roll / B-roll coverage: role persistence, primary narration retention, and J/L mix integration                                                                                        |
+| D4        | Complete    | PR #88 merged (`d2b5f08`); Transcript-driven ripple editing: reliable timestamp edits, composite ripple (video/subtitles/audio/ducking), and conflict rejection ([validation](../validation-transcript-ripple.md)) |
+| D5A       | Complete    | PR #74 merged; direct focal, versioned Bezier/ambient and protected photo presentation                                                                                                                             |
+| D5B       | Complete    | PR #75 merged; independent bilingual runs, measured finishing and font/Collect evidence                                                                                                                            |
+| D5C       | Complete    | PR #77 merged; primary correction before Film Looks and reviewed statistical Auto Match                                                                                                                            |
+| D6A/D6B   | Complete    | Managed proxies and reviewed derived Collect implemented                                                                                                                                                           |
+| D7A       | Complete    | PR #78 merged; 3-OS pinned render QA, shared metrics and real decoded controls                                                                                                                                     |
+| D7B/M7E   | In Progress | Runtime staging, native packaging, licenses/SBOM review, and candidate installer verification                                                                                                                      |
+| D8        | Complete    | PR #76 merged; local bounded declarative presets and immutable accepted snapshots                                                                                                                                  |
+| Cut Desk  | In Progress | Phase 1A complete; Phase 1B precision zoom/pan, Phase 1C resizable/a11y, Phase 2 pro edit ops, Phase 3 track controls                                                                                              |
 
 ## Platform Recovery & Runtime State
 
