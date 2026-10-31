@@ -84,6 +84,8 @@ export default {
 
       pinConflict:
         "此調整無法保留釘選編輯。請明確解除使用者釘選，或調整相鄰片段。",
+      lockedClipConflict:
+        "受影響範圍內包含鎖定的素材或片段，無法執行漣漪剪輯。請先解除鎖定。",
 
       primaryColorLocked:
         "這項基本色彩變更會影響 {count} 個受保護片段。請先解鎖片段或來源。",
@@ -168,6 +170,9 @@ export default {
       segmentNotFound: "此逐字稿段落已不存在，請重新載入目前版本。",
       alignmentStale: "文字已修改，逐字時間僅供參考，不可作為精準對齊。",
       invalidCommand: "此逐字稿修改無效，請檢查所選文字、段落與分割時間。",
+      unreliableTiming:
+        "逐字稿漣漪剪輯需要經過驗證的時序；估算的時間無法進行自動剪輯。",
+      rippleConflict: "逐字稿漣漪剪輯與鎖定的素材或使用者釘選衝突。",
     },
     glossary: {
       storageBusy:

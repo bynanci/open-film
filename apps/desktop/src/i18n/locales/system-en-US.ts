@@ -102,6 +102,8 @@ export default {
 
       pinConflict:
         "A pinned edit cannot fit this change. Release its user pin explicitly or adjust neighboring clips.",
+      lockedClipConflict:
+        "Cannot ripple edit because locked media is in the affected range. Unlock the clips or sources first.",
 
       primaryColorLocked:
         "Changing primary color would affect {count} protected clips. Unlock the clips or sources first.",
@@ -206,6 +208,10 @@ export default {
         "This text was edited. Word timing is historical and cannot be used as precise alignment.",
       invalidCommand:
         "This transcript change is invalid. Check the selected text, segment and split time.",
+      unreliableTiming:
+        "Transcript ripple requires verified timing; estimated timing cannot be automatically ripple-edited.",
+      rippleConflict:
+        "Transcript ripple edit conflicts with locked media or user pins.",
     },
     glossary: {
       storageBusy:

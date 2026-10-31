@@ -1,7 +1,10 @@
 import {
   ApplicationError,
   validateTranscriptCommand,
+  createTranscriptRippleProposal,
   type TranscriptCommand,
+  type TranscriptRippleProposal,
+  type TranscriptRippleMode,
 } from "@openfilm/core";
 import type {
   TranscriptEditMetadata,
@@ -11,6 +14,7 @@ import type {
   TranscriptSearchOptions,
 } from "@openfilm/catalog";
 import type { OpenFilmApplication } from "./index.js";
+import { TimelineEditor } from "./editor.js";
 
 export type {
   TranscriptEditMetadata,
@@ -185,5 +189,57 @@ export class TranscriptEditor {
       ),
       sourceHash,
     };
+  }
+  async createRippleProposal(
+    compositionId: string,
+    assetId: string,
+    options: {
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    },
+  ): Promise<TranscriptRippleProposal> {
+    const page = await this.get(assetId);
+    if (!page.document) {
+      throw new ApplicationError(
+        "request.notFound",
+        `No transcript found for asset "${assetId}".`,
+        404,
+      );
+    }
+    const asset = this.application.catalog.getAsset(assetId);
+    const editor = new TimelineEditor(this.application);
+    const timeline = editor.get(compositionId);
+    return createTranscriptRippleProposal(timeline.composition, page.document, {
+      assetId,
+      mode: options.mode,
+      segmentIds: options.segmentIds,
+      sourceRange: options.sourceRange,
+      assets: asset ? [asset] : undefined,
+    });
+  }
+  async applyRipple(
+    compositionId: string,
+    assetId: string,
+    options: {
+      baseRevision: string;
+      requestId?: string;
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+      editor?: TimelineEditor;
+    },
+  ) {
+    const editor = options.editor ?? new TimelineEditor(this.application);
+    const proposal = await this.createRippleProposal(
+      compositionId,
+      assetId,
+      options,
+    );
+    return editor.edit(compositionId, {
+      baseRevision: options.baseRevision,
+      ...(options.requestId ? { requestId: options.requestId } : {}),
+      commands: [{ type: "transcript.ripple", proposal }],
+    });
   }
 }
