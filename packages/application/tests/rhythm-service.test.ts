@@ -152,21 +152,25 @@ describe("RhythmService", () => {
     // Apply snap using the same editor session
     await app.rhythm.applySnap(proposal.id, { compositionId, editor });
 
-    const timeline = app.project.timelines.find((t) => t.id === compositionId)!;
-    expect(timeline.tracks[0]?.clips.length).toBe(2);
-    expect(timeline.tracks[0]?.clips[0]?.timelineDuration).toBeCloseTo(3.0);
+    const stateAfterEdit = editor.get(compositionId);
+    expect(stateAfterEdit.composition.tracks[0]?.clips.length).toBe(2);
+    expect(
+      stateAfterEdit.composition.tracks[0]?.clips[0]?.timelineDuration,
+    ).toBeCloseTo(3.0);
 
     // Undo restores the single clip
-    const stateAfterEdit = editor.get(compositionId);
-    await editor.undo(compositionId, stateAfterEdit.revision);
-    expect(timeline.tracks[0]?.clips.length).toBe(1);
-    expect(timeline.tracks[0]?.clips[0]?.timelineDuration).toBeCloseTo(8.0);
+    const undone = await editor.undo(compositionId, stateAfterEdit.revision);
+    expect(undone.composition.tracks[0]?.clips.length).toBe(1);
+    expect(
+      undone.composition.tracks[0]?.clips[0]?.timelineDuration,
+    ).toBeCloseTo(8.0);
 
     // Redo reapplies the split
-    const stateAfterUndo = editor.get(compositionId);
-    await editor.redo(compositionId, stateAfterUndo.revision);
-    expect(timeline.tracks[0]?.clips.length).toBe(2);
-    expect(timeline.tracks[0]?.clips[0]?.timelineDuration).toBeCloseTo(3.0);
+    const redone = await editor.redo(compositionId, undone.revision);
+    expect(redone.composition.tracks[0]?.clips.length).toBe(2);
+    expect(
+      redone.composition.tracks[0]?.clips[0]?.timelineDuration,
+    ).toBeCloseTo(3.0);
   });
 
   it("bypasses snapping when bypass flag is specified", () => {

@@ -27,6 +27,7 @@ import {
   validateCoverageProposal,
   validateCoverageAudioBindings,
   validateTranscriptRippleProposal,
+  validateRhythmSnapProposal,
   promoteAudioProject,
   validateFilmLook,
   validatePrimaryColorCorrection,
@@ -417,6 +418,11 @@ function command(value: unknown, index: number): TimelineCommand {
   if (type === "transcript.ripple") {
     keys(data, ["type", "proposal"], path);
     nested(data.proposal, `${path}.proposal`, validateTranscriptRippleProposal);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type === "rhythm.snap") {
+    keys(data, ["type", "proposal"], path);
+    nested(data.proposal, `${path}.proposal`, validateRhythmSnapProposal);
     return structuredClone(data) as TimelineCommand;
   }
   if (type === "beat" || type === "regenerate-beat")
@@ -1920,7 +1926,8 @@ export class TimelineEditor {
             c.type === "coverage.set-clip" ||
             c.type === "coverage.apply-proposal" ||
             c.type === "coverage.set-bindings" ||
-            c.type === "transcript.ripple",
+            c.type === "transcript.ripple" ||
+            c.type === "rhythm.snap",
         ) ||
         Boolean(before.composition.coverageAudioBindings?.length) ||
         before.composition.tracks.some((t) =>
