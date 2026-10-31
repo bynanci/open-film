@@ -895,3 +895,5 @@ The Pin integration now covers real Motion/GraphicScene automatic writers and
 existing source-lock workflows. Measured Auto Match emits a detached validated
 command; explicit Pin release governs subsequent automatic edits. Final eight
 browser journeys pass, with complete hosted verification still required.
+
+Windows post-merge export parity remains an open stabilization gate. The assignment-swap fixture now retains synthetic render and decoder evidence under the existing opt-in collector; no output equality has been relaxed. The cause and repair require actual pinned Windows validation. See [validation](docs/validation-export-profiles.md#2026-10-30--current-windows-parity-failure-remains-open).

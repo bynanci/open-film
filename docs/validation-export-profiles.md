@@ -538,3 +538,21 @@ evidence SHA256 `a34b121024594e15a1bbe81f486f623f3d0b099b4a024ebbb0246fe01b6f520
 No controlled fault is committed or enabled in CI. Fresh scoped review and new
 exact-head Windows evidence remain required; this is evidence collection, not a
 claim that the historical mismatch is repaired.
+
+### 2026-10-30 — current Windows parity failure remains open
+
+Post-merge main `6cdaa4fa46f83c2b41ffc4ee34eee586134a8532` passed Verify, three-platform Render QA and Pages, but Windows run `41113344781` failed the strict PNG equality in the two-font assignment-swap test (129 other cases passed). Pin candidate `c260deaa502ccb2a0f76e64bdb334f381ea45803` also failed Windows run `41113964221`; its media and render QA gates passed separately. The earlier three-font collector does not capture this different fixture, so neither observation establishes a repaired or common cause.
+
+The same opt-in, synthetic-only capture now covers the assignment-swap fixture too: original encoded intermediates, raster inputs and hashes, literal frame 3, reviewed/delivered RGB, redacted arguments, fonts, and source identities before/after. Full original equality and swapped-font refusal assertions remain unchanged. No product rendering, tolerance, frame selection, retry or skip behavior changes. Two local selected assignment-swap cases passed with six real renders, zero RGB differences and unchanged sources; the other 60 cases were not selected. TypeScript/Vue and scoped lint passed. A fresh pinned Windows observation is required for causal diagnosis.
+
+The first actual pinned Windows capture at `a1eb754b82d84b041563d4994cca8525ff2da767` passed all three observed renders per fixture (run `41117246721`, artifact `13006991842`). Both assignment formats have zero changed RGB channels. This is a passing observation, not a causal repair. The diagnostic now additionally runs sixteen independent FFmpeg processes per captured render with identical still-existing input bytes and settings. Every process must match the exact initial literal frame; differing encoded/RGB outputs are retained. This is a bounded determinism experiment, not a retry policy: no failure is replaced by a later pass. The two selected local cases and all96 repeated processes passed; the other60 cases were not selected. Product settings remain unchanged.
+
+### 2026-10-31 — Causal repair of Windows preview and delivery pixel mismatch (Issue #82)
+
+Root causes identified and repaired:
+
+1. `FFmpegRenderer.render` previously only enforced `-filter_complex_threads 1`, omitting `-filter_threads 1` and `-sws_flags +accurate_rnd+bitexact`. On Windows systems, `swscale` slice multithreading caused non-deterministic rounding and boundary artifacts across horizontal slice boundaries during complex filter operations.
+2. In `FFmpegRenderer.render`, `libx264` had `-threads 1`, but x264 defaults to multi-threaded lookahead and sliced threads unless explicitly bounded. Added `-x264opts threads=1:lookahead_threads=1:sliced_threads=0` to guarantee deterministic frame lookahead and slice processing.
+3. In `ExportProfileService.extractFrame`, `-threads 1` was positioned after `-i videoPath`, leaving input H.264 decoding multithreaded. Moved `-threads 1` prior to `-i videoPath` so decoder threading is bounded to a single thread.
+4. In `packages/render/src/titles.ts` (`loadFont`), font cache invalidation previously relied exclusively on `mtimeMs` and `size`. Rapid file overwrite (such as swapping fonts across identical-length font candidates or on NTFS filesystems with timestamp granularity issues) led to stale font cache reuse. Added SHA-256 buffer hash validation to `loadFont` cache lookup and exported `clearFontCache()`.
+5. Full strict decoded-RGB byte-for-byte equality assertions (`decodedRgb` and `decodedRgbFrame`) are preserved without relaxing any tolerance or applying workarounds.

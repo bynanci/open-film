@@ -9,6 +9,12 @@ import { windowsPowerShellEnvironment } from "../../packages/application/src/win
 // Independent fixture paths, not the renderer's font resolver. CI installs and
 // hashes these distinct OFL faces; exact hashes must still appear in receipts.
 export function testCjkFont(family: "Sans" | "Serif", weight = "Regular") {
+  if (process.env.OPENFILM_TEST_FONT_ROOT) {
+    return join(
+      process.env.OPENFILM_TEST_FONT_ROOT,
+      `Noto${family}CJKtc-${weight}.otf`,
+    );
+  }
   return process.platform === "win32"
     ? join(
         process.env.WINDIR || "C:\\Windows",
