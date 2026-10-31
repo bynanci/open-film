@@ -5,6 +5,7 @@ import { matchLocale } from "./i18n/locale";
 
 export type ThemePreference = "dark" | "light" | "system";
 export type WorkspaceMode = "standard" | "expert";
+export type MonitorLayoutPreference = "tabbed" | "dual";
 export const preferenceStorageKey = "openfilm.preferences.v1";
 interface StoredPreferences {
   theme?: ThemePreference;
@@ -12,6 +13,8 @@ interface StoredPreferences {
   defaultFilmLocale?: SupportedLocale;
   projectRoot?: string;
   lastWorkspaceByProject?: Record<string, unknown>;
+  cutDeskMonitorLayout?: MonitorLayoutPreference;
+  cutDeskSplitRatio?: number;
 }
 const workspaceIds = new Set<WorkspaceId>([
   "library",
@@ -36,6 +39,21 @@ function validWorkspaceMap(
   );
 }
 
+function validMonitorLayout(value: unknown): MonitorLayoutPreference {
+  return value === "dual" ? "dual" : "tabbed";
+}
+
+function validSplitRatio(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0.25 ||
+    value > 0.75
+  )
+    return 0.5;
+  return Math.round(value * 100) / 100;
+}
+
 function readPreferences(): StoredPreferences {
   try {
     const raw: unknown = JSON.parse(
@@ -52,6 +70,12 @@ const stored = readPreferences();
 const defaultFilmLocale = ref<SupportedLocale | undefined>(
   matchLocale(stored.defaultFilmLocale) as SupportedLocale | undefined,
 );
+const cutDeskMonitorLayout = ref<MonitorLayoutPreference>(
+  validMonitorLayout(stored.cutDeskMonitorLayout),
+);
+const cutDeskSplitRatio = ref<number>(
+  validSplitRatio(stored.cutDeskSplitRatio),
+);
 let lastWorkspaceByProject = validWorkspaceMap(stored.lastWorkspaceByProject);
 export const preferences = reactive({
   workspaceMode: (stored.workspaceMode === "expert"
@@ -67,6 +91,12 @@ export const preferences = reactive({
     );
   },
   projectRoot: typeof stored.projectRoot === "string" ? stored.projectRoot : "",
+  get cutDeskMonitorLayout(): MonitorLayoutPreference {
+    return cutDeskMonitorLayout.value;
+  },
+  get cutDeskSplitRatio(): number {
+    return cutDeskSplitRatio.value;
+  },
 });
 function persist(): void {
   try {
@@ -78,6 +108,8 @@ function persist(): void {
         defaultFilmLocale: defaultFilmLocale.value,
         projectRoot: preferences.projectRoot,
         lastWorkspaceByProject,
+        cutDeskMonitorLayout: cutDeskMonitorLayout.value,
+        cutDeskSplitRatio: cutDeskSplitRatio.value,
       }),
     );
   } catch {
@@ -128,4 +160,18 @@ export function setLastWorkspaceForProject(
   };
   persist();
 }
+
+export function setCutDeskMonitorLayout(value: MonitorLayoutPreference): void {
+  if (value !== "tabbed" && value !== "dual") return;
+  cutDeskMonitorLayout.value = value;
+  persist();
+}
+
+export function setCutDeskSplitRatio(value: number): void {
+  if (typeof value !== "number" || !Number.isFinite(value)) return;
+  const clamped = Math.min(0.75, Math.max(0.25, Math.round(value * 100) / 100));
+  cutDeskSplitRatio.value = clamped;
+  persist();
+}
+
 applyTheme();

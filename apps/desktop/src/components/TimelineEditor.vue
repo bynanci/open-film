@@ -64,6 +64,12 @@ import PrecisionEditor from "./PrecisionEditor.vue";
 import RecordMonitor from "./RecordMonitor.vue";
 import SequenceWaveform from "./SequenceWaveform.vue";
 import EditDecisionRibbon from "./EditDecisionRibbon.vue";
+import ShortcutSheet from "./ShortcutSheet.vue";
+import {
+  preferences,
+  setCutDeskMonitorLayout,
+  setCutDeskSplitRatio,
+} from "../preferences";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
 import { sameRateDropFrameChoice } from "../projectTimebase";
@@ -176,6 +182,15 @@ const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
 );
 const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
+const precisionEditorDual = ref<InstanceType<typeof PrecisionEditor> | null>(
+  null,
+);
+const currentPrecision = computed(
+  () =>
+    (cutDeskDualMode.value
+      ? precisionEditorDual.value
+      : precisionEditor.value) ?? precisionEditor.value,
+);
 const clipTransformOverlay = ref<InstanceType<
   typeof ClipTransformOverlay
 > | null>(null);
@@ -332,12 +347,12 @@ const hasPending = computed(
     focalGestureActive.value ||
     focalTransactionPending.value ||
     !!transcriptEditor.value?.hasPending ||
-    !!precisionEditor.value?.hasPending ||
+    !!currentPrecision.value?.hasPending ||
     directionPending.value ||
     graphicAgentPending.value,
 );
 async function history(direction: "undo" | "redo") {
-  if (precisionEditor.value?.hasPending || historyBusy.value) return false;
+  if (currentPrecision.value?.hasPending || historyBusy.value) return false;
   clipTransformOverlay.value?.cancel();
   return compositionHistory(direction);
 }
@@ -348,7 +363,7 @@ async function flushInputs() {
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
     return false;
-  return (await precisionEditor.value?.flush()) ?? true;
+  return (await currentPrecision.value?.flush()) ?? true;
 }
 async function flush() {
   if (generationImportBusy.value) return false;
@@ -375,12 +390,85 @@ let captionImportController: AbortController | undefined;
 const photoPlayer = ref<InstanceType<typeof PhotoPresentationPreview> | null>(
   null,
 );
+const shortcutSheetOpen = ref(false);
+const activeTarget = ref<"record" | "source">("record");
+const cutDeskMonitorLayout = computed(() => preferences.cutDeskMonitorLayout);
+const cutDeskSplitRatio = computed(() => preferences.cutDeskSplitRatio);
+const cutDeskDualMode = computed(
+  () => !!props.expertMode && cutDeskMonitorLayout.value === "dual",
+);
+const isResizingSplitter = ref(false);
+let startSplitX = 0;
+let startSplitRatio = 0.5;
+let splitterContainerWidth = 1;
+
+function onSplitterPointerDown(event: PointerEvent) {
+  if (event.button !== 0) return;
+  const target = event.currentTarget as HTMLElement | null;
+  const container = target?.closest(
+    ".cut-desk-dual-container",
+  ) as HTMLElement | null;
+  if (!container) return;
+  splitterContainerWidth = container.getBoundingClientRect().width;
+  startSplitX = event.clientX;
+  startSplitRatio = cutDeskSplitRatio.value;
+  isResizingSplitter.value = true;
+  window.addEventListener("pointermove", onSplitterPointerMove);
+  window.addEventListener("pointerup", onSplitterPointerUp);
+  window.addEventListener("pointercancel", onSplitterPointerUp);
+}
+
+function onSplitterPointerMove(event: PointerEvent) {
+  if (!isResizingSplitter.value || splitterContainerWidth <= 0) return;
+  const deltaX = event.clientX - startSplitX;
+  const newRatio = startSplitRatio + deltaX / splitterContainerWidth;
+  setCutDeskSplitRatio(newRatio);
+}
+
+function onSplitterPointerUp() {
+  isResizingSplitter.value = false;
+  window.removeEventListener("pointermove", onSplitterPointerMove);
+  window.removeEventListener("pointerup", onSplitterPointerUp);
+  window.removeEventListener("pointercancel", onSplitterPointerUp);
+}
+
+function onSplitterKeydown(event: KeyboardEvent) {
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    setCutDeskSplitRatio(
+      cutDeskSplitRatio.value - (event.shiftKey ? 0.05 : 0.02),
+    );
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    setCutDeskSplitRatio(
+      cutDeskSplitRatio.value + (event.shiftKey ? 0.05 : 0.02),
+    );
+  } else if (event.key === "Home") {
+    event.preventDefault();
+    setCutDeskSplitRatio(0.25);
+  } else if (event.key === "End") {
+    event.preventDefault();
+    setCutDeskSplitRatio(0.75);
+  }
+}
+
 const editMode = ref<"story" | "precision" | "transcript">("story");
 const recordMonitor = ref<InstanceType<typeof RecordMonitor> | null>(null);
 const recordTarget = computed(
-  () => !!props.expertMode && editMode.value === "story",
+  () =>
+    !!props.expertMode &&
+    (cutDeskDualMode.value
+      ? activeTarget.value === "record"
+      : editMode.value === "story"),
 );
-const recordActive = computed(() => props.active && recordTarget.value);
+const recordActive = computed(
+  () =>
+    props.active &&
+    !!props.expertMode &&
+    (cutDeskDualMode.value
+      ? activeTarget.value === "record"
+      : editMode.value === "story"),
+);
 const projectTimebase = computed(() =>
   resolveProjectTimebase(props.projectSettings),
 );
@@ -453,7 +541,7 @@ const shortcutIsolation = computed(
     historyBusy.value ||
     directionPending.value ||
     !!transcriptEditor.value?.hasPending ||
-    !!precisionEditor.value?.hasPending ||
+    !!currentPrecision.value?.hasPending ||
     recordSplitPending.value ||
     status.value === "failed" ||
     status.value === "conflict" ||
@@ -617,8 +705,23 @@ let playbackBoundaryHandled = false;
 const precisionElement = ref<HTMLElement | null>(null);
 const transcriptElement = ref<HTMLElement | null>(null);
 async function setEditMode(mode: "story" | "precision" | "transcript") {
+  if (
+    props.expertMode &&
+    cutDeskDualMode.value &&
+    (mode === "story" || mode === "precision")
+  ) {
+    activeTarget.value = mode === "story" ? "record" : "source";
+    if (editMode.value !== "story") {
+      if (!(await flush())) return;
+      editMode.value = "story";
+    }
+    return;
+  }
   if (mode === editMode.value || !(await flush())) return;
   editMode.value = mode;
+  if (props.expertMode) {
+    activeTarget.value = mode === "story" ? "record" : "source";
+  }
 }
 const workspaceHeight = ref<number>();
 let layoutObserver: ResizeObserver | undefined;
@@ -1128,7 +1231,7 @@ const ribbonBeat = computed(() => {
 const ribbonSourceSeconds = computed(() =>
   recordTarget.value
     ? (recordResolvedFrame.value?.primary?.sourceTime ?? 0)
-    : (precisionEditor.value?.playhead ?? selectedClip.value?.sourceIn ?? 0),
+    : (currentPrecision.value?.playhead ?? selectedClip.value?.sourceIn ?? 0),
 );
 const ribbonSequenceFrame = computed(() =>
   recordTarget.value
@@ -1140,9 +1243,9 @@ const ribbonSequenceFrame = computed(() =>
       ),
 );
 const ribbonSnapState = computed<"on" | "off" | "unavailable">(() => {
-  if (recordTarget.value || precisionEditor.value?.snapEnabled === undefined)
+  if (recordTarget.value || currentPrecision.value?.snapEnabled === undefined)
     return "unavailable";
-  return precisionEditor.value.snapEnabled ? "on" : "off";
+  return currentPrecision.value.snapEnabled ? "on" : "off";
 });
 const ribbonAction = computed(() =>
   recordSplitPending.value
@@ -1413,7 +1516,7 @@ function beatDuration(clips: Clip[]) {
     : 0;
 }
 function chooseClip(clip: Clip, openInspector = true) {
-  if (precisionEditor.value?.hasPending || directionBlocked.value) return;
+  if (currentPrecision.value?.hasPending || directionBlocked.value) return;
   if (editMode.value === "transcript" && transcriptEditor.value) {
     void transcriptEditor.value.flush().then((saved) => {
       if (saved) applyClipSelection(clip, openInspector);
@@ -1724,7 +1827,7 @@ const pictureBlocked = computed(
     graphicAgentBusy.value ||
     graphicAgentPending.value ||
     status.value !== "saved" ||
-    !!precisionEditor.value?.hasPending,
+    !!currentPrecision.value?.hasPending,
 );
 function previewPicture(value: ClipTransformDraft) {
   Object.assign(clipFields.value, value);
@@ -2178,6 +2281,16 @@ function keyboard(event: KeyboardEvent) {
   }
   if (editMode.value === "transcript") return;
   const element = event.target as HTMLElement | null;
+  if (
+    event.key === "?" &&
+    !element?.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+    )
+  ) {
+    event.preventDefault();
+    shortcutSheetOpen.value = !shortcutSheetOpen.value;
+    return;
+  }
   if (undo) {
     event.preventDefault();
     void history(event.shiftKey ? "redo" : "undo");
@@ -2409,7 +2522,7 @@ const focalBlocked = computed(
     graphicAgentBusy.value ||
     graphicAgentPending.value ||
     status.value !== "saved" ||
-    !!precisionEditor.value?.hasPending,
+    !!currentPrecision.value?.hasPending,
 );
 function cancelFocal() {
   const wasEditing = focalEditing.value;
@@ -2839,8 +2952,24 @@ onBeforeUnmount(() => {
           :key="mode"
           class="editor-button"
           :disabled="directionBlocked"
-          :aria-pressed="editMode === mode"
-          :class="{ selected: editMode === mode }"
+          :aria-pressed="
+            cutDeskDualMode
+              ? mode === 'story'
+                ? activeTarget === 'record'
+                : mode === 'precision'
+                  ? activeTarget === 'source'
+                  : editMode === 'transcript'
+              : editMode === mode
+          "
+          :class="{
+            selected: cutDeskDualMode
+              ? mode === 'story'
+                ? activeTarget === 'record'
+                : mode === 'precision'
+                  ? activeTarget === 'source'
+                  : editMode === 'transcript'
+              : editMode === mode,
+          }"
           @click="setEditMode(mode)"
         >
           {{
@@ -2857,6 +2986,41 @@ onBeforeUnmount(() => {
             )
           }}
         </button>
+      </div>
+      <div
+        v-if="expertMode && editMode !== 'transcript'"
+        class="cut-desk-layout-controls"
+        role="group"
+        :aria-label="t('cutDesk.layout.label')"
+      >
+        <button
+          type="button"
+          class="editor-button"
+          :class="{ selected: cutDeskMonitorLayout === 'tabbed' }"
+          :aria-pressed="cutDeskMonitorLayout === 'tabbed'"
+          @click="setCutDeskMonitorLayout('tabbed')"
+        >
+          {{ t("cutDesk.layout.tabbed") }}
+        </button>
+        <button
+          type="button"
+          class="editor-button"
+          :class="{ selected: cutDeskMonitorLayout === 'dual' }"
+          :aria-pressed="cutDeskMonitorLayout === 'dual'"
+          @click="setCutDeskMonitorLayout('dual')"
+        >
+          {{ t("cutDesk.layout.dual") }}
+        </button>
+      </div>
+      <div v-if="expertMode" class="sr-only" role="status" aria-live="polite">
+        {{
+          t("cutDesk.layout.activeTarget", {
+            target:
+              activeTarget === "record"
+                ? t("cutDesk.record")
+                : t("cutDesk.source"),
+          })
+        }}
       </div>
       <span
         class="editor-save-state"
@@ -3294,7 +3458,10 @@ onBeforeUnmount(() => {
           }}
         </p>
       </section>
-      <div v-show="editMode === 'precision'" ref="precisionElement">
+      <div
+        v-show="!cutDeskDualMode && editMode === 'precision'"
+        ref="precisionElement"
+      >
         <PrecisionEditor
           ref="precisionEditor"
           :project-id="projectId"
@@ -3373,7 +3540,220 @@ onBeforeUnmount(() => {
         "
       >
         <div class="editor-stage editor-main">
-          <div v-if="recordTarget" class="editor-player-region">
+          <div
+            v-if="cutDeskDualMode"
+            class="editor-player-region cut-desk-dual-container"
+          >
+            <div
+              class="cut-desk-pane cut-desk-source-pane"
+              :class="{ 'is-active-target': activeTarget === 'source' }"
+              :style="{ width: `${cutDeskSplitRatio * 100}%` }"
+              @click="activeTarget = 'source'"
+            >
+              <PrecisionEditor
+                ref="precisionEditorDual"
+                :project-id="projectId"
+                :composition-id="compositionId"
+                :revision="state?.revision ?? ''"
+                :settings="projectSettings"
+                :commit="commitSource"
+                :asset="selectedAsset"
+                :clip="selectedClip"
+                :active="active && activeTarget === 'source' && !draftAction"
+                :busy="shortcutIsolation"
+                :source-edits-locked="lockedOverlaySource"
+                :analysis-recovery="analysisRecovery"
+                :recovering-analysis-jobs="recoveringAnalysisJobs"
+                :unavailable="
+                  !!sourceUnavailable ||
+                  selectedSourceInfo?.previewSupported === false
+                "
+                :source-version="sourceVersion"
+                :height="workspaceHeight"
+                :clips="clipOptions"
+                :submit="command"
+                @select="
+                  (id) => {
+                    const clip = allClips.find((item) => item.id === id);
+                    if (clip) chooseClip(clip);
+                  }
+                "
+                @activity="emit('activity')"
+                @recover-analysis="
+                  (job, input) => emit('recoverAnalysis', job, input)
+                "
+              />
+            </div>
+            <div
+              class="cut-desk-splitter"
+              :class="{ 'is-dragging': isResizingSplitter }"
+              role="separator"
+              tabindex="0"
+              aria-orientation="vertical"
+              :aria-label="t('cutDesk.layout.resizer')"
+              :aria-valuenow="Math.round(cutDeskSplitRatio * 100)"
+              aria-valuemin="25"
+              aria-valuemax="75"
+              @pointerdown="onSplitterPointerDown"
+              @keydown="onSplitterKeydown"
+            >
+              <div class="cut-desk-splitter-handle" />
+            </div>
+            <div
+              class="cut-desk-pane cut-desk-record-pane"
+              :class="{ 'is-active-target': activeTarget === 'record' }"
+              :style="{ width: `${(1 - cutDeskSplitRatio) * 100}%` }"
+              @click="activeTarget = 'record'"
+            >
+              <section
+                class="cut-desk-record"
+                :aria-label="t('cutDesk.record')"
+              >
+                <RecordMonitor
+                  :key="`${recordOwner.projectId}:${recordOwner.compositionId}:${recordOwner.revision}:${recordOwner.timebase}`"
+                  ref="recordMonitor"
+                  :project-id="projectId"
+                  :composition="state.composition"
+                  :assets="state.assets"
+                  :revision="state.revision"
+                  :settings="projectSettings"
+                  :source-statuses="sourceStatuses"
+                  :source-version="sourceVersion"
+                  :active="!cutDeskBlocked && activeTarget === 'record'"
+                  :bypass-look="lookCompareActive"
+                  :caption-track-id="captionTrackId"
+                  v-bind="recordBindings"
+                />
+                <div
+                  class="cut-desk-transport"
+                  role="group"
+                  :aria-label="t('cutDesk.transport')"
+                >
+                  <TimecodeField
+                    :frame="recordFrame"
+                    :timebase="projectTimebase"
+                    :label="t('cutDesk.sequenceTimecode')"
+                    :min-frame="0"
+                    :max-frame="lastRecordFrame"
+                    :disabled="cutDeskBlocked"
+                    v-bind="cutDeskControls.seek"
+                  />
+                  <button
+                    class="editor-button"
+                    :disabled="cutDeskBlocked"
+                    v-bind="cutDeskControls.back"
+                    :aria-label="t('editor.monitor.previousFrame')"
+                  >
+                    −1f
+                  </button>
+                  <button
+                    class="editor-button"
+                    :disabled="cutDeskBlocked"
+                    v-bind="cutDeskControls.toggle"
+                  >
+                    {{
+                      t(
+                        recordMonitor?.playing
+                          ? "cutDesk.pause"
+                          : "cutDesk.play",
+                      )
+                    }}
+                  </button>
+                  <button
+                    class="editor-button"
+                    :disabled="cutDeskBlocked"
+                    v-bind="cutDeskControls.forward"
+                    :aria-label="t('editor.monitor.nextFrame')"
+                  >
+                    +1f
+                  </button>
+                  <div
+                    v-if="recordLookAvailable"
+                    class="cut-desk-monitor-actions"
+                  >
+                    <div
+                      class="cut-desk-compare"
+                      role="group"
+                      :aria-label="t('cutDesk.compare.group')"
+                      aria-describedby="cut-desk-compare-hint-dual"
+                    >
+                      <button
+                        type="button"
+                        class="editor-button"
+                        :disabled="cutDeskBlocked"
+                        :aria-label="t('cutDesk.compare.hold')"
+                        :aria-pressed="lookCompareHeld"
+                        v-bind="compareControls.hold"
+                      >
+                        {{ t("cutDesk.compare.holdShort") }}
+                      </button>
+                      <button
+                        type="button"
+                        class="editor-button"
+                        :disabled="cutDeskBlocked"
+                        :aria-label="t('cutDesk.compare.latch')"
+                        :aria-pressed="lookCompareLatched"
+                        v-bind="compareControls.latch"
+                      >
+                        {{ t("cutDesk.compare.latchShort") }}
+                      </button>
+                    </div>
+                    <p
+                      class="cut-desk-compare-status"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {{
+                        t(
+                          lookCompareHeld
+                            ? "cutDesk.compare.held"
+                            : lookCompareLatched
+                              ? "cutDesk.compare.latched"
+                              : "cutDesk.compare.inactive",
+                        )
+                      }}
+                    </p>
+                    <p
+                      id="cut-desk-compare-hint-dual"
+                      class="cut-desk-compare-hint sr-only"
+                    >
+                      {{ t("cutDesk.compare.hint") }}
+                    </p>
+                  </div>
+                </div>
+                <SequenceWaveform
+                  v-if="savedRecordState"
+                  :project-id="projectId"
+                  :composition="savedRecordState.composition"
+                  :assets="savedRecordState.assets"
+                  :revision="savedRecordState.revision"
+                  :timebase="projectTimebase"
+                  :frame="recordFrame"
+                  :max-frame="savedRecordLastFrame"
+                  :source-statuses="sourceStatuses"
+                  :source-version="sourceVersion"
+                  :active="recordActive"
+                  :disabled="cutDeskBlocked"
+                  v-bind="cutDeskControls.seek"
+                  @activity="emit('activity')"
+                />
+                <p
+                  v-if="
+                    recordIssue &&
+                    (recordIssue !== 'record.not-ready' ||
+                      recordMonitor?.buffering)
+                  "
+                  class="editor-note"
+                  role="status"
+                >
+                  {{
+                    t(`cutDesk.issues.${recordIssue.replace("record.", "")}`)
+                  }}
+                </p>
+              </section>
+            </div>
+          </div>
+          <div v-else-if="recordTarget" class="editor-player-region">
             <section
               v-if="recordActive"
               class="cut-desk-record"
@@ -5368,12 +5748,28 @@ onBeforeUnmount(() => {
           </p>
         </aside>
       </div>
-      <footer v-show="editMode === 'story'" class="editor-shortcuts">
+      <footer
+        v-show="editMode === 'story' || cutDeskDualMode"
+        class="editor-shortcuts"
+      >
         <span>{{ t("editor.originalsSafe") }}</span
         ><span>{{
           t(expertMode ? "cutDesk.shortcuts" : "editor.shortcuts")
         }}</span>
+        <button
+          v-if="expertMode"
+          type="button"
+          class="editor-button cut-desk-shortcuts-btn"
+          :aria-label="t('cutDesk.shortcutSheet.toggle')"
+          @click="shortcutSheetOpen = true"
+        >
+          ? {{ t("cutDesk.shortcutSheet.toggle") }}
+        </button>
       </footer>
+      <ShortcutSheet
+        :open="shortcutSheetOpen"
+        @close="shortcutSheetOpen = false"
+      />
     </template>
   </section>
 </template>

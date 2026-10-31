@@ -3035,4 +3035,228 @@ button.editor-beat-heading:hover {
   .timeline-editor .editor-user-pins .editor-button {
     min-height: 44px;
   }
+  .cut-desk-splitter {
+    width: 16px;
+  }
+  .shortcut-sheet-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .cut-desk-layout-controls .editor-button {
+    min-height: 44px;
+  }
+}
+
+/* Shortcut reference sheet dialog */
+.shortcut-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--of-space-4);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.shortcut-sheet-dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: 48rem;
+  width: 100%;
+  max-height: calc(100vh - 4rem);
+  background: var(--editor-surface, #1e1e24);
+  border: 1px solid var(--editor-border, #33333d);
+  border-radius: var(--of-radius-md, 8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.shortcut-sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--of-space-4) var(--of-space-5);
+  border-bottom: 1px solid var(--editor-border, #33333d);
+  background: var(--editor-inset, #16161a);
+}
+
+.shortcut-sheet-title {
+  margin: 0;
+  font-size: var(--of-font-lg, 1.125rem);
+  font-weight: 600;
+  color: var(--editor-foreground, #f0f0f4);
+}
+
+.shortcut-sheet-desc {
+  margin: var(--of-space-1) 0 0;
+  font-size: var(--of-font-caption, 0.8125rem);
+  color: var(--editor-muted, #9999a4);
+}
+
+.shortcut-sheet-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: var(--of-radius-sm, 4px);
+}
+
+.shortcut-sheet-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--of-space-4);
+  padding: var(--of-space-5);
+  overflow-y: auto;
+}
+
+.shortcut-sheet-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--of-space-2);
+}
+
+.shortcut-sheet-group-title {
+  margin: 0;
+  font-size: var(--of-font-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--editor-accent, #60a5fa);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shortcut-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--of-space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.shortcut-sheet-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--of-space-3);
+  font-size: var(--of-font-caption, 0.8125rem);
+}
+
+.shortcut-sheet-key {
+  margin: 0;
+  flex: none;
+}
+
+.shortcut-sheet-key kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--editor-inset, #16161a);
+  border: 1px solid var(--editor-border, #33333d);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  color: var(--editor-foreground, #f0f0f4);
+}
+
+.shortcut-sheet-label {
+  margin: 0;
+  text-align: right;
+  color: var(--editor-muted, #9999a4);
+}
+
+/* Resizable Cut Desk dual-monitor layout */
+.cut-desk-dual-container {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.cut-desk-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  transition: outline 0.15s ease;
+}
+
+.cut-desk-pane.is-active-target {
+  outline: 2px solid var(--editor-accent, #60a5fa);
+  outline-offset: -2px;
+}
+
+.cut-desk-splitter {
+  flex: none;
+  width: 8px;
+  cursor: col-resize;
+  background: var(--editor-border, #33333d);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+  transition: background-color 0.15s ease;
+  z-index: 10;
+}
+
+.cut-desk-splitter:hover,
+.cut-desk-splitter:focus-visible,
+.cut-desk-splitter.is-dragging {
+  background: var(--editor-accent, #60a5fa);
+}
+
+.cut-desk-splitter-handle {
+  width: 2px;
+  height: 24px;
+  background: var(--editor-muted, #9999a4);
+  border-radius: 1px;
+}
+
+.cut-desk-layout-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--of-space-1);
+}
+
+@media (max-width: 1100px) {
+  .cut-desk-dual-container {
+    flex-direction: column;
+  }
+  .cut-desk-pane {
+    min-width: 0;
+    min-height: 200px;
+    width: 100% !important;
+  }
+  .cut-desk-splitter {
+    width: 100%;
+    height: 8px;
+    cursor: row-resize;
+  }
+  .cut-desk-splitter-handle {
+    width: 24px;
+    height: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cut-desk-pane,
+  .cut-desk-splitter,
+  .shortcut-sheet-overlay,
+  .shortcut-sheet-dialog {
+    transition: none !important;
+    animation: none !important;
+  }
 }
