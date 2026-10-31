@@ -21,6 +21,7 @@ import type { TimelineCommand } from "@openfilm/solver";
 import type { CommitTransactionResult } from "../../apps/desktop/src/composables/useTimelineEditor";
 import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
 import * as monitor from "../../apps/desktop/src/monitor";
+import { candidatesFromIntelligence, snapTime } from "@openfilm/analysis";
 
 const vue = createRequire(resolve("apps/desktop/package.json"))("vue");
 const reactivity = Object.fromEntries(
@@ -82,6 +83,23 @@ const precisionFactory = component<{
   player: Ref<unknown>;
   moveTrim: (event: KeyboardEvent, side: "in" | "out") => void;
   finishDrag: (event: PointerEvent) => void;
+  zoom: Ref<number>;
+  viewStart: Ref<number>;
+  viewDuration: Ref<number>;
+  zoomBy: (factor: number, centerTime?: number) => void;
+  onWheel: (event: WheelEvent) => void;
+  startDrag: (event: PointerEvent, side: "in" | "out") => void;
+  movePointer: (event: PointerEvent) => void;
+  cancelDrag: () => void;
+  snapped: (
+    value: number,
+    minimum?: number,
+    maximum?: number,
+    bypass?: boolean,
+  ) => number;
+  snapResult: Ref<{ time: number; type: string } | undefined>;
+  keyboard: (event: KeyboardEvent) => void;
+  surface: Ref<HTMLElement | null>;
 }>("PrecisionEditor", [
   "addMarker",
   "removeMarker",
@@ -111,6 +129,18 @@ const precisionFactory = component<{
   "player",
   "moveTrim",
   "finishDrag",
+  "zoom",
+  "viewStart",
+  "viewDuration",
+  "zoomBy",
+  "onWheel",
+  "startDrag",
+  "movePointer",
+  "cancelDrag",
+  "snapped",
+  "snapResult",
+  "keyboard",
+  "surface",
 ]);
 const timelineFactory = component<{
   precisionEditor?: Ref<unknown>;
@@ -158,7 +188,10 @@ const clip: Clip = {
   timelineStart: 0,
   timelineDuration: 10,
 };
-async function precision(activeJobs: Job[] = []) {
+async function precision(
+  activeJobs: Job[] = [],
+  initialMarkers: TimelineMarker[] = [],
+) {
   const document = Object.assign(new EventTarget(), {
     querySelector: () => null,
     hidden: false,
@@ -170,7 +203,7 @@ async function precision(activeJobs: Job[] = []) {
     sourceHash: "hash",
     transcriptTotal: 0,
     transcriptOffset: 0,
-    markers: [],
+    markers: [...initialMarkers],
   };
   const props = vue.reactive({
     projectId: "project",
@@ -218,6 +251,8 @@ async function precision(activeJobs: Job[] = []) {
       timebaseKey,
       sequenceFrameAt,
       sequenceTimeAt,
+      candidatesFromIntelligence,
+      snapTime,
       defineProps: () => props,
       defineEmits: () => emit,
       defineExpose: (value: Barrier) => {
@@ -227,6 +262,10 @@ async function precision(activeJobs: Job[] = []) {
       onMounted: (callback: () => void) => callback(),
       onBeforeUnmount: (stop: () => void) => unmountCallbacks.push(stop),
       cancelAnimationFrame: () => {},
+      requestAnimationFrame: (cb: () => void) => {
+        cb();
+        return 1;
+      },
       window: new EventTarget(),
       document,
       api: {
@@ -1084,5 +1123,249 @@ describe("Precision navigation retains in-flight mutation submissions", () => {
     expect(buttonDisabled("PrecisionEditor", action, bindings)).toBe(false);
     bindings.busy = true;
     expect(buttonDisabled("PrecisionEditor", action, bindings)).toBe(true);
+  });
+
+  describe("Phase 1B Precision gestures, zoom/pan and snap-bypass", () => {
+    it("preserves cursor time within one frame when zooming via zoomBy and onWheel", async () => {
+      const child = await precision();
+      const mockSurface = {
+        getBoundingClientRect: () => ({
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 100,
+          right: 800,
+          bottom: 100,
+        }),
+        clientWidth: 800,
+        hasPointerCapture: () => false,
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
+      } as unknown as HTMLElement;
+      child.instance.surface.value = mockSurface;
+
+      expect(child.instance.zoom.value).toBe(1);
+      expect(child.instance.viewStart.value).toBe(0);
+      expect(child.instance.viewDuration.value).toBe(10);
+
+      // Cursor at clientX = 200 corresponds to fraction 200/800 = 0.25 -> time = 2.5s
+      const cursorTime = 2.5;
+      child.instance.zoomBy(2, cursorTime);
+
+      expect(child.instance.zoom.value).toBe(2);
+      expect(child.instance.viewDuration.value).toBe(5);
+      // At fraction 0.25: time after zoom = viewStart + 0.25 * 5 = 1.25 + 1.25 = 2.5s
+      const timeAfterZoom =
+        child.instance.viewStart.value +
+        0.25 * child.instance.viewDuration.value;
+      const oneFrame = 1 / 30;
+      expect(Math.abs(timeAfterZoom - cursorTime)).toBeLessThanOrEqual(
+        oneFrame,
+      );
+
+      // Zoom via onWheel event
+      const wheelZoomIn = {
+        clientX: 200,
+        deltaY: -100,
+        shiftKey: false,
+        deltaX: 0,
+        preventDefault: vi.fn(),
+      } as unknown as WheelEvent;
+      child.instance.onWheel(wheelZoomIn);
+      expect(child.instance.zoom.value).toBeGreaterThan(2);
+      const timeAfterWheel =
+        child.instance.viewStart.value +
+        (200 / 800) * child.instance.viewDuration.value;
+      expect(Math.abs(timeAfterWheel - cursorTime)).toBeLessThanOrEqual(
+        oneFrame,
+      );
+    });
+
+    it("pans the visible source range on Shift-wheel and horizontal wheel", async () => {
+      const child = await precision();
+      const mockSurface = {
+        getBoundingClientRect: () => ({
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 100,
+          right: 800,
+          bottom: 100,
+        }),
+        clientWidth: 800,
+      } as unknown as HTMLElement;
+      child.instance.surface.value = mockSurface;
+
+      // Set zoom to 4 (viewDuration = 2.5s, maxStart = 7.5s)
+      child.instance.zoom.value = 4;
+      child.instance.viewStart.value = 2.0;
+
+      // Shift-wheel forward: deltaY = 80 -> deltaTime = (80 / 800) * 2.5 = 0.25s
+      const shiftWheel = {
+        shiftKey: true,
+        deltaY: 80,
+        deltaX: 0,
+        preventDefault: vi.fn(),
+      } as unknown as WheelEvent;
+      child.instance.onWheel(shiftWheel);
+      expect(child.instance.viewStart.value).toBeCloseTo(2.25);
+
+      // Horizontal trackpad gesture: deltaX = -160 -> deltaTime = (-160 / 800) * 2.5 = -0.5s
+      const horizWheel = {
+        shiftKey: false,
+        deltaX: -160,
+        deltaY: 0,
+        preventDefault: vi.fn(),
+      } as unknown as WheelEvent;
+      child.instance.onWheel(horizWheel);
+      expect(child.instance.viewStart.value).toBeCloseTo(1.75);
+
+      // Pan is clamped to [0, maxViewStart]
+      const largeBackWheel = {
+        shiftKey: false,
+        deltaX: -8000,
+        deltaY: 0,
+        preventDefault: vi.fn(),
+      } as unknown as WheelEvent;
+      child.instance.onWheel(largeBackWheel);
+      expect(child.instance.viewStart.value).toBe(0);
+    });
+
+    it("bypasses snapping when Alt modifier is held", async () => {
+      const marker: TimelineMarker = {
+        id: "m1",
+        assetId: asset.id,
+        time: 3.0,
+        type: "manual",
+      };
+      const child = await precision([], [marker]);
+
+      // Near 3.0s: snapping enabled, no Alt bypass -> snaps to 3.0s
+      const snappedTime = child.instance.snapped(3.01, 0, 10, false);
+      expect(snappedTime).toBe(3.0);
+      expect(child.instance.snapResult.value).toBeDefined();
+
+      // With Alt modifier (bypass = true) -> does not snap, retains exact time
+      const bypassedTime = child.instance.snapped(3.01, 0, 10, true);
+      expect(bypassedTime).toBe(3.01);
+      expect(child.instance.snapResult.value).toBeUndefined();
+    });
+
+    it("respects drag movement threshold and cancels active drag on Escape", async () => {
+      const child = await precision();
+      const mockSurface = {
+        getBoundingClientRect: () => ({
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 100,
+          right: 800,
+          bottom: 100,
+        }),
+        clientWidth: 800,
+        hasPointerCapture: () => true,
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
+      } as unknown as HTMLElement;
+      child.instance.surface.value = mockSurface;
+
+      child.instance.trimIn.value = 1.0;
+      child.instance.trimOut.value = 8.0;
+
+      // Start drag at clientX = 100 on trimIn
+      const startEvent = {
+        clientX: 100,
+        clientY: 50,
+        pointerId: 1,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as PointerEvent;
+      child.instance.startDrag(startEvent, "in");
+
+      // Move within 3px threshold (clientX = 101): does NOT move trimIn
+      const microMove = {
+        clientX: 101,
+        clientY: 50,
+        pointerId: 1,
+      } as unknown as PointerEvent;
+      child.instance.movePointer(microMove);
+      expect(child.instance.trimIn.value).toBe(1.0);
+
+      // Move beyond threshold (clientX = 200 -> time = 2.5s)
+      const moveEvent = {
+        clientX: 200,
+        clientY: 50,
+        pointerId: 1,
+      } as unknown as PointerEvent;
+      child.instance.movePointer(moveEvent);
+      expect(child.instance.trimIn.value).toBeCloseTo(2.5);
+
+      // Press Escape: active drag is cancelled and trimIn reverts to initial value (1.0)
+      const escEvent = {
+        key: "Escape",
+        preventDefault: vi.fn(),
+      } as unknown as KeyboardEvent;
+      child.instance.keyboard(escEvent);
+      expect(child.instance.trimIn.value).toBe(1.0);
+    });
+
+    it("quantizes to exact frame boundary when Shift modifier is held during trim drag", async () => {
+      const child = await precision();
+      const mockSurface = {
+        getBoundingClientRect: () => ({
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 100,
+          right: 800,
+          bottom: 100,
+        }),
+        clientWidth: 800,
+        hasPointerCapture: () => true,
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
+      } as unknown as HTMLElement;
+      child.instance.surface.value = mockSurface;
+
+      child.instance.trimIn.value = 1.0;
+      child.instance.trimOut.value = 8.0;
+
+      const startEvent = {
+        clientX: 100,
+        clientY: 50,
+        pointerId: 2,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as PointerEvent;
+      child.instance.startDrag(startEvent, "in");
+
+      // Drag with Shift held (fine one-frame trim):
+      // clientX = 162 -> fraction = 162/800 = 0.2025 -> at = 2.025s
+      // At 30fps, 2.025s is between frame 60 (2.0s) and frame 61 (2.03333s).
+      // Nearest frame is 61 (2.033333333333333s).
+      const shiftMove = {
+        clientX: 162,
+        clientY: 50,
+        pointerId: 2,
+        shiftKey: true,
+      } as unknown as PointerEvent;
+      child.instance.movePointer(shiftMove);
+
+      // TrimIn should be quantized to frame 61 at 30fps
+      const expectedTime = sequenceTimeAt(
+        sequenceFrameAt(
+          2.025,
+          {
+            version: 1,
+            rateNumerator: 30,
+            rateDenominator: 1,
+            dropFrame: false,
+          },
+          "nearest",
+        ),
+        { version: 1, rateNumerator: 30, rateDenominator: 1, dropFrame: false },
+      );
+      expect(child.instance.trimIn.value).toBeCloseTo(expectedTime);
+    });
   });
 });

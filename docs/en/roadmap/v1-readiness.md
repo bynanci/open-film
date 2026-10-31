@@ -43,7 +43,7 @@ The delivery foundation for **v1.0.0** is being established through progressive,
 | D7A       | Complete    | PR #78 merged; 3-OS pinned render QA, shared metrics and real decoded controls                                                                                                                                     |
 | D7B/M7E   | In Progress | Runtime staging, native packaging, licenses/SBOM review, and candidate installer verification                                                                                                                      |
 | D8        | Complete    | PR #76 merged; local bounded declarative presets and immutable accepted snapshots                                                                                                                                  |
-| Cut Desk  | In Progress | Phase 1A complete; Phase 1B precision zoom/pan, Phase 1C resizable/a11y, Phase 2 pro edit ops, Phase 3 track controls                                                                                              |
+| Cut Desk  | In Progress | Phase 1A & 1B complete; Phase 1C resizable/a11y, Phase 2 pro edit ops, Phase 3 track controls                                                                                                                      |
 
 ## Platform Recovery & Runtime State
 

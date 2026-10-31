@@ -195,8 +195,17 @@ let polling: ReturnType<typeof setTimeout> | undefined;
 let hoverFrame = 0;
 let lastHoverSeek: number | undefined;
 let disposed = false;
-let drag: { side: "in" | "out"; snapshot: string; pointerId: number } | null =
-  null;
+let drag: {
+  side: "in" | "out";
+  snapshot: string;
+  pointerId: number;
+  startX: number;
+  started: boolean;
+  initialIn: number;
+  initialOut: number;
+} | null = null;
+let dragFrame: number | undefined;
+let pendingDragSeek: number | undefined;
 
 const supported = computed(
   () =>
@@ -817,14 +826,58 @@ function mediaPaused() {
   // A queued pause from changing shuttle direction must not stop a new play.
   if (player.value?.paused && shuttleTier.value >= 0) stop();
 }
-function zoomBy(factor: number) {
-  const center = playhead.value;
-  zoom.value = clamp(zoom.value * factor, 1, 64);
-  viewStart.value = clamp(
-    center - viewDuration.value / 2,
-    0,
-    Math.max(0, sourceDuration.value - viewDuration.value),
+function zoomBy(factor: number, centerTime?: number) {
+  const center = centerTime ?? playhead.value;
+  const oldZoom = zoom.value;
+  const newZoom = clamp(oldZoom * factor, 1, 64);
+  if (newZoom === oldZoom) return;
+  const oldDuration = viewDuration.value;
+  zoom.value = newZoom;
+  const newDuration = Math.min(
+    sourceDuration.value,
+    Math.max(frameStep.value * 4, sourceDuration.value / newZoom),
   );
+  if (centerTime !== undefined && oldDuration > 0) {
+    const fraction = clamp((centerTime - viewStart.value) / oldDuration, 0, 1);
+    viewStart.value = clamp(
+      centerTime - fraction * newDuration,
+      0,
+      Math.max(0, sourceDuration.value - newDuration),
+    );
+  } else {
+    viewStart.value = clamp(
+      center - newDuration / 2,
+      0,
+      Math.max(0, sourceDuration.value - newDuration),
+    );
+  }
+}
+function onWheel(event: WheelEvent) {
+  if (!surface.value || sourceDuration.value <= 0) return;
+  const rect = surface.value.getBoundingClientRect();
+  if (rect.width <= 0) return;
+
+  // Horizontal pan: Shift + wheel, or trackpad horizontal deltaX
+  if (
+    event.shiftKey ||
+    (Math.abs(event.deltaX) > Math.abs(event.deltaY) &&
+      Math.abs(event.deltaX) > 0)
+  ) {
+    const delta = event.shiftKey ? event.deltaY : event.deltaX;
+    const deltaSeconds = (delta / rect.width) * viewDuration.value;
+    viewStart.value = clamp(
+      viewStart.value + deltaSeconds,
+      0,
+      Math.max(0, sourceDuration.value - viewDuration.value),
+    );
+    return;
+  }
+
+  // Pointer-centred zoom
+  const cursorFraction = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+  const cursorTime = viewStart.value + cursorFraction * viewDuration.value;
+  const zoomFactor = event.deltaY < 0 ? 1.25 : 0.8;
+  zoomBy(zoomFactor, cursorTime);
 }
 function pointerTime(event: PointerEvent | MouseEvent) {
   const rect = surface.value!.getBoundingClientRect();
@@ -834,8 +887,13 @@ function pointerTime(event: PointerEvent | MouseEvent) {
         viewDuration.value,
   );
 }
-function snapped(value: number, minimum = 0, maximum = sourceDuration.value) {
-  if (!sourceVerified.value || !snapEnabled.value) {
+function snapped(
+  value: number,
+  minimum = 0,
+  maximum = sourceDuration.value,
+  bypass = false,
+) {
+  if (!sourceVerified.value || !snapEnabled.value || bypass) {
     snapResult.value = undefined;
     return clamp(value, minimum, maximum);
   }
@@ -852,24 +910,59 @@ function snapped(value: number, minimum = 0, maximum = sourceDuration.value) {
       : undefined;
   return result.time;
 }
+function scheduleDragPreview(time: number) {
+  pendingDragSeek = time;
+  if (dragFrame === undefined) {
+    dragFrame = requestAnimationFrame(() => {
+      dragFrame = undefined;
+      if (pendingDragSeek !== undefined) {
+        seek(pendingDragSeek);
+        pendingDragSeek = undefined;
+      }
+    });
+  }
+}
 function startDrag(event: PointerEvent, side: "in" | "out") {
   if (!stageable.value || !surface.value) return;
   event.preventDefault();
   event.stopPropagation();
   stop();
-  drag = { side, snapshot: clipSnapshot.value, pointerId: event.pointerId };
+  drag = {
+    side,
+    snapshot: clipSnapshot.value,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    started: false,
+    initialIn: trimIn.value,
+    initialOut: trimOut.value,
+  };
   surface.value.setPointerCapture(event.pointerId);
 }
 function movePointer(event: PointerEvent) {
   const at = pointerTime(event);
   hoverTime.value = at;
   if (drag) {
+    if (!drag.started) {
+      if (Math.abs(event.clientX - drag.startX) < 3) return;
+      drag.started = true;
+    }
+    const bypass = event.altKey;
+    let targetTime = at;
+    if (event.shiftKey) {
+      const frameNum = sequenceFrameAt(at, sourceTimebase.value, "nearest");
+      targetTime = sequenceTimeAt(frameNum, sourceTimebase.value);
+    }
     const epsilon = trimSeparation.value;
     if (drag.side === "in")
-      trimIn.value = snapped(at, 0, trimOut.value - epsilon);
+      trimIn.value = snapped(targetTime, 0, trimOut.value - epsilon, bypass);
     else
-      trimOut.value = snapped(at, trimIn.value + epsilon, sourceDuration.value);
-    seek(drag.side === "in" ? trimIn.value : trimOut.value);
+      trimOut.value = snapped(
+        targetTime,
+        trimIn.value + epsilon,
+        sourceDuration.value,
+        bypass,
+      );
+    scheduleDragPreview(drag.side === "in" ? trimIn.value : trimOut.value);
   } else if (hoverPreview.value && !playing.value) {
     if (!shouldSeekHover(lastHoverSeek, at, props.asset?.frameRate ?? 30))
       return;
@@ -879,6 +972,10 @@ function movePointer(event: PointerEvent) {
   }
 }
 function finishDrag(event: PointerEvent) {
+  if (dragFrame !== undefined) {
+    cancelAnimationFrame(dragFrame);
+    dragFrame = undefined;
+  }
   const captured = drag;
   drag = null;
   if (surface.value?.hasPointerCapture(event.pointerId))
@@ -887,7 +984,23 @@ function finishDrag(event: PointerEvent) {
     marks.value = markStale(marks.value);
 }
 function cancelDrag() {
-  drag = null;
+  if (dragFrame !== undefined) {
+    cancelAnimationFrame(dragFrame);
+    dragFrame = undefined;
+  }
+  if (drag) {
+    trimIn.value = drag.initialIn;
+    trimOut.value = drag.initialOut;
+    seek(drag.side === "in" ? drag.initialIn : drag.initialOut);
+    if (surface.value?.hasPointerCapture(drag.pointerId)) {
+      try {
+        surface.value.releasePointerCapture(drag.pointerId);
+      } catch {
+        // pointer not captured
+      }
+    }
+    drag = null;
+  }
 }
 function resetRange() {
   cancelDrag();
@@ -989,6 +1102,11 @@ async function split() {
 }
 const addSourceMarker = addMarker;
 function keyboard(event: KeyboardEvent) {
+  if (event.key === "Escape" && drag) {
+    event.preventDefault();
+    cancelDrag();
+    return;
+  }
   if (
     !props.active ||
     !playable.value ||
@@ -1662,7 +1780,11 @@ defineExpose({
             role="group"
             tabindex="0"
             :aria-label="t('precision.waveform')"
-            @pointerdown="seek(snapped(pointerTime($event)))"
+            @pointerdown="
+              seek(
+                snapped(pointerTime($event), 0, sourceDuration, $event.altKey),
+              )
+            "
             @pointermove="movePointer"
             @pointerleave="
               hoverTime = undefined;
@@ -1670,6 +1792,7 @@ defineExpose({
             "
             @pointerup="finishDrag"
             @pointercancel="cancelDrag"
+            @wheel.prevent="onWheel"
             @dblclick="addMarker(pointerTime($event))"
           >
             <svg
@@ -1710,6 +1833,26 @@ defineExpose({
                 y2="100"
                 class="precision-hover"
               />
+              <g
+                v-if="snapResult && inView(snapResult.time)"
+                class="precision-snap-indicator"
+              >
+                <line
+                  :x1="x(snapResult.time)"
+                  :x2="x(snapResult.time)"
+                  y1="0"
+                  y2="100"
+                  class="precision-snap-line"
+                />
+                <polygon
+                  :points="`${x(snapResult.time)},4 ${x(snapResult.time) - 4},12 ${x(snapResult.time) + 4},12`"
+                  class="precision-snap-marker top"
+                />
+                <polygon
+                  :points="`${x(snapResult.time)},96 ${x(snapResult.time) - 4},88 ${x(snapResult.time) + 4},88`"
+                  class="precision-snap-marker bottom"
+                />
+              </g>
             </svg>
             <p v-if="!data?.waveform" class="precision-wave-empty">
               {{ t("precision.waveformMissing") }}

@@ -2471,6 +2471,27 @@ button.editor-beat-heading:hover {
   cursor: not-allowed;
 }
 
+@media (pointer: coarse) {
+  .precision-trim-handle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+.precision-snap-indicator {
+  pointer-events: none;
+}
+
+.precision-snap-line {
+  stroke: var(--of-snap, #f59e0b);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
+
+.precision-snap-marker {
+  fill: var(--of-snap, #f59e0b);
+}
+
 .precision-hover-time {
   position: absolute;
   right: var(--of-space-2);
