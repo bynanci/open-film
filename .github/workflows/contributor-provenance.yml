@@ -1,0 +1,36 @@
+# This workflow runs from the trusted default branch after it is merged.
+# Never check out, install, build, or execute code from a contributor's PR here.
+name: Contributor provenance
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco-signoff:
+    name: DCO sign-off
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout only trusted default-branch policy code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.14.0
+      - name: Validate the trusted DCO parser
+        run: node --test scripts/ci/tests/dco-policy.node.mjs
+      - name: Inspect PR commits via read-only GitHub API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OPENFILM_PR_NUMBER: ${{ github.event.pull_request.number }}
+          OPENFILM_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci/check-pr-provenance.mjs

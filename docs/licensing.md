@@ -65,6 +65,24 @@ not require publishing all changes to the world. A source-sharing condition
 must be evaluated against the actual license and form of use, not the label
 "open source" alone.
 
+## Source rights, branding and commercialization
+
+OpenFilm's [branding policy](https://github.com/bynanci/open-film/blob/main/TRADEMARKS.md) addresses potential confusion
+about official releases, names and logos. It does not modify Apache-2.0 or
+claim trademark registration. Factual attribution and legally permitted
+references to the project remain available.
+
+The [commercial use guide](https://github.com/bynanci/open-film/blob/main/COMMERCIAL.md) describes permitted downstream
+commercial use and possible future official services. Competitors may also
+commercialize Apache-licensed code; neither branding guidelines nor a paid
+offering can take back existing copyright grants.
+
+New contribution provenance follows [DCO.md](https://github.com/bynanci/open-film/blob/main/DCO.md) and
+[GOVERNANCE.md](https://github.com/bynanci/open-film/blob/main/GOVERNANCE.md). Sign-off is not a copyright assignment.
+Any future exclusive relicensing or license migration requires a rights
+assessment and any necessary permission from affected rights holders;
+the historical grants described above must be preserved.
+
 ## Media, dependencies and separate services
 
 Importing a photograph, video, soundtrack or transcript into OpenFilm does not

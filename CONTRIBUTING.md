@@ -57,3 +57,15 @@ Do not commit personal photos, faces, transcripts, GPS traces, credentials or pr
 Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities using [SECURITY.md](SECURITY.md), not a public issue. Use [SUPPORT.md](SUPPORT.md) for product questions and the issue forms for bug reports or feature requests.
 
 Unless explicitly stated otherwise, contributions submitted for inclusion are licensed under Apache-2.0. Confirm you have the right to contribute code and included media. Identify third-party material and preserve its license and attribution; contributing does not transfer copyright ownership. See [licensing](docs/licensing.md), LICENSE and NOTICE.
+
+## Contribution provenance and DCO
+
+For contributions first submitted after this policy is adopted, every new
+commit must carry the contributor's own DCO 1.1 sign-off. Use `git commit -s`
+and read [DCO.md](DCO.md) before submitting. The sign-off confirms the right
+to contribute under the applicable open-source license; it does not assign
+copyright or grant exclusive commercial relicensing rights.
+
+Before importing third-party or AI-assisted source, verify provenance,
+permission and required notices. If employer-owned code is involved, confirm
+authorization to contribute. See [GOVERNANCE.md](GOVERNANCE.md).

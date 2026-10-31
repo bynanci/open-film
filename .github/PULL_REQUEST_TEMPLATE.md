@@ -23,3 +23,10 @@ Commands and results:
 
 - [ ] No credentials, private media, personal paths or GPS data are included.
 - [ ] New media, fonts, model files or other third-party material have reviewed license and attribution.
+
+## Contribution rights and project identity
+
+- [ ] Every new commit has my own DCO 1.1 sign-off, as described in [DCO.md](../DCO.md).
+- [ ] I have rights to submit my original, employer-owned, or AI-assisted changes; upstream copyright and licenses are preserved.
+- [ ] Any change to LICENSE, NOTICE, branding, governance or commercial policy is described explicitly for maintainer review.
+- [ ] Any branded screenshot, package or release does not falsely imply upstream endorsement.
