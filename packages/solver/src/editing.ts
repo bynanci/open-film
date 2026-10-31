@@ -60,6 +60,9 @@ import {
   validateCoverageProposal,
   validateCoverageAudioBindings,
   resolveCompositionCoverageBindings,
+  applyTranscriptRipple,
+  validateTranscriptRippleProposal,
+  type TranscriptRippleProposal,
 } from "@openfilm/core";
 import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
@@ -139,6 +142,10 @@ export type TimelineCommand =
   | {
       type: "coverage.set-bindings";
       bindings: readonly CoverageAudioBindingV1[] | null;
+    }
+  | {
+      type: "transcript.ripple";
+      proposal: TranscriptRippleProposal;
     }
   | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
   | { type: "audio.move"; clipId: string; timelineStart: number }
@@ -1452,6 +1459,11 @@ function applyTimelineCommandRaw(
         ...validateCoverageAudioBindings(command.bindings),
       ];
     }
+    return next;
+  }
+  if (command.type === "transcript.ripple") {
+    const proposal = validateTranscriptRippleProposal(command.proposal);
+    next.composition = applyTranscriptRipple(next.composition, proposal);
     return next;
   }
   const { clip, track } = findClip(next, command.clipId);

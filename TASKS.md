@@ -209,12 +209,14 @@ The published stable remains v0.4.0; release follows verified exit conditions.
       do not imply the existing generic snap primitive produces beat markers.
 - D3B1 crosswalk: the nested Professional Cut Desk Phase 3 item is authoritative for J/L-cut
   mechanics and explicit embedded-audio policy on the existing Composition.
-- [ ] D3B2: after a Story/solver coverage design, add reviewable A-roll/B-roll
+- [x] D3B2: after a Story/solver coverage design, add reviewable A-roll/B-roll
       visual coverage roles and proposals that persist the D3B1 policy receipt;
       product implementation depends on D3B1 and introduces no second timeline.
-- [ ] D4: design and implement reliable-timing-only Transcript ripple proposals
+      See [validation](docs/validation-audio-policy.md).
+- [x] D4: design and implement reliable-timing-only Transcript ripple proposals
       through one application-level compound operation with typed cross-track
-      retime/conflict policy; estimated timing must fail closed.
+      retime/conflict policy; estimated timing must fail closed. See
+      [validation](docs/validation-transcript-ripple.md).
 - D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
   focal interaction, ambient fill, versioned bounded custom easing and bounded
   bilingual title finishing.
