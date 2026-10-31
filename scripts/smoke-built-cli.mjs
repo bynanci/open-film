@@ -10,7 +10,9 @@ import { generateSampleMedia } from "../fixtures/sample-media/generate.mjs";
 const root = await mkdtemp(join(tmpdir(), "openfilm-built-cli-"));
 const project = join(root, "Jo's film.openfilm");
 const execute = promisify(execFile);
-const python = process.env.OPENFILM_TEST_PYTHON ?? "python3";
+const python =
+  process.env.OPENFILM_TEST_PYTHON ??
+  (process.platform === "win32" ? "python" : "python3");
 const commandWithEnvironment = async (environment, ...args) => {
   const { stdout } = await execute(
     process.execPath,

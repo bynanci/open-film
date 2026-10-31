@@ -646,11 +646,12 @@ test("turns generated device media into a protected, edited and fitted Proposal 
     advancedEdits: "metadata-only",
     realNleVerified: false,
   });
-  const parsed = await runProcess(
-    process.env.OPENFILM_OTIO_PYTHON ?? "python3",
-    [
-      "-c",
-      `import json, pathlib, sys, urllib.parse, urllib.request
+  const python =
+    process.env.OPENFILM_OTIO_PYTHON ??
+    (process.platform === "win32" ? "python" : "python3");
+  const parsed = await runProcess(python, [
+    "-c",
+    `import json, pathlib, sys, urllib.parse, urllib.request
 import opentimelineio as otio
 timeline = otio.adapters.read_from_file(sys.argv[1])
 clips = list(timeline.find_clips())
@@ -659,9 +660,8 @@ for clip in clips:
     assert url.scheme == 'file', clip.name
     assert pathlib.Path(urllib.request.url2pathname(urllib.parse.unquote(url.path))).is_file(), clip.name
 print(json.dumps({'duration': timeline.duration().to_seconds(), 'clip_count': len(clips), 'parser_version': otio.__version__}))`,
-      otioPath!,
-    ],
-  );
+    otioPath!,
+  ]);
   const parsedTimeline = JSON.parse(parsed.stdout.toString("utf8"));
   expect(parsedTimeline.duration).toBeCloseTo(current.composition.duration, 6);
   expect(parsedTimeline.clip_count).toBeGreaterThan(0);

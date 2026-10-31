@@ -424,7 +424,7 @@ export async function stageRuntime(
         let selected = false;
         for (const name of native) {
           try {
-            dependencyRequire(name);
+            await locate(dependencyRequire, name);
             await copyPackage(dependencyRequire, name);
             selected = true;
             break;

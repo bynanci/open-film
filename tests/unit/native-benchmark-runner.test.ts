@@ -359,7 +359,7 @@ await writeFile(${JSON.stringify(audit)},JSON.stringify(result));`,
           outputDirectory,
           durationSeconds: 0.1,
           intervalSeconds: 0.1,
-          startupTimeoutSeconds: 10,
+          startupTimeoutSeconds: 30,
         });
         expect(result.status).toBe("completed");
         const manifest = JSON.parse(

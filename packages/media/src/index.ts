@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { Dir, Dirent } from "node:fs";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { lstat, mkdir, opendir, realpath, stat } from "node:fs/promises";
 import {
@@ -76,6 +76,15 @@ export function checkAbort(signal?: AbortSignal): void {
   if (signal?.aborted) throw abortError();
 }
 
+function resolveExecutable(command: string): string {
+  if (process.platform === "win32" && command === "perl") {
+    if (process.env.OPENFILM_PERL) return process.env.OPENFILM_PERL;
+    const gitPerl = "C:\\Program Files\\Git\\usr\\bin\\perl.exe";
+    if (existsSync(gitPerl)) return gitPerl;
+  }
+  return command;
+}
+
 /** No shell interpolation. Every child is drained, timed out, and reaped on abort. */
 export function runProcess(
   command: string,
@@ -84,7 +93,7 @@ export function runProcess(
 ): Promise<ProcessOutput> {
   checkAbort(options.signal);
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(resolveExecutable(command), args, {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       cwd: options.cwd,

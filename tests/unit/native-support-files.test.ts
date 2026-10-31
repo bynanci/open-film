@@ -33,9 +33,19 @@ import {
 } from "../../apps/server/src/runtime-manifest.js";
 const roots: string[] = [];
 afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  );
+  for (const root of roots.splice(0)) {
+    try {
+      await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      if (
+        process.platform === "win32" &&
+        ["EPERM", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
 });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "openfilm-support-"));
@@ -98,7 +108,11 @@ async function fixture() {
         "fontkit",
         "brotli",
         "dfa",
-        `@resvg/resvg-js-${process.platform}-${process.arch}-gnu`,
+        process.platform === "win32"
+          ? `@resvg/resvg-js-win32-${process.arch}-msvc`
+          : process.platform === "darwin"
+            ? `@resvg/resvg-js-darwin-${process.arch}`
+            : `@resvg/resvg-js-${process.platform}-${process.arch}-gnu`,
       ].map((id) => [id, { source: notice, sha256: file.licenseSha256 }]),
     ),
   };
