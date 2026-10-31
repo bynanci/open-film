@@ -230,9 +230,7 @@ export class MicroPreviewService {
       );
     }
 
-    const { composition } = this.getStoryAndComposition(
-      options?.compositionId,
-    );
+    const { composition } = this.getStoryAndComposition(options?.compositionId);
     const editor = options?.editor ?? new TimelineEditor(this.app);
     const state = editor.get(composition.id);
 
