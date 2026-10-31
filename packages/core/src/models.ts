@@ -391,6 +391,8 @@ export interface PrimaryColorCorrection {
   contrast: number;
 }
 
+export type TransitionType = "crossfade" | "dip-to-black" | "dip-to-white";
+
 export interface Clip {
   userOverrides?: UserOverrideState;
   id: string;
@@ -415,7 +417,7 @@ export interface Clip {
   primaryColor?: PrimaryColorCorrection;
   /** Protect source selection and edits; ripple timeline positioning remains allowed. */
   locked?: boolean;
-  transition?: { type: "crossfade"; duration: number };
+  transition?: { type: TransitionType; duration: number };
 }
 
 export interface Track {

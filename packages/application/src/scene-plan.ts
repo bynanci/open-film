@@ -22,7 +22,7 @@ export interface ScenePlanOptions {
   maxDuration: number;
   brief?: string;
   assetIds?: string[];
-  transition?: "cut" | "crossfade";
+  transition?: "cut" | "crossfade" | "dip-to-black" | "dip-to-white";
 }
 
 export interface ScenePlan {
@@ -31,7 +31,7 @@ export interface ScenePlan {
   composition: Composition;
   sourceAssetIds: string[];
   sourceSignature: string;
-  transition: "cut" | "crossfade";
+  transition: "cut" | "crossfade" | "dip-to-black" | "dip-to-white";
   excludedAudioCount: number;
 }
 
@@ -254,10 +254,16 @@ function renderable(
   return usable;
 }
 
-function transitionMode(value: unknown): "cut" | "crossfade" {
+function transitionMode(
+  value: unknown,
+): "cut" | "crossfade" | "dip-to-black" | "dip-to-white" {
   if (value === undefined || value === "cut") return "cut";
   if (value === "crossfade") return "crossfade";
-  return invalid("Choose cut or crossfade for the scene plan.");
+  if (value === "dip-to-black") return "dip-to-black";
+  if (value === "dip-to-white") return "dip-to-white";
+  return invalid(
+    "Choose cut, crossfade, dip-to-black, or dip-to-white for the scene plan.",
+  );
 }
 
 function solvePlan(
@@ -286,7 +292,7 @@ function solvePlan(
     invalid(
       `Scene "${emptyScene.title}" has no playable photos or videos. Choose usable media, remove conflicting exclusions, or increase its duration before accepting.`,
     );
-  if (transition === "crossfade")
+  if (transition !== "cut")
     for (const track of composition.tracks) {
       if (track.type !== "video") continue;
       track.clips.forEach((clip, index) => {
@@ -300,7 +306,7 @@ function solvePlan(
           ) < 1e-7
         )
           clip.transition = {
-            type: "crossfade",
+            type: transition,
             duration: Math.min(
               0.5,
               clip.timelineDuration / 2,

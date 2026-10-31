@@ -24,6 +24,15 @@ export interface ResolvedSequenceClip {
   audible: boolean;
 }
 
+export interface ResolvedSequenceFrame {
+  frame: number;
+  time: number;
+  primary?: ResolvedSequenceClip;
+  visual: ResolvedSequenceClip[];
+  audible: ResolvedSequenceClip[];
+  transitionOverlay?: { color: "black" | "white"; opacity: number };
+}
+
 function finite(value: number, field: string, positive = false): void {
   if (!Number.isFinite(value) || (positive ? value <= 0 : value < 0))
     throw new Error(
@@ -102,13 +111,7 @@ export function resolveCompositionFrame(
   assets: readonly MediaAsset[],
   frame: number,
   timebase: ProjectTimebaseV1,
-): {
-  frame: number;
-  time: number;
-  primary?: ResolvedSequenceClip;
-  visual: ResolvedSequenceClip[];
-  audible: ResolvedSequenceClip[];
-} {
+): ResolvedSequenceFrame {
   const time = sequenceTimeAt(frame, timebase);
   finite(composition.duration, "Composition duration", true);
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
@@ -116,6 +119,41 @@ export function resolveCompositionFrame(
   const visual: ResolvedSequenceClip[] = [];
   const audible: ResolvedSequenceClip[] = [];
   let primary: ResolvedSequenceClip | undefined;
+  let transitionOverlay:
+    { color: "black" | "white"; opacity: number } | undefined;
+
+  const primaryTrack = composition.tracks[primaryIndex];
+  if (primaryTrack) {
+    for (const clip of primaryTrack.clips) {
+      if (
+        clip.transition &&
+        (clip.transition.type === "dip-to-black" ||
+          clip.transition.type === "dip-to-white")
+      ) {
+        const T = clip.timelineStart;
+        const D = clip.transition.duration;
+        if (time >= T && time < T + D) {
+          const delta = time - T;
+          const half = D / 2;
+          const rawAlpha =
+            half > 0 ? (delta < half ? delta / half : (D - delta) / half) : 0;
+          const clamped = Math.max(0, Math.min(1, rawAlpha));
+          const opacity =
+            Math.abs(clamped - 1.0) < 1e-6
+              ? 1.0
+              : Math.abs(clamped) < 1e-6
+                ? 0.0
+                : clamped;
+          transitionOverlay = {
+            color: clip.transition.type === "dip-to-black" ? "black" : "white",
+            opacity,
+          };
+          break;
+        }
+      }
+    }
+  }
+
   for (const [trackIndex, track] of composition.tracks.entries()) {
     if (track.type === "titles") continue;
     // The renderer finds fade successors chronologically. Output layers still
@@ -138,12 +176,14 @@ export function resolveCompositionFrame(
         throw new Error(`Clip ${clip.id} exceeds the composition duration`);
       if (
         clip.transition &&
-        (clip.transition.type !== "crossfade" ||
+        ((clip.transition.type !== "crossfade" &&
+          clip.transition.type !== "dip-to-black" &&
+          clip.transition.type !== "dip-to-white") ||
           !Number.isFinite(clip.transition.duration) ||
           clip.transition.duration < 0 ||
           clip.transition.duration > clip.timelineDuration)
       )
-        throw new Error("Crossfade must fit within the clip duration");
+        throw new Error("Transition must fit within the clip duration");
       const asset = assetMap.get(clip.assetId);
       if (!asset)
         throw new Error(
@@ -158,14 +198,26 @@ export function resolveCompositionFrame(
         track.type !== "music" &&
         asset.mediaType !== "audio";
       const next = nextClips.get(clipIndex);
-      const tail =
-        isVisual &&
-        next?.transition?.type === "crossfade" &&
+      const isContiguous =
+        next &&
         Math.abs(
           next.timelineStart - clip.timelineStart - clip.timelineDuration,
-        ) < 0.05
+        ) < 0.05;
+      let tailDuration = 0;
+      if (isVisual && isContiguous && next?.transition) {
+        if (next.transition.type === "crossfade") {
+          tailDuration = next.transition.duration;
+        } else if (
+          next.transition.type === "dip-to-black" ||
+          next.transition.type === "dip-to-white"
+        ) {
+          tailDuration = next.transition.duration / 2;
+        }
+      }
+      const tail =
+        tailDuration > 0
           ? Math.min(
-              next.transition.duration,
+              tailDuration,
               composition.duration - clip.timelineStart - clip.timelineDuration,
             )
           : 0;
@@ -193,6 +245,10 @@ export function resolveCompositionFrame(
       if (!visualActive && !audibleActive) continue;
       const localTime = sequenceTimeAt(frame - range.startFrame, timebase);
       const fade = clip.transition?.duration ?? 0;
+      const opacity =
+        clip.transition?.type === "crossfade" && fade > 0
+          ? Math.min(1, localTime / fade)
+          : 1;
       const resolved: ResolvedSequenceClip = {
         trackId: track.id,
         trackIndex,
@@ -206,15 +262,36 @@ export function resolveCompositionFrame(
           localTime >= clip.timelineDuration
             ? sourceOut
             : Math.min(sourceOut, sourceIn + localTime * speed),
-        opacity: fade > 0 ? Math.min(1, localTime / fade) : 1,
+        opacity,
         visual: visualActive,
         audible: audibleActive,
       };
       if (visualActive) visual.push(resolved);
       if (audibleActive) audible.push(resolved);
-      if (trackIndex === primaryIndex && active && visualActive)
-        primary = resolved;
+      if (trackIndex === primaryIndex && visualActive) {
+        if (
+          next?.transition &&
+          (next.transition.type === "dip-to-black" ||
+            next.transition.type === "dip-to-white")
+        ) {
+          const delta = time - next.timelineStart;
+          if (delta < next.transition.duration / 2) {
+            primary = resolved;
+          }
+        } else if (
+          clip.transition &&
+          (clip.transition.type === "dip-to-black" ||
+            clip.transition.type === "dip-to-white")
+        ) {
+          const delta = time - clip.timelineStart;
+          if (delta >= clip.transition.duration / 2 && active) {
+            primary = resolved;
+          }
+        } else if (active) {
+          primary = resolved;
+        }
+      }
     }
   }
-  return { frame, time, primary, visual, audible };
+  return { frame, time, primary, visual, audible, transitionOverlay };
 }

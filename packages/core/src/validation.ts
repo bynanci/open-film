@@ -1394,7 +1394,11 @@ function composition(
       });
       optional(clip, "transition", clipPath, (v, p) => {
         const transition = object(v, p);
-        choice(transition.type, `${p}.type`, ["crossfade"]);
+        choice(transition.type, `${p}.type`, [
+          "crossfade",
+          "dip-to-black",
+          "dip-to-white",
+        ]);
         if (positive(transition.duration, `${p}.duration`) > length)
           fail(`${p}.duration`, "transition duration exceeds clip duration");
       });

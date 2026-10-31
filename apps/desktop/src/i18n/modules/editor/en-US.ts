@@ -908,6 +908,8 @@ export default {
       transitionLabel: "Clip transition",
       cut: "Cut",
       crossfade: "Crossfade",
+      dipToBlack: "Dip to Black",
+      dipToWhite: "Dip to White",
       fadeDuration: "Fade (seconds)",
       fadeDurationLabel: "Crossfade duration",
       scale: "Scale",

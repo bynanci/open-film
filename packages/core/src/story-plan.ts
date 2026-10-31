@@ -65,7 +65,7 @@ export interface StoryPlan {
   unsupportedIntents: string[];
   conflicts: string[];
   acceptanceMapping?: StoryPlanAcceptanceMapping;
-  transition: "cut" | "crossfade";
+  transition: "cut" | "crossfade" | "dip-to-black" | "dip-to-white";
   createdAt: string;
   presetContext?: import("./presets.js").PresetStoryPlanContext;
 }
@@ -74,7 +74,7 @@ export interface StoryPlanOptions {
   title?: string;
   targetDuration?: number;
   maxDuration?: number;
-  transition?: "cut" | "crossfade";
+  transition?: "cut" | "crossfade" | "dip-to-black" | "dip-to-white";
   selectedNodeIds?: string[];
   preferPhotoDepth?: boolean;
   brief?: string;
@@ -229,10 +229,15 @@ export function validateStoryPlan(value: unknown): StoryPlan {
       "StoryPlan conflicts must be an array.",
     );
   }
-  if (raw.transition !== "cut" && raw.transition !== "crossfade") {
+  if (
+    raw.transition !== "cut" &&
+    raw.transition !== "crossfade" &&
+    raw.transition !== "dip-to-black" &&
+    raw.transition !== "dip-to-white"
+  ) {
     throw new ApplicationError(
       "story.invalid",
-      "StoryPlan transition must be 'cut' or 'crossfade'.",
+      "StoryPlan transition must be 'cut', 'crossfade', 'dip-to-black', or 'dip-to-white'.",
     );
   }
 

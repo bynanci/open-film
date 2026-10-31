@@ -87,6 +87,8 @@ export default {
     transition: "Scene rhythm",
     cut: "Cut",
     crossfade: "Crossfade",
+    dipToBlack: "Dip to Black",
+    dipToWhite: "Dip to White",
     working: "Preparing…",
     preview: "Preview scene plan",
     review: "Review your scene plan",

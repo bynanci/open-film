@@ -221,6 +221,14 @@ export default {
       conflict:
         "Continuity adjustment conflicts with locked clips, user pins, or protected media.",
     },
+    microPreview: {
+      invalidProposal:
+        "The scene micro-preview proposal is invalid or contains malformed data. Refresh preview to continue.",
+      staleProposal:
+        "The timeline or transition changed after this micro-preview was generated. Refresh preview before accepting.",
+      conflict:
+        "The micro-preview transition conflicts with locked clips or protected boundaries.",
+    },
     glossary: {
       storageBusy:
         "Another OpenFilm window or process is updating your global glossary. Try again after it finishes.",

@@ -82,6 +82,8 @@ export default {
     transition: "場景節奏",
     cut: "直接切換",
     crossfade: "交叉淡化",
+    dipToBlack: "淡入淡出至黑色",
+    dipToWhite: "淡入淡出至白色",
     working: "準備中…",
     preview: "預覽場景規劃",
     review: "審閱你的場景規劃",

@@ -181,6 +181,13 @@ export default {
         "時間軸或故事在產生此連續性診斷後已變更。接受前請先重新整理診斷。",
       conflict: "連續性調整與鎖定的片段、使用者釘選或受保護素材衝突。",
     },
+    microPreview: {
+      invalidProposal:
+        "相鄰場景微預覽提案無效或格式錯誤，請重新整理預覽以繼續。",
+      staleProposal:
+        "時間軸或轉場已於微預覽產生後發生變更，請重新整理預覽後再套用。",
+      conflict: "微預覽轉場與鎖定的片段或邊界約束衝突。",
+    },
     glossary: {
       storageBusy:
         "另一個 OpenFilm 視窗或程序正在更新全域詞彙表，請等候完成後再試。",

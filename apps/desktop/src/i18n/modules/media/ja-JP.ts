@@ -205,6 +205,8 @@ export default {
         volumeMute: "音量とミュート",
         transform: "拡大率、回転、位置",
         crossfade: "クロスフェード",
+        "dip-to-black": "暗転（黒へディップ）",
+        "dip-to-white": "明転（白へディップ）",
         titles: "タイトルとオーバーレイ",
         look: "映像のルック",
         primaryColor: "プライマリーカラー",

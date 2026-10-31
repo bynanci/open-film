@@ -86,6 +86,8 @@ export default {
     transition: "シーンのリズム",
     cut: "カット",
     crossfade: "クロスフェード",
+    dipToBlack: "ブラックにディップ",
+    dipToWhite: "ホワイトにディップ",
     working: "準備中…",
     preview: "シーン案をプレビュー",
     review: "シーン案を確認",

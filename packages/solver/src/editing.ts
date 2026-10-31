@@ -165,7 +165,7 @@ export type TimelineCommand =
   | {
       type: "transition";
       clipId: string;
-      transition: "cut" | "crossfade";
+      transition: "cut" | "crossfade" | "dip-to-black" | "dip-to-white";
       duration?: number;
     }
   | { type: "reorder"; clipId: string; toIndex: number }
@@ -1836,16 +1836,23 @@ function applyTimelineCommandRaw(
       break;
     case "transition":
       if (command.duration !== undefined)
-        finite(command.duration, "Crossfade duration", 0, true);
+        finite(command.duration, "Transition duration", 0, true);
       if (command.transition === "cut") delete clip.transition;
-      else if (command.transition === "crossfade") {
+      else if (
+        command.transition === "crossfade" ||
+        command.transition === "dip-to-black" ||
+        command.transition === "dip-to-white"
+      ) {
         const duration =
           command.duration ?? Math.min(0.5, clip.timelineDuration);
-        finite(duration, "Crossfade duration", 0, true);
+        finite(duration, "Transition duration", 0, true);
         if (duration > clip.timelineDuration)
-          fail("Crossfade duration cannot exceed clip duration.");
-        clip.transition = { type: "crossfade", duration };
-      } else fail("Transition must be cut or crossfade.");
+          fail("Transition duration cannot exceed clip duration.");
+        clip.transition = { type: command.transition, duration };
+      } else
+        fail(
+          "Transition must be cut, crossfade, dip-to-black, or dip-to-white.",
+        );
       break;
     case "reorder": {
       const group = track.clips.filter((item) => item.beatId === clip.beatId);

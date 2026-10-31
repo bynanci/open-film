@@ -912,6 +912,8 @@ export default {
       transitionLabel: "クリップのトランジション",
       cut: "カット",
       crossfade: "クロスフェード",
+      dipToBlack: "ブラックにディップ",
+      dipToWhite: "ホワイトにディップ",
       fadeDuration: "フェード（秒）",
       fadeDurationLabel: "クロスフェードの長さ",
       scale: "拡大率",

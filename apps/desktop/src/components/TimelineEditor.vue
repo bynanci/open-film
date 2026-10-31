@@ -1834,9 +1834,17 @@ function capturePreviewSize(event: Event) {
 }
 function transition(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
+  const mode =
+    value === "crossfade"
+      ? "crossfade"
+      : value === "dip-to-black"
+        ? "dip-to-black"
+        : value === "dip-to-white"
+          ? "dip-to-white"
+          : "cut";
   editClip({
     type: "transition",
-    transition: value === "crossfade" ? "crossfade" : "cut",
+    transition: mode,
     duration: clipFields.value.transitionDuration,
   });
 }
@@ -4780,6 +4788,12 @@ onBeforeUnmount(() => {
                       <option value="crossfade">
                         {{ t("editor.clip.crossfade") }}
                       </option>
+                      <option value="dip-to-black">
+                        {{ t("editor.clip.dipToBlack") }}
+                      </option>
+                      <option value="dip-to-white">
+                        {{ t("editor.clip.dipToWhite") }}
+                      </option>
                     </select></label
                   ><label v-if="selectedClip.transition" class="editor-field"
                     >{{ t("editor.clip.fadeDuration")
@@ -4793,7 +4807,8 @@ onBeforeUnmount(() => {
                       @change="
                         editClip({
                           type: 'transition',
-                          transition: 'crossfade',
+                          transition:
+                            selectedClip.transition?.type ?? 'crossfade',
                           duration: Number(clipFields.transitionDuration),
                         })
                       "

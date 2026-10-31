@@ -214,6 +214,8 @@ export default {
         volumeMute: "Volume and mute",
         transform: "Scale, rotation and position",
         crossfade: "Crossfade",
+        "dip-to-black": "Dip to black",
+        "dip-to-white": "Dip to white",
         titles: "Titles and overlays",
         look: "Film look",
         primaryColor: "Primary color",
