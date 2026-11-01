@@ -2007,6 +2007,9 @@ export const api = {
       assetId: string;
       baseRevision: string;
       requestId?: string;
+      proposal?: TranscriptRippleProposal;
+      transcriptRevision?: string;
+      sourceHash?: string;
       mode?: TranscriptRippleMode;
       segmentIds?: readonly string[];
       sourceRange?: { start: number; end: number };

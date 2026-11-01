@@ -2,6 +2,7 @@ import {
   ApplicationError,
   validateTranscriptCommand,
   createTranscriptRippleProposal,
+  validateTranscriptRippleProposal,
   type TranscriptCommand,
   type TranscriptRippleProposal,
   type TranscriptRippleMode,
@@ -210,13 +211,16 @@ export class TranscriptEditor {
     const asset = this.application.catalog.getAsset(assetId);
     const editor = new TimelineEditor(this.application);
     const timeline = editor.get(compositionId);
-    return createTranscriptRippleProposal(timeline.composition, page.document, {
+    const proposal = createTranscriptRippleProposal(timeline.composition, page.document, {
       assetId,
       mode: options.mode,
       segmentIds: options.segmentIds,
       sourceRange: options.sourceRange,
       assets: asset ? [asset] : undefined,
     });
+    proposal.transcriptRevision = page.revision;
+    proposal.sourceHash = page.sourceHash;
+    return proposal;
   }
   async applyRipple(
     compositionId: string,
@@ -224,6 +228,9 @@ export class TranscriptEditor {
     options: {
       baseRevision: string;
       requestId?: string;
+      proposal?: TranscriptRippleProposal;
+      transcriptRevision?: string;
+      sourceHash?: string;
       mode?: TranscriptRippleMode;
       segmentIds?: readonly string[];
       sourceRange?: { start: number; end: number };
@@ -231,11 +238,36 @@ export class TranscriptEditor {
     },
   ) {
     const editor = options.editor ?? new TimelineEditor(this.application);
-    const proposal = await this.createRippleProposal(
-      compositionId,
-      assetId,
-      options,
-    );
+    const page = await this.get(assetId);
+    if (!page.document) {
+      throw new ApplicationError(
+        "request.notFound",
+        `No transcript found for asset "${assetId}".`,
+        404,
+      );
+    }
+    const expectedRevision =
+      options.proposal?.transcriptRevision ?? options.transcriptRevision;
+    if (expectedRevision && page.revision !== expectedRevision) {
+      throw new ApplicationError(
+        "transcript.staleProposal",
+        "The transcript has been modified since this proposal was reviewed. Please generate a new proposal.",
+        409,
+      );
+    }
+    const expectedSourceHash =
+      options.proposal?.sourceHash ?? options.sourceHash;
+    if (expectedSourceHash && page.sourceHash !== expectedSourceHash) {
+      throw new ApplicationError(
+        "transcript.sourceMismatch",
+        "The asset source has changed since this proposal was reviewed.",
+        409,
+      );
+    }
+    const proposal =
+      options.proposal !== undefined
+        ? validateTranscriptRippleProposal(options.proposal)
+        : await this.createRippleProposal(compositionId, assetId, options);
     return editor.edit(compositionId, {
       baseRevision: options.baseRevision,
       ...(options.requestId ? { requestId: options.requestId } : {}),

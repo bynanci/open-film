@@ -2,7 +2,7 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ApplicationError,
@@ -41,6 +41,7 @@ export interface RhythmApplyOptions {
 export class RhythmService {
   private readonly evidenceCache = new Map<string, RhythmAnalysisEvidence>();
   private readonly proposalCache = new Map<string, RhythmSnapProposal>();
+  private saveQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly app: OpenFilmApplication) {}
 
@@ -78,18 +79,22 @@ export class RhythmService {
   }
 
   /**
-   * Saves cached rhythm evidence to project disk.
+   * Saves cached rhythm evidence to project disk atomically and serialized.
    */
   public async savePersistedEvidence(): Promise<void> {
-    const path = this.evidenceFilePath;
-    const dir = join(this.app.directory, "analysis");
-    try {
+    this.saveQueue = this.saveQueue.then(async () => {
+      const path = this.evidenceFilePath;
+      const dir = join(this.app.directory, "analysis");
+      const tempPath = join(
+        dir,
+        `rhythm-evidence.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+      );
       await mkdir(dir, { recursive: true });
       const items = Array.from(this.evidenceCache.values());
-      await writeFile(path, JSON.stringify(items, null, 2), "utf8");
-    } catch {
-      // ignore write error
-    }
+      await writeFile(tempPath, JSON.stringify(items, null, 2), "utf8");
+      await rename(tempPath, path);
+    });
+    return this.saveQueue;
   }
 
   /**
@@ -99,7 +104,6 @@ export class RhythmService {
     const validated = validateRhythmAnalysisEvidence(evidence);
     const key = this.cacheKey(validated.assetId, validated.sourceHash);
     this.evidenceCache.set(key, validated);
-    void this.savePersistedEvidence();
   }
 
   /**
@@ -118,19 +122,25 @@ export class RhythmService {
       );
     }
 
-    let sourceHash = asset.contentHash;
-    if (!sourceHash || !/^[0-9a-f]{64}$/i.test(sourceHash)) {
-      try {
-        sourceHash = await hashFile(localPath(asset.uri));
-      } catch {
-        throw new ApplicationError(
-          "media.missing",
-          `Source file for asset "${asset.name}" could not be accessed.`,
-          404,
-          { fileName: asset.name },
-        );
-      }
+    let diskHash: string;
+    try {
+      diskHash = await hashFile(localPath(asset.uri));
+    } catch {
+      throw new ApplicationError(
+        "media.missing",
+        `Source file for asset "${asset.name}" could not be accessed.`,
+        404,
+        { fileName: asset.name },
+      );
     }
+    if (asset.contentHash && asset.contentHash !== diskHash) {
+      throw new ApplicationError(
+        "source.changed",
+        `The file content for asset "${asset.name}" on disk has changed from its recorded catalog hash.`,
+        409,
+      );
+    }
+    const sourceHash = diskHash;
 
     if (!options?.force) {
       const cached = this.getEvidence(assetId, sourceHash);
@@ -166,7 +176,7 @@ export class RhythmService {
   /**
    * Clears evidence cache.
    */
-  public clearEvidence(assetId?: string): void {
+  public async clearEvidence(assetId?: string): Promise<void> {
     if (!assetId) {
       this.evidenceCache.clear();
     } else {
@@ -176,7 +186,7 @@ export class RhythmService {
         }
       }
     }
-    void this.savePersistedEvidence();
+    await this.savePersistedEvidence();
   }
 
   private getComposition(compositionId?: string) {

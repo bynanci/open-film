@@ -2159,7 +2159,7 @@ async function startMicroPreview() {
       },
     });
     activeMicroPreview.value = proposal;
-    microPreviewOffset.value = proposal.previewStart;
+    microPreviewOffset.value = 0;
     microPreviewFrame.value = await api.seekMicroPreview(proposal.id, {
       offsetSeconds: microPreviewOffset.value,
       compositionId: props.compositionId,
@@ -2713,17 +2713,21 @@ function keyboard(event: KeyboardEvent) {
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
     event.key.toLowerCase() === "z";
-  // History shares the same input/modal/IME guard, with its own modifier chord.
-  const guarded = undo
-    ? ({
-        target: event.target,
-        isComposing: event.isComposing,
-        defaultPrevented: event.defaultPrevented,
-        altKey: event.altKey,
-        metaKey: false,
-        ctrlKey: false,
-      } as KeyboardEvent)
-    : event;
+  const proTrimChord =
+    (event.key === "[" || event.key === "]") &&
+    (event.altKey || event.ctrlKey || event.metaKey);
+  // History and slide/roll trim share the same input/modal/IME guard, with their own modifier chords.
+  const guarded =
+    undo || proTrimChord
+      ? ({
+          target: event.target,
+          isComposing: event.isComposing,
+          defaultPrevented: event.defaultPrevented,
+          altKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        } as KeyboardEvent)
+      : event;
   if (!ownsSourceShortcut(guarded) || !props.active) return;
   if (shortcutIsolation.value) {
     if (undo) event.preventDefault();
@@ -5817,9 +5821,9 @@ onBeforeUnmount(() => {
                 <div v-if="activeMicroPreview" class="editor-field">
                   <input
                     type="range"
-                    :min="activeMicroPreview.previewStart"
-                    :max="activeMicroPreview.previewEnd"
-                    step="0.04"
+                    min="0"
+                    :max="activeMicroPreview.previewDuration"
+                    step="0.01"
                     :value="microPreviewOffset"
                     @input="
                       seekMicroPreview(

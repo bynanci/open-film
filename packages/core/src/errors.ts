@@ -92,6 +92,8 @@ export const applicationErrorCodes = [
   "transcript.invalidCommand",
   "transcript.unreliableTiming",
   "transcript.rippleConflict",
+  "transcript.staleProposal",
+  "transcript.sourceMismatch",
   "continuity.invalidProposal",
   "continuity.staleProposal",
   "continuity.conflict",

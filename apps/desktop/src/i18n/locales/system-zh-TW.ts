@@ -175,6 +175,8 @@ export default {
       unreliableTiming:
         "逐字稿漣漪剪輯需要經過驗證的時序；估算的時間無法進行自動剪輯。",
       rippleConflict: "逐字稿漣漪剪輯與鎖定的素材或使用者釘選衝突。",
+      staleProposal: "逐字稿在提案審閱後已遭修改，請重新產生提案。",
+      sourceMismatch: "素材來源在提案審閱後已變更。",
     },
     continuity: {
       invalidProposal:

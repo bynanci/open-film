@@ -291,6 +291,8 @@ describe("review-and-apply workflows HTTP endpoints", () => {
     expect(proposal.assetId).toBe("motion-asset");
     expect(proposal.totalDurationReduced).toBeCloseTo(1.5);
     expect(proposal.sourceIntervals.length).toBeGreaterThan(0);
+    expect(proposal.transcriptRevision).toBeDefined();
+    expect(proposal.sourceHash).toBeDefined();
 
     // 2. Reject stale base revision
     const staleRes = await post(
@@ -299,11 +301,26 @@ describe("review-and-apply workflows HTTP endpoints", () => {
         assetId: "motion-asset",
         baseRevision:
           "0000000000000000000000000000000000000000000000000000000000000000",
-        mode: "delete",
-        segmentIds: ["seg-1"],
+        proposal,
       },
     );
     expect(staleRes.status).toBe(409);
+
+    // 2b. Reject stale transcript revision
+    const staleTranscriptRes = await post(
+      "/api/compositions/composition/transcript/ripple-apply",
+      {
+        assetId: "motion-asset",
+        baseRevision: initial.revision,
+        proposal: {
+          ...proposal,
+          transcriptRevision: "stale-transcript-revision-hash",
+        },
+      },
+    );
+    expect(staleTranscriptRes.status).toBe(409);
+    const staleData = (await staleTranscriptRes.json()) as { code: string };
+    expect(staleData.code).toBe("transcript.staleProposal");
 
     // 3. Apply transcript ripple
     const applyRes = await post(
@@ -311,8 +328,7 @@ describe("review-and-apply workflows HTTP endpoints", () => {
       {
         assetId: "motion-asset",
         baseRevision: initial.revision,
-        mode: "delete",
-        segmentIds: ["seg-1"],
+        proposal,
       },
     );
     expect(applyRes.status).toBe(200);

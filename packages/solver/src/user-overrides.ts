@@ -64,6 +64,14 @@ export function overrideTargetKey(target: OverrideTarget): string {
     ? `clip:${target.clipId}`
     : `graphic-scene:${target.sceneId}`;
 }
+function flattenCommands(
+  commands: readonly TimelineCommand[],
+): TimelineCommand[] {
+  return commands.flatMap((cmd) =>
+    cmd.type === "batch" ? flattenCommands(cmd.commands) : [cmd],
+  );
+}
+
 export function directOverrideTargets(
   commands: readonly TimelineCommand[],
 ): OverrideTarget[] {
@@ -223,7 +231,7 @@ export function applyOverridePolicy(
       pinConflict("The parent primary color would change a user pinned clip.");
   }
   if (!direct) return next;
-  for (const command of commands) {
+  for (const command of flattenCommands(commands)) {
     if (command.type === "lock" || command.type === "track.update") continue;
     if (
       command.type === "user-pin.set" ||

@@ -281,5 +281,50 @@ describe("D3A2 rhythm analysis producer, durability, snap proposal, and HTTP lif
     };
     expect(acceptData.proposal.id).toBe(httpProposal.id);
     expect(acceptData.state.canUndo).toBe(true);
+
+    // 8. Numerical parameter bounds validation preventing infinite loops
+    const invalidBpmRes1 = await fetch(
+      `${baseUrl}/api/assets/${encodeURIComponent(asset.id)}/rhythm/analyze`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bpmHint: 1e-323 }),
+      },
+    );
+    expect(invalidBpmRes1.status).toBe(400);
+
+    const invalidBpmRes2 = await fetch(
+      `${baseUrl}/api/assets/${encodeURIComponent(asset.id)}/rhythm/analyze`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bpmHint: 10 }),
+      },
+    );
+    expect(invalidBpmRes2.status).toBe(400);
+
+    const invalidMeterRes = await fetch(
+      `${baseUrl}/api/assets/${encodeURIComponent(asset.id)}/rhythm/analyze`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meterNumerator: 32, meterDenominator: 3 }),
+      },
+    );
+    expect(invalidMeterRes.status).toBe(400);
+
+    // 9. Detecting source content change on disk returning 409 source.changed
+    await generateBeatsAudio(audioPath, 3); // different audio length & content
+    const sourceChangedRes = await fetch(
+      `${baseUrl}/api/assets/${encodeURIComponent(asset.id)}/rhythm/analyze`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      },
+    );
+    expect(sourceChangedRes.status).toBe(409);
+    const sourceChangedData = await sourceChangedRes.json();
+    expect(sourceChangedData.code).toBe("source.changed");
   });
 });

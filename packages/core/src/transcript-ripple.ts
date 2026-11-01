@@ -32,6 +32,8 @@ export interface TranscriptRippleProposal {
   timelineIntervals: TranscriptRippleInterval[];
   totalDurationReduced: number;
   verifiedSegmentIds: string[];
+  transcriptRevision?: string;
+  sourceHash?: string;
 }
 
 export interface CreateTranscriptRippleOptions {
@@ -121,6 +123,21 @@ export function validateTranscriptRippleProposal(
     throw new ApplicationError(
       "request.invalid",
       "verifiedSegmentIds must be an array.",
+    );
+  }
+  if (
+    data.transcriptRevision !== undefined &&
+    typeof data.transcriptRevision !== "string"
+  ) {
+    throw new ApplicationError(
+      "request.invalid",
+      "transcriptRevision must be a string.",
+    );
+  }
+  if (data.sourceHash !== undefined && typeof data.sourceHash !== "string") {
+    throw new ApplicationError(
+      "request.invalid",
+      "sourceHash must be a string.",
     );
   }
   return structuredClone(data) as unknown as TranscriptRippleProposal;

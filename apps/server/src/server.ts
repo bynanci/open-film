@@ -5289,10 +5289,12 @@ export async function startServer(options: ServerOptions = {}) {
             );
             json(response, 200, result);
           } else {
+            const editor = editorFor(application);
             const result = await application.continuity.applyOverrides(
               storyId,
               compositionId,
               data as unknown as ContinuityAcceptanceInput,
+              editor,
             );
             json(response, 200, result);
           }
@@ -5356,6 +5358,45 @@ export async function startServer(options: ServerOptions = {}) {
         if (method === "POST" && rhythmAssetMatch) {
           const assetId = decodeURIComponent(rhythmAssetMatch[1]!);
           const data = ((await body(request)) || {}) as Record<string, unknown>;
+          if (data.bpmHint !== undefined) {
+            if (
+              typeof data.bpmHint !== "number" ||
+              !Number.isFinite(data.bpmHint) ||
+              data.bpmHint < 30 ||
+              data.bpmHint > 300
+            ) {
+              throw new HttpError(
+                400,
+                "bpmHint must be a finite number between 30 and 300.",
+              );
+            }
+          }
+          if (data.meterNumerator !== undefined) {
+            if (
+              typeof data.meterNumerator !== "number" ||
+              !Number.isInteger(data.meterNumerator) ||
+              data.meterNumerator < 1 ||
+              data.meterNumerator > 16
+            ) {
+              throw new HttpError(
+                400,
+                "meterNumerator must be an integer between 1 and 16.",
+              );
+            }
+          }
+          if (data.meterDenominator !== undefined) {
+            const validDenominators = [1, 2, 4, 8, 16, 32];
+            if (
+              typeof data.meterDenominator !== "number" ||
+              !Number.isInteger(data.meterDenominator) ||
+              !validDenominators.includes(data.meterDenominator)
+            ) {
+              throw new HttpError(
+                400,
+                "meterDenominator must be a power of two between 1 and 32.",
+              );
+            }
+          }
           const evidence = await application.rhythm.analyzeAsset(assetId, {
             bpmHint:
               typeof data.bpmHint === "number" ? data.bpmHint : undefined,

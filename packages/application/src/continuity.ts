@@ -94,6 +94,7 @@ export class ContinuityService {
     storyId: string,
     compositionId: string,
     input: ContinuityAcceptanceInput,
+    editor?: TimelineEditor,
   ): Promise<{
     project: OpenFilmProject;
     receipt: ContinuityReceipt;
@@ -194,10 +195,11 @@ export class ContinuityService {
 
     let nextComposition = nextDoc.composition;
     if (commands.length > 0) {
-      const editor = new TimelineEditor(this.app);
-      const editorState = editor.get(compositionId);
-      const state = await editor.edit(compositionId, {
+      const activeEditor = editor ?? new TimelineEditor(this.app);
+      const editorState = activeEditor.get(compositionId);
+      const state = await activeEditor.edit(compositionId, {
         baseRevision: editorState.revision,
+        requestId: input.requestId,
         commands,
       });
       nextComposition = state.composition;

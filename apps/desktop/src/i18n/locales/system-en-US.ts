@@ -214,6 +214,10 @@ export default {
         "Transcript ripple requires verified timing; estimated timing cannot be automatically ripple-edited.",
       rippleConflict:
         "Transcript ripple edit conflicts with locked media or user pins.",
+      staleProposal:
+        "The transcript has been modified since this proposal was reviewed. Please generate a new proposal.",
+      sourceMismatch:
+        "The asset source has changed since this proposal was reviewed.",
     },
     continuity: {
       invalidProposal:

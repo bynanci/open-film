@@ -760,10 +760,16 @@ export async function extractRhythmEvidence(
         }
       }
     }
-    const tempoBpm =
-      options.bpmHint && options.bpmHint > 0 ? options.bpmHint : detectedBpm;
+    const rawTempo =
+      options.bpmHint && Number.isFinite(options.bpmHint) && options.bpmHint > 0
+        ? options.bpmHint
+        : detectedBpm;
+    const tempoBpm = Math.min(300, Math.max(30, rawTempo));
 
-    const meterNumerator = options.meterNumerator ?? 4;
+    const meterNumerator = Math.min(
+      16,
+      Math.max(1, Math.round(options.meterNumerator ?? 4)),
+    );
     const meterDenominator = options.meterDenominator ?? 4;
     const beatSec = 60 / tempoBpm;
     const barSec = beatSec * meterNumerator;
@@ -771,7 +777,10 @@ export async function extractRhythmEvidence(
 
     let bestPhi = 0;
     let bestScore = -1;
-    const phiSteps = Math.max(1, Math.round(barSec / frameDuration));
+    const phiSteps = Math.min(
+      500,
+      Math.max(1, Math.round(barSec / frameDuration)),
+    );
     for (let step = 0; step < phiSteps; step++) {
       const phi = step * frameDuration;
       let score = 0;

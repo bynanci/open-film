@@ -1873,7 +1873,6 @@ function applyTimelineCommandRaw(
         c.timelineStart + c.timelineDuration > command.timelineStart + EPSILON,
     );
 
-    let rightClip: Clip | undefined;
     if (targetClip) {
       if (targetClip.locked)
         fail(
@@ -1883,6 +1882,28 @@ function applyTimelineCommandRaw(
         pinConflict(
           `Cannot insert: clip "${targetClip.id}" at insert position is user-pinned.`,
         );
+    }
+
+    // Verify downstream ripple will not move clips on locked tracks or locked clips
+    for (const trackItem of next.composition.tracks) {
+      if (trackItem.timing === "overlay") continue;
+      for (const other of trackItem.clips) {
+        if (
+          other.timelineStart >= command.timelineStart - EPSILON &&
+          (!targetClip || other.id !== targetClip.id)
+        ) {
+          if (trackItem.locked) {
+            fail(`Cannot insert edit: track "${trackItem.id}" is locked.`);
+          }
+          if (other.locked) {
+            fail(`Cannot insert: clip "${other.id}" is locked.`);
+          }
+        }
+      }
+    }
+
+    let rightClip: Clip | undefined;
+    if (targetClip) {
       const targetSpeed = targetClip.transform?.speed ?? 1;
       const leftDuration = command.timelineStart - targetClip.timelineStart;
       const rightDuration = targetClip.timelineDuration - leftDuration;

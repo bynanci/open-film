@@ -689,4 +689,114 @@ describe("Cut Desk Phase 2 & 3: Application & Persistence Integration", () => {
       ).rejects.toThrow(/Timeline changed since this edit began/);
     });
   });
+
+  describe("Batch sub-commands review validation and pin policy", () => {
+    it("rejects batch with reviewed volume when audioReviewId is non-existent", async () => {
+      const { editor } = await fixture();
+      const current = editor.get("comp-1");
+      await expect(
+        editor.edit("comp-1", {
+          baseRevision: current.revision,
+          commands: [
+            {
+              type: "batch",
+              commands: [
+                {
+                  type: "volume",
+                  clipId: "clip-a",
+                  volume: 0.25,
+                  audioReviewId: "nonexistent-review-id",
+                },
+              ],
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("creates userOverrides pin when insert is wrapped in batch and persists across reopen", async () => {
+      const { app, directory, editor } = await fixture();
+      const current = editor.get("comp-1");
+      const updated = await editor.edit("comp-1", {
+        baseRevision: current.revision,
+        commands: [
+          {
+            type: "batch",
+            commands: [
+              {
+                type: "insert",
+                assetId: "video-d",
+                timelineStart: 4,
+                sourceIn: 0,
+                sourceOut: 2,
+              },
+            ],
+          },
+        ],
+      });
+      const inserted = updated.composition.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.assetId === "video-d")!;
+      expect(inserted.userOverrides?.isUserPinned).toBe(true);
+
+      // Verify persistence across reopen
+      app.close();
+      applications.delete(app);
+      const reopened = await OpenFilmApplication.open(directory);
+      applications.add(reopened);
+      const reopenedEditor = new TimelineEditor(reopened);
+      const reopenedClip = reopenedEditor
+        .get("comp-1")
+        .composition.tracks.flatMap((t) => t.clips)
+        .find((c) => c.assetId === "video-d")!;
+      expect(reopenedClip.userOverrides?.isUserPinned).toBe(true);
+    });
+
+    it("unpins clip when user-pin.set to false is wrapped in batch and persists across reopen", async () => {
+      const { app, directory, editor } = await fixture();
+      // First pin clip-a
+      let state = await editor.edit("comp-1", {
+        baseRevision: editor.get("comp-1").revision,
+        commands: [
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "clip-a" },
+            pinned: true,
+          },
+        ],
+      });
+      let clipA = state.composition.tracks[0]!.clips.find((c) => c.id === "clip-a")!;
+      expect(clipA.userOverrides?.isUserPinned).toBe(true);
+
+      // Now unpin inside a batch
+      state = await editor.edit("comp-1", {
+        baseRevision: state.revision,
+        commands: [
+          {
+            type: "batch",
+            commands: [
+              {
+                type: "user-pin.set",
+                target: { kind: "clip", clipId: "clip-a" },
+                pinned: false,
+              },
+            ],
+          },
+        ],
+      });
+      clipA = state.composition.tracks[0]!.clips.find((c) => c.id === "clip-a")!;
+      expect(clipA.userOverrides?.isUserPinned).toBe(false);
+
+      // Reopen and check
+      app.close();
+      applications.delete(app);
+      const reopened = await OpenFilmApplication.open(directory);
+      applications.add(reopened);
+      const reopenedEditor = new TimelineEditor(reopened);
+      const reopenedClipA = reopenedEditor
+        .get("comp-1")
+        .composition.tracks[0]!.clips.find((c) => c.id === "clip-a")!;
+      expect(reopenedClipA.userOverrides?.isUserPinned).toBe(false);
+    });
+  });
 });

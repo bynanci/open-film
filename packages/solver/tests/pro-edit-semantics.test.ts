@@ -452,6 +452,62 @@ describe("Professional Cut Desk Phase 2: Edit Semantics", () => {
         }),
       ).toThrow('Cannot insert: clip "clip-a" at insert position is locked.');
     });
+
+    it("rejects insert edit if another track with downstream clips is locked", () => {
+      const initial = createTestDoc();
+      initial.composition.tracks.push({
+        id: "protected-track",
+        type: "video",
+        locked: true,
+        clips: [
+          {
+            id: "protected-clip",
+            assetId: "video-c",
+            timelineStart: 10,
+            timelineDuration: 5,
+            sourceIn: 0,
+            sourceOut: 5,
+          },
+        ],
+      });
+      expect(() =>
+        edit(initial, {
+          type: "insert",
+          assetId: "video-d",
+          timelineStart: 6,
+          sourceIn: 0,
+          sourceOut: 4,
+        }),
+      ).toThrow('Cannot insert edit: track "protected-track" is locked.');
+    });
+
+    it("rejects insert edit if a downstream clip on another track is locked", () => {
+      const initial = createTestDoc();
+      initial.composition.tracks.push({
+        id: "second-track",
+        type: "video",
+        clips: [
+          {
+            id: "locked-downstream-clip",
+            assetId: "video-c",
+            timelineStart: 10,
+            timelineDuration: 5,
+            sourceIn: 0,
+            sourceOut: 5,
+            locked: true,
+          },
+        ],
+      });
+      expect(() =>
+        edit(initial, {
+          type: "insert",
+          assetId: "video-d",
+          timelineStart: 6,
+          sourceIn: 0,
+          sourceOut: 4,
+        }),
+      ).toThrow('Cannot insert: clip "locked-downstream-clip" is locked.');
+    });
   });
 
   describe("Overwrite edit", () => {

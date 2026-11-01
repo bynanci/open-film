@@ -227,6 +227,14 @@ function overrideTarget(value: unknown, path: string): OverrideTarget {
   nonempty(data[field], `${path}.${field}`, data.kind === "clip" ? 256 : 128);
   return structuredClone(data) as OverrideTarget;
 }
+function flattenCommands(
+  commands: readonly TimelineCommand[],
+): TimelineCommand[] {
+  return commands.flatMap((cmd) =>
+    cmd.type === "batch" ? flattenCommands(cmd.commands) : [cmd],
+  );
+}
+
 function resolveScope(
   value: unknown,
   path: string,
@@ -1995,9 +2003,10 @@ export class TimelineEditor {
           acknowledgedRevision: receipt.revision,
         };
       }
+      const allLeaves = flattenCommands(parsed.commands);
       if (
-        parsed.commands.length !== 1 &&
-        parsed.commands.some(
+        allLeaves.length !== 1 &&
+        allLeaves.some(
           (item) =>
             item.type === "primary-color" &&
             item.scope === "clip" &&
@@ -2008,15 +2017,15 @@ export class TimelineEditor {
           "A reviewed primary color Apply requires a single-command transaction.",
         );
       if (
-        parsed.commands.length !== 1 &&
-        parsed.commands.some(
+        allLeaves.length !== 1 &&
+        allLeaves.some(
           (item) => item.type === "volume" && item.audioReviewId,
         )
       )
         throw new TimelineEditorError(
           "A reviewed audio Apply requires a single-command transaction.",
         );
-      for (const item of parsed.commands) {
+      for (const item of allLeaves) {
         if (
           item.type === "primary-color" &&
           item.scope === "clip" &&
@@ -2049,7 +2058,7 @@ export class TimelineEditor {
       let next = document(before);
       const assets = [...before.assets];
       // Explicit edits may reference source media outside this story's candidate pool.
-      for (const item of parsed.commands) {
+      for (const item of allLeaves) {
         // Implicit font size depends on this composition's actual frame and
         // title role. Reject styles the shared resolver cannot consume before
         // applying any command in the batch; no font loading is necessary.
@@ -2152,7 +2161,7 @@ export class TimelineEditor {
           (item.type === "primary-color" &&
             item.scope === "clip" &&
             !!item.primaryColorReviewId);
-        const directCommands = parsed.commands.filter(
+        const directCommands = allLeaves.filter(
           (item) => !automaticCommand(item),
         );
         const targets = new Set(
@@ -2210,16 +2219,28 @@ export class TimelineEditor {
             !automaticCommand(item)
           )
             delete compiled.scene.userOverrides;
-          if (item.type === "user-pin.resolve")
-            for (const target of item.targets)
-              provisional.set(overrideTargetKey(target), {
+          for (const leaf of flattenCommands([item])) {
+            if (leaf.type === "user-pin.resolve")
+              for (const target of leaf.targets)
+                provisional.set(overrideTargetKey(target), {
+                  version: 1,
+                  isUserPinned: false,
+                  lockedAttributes: [],
+                });
+            if (leaf.type === "user-pin.set" && !leaf.pinned)
+              provisional.set(overrideTargetKey(leaf.target), {
                 version: 1,
                 isUserPinned: false,
                 lockedAttributes: [],
               });
+          }
           if (
             item.type === "regenerate-beat" ||
-            item.type === "user-pin.resolve"
+            flattenCommands([item]).some(
+              (c) =>
+                c.type === "user-pin.resolve" ||
+                (c.type === "user-pin.set" && !c.pinned),
+            )
           )
             attachProvisional();
           next = (
@@ -2243,12 +2264,14 @@ export class TimelineEditor {
                     `clip:${clip.id}`,
                     structuredClone(clip.userOverrides),
                   );
-                  if (
-                    (item.type === "reorder" || item.type === "audio.move") &&
-                    clip.id === item.clipId &&
-                    clip.userOverrides.manualOffset !== undefined
-                  )
-                    moveOffsets.set(clip.id, clip.userOverrides.manualOffset);
+                  for (const sub of flattenCommands([item])) {
+                    if (
+                      (sub.type === "reorder" || sub.type === "audio.move") &&
+                      clip.id === sub.clipId &&
+                      clip.userOverrides.manualOffset !== undefined
+                    )
+                      moveOffsets.set(clip.id, clip.userOverrides.manualOffset);
+                  }
                 }
             for (const scene of next.composition.graphicScenes ?? [])
               if (
