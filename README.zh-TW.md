@@ -102,7 +102,6 @@ pnpm cli --help
 
 ## 貢獻與社群
 
-<<<<<<< HEAD
 歡迎回報問題、改善文件、補充翻譯、提供可重現的媒體案例，或提交程式碼。
 環境設定、檢查命令與 pull request 流程請先閱讀[貢獻指南](CONTRIBUTING.zh-TW.md)。
 較大的變更建議先開 discussion 或 issue，確認範圍及應由哪個既有元件負責。

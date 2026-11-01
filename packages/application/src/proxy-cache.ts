@@ -1262,42 +1262,90 @@ export class ProxyCacheService {
     let complete = true;
     const scan = async (directory: string, depth: number): Promise<number> => {
       let bytes = 0;
-      for await (const entry of await opendir(directory)) {
-        if (++visited > PROXY_CACHE_LIMITS.inventoryFiles) {
-          complete = false;
-          break;
+      let dirHandle;
+      try {
+        dirHandle = await opendir(directory);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return 0;
         }
-        const path = join(directory, entry.name);
-        const info = await lstat(path);
-        if (info.isSymbolicLink()) {
-          complete = false;
-          continue;
+        complete = false;
+        return 0;
+      }
+      try {
+        for await (const entry of dirHandle) {
+          if (++visited > PROXY_CACHE_LIMITS.inventoryFiles) {
+            complete = false;
+            break;
+          }
+          const path = join(directory, entry.name);
+          let info;
+          try {
+            info = await lstat(path);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+              // Disappeared concurrently during active worker temp cleanup or deletion
+              continue;
+            }
+            complete = false;
+            continue;
+          }
+          if (info.isSymbolicLink()) {
+            complete = false;
+            continue;
+          }
+          if (info.isFile()) bytes += info.size;
+          else if (info.isDirectory() && depth > 0)
+            bytes += await scan(path, depth - 1);
+          else complete = false;
         }
-        if (info.isFile()) bytes += info.size;
-        else if (info.isDirectory() && depth > 0)
-          bytes += await scan(path, depth - 1);
-        else complete = false;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          complete = false;
+        }
       }
       return bytes;
     };
     const managedBytes = await scan(this.store.managed, 0);
     let unmanagedBytes = 0;
-    for await (const entry of await opendir(
-      join(this.host.directory, "cache/proxies"),
-    )) {
-      if (entry.name === "managed") continue;
-      if (++visited > PROXY_CACHE_LIMITS.inventoryFiles) {
+    const unmanagedDir = join(this.host.directory, "cache/proxies");
+    let unmanagedHandle;
+    try {
+      unmanagedHandle = await opendir(unmanagedDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         complete = false;
-        break;
       }
-      const info = await lstat(
-        join(this.host.directory, "cache/proxies", entry.name),
-      );
-      if (info.isSymbolicLink() || !info.isFile()) {
-        complete = false;
-        continue;
+    }
+    if (unmanagedHandle) {
+      try {
+        for await (const entry of unmanagedHandle) {
+          if (entry.name === "managed") continue;
+          if (++visited > PROXY_CACHE_LIMITS.inventoryFiles) {
+            complete = false;
+            break;
+          }
+          let info;
+          try {
+            info = await lstat(join(unmanagedDir, entry.name));
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+              continue;
+            }
+            complete = false;
+            continue;
+          }
+          if (info.isSymbolicLink() || !info.isFile()) {
+            complete = false;
+            continue;
+          }
+          unmanagedBytes += info.size;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          complete = false;
+        }
       }
-      unmanagedBytes += info.size;
     }
     const temporaryBytes = await scan(this.store.work, 3);
     return { managedBytes, unmanagedBytes, temporaryBytes, complete };

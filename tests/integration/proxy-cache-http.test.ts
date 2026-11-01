@@ -293,3 +293,60 @@ it("rejects foreign scope and arbitrary paths without changing the queue", async
   expect((await f.health()).health.queued).toBe(0);
   expect(await hashFile(f.source)).toBe(f.sourceHash);
 });
+
+it("handles continuous health queries during proxy rebuild and concurrent temp file cleanup", async () => {
+  const f = await fixture();
+  expect(
+    (
+      await f.post("/proxy-cache/queue", {
+        projectId: f.projectId,
+        requestId: "concurrent-cleanup-health",
+        assetIds: ["video"],
+      })
+    ).status,
+  ).toBe(202);
+  expect(
+    (await f.post("/proxy-cache/run", { projectId: f.projectId })).status,
+  ).toBe(202);
+
+  const workDir = join(f.project, "cache/proxy-manager/work");
+  let active = true;
+
+  const churn = (async () => {
+    let index = 0;
+    while (active) {
+      const sub = join(workDir, `churn-${index++}-`);
+      try {
+        const tempPath = await mkdtemp(sub);
+        await writeFile(join(tempPath, "scratch.dat"), Buffer.alloc(1024));
+        await delay(5);
+        await rm(tempPath, { recursive: true, force: true });
+      } catch {
+        // churn simulation ignore
+      }
+      await delay(2);
+    }
+  })();
+
+  let queryCount = 0;
+  try {
+    for (let i = 0; i < 25; i++) {
+      const h = await f.health();
+      expect(h.health).toBeDefined();
+      expect(Array.isArray(h.health.entries)).toBe(true);
+      expect(h.health.entries.length).toBeGreaterThan(0);
+      queryCount++;
+      await delay(10);
+    }
+  } finally {
+    active = false;
+    await churn;
+  }
+
+  expect(queryCount).toBe(25);
+  await expect
+    .poll(async () => (await f.health()).health.entries[0]?.status, {
+      timeout: 15_000,
+    })
+    .toBe("ready");
+});

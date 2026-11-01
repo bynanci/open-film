@@ -78,12 +78,17 @@ async function fixture(request: APIRequestContext) {
   expect(
     (await request.post(`${base}/project/open`, { data: { path } })).ok(),
   ).toBe(true);
-  const health = async () =>
-    (
-      await (
-        await request.get(`${base}/proxy-cache?projectId=${projectId}`)
-      ).json()
-    ).health as ProxyCacheHealth;
+  const health = async () => {
+    const response = await request.get(
+      `${base}/proxy-cache?projectId=${projectId}`,
+    );
+    const bodyText = await response.text();
+    expect(
+      response.status(),
+      `GET /api/proxy-cache failed with status ${response.status()}: ${bodyText}`,
+    ).toBe(200);
+    return (JSON.parse(bodyText) as { health: ProxyCacheHealth }).health;
+  };
   return { root, path, projectId, source, originalHash, health };
 }
 test("prepares real media, verifies corruption, rebuilds and accepts only reviewed cleanup", async ({

@@ -95,7 +95,6 @@ To explore the CLI from the repository root:
 pnpm cli --help
 ```
 
-<<<<<<< HEAD
 This checkout runs `main`. For a released baseline, select the
 [v0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0)
 and follow the instructions in that revision. Building from source does not
