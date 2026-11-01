@@ -2,8 +2,9 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   ApplicationError,
   validateRhythmAnalysisEvidence,
@@ -15,8 +16,8 @@ import {
 } from "@openfilm/core";
 import {
   extractRhythmEvidence,
-  hashFile,
   localPath,
+  withVerifiedSourceFile,
   type RhythmAnalysisOptions,
 } from "@openfilm/media";
 import {
@@ -42,6 +43,9 @@ export class RhythmService {
   private readonly evidenceCache = new Map<string, RhythmAnalysisEvidence>();
   private readonly proposalCache = new Map<string, RhythmSnapProposal>();
   private saveQueue: Promise<void> = Promise.resolve();
+  /** Bumped on every cache mutation; compared with what is known to be on disk. */
+  private cacheVersion = 0;
+  private persistedVersion = 0;
 
   constructor(private readonly app: OpenFilmApplication) {}
 
@@ -79,36 +83,58 @@ export class RhythmService {
   }
 
   /**
-   * Saves cached rhythm evidence to project disk atomically and serialized.
+   * Saves cached rhythm evidence to project disk atomically. Writes run one at
+   * a time; a failed write rejects its own caller but never poisons the queue,
+   * and the unsaved entries stay pending so any later call flushes them again.
    */
-  public async savePersistedEvidence(): Promise<void> {
-    this.saveQueue = this.saveQueue.then(async () => {
-      const path = this.evidenceFilePath;
-      const dir = join(this.app.directory, "analysis");
-      const tempPath = join(
-        dir,
-        `rhythm-evidence.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
-      );
+  public savePersistedEvidence(): Promise<void> {
+    const run = this.saveQueue.then(() => this.writeEvidenceFile());
+    this.saveQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async writeEvidenceFile(): Promise<void> {
+    const path = this.evidenceFilePath;
+    const dir = join(this.app.directory, "analysis");
+    const version = this.cacheVersion;
+    const tempPath = join(
+      dir,
+      `rhythm-evidence.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+    );
+    try {
       await mkdir(dir, { recursive: true });
       const items = Array.from(this.evidenceCache.values());
       await writeFile(tempPath, JSON.stringify(items, null, 2), "utf8");
       await rename(tempPath, path);
-    });
-    return this.saveQueue;
+    } catch (error) {
+      await rm(tempPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
+    this.persistedVersion = Math.max(this.persistedVersion, version);
+  }
+
+  /** Resolves only once every cached entry is durably on disk. */
+  private async flushPending(): Promise<void> {
+    if (this.persistedVersion < this.cacheVersion)
+      await this.savePersistedEvidence();
   }
 
   /**
    * Stores validated rhythm analysis evidence bound to the asset ID and source hash.
+   * The entry is pending until `savePersistedEvidence` succeeds.
    */
   public storeEvidence(evidence: RhythmAnalysisEvidence): void {
     const validated = validateRhythmAnalysisEvidence(evidence);
     const key = this.cacheKey(validated.assetId, validated.sourceHash);
     this.evidenceCache.set(key, validated);
+    this.cacheVersion++;
   }
 
   /**
    * Analyzes an audio asset to extract real rhythm landmarks, BPM and meter,
-   * caching and persisting the results.
+   * caching and persisting the results. Hash verification and decoding share
+   * one private snapshot, so the stored source hash always describes the bytes
+   * that were analyzed even if the original file is replaced mid-analysis.
    */
   public async analyzeAsset(
     assetId: string,
@@ -122,9 +148,9 @@ export class RhythmService {
       );
     }
 
-    let diskHash: string;
+    let sourcePath: string;
     try {
-      diskHash = await hashFile(localPath(asset.uri));
+      sourcePath = localPath(asset.uri);
     } catch {
       throw new ApplicationError(
         "media.missing",
@@ -133,25 +159,43 @@ export class RhythmService {
         { fileName: asset.name },
       );
     }
-    if (asset.contentHash && asset.contentHash !== diskHash) {
-      throw new ApplicationError(
-        "source.changed",
-        `The file content for asset "${asset.name}" on disk has changed from its recorded catalog hash.`,
-        409,
+    const recorded =
+      asset.contentHash && /^[0-9a-f]{64}$/i.test(asset.contentHash)
+        ? asset.contentHash.toLowerCase()
+        : undefined;
+
+    let evidence: RhythmAnalysisEvidence;
+    try {
+      evidence = await withVerifiedSourceFile(
+        sourcePath,
+        recorded,
+        async (snapshot, verifiedHash) => {
+          if (!options?.force) {
+            const cached = this.getEvidence(assetId, verifiedHash);
+            if (cached) return cached;
+          }
+          return extractRhythmEvidence(
+            { ...asset, uri: pathToFileURL(snapshot).href },
+            verifiedHash,
+            options,
+          );
+        },
+        { signal: options?.signal },
       );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT")
+        throw new ApplicationError(
+          "media.missing",
+          `Source file for asset "${asset.name}" could not be accessed.`,
+          404,
+          { fileName: asset.name },
+        );
+      throw error;
     }
-    const sourceHash = diskHash;
-
-    if (!options?.force) {
-      const cached = this.getEvidence(assetId, sourceHash);
-      if (cached) {
-        return cached;
-      }
-    }
-
-    const evidence = await extractRhythmEvidence(asset, sourceHash, options);
-    this.storeEvidence(evidence);
-    await this.savePersistedEvidence();
+    const key = this.cacheKey(evidence.assetId, evidence.sourceHash);
+    if (this.evidenceCache.get(key) !== evidence) this.storeEvidence(evidence);
+    // Cache hits flush too: an earlier failed write must not read as saved.
+    await this.flushPending();
     return evidence;
   }
 
@@ -186,6 +230,7 @@ export class RhythmService {
         }
       }
     }
+    this.cacheVersion++;
     await this.savePersistedEvidence();
   }
 

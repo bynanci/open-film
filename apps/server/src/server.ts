@@ -5254,9 +5254,13 @@ export async function startServer(options: ServerOptions = {}) {
               compositionId,
               String(data.assetId),
               {
-                ...(data as unknown as Parameters<
+                baseRevision: data.baseRevision as string,
+                ...(typeof data.requestId === "string"
+                  ? { requestId: data.requestId }
+                  : {}),
+                proposal: data.proposal as Parameters<
                   typeof application.transcriptEditor.applyRipple
-                >[2]),
+                >[2]["proposal"],
                 editor,
               },
             );

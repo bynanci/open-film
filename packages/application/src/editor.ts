@@ -1187,9 +1187,7 @@ export class TimelineEditor {
     options: {
       baseRevision: string;
       requestId?: string;
-      mode?: TranscriptRippleMode;
-      segmentIds?: readonly string[];
-      sourceRange?: { start: number; end: number };
+      proposal: TranscriptRippleProposal;
     },
   ): Promise<TimelineEditorState> {
     nonempty(compositionId, "compositionId");
@@ -2018,9 +2016,7 @@ export class TimelineEditor {
         );
       if (
         allLeaves.length !== 1 &&
-        allLeaves.some(
-          (item) => item.type === "volume" && item.audioReviewId,
-        )
+        allLeaves.some((item) => item.type === "volume" && item.audioReviewId)
       )
         throw new TimelineEditorError(
           "A reviewed audio Apply requires a single-command transaction.",
@@ -2210,7 +2206,10 @@ export class TimelineEditor {
               delete scene.userOverrides;
         };
         detachTargetMetadata();
-        for (const item of parsed.commands) {
+        // Every batch leaf runs through the same complete per-command path as a
+        // direct submission (lock checks, incremental solve, pin policy); the
+        // surrounding transaction still commits atomically as one history entry.
+        for (const item of allLeaves) {
           // Direct scene metadata is checked against the saved baseline by the
           // final policy. Automatic commands retain it for per-command checks.
           const compiled = structuredClone(item);

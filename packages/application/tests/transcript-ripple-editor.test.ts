@@ -215,8 +215,7 @@ describe("Transcript Ripple Editor Integration (D4)", () => {
       "asset-interview",
       {
         baseRevision: initial.revision,
-        mode: "delete",
-        segmentIds: ["seg-fluff"],
+        proposal,
         editor: timelineEditor,
       },
     );
@@ -276,8 +275,7 @@ describe("Transcript Ripple Editor Integration (D4)", () => {
     const before = timelineEditor.get(timelineId);
 
     await expect(
-      transcriptEditor.applyRipple(timelineId, "asset-interview", {
-        baseRevision: before.revision,
+      transcriptEditor.createRippleProposal(timelineId, "asset-interview", {
         mode: "delete",
         segmentIds: ["seg-estimated"],
       }),
@@ -303,11 +301,63 @@ describe("Transcript Ripple Editor Integration (D4)", () => {
     const lockedState = timelineEditor.get(timelineId);
 
     await expect(
-      transcriptEditor.applyRipple(timelineId, "asset-interview", {
-        baseRevision: lockedState.revision,
-        mode: "delete",
-        segmentIds: ["seg-fluff"],
-      }),
+      (async () => {
+        const proposal = await transcriptEditor.createRippleProposal(
+          timelineId,
+          "asset-interview",
+          { mode: "delete", segmentIds: ["seg-fluff"] },
+        );
+        return transcriptEditor.applyRipple(timelineId, "asset-interview", {
+          baseRevision: lockedState.revision,
+          proposal,
+        });
+      })(),
     ).rejects.toThrowError(/locked clip/);
+  });
+
+  it("requires a reviewed proposal bound to the transcript revision and source", async () => {
+    const { app, timelineId } = await fixture();
+    const transcriptEditor = new TranscriptEditor(app);
+    const timelineEditor = new TimelineEditor(app);
+    const before = timelineEditor.get(timelineId);
+    const proposal = await transcriptEditor.createRippleProposal(
+      timelineId,
+      "asset-interview",
+      { mode: "delete", segmentIds: ["seg-fluff"] },
+    );
+    expect(proposal.transcriptRevision).toBeTruthy();
+    expect(proposal.sourceHash).toBeTruthy();
+
+    // A caller that omits the reviewed proposal must not get a recomputed one.
+    await expect(
+      transcriptEditor.applyRipple(timelineId, "asset-interview", {
+        baseRevision: before.revision,
+      } as never),
+    ).rejects.toMatchObject({ code: "request.invalid" });
+
+    // An unbound proposal cannot skip the revision/source guards.
+    const { transcriptRevision: _revision, ...unbound } = proposal;
+    await expect(
+      transcriptEditor.applyRipple(timelineId, "asset-interview", {
+        baseRevision: before.revision,
+        proposal: unbound,
+      }),
+    ).rejects.toMatchObject({ code: "request.invalid" });
+
+    await expect(
+      transcriptEditor.applyRipple(timelineId, "asset-interview", {
+        baseRevision: before.revision,
+        proposal: { ...proposal, transcriptRevision: "stale" },
+      }),
+    ).rejects.toMatchObject({ code: "transcript.staleProposal", status: 409 });
+    await expect(
+      transcriptEditor.applyRipple(timelineId, "asset-interview", {
+        baseRevision: before.revision,
+        proposal: { ...proposal, sourceHash: "0".repeat(64) },
+      }),
+    ).rejects.toMatchObject({ code: "transcript.sourceMismatch", status: 409 });
+    expect(timelineEditor.get(timelineId).composition).toEqual(
+      before.composition,
+    );
   });
 });

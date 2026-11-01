@@ -1250,6 +1250,25 @@ function applyTimelineCommandInternal(
   context: TimelineEditContext,
   deferred: boolean,
 ): EditorDocument {
+  if (command.type === "batch") {
+    // Each leaf takes the complete command path (lock checks, incremental
+    // solve, pin policy) so a batch is equivalent to its direct submissions.
+    let current = document;
+    for (const sub of command.commands)
+      current = applyTimelineCommandInternal(
+        current,
+        assets,
+        sub,
+        context,
+        true,
+      );
+    if (!deferred)
+      validateAudioEdit(document, current, assets, [command], {
+        origin: context.origin ?? "automatic",
+        timebase: context.timebase!,
+      });
+    return current;
+  }
   const origin = context.origin ?? "automatic";
   const writes = resolveCommandOverrideTargets(document, assets, command);
   if (

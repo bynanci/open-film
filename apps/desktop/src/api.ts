@@ -2007,12 +2007,8 @@ export const api = {
       assetId: string;
       baseRevision: string;
       requestId?: string;
+      /** Must be the exact reviewed proposal; the server rejects a missing one. */
       proposal?: TranscriptRippleProposal;
-      transcriptRevision?: string;
-      sourceHash?: string;
-      mode?: TranscriptRippleMode;
-      segmentIds?: readonly string[];
-      sourceRange?: { start: number; end: number };
     },
   ) =>
     post<EditorState>(

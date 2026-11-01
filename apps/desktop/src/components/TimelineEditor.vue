@@ -2332,33 +2332,63 @@ async function applyContinuity() {
   }
 }
 
+type TranscriptRippleOptions = {
+  mode?: TranscriptRippleMode;
+  segmentIds?: readonly string[];
+  sourceRange?: { start: number; end: number };
+};
+// The reviewed proposal and the composition revision it was reviewed against
+// are kept together; accept sends exactly these, never a recomputed range.
+const reviewedTranscriptRipples = new Map<
+  string,
+  {
+    proposal: import("@openfilm/core").TranscriptRippleProposal;
+    baseRevision: string;
+  }
+>();
+function transcriptRippleKey(
+  assetId: string,
+  options: TranscriptRippleOptions,
+): string {
+  return JSON.stringify([
+    props.compositionId,
+    assetId,
+    options.mode ?? null,
+    options.segmentIds ? [...options.segmentIds] : null,
+    options.sourceRange ?? null,
+  ]);
+}
+
 async function proposeTranscriptRipple(
   assetId: string,
-  options: {
-    mode?: TranscriptRippleMode;
-    segmentIds?: readonly string[];
-    sourceRange?: { start: number; end: number };
-  } = {},
+  options: TranscriptRippleOptions = {},
 ) {
-  return api.proposeTranscriptRipple(props.compositionId, {
+  const baseRevision = state.value?.revision;
+  const proposal = await api.proposeTranscriptRipple(props.compositionId, {
     assetId,
     ...options,
   });
+  const key = transcriptRippleKey(assetId, options);
+  if (baseRevision)
+    reviewedTranscriptRipples.set(key, { proposal, baseRevision });
+  else reviewedTranscriptRipples.delete(key);
+  return proposal;
 }
 
 async function applyTranscriptRipple(
   assetId: string,
-  options: {
-    mode?: TranscriptRippleMode;
-    segmentIds?: readonly string[];
-    sourceRange?: { start: number; end: number };
-  },
+  options: TranscriptRippleOptions,
 ) {
   if (!state.value) return;
+  const key = transcriptRippleKey(assetId, options);
+  const reviewed = reviewedTranscriptRipples.get(key);
+  // A missing review is sent without a proposal so the server rejects it
+  // rather than silently recomputing a different range.
+  reviewedTranscriptRipples.delete(key);
   const updated = await api.applyTranscriptRipple(props.compositionId, {
     assetId,
-    baseRevision: state.value.revision,
-    ...options,
+    baseRevision: reviewed?.baseRevision ?? state.value.revision,
+    ...(reviewed ? { proposal: reviewed.proposal } : {}),
   });
   state.value = updated;
   emit("edited");

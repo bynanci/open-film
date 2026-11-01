@@ -691,6 +691,79 @@ describe("Cut Desk Phase 2 & 3: Application & Persistence Integration", () => {
   });
 
   describe("Batch sub-commands review validation and pin policy", () => {
+    it("rejects a batched user-pin.resolve exactly like the direct command and writes nothing", async () => {
+      const { app, directory, editor } = await fixture();
+      const base = editor.get("comp-1");
+      const resolve: TimelineCommand = {
+        type: "user-pin.resolve",
+        targets: [{ kind: "clip", clipId: "clip-a" }],
+        scope: { kind: "beat", beatId: "no-such-beat" },
+        mode: "regenerate",
+      };
+      await expect(
+        editor.edit("comp-1", {
+          baseRevision: base.revision,
+          commands: [resolve],
+        }),
+      ).rejects.toThrow();
+      await expect(
+        editor.edit("comp-1", {
+          baseRevision: base.revision,
+          commands: [{ type: "batch", commands: [resolve] }],
+        }),
+      ).rejects.toThrow();
+      expect(editor.get("comp-1").revision).toBe(base.revision);
+      app.close();
+      applications.delete(app);
+      const reopened = await OpenFilmApplication.open(directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("comp-1").revision).toBe(
+        base.revision,
+      );
+    });
+
+    it("rejects a batched user-pin.set false on a locked clip exactly like the direct command", async () => {
+      const { editor } = await fixture();
+      let state = await editor.edit("comp-1", {
+        baseRevision: editor.get("comp-1").revision,
+        commands: [
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "clip-a" },
+            pinned: true,
+          },
+        ],
+      });
+      state = await editor.edit("comp-1", {
+        baseRevision: state.revision,
+        commands: [{ type: "lock", clipId: "clip-a", locked: true }],
+      });
+      const unpin: TimelineCommand = {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "clip-a" },
+        pinned: false,
+      };
+      await expect(
+        editor.edit("comp-1", {
+          baseRevision: state.revision,
+          commands: [unpin],
+        }),
+      ).rejects.toThrow(/locked/);
+      await expect(
+        editor.edit("comp-1", {
+          baseRevision: state.revision,
+          commands: [{ type: "batch", commands: [unpin] }],
+        }),
+      ).rejects.toThrow(/locked/);
+      const after = editor.get("comp-1");
+      expect(after.revision).toBe(state.revision);
+      expect(
+        after.composition.tracks
+          .flatMap((t) => t.clips)
+          .find((c) => c.id === "clip-a")?.userOverrides?.isUserPinned,
+      ).toBe(true);
+    });
+
     it("rejects batch with reviewed volume when audioReviewId is non-existent", async () => {
       const { editor } = await fixture();
       const current = editor.get("comp-1");
@@ -765,7 +838,9 @@ describe("Cut Desk Phase 2 & 3: Application & Persistence Integration", () => {
           },
         ],
       });
-      let clipA = state.composition.tracks[0]!.clips.find((c) => c.id === "clip-a")!;
+      let clipA = state.composition.tracks[0]!.clips.find(
+        (c) => c.id === "clip-a",
+      )!;
       expect(clipA.userOverrides?.isUserPinned).toBe(true);
 
       // Now unpin inside a batch
@@ -784,7 +859,9 @@ describe("Cut Desk Phase 2 & 3: Application & Persistence Integration", () => {
           },
         ],
       });
-      clipA = state.composition.tracks[0]!.clips.find((c) => c.id === "clip-a")!;
+      clipA = state.composition.tracks[0]!.clips.find(
+        (c) => c.id === "clip-a",
+      )!;
       expect(clipA.userOverrides?.isUserPinned).toBe(false);
 
       // Reopen and check

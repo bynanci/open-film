@@ -218,8 +218,7 @@ export default {
         "文字起こしリップル編集がロックされた素材またはユーザー固定と競合しています。",
       staleProposal:
         "提案の確認後に文字起こしが変更されました。新しい提案を生成してください。",
-      sourceMismatch:
-        "提案の確認後にアセットのソースが変更されました。",
+      sourceMismatch: "提案の確認後にアセットのソースが変更されました。",
     },
     continuity: {
       invalidProposal:

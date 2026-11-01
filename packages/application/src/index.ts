@@ -2515,9 +2515,7 @@ export class OpenFilmApplication {
     options: {
       baseRevision: string;
       requestId?: string;
-      mode?: TranscriptRippleMode;
-      segmentIds?: readonly string[];
-      sourceRange?: { start: number; end: number };
+      proposal: TranscriptRippleProposal;
     },
   ) {
     return this.transcriptEditor.applyRipple(compositionId, assetId, options);
