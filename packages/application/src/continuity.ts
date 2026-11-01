@@ -16,8 +16,10 @@ import {
   applyContinuityOverrides,
   type ContinuityAnalysisOptions,
   type EditorDocument,
+  type TimelineCommand,
 } from "@openfilm/solver";
 import type { OpenFilmApplication } from "./index.js";
+import { TimelineEditor } from "./editor.js";
 
 export interface ContinuityAcceptanceInput {
   proposalId: string;
@@ -186,20 +188,31 @@ export class ContinuityService {
 
     const nextProject = structuredClone(this.app.project);
 
-    // If timeline changed, update timeline in nextProject
-    if (appliedActions.length > 0) {
+    const commands = appliedActions
+      .map((a) => (a as { command?: TimelineCommand }).command)
+      .filter((cmd): cmd is TimelineCommand => !!cmd);
+
+    let nextComposition = nextDoc.composition;
+    if (commands.length > 0) {
+      const editor = new TimelineEditor(this.app);
+      const editorState = editor.get(compositionId);
+      const state = await editor.edit(compositionId, {
+        baseRevision: editorState.revision,
+        commands,
+      });
+      nextComposition = state.composition;
+    } else if (appliedActions.length > 0) {
       const timelineIdx = nextProject.timelines.findIndex(
         (t) => t.id === compositionId,
       );
       if (timelineIdx !== -1) {
         nextProject.timelines[timelineIdx] = nextDoc.composition;
       }
+      this.app.project.timelines = nextProject.timelines;
     }
 
     const fingerprint = computeDigest(canonicalStringify(input.overrides));
-    const acceptedRevision = computeDigest(
-      canonicalStringify(nextDoc.composition),
-    );
+    const acceptedRevision = computeDigest(canonicalStringify(nextComposition));
 
     const receipt: ContinuityReceipt = {
       version: 1,
@@ -218,12 +231,7 @@ export class ContinuityService {
 
     validateContinuityReceipt(receipt);
 
-    (nextProject.continuityReceipts ??= []).push(receipt);
-
-    // Apply project changes through editor if active, or direct assignment
-    this.app.project.timelines = nextProject.timelines;
-    this.app.project.continuityReceipts = nextProject.continuityReceipts;
-
+    (this.app.project.continuityReceipts ??= []).push(receipt);
     await this.app.save();
 
     return {

@@ -59,6 +59,7 @@ import {
   type CollectCoveragePlanInput,
   type CollectMediaCreateInput,
   type SourceSelectionInput,
+  type ContinuityAcceptanceInput,
 } from "@openfilm/application";
 import type {
   SourceBatchProgress,
@@ -95,6 +96,8 @@ import {
   type TravelContextV1,
   type VisualSamplingV1,
   type ReviewDecisionOperation,
+  type CoverageProposal,
+  type TransitionType,
 } from "@openfilm/core";
 import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
 import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
@@ -5194,6 +5197,159 @@ export async function startServer(options: ServerOptions = {}) {
             );
           }
           return;
+        }
+        const coverageMatch =
+          /^\/api\/compositions\/([^/]+)\/coverage\/(propose|apply)$/.exec(
+            route,
+          );
+        if (method === "POST" && coverageMatch) {
+          const compositionId = decodeURIComponent(coverageMatch[1]!);
+          const action = coverageMatch[2];
+          const editor = editorFor(application);
+          const data = await body(request);
+          if (action === "propose") {
+            const proposal = editor.proposeCoverage(
+              compositionId,
+              data as Parameters<TimelineEditor["proposeCoverage"]>[1],
+            );
+            json(response, 200, proposal);
+          } else {
+            const parsed = data as {
+              baseRevision: string;
+              requestId?: string;
+              proposal: CoverageProposal;
+            };
+            const state = await editor.edit(compositionId, {
+              baseRevision: parsed.baseRevision,
+              ...(parsed.requestId ? { requestId: parsed.requestId } : {}),
+              commands: [
+                { type: "coverage.apply-proposal", proposal: parsed.proposal },
+              ],
+            });
+            json(response, 200, state);
+          }
+          return;
+        }
+        const transcriptRippleMatch =
+          /^\/api\/compositions\/([^/]+)\/transcript\/(ripple-propose|ripple-apply)$/.exec(
+            route,
+          );
+        if (method === "POST" && transcriptRippleMatch) {
+          const compositionId = decodeURIComponent(transcriptRippleMatch[1]!);
+          const action = transcriptRippleMatch[2];
+          const data = (await body(request)) as Record<string, unknown>;
+          if (action === "ripple-propose") {
+            const proposal =
+              await application.transcriptEditor.createRippleProposal(
+                compositionId,
+                String(data.assetId),
+                data as Parameters<
+                  typeof application.transcriptEditor.createRippleProposal
+                >[2],
+              );
+            json(response, 200, proposal);
+          } else {
+            const editor = editorFor(application);
+            const state = await application.transcriptEditor.applyRipple(
+              compositionId,
+              String(data.assetId),
+              {
+                ...(data as unknown as Parameters<
+                  typeof application.transcriptEditor.applyRipple
+                >[2]),
+                editor,
+              },
+            );
+            json(response, 200, state);
+          }
+          return;
+        }
+        const continuityMatch =
+          /^\/api\/compositions\/([^/]+)\/continuity\/(propose|apply)$/.exec(
+            route,
+          );
+        if (method === "POST" && continuityMatch) {
+          const compositionId = decodeURIComponent(continuityMatch[1]!);
+          const action = continuityMatch[2];
+          const data = (await body(request)) as Record<string, unknown>;
+          const composition = application.project.timelines.find(
+            (t) => t.id === compositionId,
+          );
+          if (!composition) {
+            throw new HttpError(404, `Timeline not found: ${compositionId}`);
+          }
+          const storyId = composition.storyId;
+          if (action === "propose") {
+            const result = application.continuity.previewProposal(
+              storyId,
+              compositionId,
+              data?.options as Parameters<
+                typeof application.continuity.previewProposal
+              >[2],
+            );
+            json(response, 200, result);
+          } else {
+            const result = await application.continuity.applyOverrides(
+              storyId,
+              compositionId,
+              data as unknown as ContinuityAcceptanceInput,
+            );
+            json(response, 200, result);
+          }
+          return;
+        }
+        const microPreviewCompositionMatch =
+          /^\/api\/compositions\/([^/]+)\/micro-preview$/.exec(route);
+        if (method === "POST" && microPreviewCompositionMatch) {
+          const compositionId = decodeURIComponent(
+            microPreviewCompositionMatch[1]!,
+          );
+          const data = (await body(request)) as Record<string, unknown>;
+          const proposal = await application.microPreview.previewAdjacentScenes(
+            String(data.targetClipId),
+            data.transition as { type: TransitionType; duration: number },
+            compositionId,
+          );
+          json(response, 200, proposal);
+          return;
+        }
+        const microPreviewActionMatch =
+          /^\/api\/micro-preview\/([^/]+)\/(seek|apply|cancel)$/.exec(route);
+        if (method === "POST" && microPreviewActionMatch) {
+          const previewId = decodeURIComponent(microPreviewActionMatch[1]!);
+          const action = microPreviewActionMatch[2];
+          if (action === "cancel") {
+            application.microPreview.cancel(previewId);
+            json(response, 200, { ok: true });
+            return;
+          }
+          const data = (await body(request)) as Record<string, unknown>;
+          if (action === "seek") {
+            const frame = await application.microPreview.seek(
+              previewId,
+              Number(data.offsetSeconds),
+              data.compositionId ? String(data.compositionId) : undefined,
+            );
+            json(response, 200, frame);
+            return;
+          }
+          if (action === "apply") {
+            const editor = editorFor(application);
+            await application.microPreview.apply(previewId, {
+              compositionId: data?.compositionId
+                ? String(data.compositionId)
+                : undefined,
+              editor,
+            });
+            const compId = data?.compositionId
+              ? String(data.compositionId)
+              : application.project.timelines[0]?.id;
+            json(response, 200, {
+              ok: true,
+              state: compId ? editor.get(compId) : undefined,
+            });
+            return;
+          }
         }
         const thumbnail = /^\/api\/thumbnail\/([^/]+)$/.exec(route);
         if (method === "GET" && thumbnail) {

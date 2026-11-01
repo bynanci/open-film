@@ -53,6 +53,12 @@ import {
   titlePreviewUrl,
   type EditorState,
   type SourceStatus,
+  type CoverageProposal,
+  type TranscriptRippleMode,
+  type ContinuityProposal,
+  type ContinuityOverride,
+  type SceneMicroPreviewProposal,
+  type ResolvedSequenceFrame,
 } from "../api";
 import {
   useTimelineEditor,
@@ -2130,6 +2136,233 @@ function rollSelected(delta: number) {
     }
   }
 }
+
+const activeMicroPreview = ref<SceneMicroPreviewProposal | null>(null);
+const microPreviewFrame = ref<ResolvedSequenceFrame | null>(null);
+const microPreviewOffset = ref(0);
+const microPreviewBusy = ref(false);
+
+async function startMicroPreview() {
+  if (
+    !selectedClip.value ||
+    !selectedClip.value.transition ||
+    microPreviewBusy.value
+  )
+    return;
+  microPreviewBusy.value = true;
+  try {
+    const proposal = await api.previewMicroPreview(props.compositionId, {
+      targetClipId: selectedClip.value.id,
+      transition: {
+        type: selectedClip.value.transition.type,
+        duration: selectedClip.value.transition.duration,
+      },
+    });
+    activeMicroPreview.value = proposal;
+    microPreviewOffset.value = proposal.previewStart;
+    microPreviewFrame.value = await api.seekMicroPreview(proposal.id, {
+      offsetSeconds: microPreviewOffset.value,
+      compositionId: props.compositionId,
+    });
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    microPreviewBusy.value = false;
+  }
+}
+
+async function seekMicroPreview(offset: number) {
+  if (!activeMicroPreview.value || microPreviewBusy.value) return;
+  microPreviewBusy.value = true;
+  try {
+    microPreviewOffset.value = offset;
+    microPreviewFrame.value = await api.seekMicroPreview(
+      activeMicroPreview.value.id,
+      {
+        offsetSeconds: offset,
+        compositionId: props.compositionId,
+      },
+    );
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    microPreviewBusy.value = false;
+  }
+}
+
+async function applyMicroPreview() {
+  if (!activeMicroPreview.value || microPreviewBusy.value) return;
+  microPreviewBusy.value = true;
+  try {
+    const res = await api.applyMicroPreview(activeMicroPreview.value.id, {
+      compositionId: props.compositionId,
+    });
+    if (res.state) state.value = res.state;
+    activeMicroPreview.value = null;
+    microPreviewFrame.value = null;
+    emit("edited");
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    microPreviewBusy.value = false;
+  }
+}
+
+function cancelMicroPreview() {
+  if (activeMicroPreview.value) {
+    api.cancelMicroPreview(activeMicroPreview.value.id).catch(() => {});
+    activeMicroPreview.value = null;
+    microPreviewFrame.value = null;
+  }
+}
+
+const coverageProposal = ref<CoverageProposal | null>(null);
+const coverageBusy = ref(false);
+
+function setCoverageRole(
+  role: "standalone" | "primary-narrative" | "b-roll-overlay",
+) {
+  if (!selectedClip.value) return;
+  if (role === "standalone") {
+    command({
+      type: "coverage.set-clip",
+      clipId: selectedClip.value.id,
+      coverage: null,
+    });
+  } else if (role === "primary-narrative") {
+    command({
+      type: "coverage.set-clip",
+      clipId: selectedClip.value.id,
+      coverage: { version: 1, role: "primary-narrative" },
+    });
+  } else {
+    const candidate = allClips.value.find(
+      (c) =>
+        c.id !== selectedClip.value?.id &&
+        (c.coverage?.role === "primary-narrative" || !c.coverage),
+    );
+    command({
+      type: "coverage.set-clip",
+      clipId: selectedClip.value.id,
+      coverage: {
+        version: 1,
+        role: "b-roll-overlay",
+        ...(candidate ? { primaryClipId: candidate.id } : {}),
+        audioPolicy: { version: 1, mode: "keep-primary" },
+      },
+    });
+  }
+}
+
+async function proposeCoverage() {
+  if (!selectedClip.value || coverageBusy.value) return;
+  coverageBusy.value = true;
+  try {
+    const proposal = await api.proposeCoverage(props.compositionId, {
+      bRollClipId: selectedClip.value.id,
+      primaryClipId: selectedClip.value.coverage?.primaryClipId,
+      audioPolicy: selectedClip.value.coverage?.audioPolicy,
+    });
+    coverageProposal.value = proposal;
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    coverageBusy.value = false;
+  }
+}
+
+async function applyCoverage() {
+  if (!coverageProposal.value || !state.value || coverageBusy.value) return;
+  coverageBusy.value = true;
+  try {
+    const updated = await api.applyCoverage(props.compositionId, {
+      baseRevision: state.value.revision,
+      proposal: coverageProposal.value,
+    });
+    state.value = updated;
+    coverageProposal.value = null;
+    emit("edited");
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    coverageBusy.value = false;
+  }
+}
+
+const continuityProposal = ref<ContinuityProposal | null>(null);
+const continuityBusy = ref(false);
+
+async function analyzeContinuity() {
+  if (continuityBusy.value) return;
+  continuityBusy.value = true;
+  try {
+    const res = await api.previewContinuity(props.compositionId);
+    continuityProposal.value = res.proposal;
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    continuityBusy.value = false;
+  }
+}
+
+async function applyContinuity() {
+  if (!continuityProposal.value || !state.value || continuityBusy.value) return;
+  continuityBusy.value = true;
+  try {
+    const proposal = continuityProposal.value;
+    const overrides: ContinuityOverride[] = proposal.diagnostics.map((d) => ({
+      diagnosticId: d.id,
+      action: "accept-direction",
+    }));
+    await api.applyContinuity(props.compositionId, {
+      proposalId: proposal.id,
+      requestId: `continuity-${Date.now()}`,
+      baseRevision: proposal.baseRevision,
+      contextSignature: proposal.contextSignature,
+      overrides,
+    });
+    const refreshed = await api.editor(props.compositionId);
+    state.value = refreshed;
+    continuityProposal.value = null;
+    emit("edited");
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    continuityBusy.value = false;
+  }
+}
+
+async function proposeTranscriptRipple(
+  assetId: string,
+  options: {
+    mode?: TranscriptRippleMode;
+    segmentIds?: readonly string[];
+    sourceRange?: { start: number; end: number };
+  } = {},
+) {
+  return api.proposeTranscriptRipple(props.compositionId, {
+    assetId,
+    ...options,
+  });
+}
+
+async function applyTranscriptRipple(
+  assetId: string,
+  options: {
+    mode?: TranscriptRippleMode;
+    segmentIds?: readonly string[];
+    sourceRange?: { start: number; end: number };
+  },
+) {
+  if (!state.value) return;
+  const updated = await api.applyTranscriptRipple(props.compositionId, {
+    assetId,
+    baseRevision: state.value.revision,
+    ...options,
+  });
+  state.value = updated;
+  emit("edited");
+}
 function editBeat() {
   if (!selectedBeat.value) return;
   const fields = {
@@ -2972,6 +3205,20 @@ defineExpose({
   reload: load,
   navigateToTime,
   navigateToRecordFrame,
+  startMicroPreview,
+  seekMicroPreview,
+  applyMicroPreview,
+  cancelMicroPreview,
+  setCoverageRole,
+  proposeCoverage,
+  applyCoverage,
+  analyzeContinuity,
+  applyContinuity,
+  proposeTranscriptRipple,
+  applyTranscriptRipple,
+  activeMicroPreview,
+  coverageProposal,
+  continuityProposal,
 });
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
@@ -5457,6 +5704,46 @@ onBeforeUnmount(() => {
                       "
                   /></label>
                 </div>
+                <div v-if="selectedClip.transition" class="editor-actions">
+                  <button
+                    class="editor-button"
+                    :aria-label="t('editor.clip.microPreview')"
+                    :disabled="microPreviewBusy || historyBusy"
+                    @click="startMicroPreview"
+                  >
+                    {{ t("editor.clip.microPreview") }}
+                  </button>
+                  <button
+                    v-if="activeMicroPreview"
+                    class="editor-button secondary"
+                    :disabled="microPreviewBusy"
+                    @click="applyMicroPreview"
+                  >
+                    ✓ Apply
+                  </button>
+                  <button
+                    v-if="activeMicroPreview"
+                    class="editor-button danger"
+                    :disabled="microPreviewBusy"
+                    @click="cancelMicroPreview"
+                  >
+                    ✕ Cancel
+                  </button>
+                </div>
+                <div v-if="activeMicroPreview" class="editor-field">
+                  <input
+                    type="range"
+                    :min="activeMicroPreview.previewStart"
+                    :max="activeMicroPreview.previewEnd"
+                    step="0.04"
+                    :value="microPreviewOffset"
+                    @input="
+                      seekMicroPreview(
+                        Number(($event.target as HTMLInputElement).value),
+                      )
+                    "
+                  />
+                </div>
                 <div class="editor-field-pair">
                   <label class="editor-field"
                     >{{ t("editor.clip.scale")
@@ -5535,6 +5822,53 @@ onBeforeUnmount(() => {
                   :reference="{ kind: 'title', clipId: selectedClip.id }"
                   :active="active && status === 'saved'"
                 />
+                <div class="editor-divider" />
+                <div class="editor-field-pair">
+                  <label class="editor-field">
+                    {{ t("editor.clip.coverageRole") }}
+                    <select
+                      :value="selectedClip.coverage?.role ?? 'standalone'"
+                      @change="
+                        setCoverageRole(
+                          ($event.target as HTMLSelectElement).value as any,
+                        )
+                      "
+                    >
+                      <option value="standalone">
+                        {{ t("editor.clip.coverageRoleStandalone") }}
+                      </option>
+                      <option value="primary-narrative">
+                        {{ t("editor.clip.coverageRolePrimary") }}
+                      </option>
+                      <option value="b-roll-overlay">
+                        {{ t("editor.clip.coverageRoleOverlay") }}
+                      </option>
+                    </select>
+                  </label>
+                  <button
+                    v-if="selectedClip.coverage?.role === 'b-roll-overlay'"
+                    class="editor-button"
+                    :disabled="coverageBusy || historyBusy"
+                    @click="proposeCoverage"
+                  >
+                    {{ t("editor.clip.proposeCoverage") }}
+                  </button>
+                </div>
+                <div v-if="coverageProposal" class="editor-actions">
+                  <button
+                    class="editor-button"
+                    :disabled="coverageBusy"
+                    @click="applyCoverage"
+                  >
+                    {{ t("editor.clip.applyCoverage") }}
+                  </button>
+                  <button
+                    class="editor-button secondary"
+                    @click="coverageProposal = null"
+                  >
+                    ✕
+                  </button>
+                </div>
               </fieldset>
             </fieldset>
             <MotionGenerationPanel
@@ -5582,6 +5916,37 @@ onBeforeUnmount(() => {
               @preview="directionPreview = $event"
               @edited="emit('edited')"
             />
+            <fieldset class="editor-fields">
+              <div class="editor-actions">
+                <button
+                  class="editor-button"
+                  :disabled="continuityBusy || historyBusy"
+                  @click="analyzeContinuity"
+                >
+                  {{ t("editor.continuity.analyze") }}
+                </button>
+                <button
+                  v-if="
+                    continuityProposal &&
+                    continuityProposal.diagnostics.length > 0
+                  "
+                  class="editor-button secondary"
+                  :disabled="continuityBusy"
+                  @click="applyContinuity"
+                >
+                  {{ t("editor.continuity.apply") }}
+                </button>
+              </div>
+              <p
+                v-if="
+                  continuityProposal &&
+                  continuityProposal.diagnostics.length === 0
+                "
+                class="editor-note"
+              >
+                {{ t("editor.continuity.noIssues") }}
+              </p>
+            </fieldset>
             <fieldset
               class="editor-fields"
               :disabled="

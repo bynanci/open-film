@@ -24,6 +24,11 @@ import {
   validateAudioAutomation,
   validateAudioTiming,
   validateClipCoverage,
+  createCoverageProposal,
+  type CoverageProposal,
+  type EmbeddedAudioPolicyV1,
+  type TranscriptRippleMode,
+  type TranscriptRippleProposal,
   validateCoverageProposal,
   validateCoverageAudioBindings,
   validateTranscriptRippleProposal,
@@ -1131,6 +1136,63 @@ export class TimelineEditor {
 
   revisionForDocument(document: EditorDocument): string {
     return revisionFor(document, this.documentAssets(document));
+  }
+
+  proposeCoverage(
+    compositionId: string,
+    options: {
+      bRollClipId: string;
+      primaryClipId?: string;
+      audioPolicy?: EmbeddedAudioPolicyV1;
+      sourceHash?: string;
+    },
+  ): CoverageProposal {
+    nonempty(compositionId, "compositionId");
+    const current = this.get(compositionId);
+    const timebase = resolveProjectTimebase(this.application.project.settings);
+    return createCoverageProposal(current.composition, {
+      ...options,
+      timebase,
+    });
+  }
+
+  async proposeTranscriptRipple(
+    compositionId: string,
+    assetId: string,
+    options: {
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    } = {},
+  ): Promise<TranscriptRippleProposal> {
+    nonempty(compositionId, "compositionId");
+    return this.application.transcriptEditor.createRippleProposal(
+      compositionId,
+      assetId,
+      options,
+    );
+  }
+
+  async applyTranscriptRipple(
+    compositionId: string,
+    assetId: string,
+    options: {
+      baseRevision: string;
+      requestId?: string;
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    },
+  ): Promise<TimelineEditorState> {
+    nonempty(compositionId, "compositionId");
+    return this.application.transcriptEditor.applyRipple(
+      compositionId,
+      assetId,
+      {
+        ...options,
+        editor: this,
+      },
+    );
   }
 
   async previewGraphicSceneAgent(

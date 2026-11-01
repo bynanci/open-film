@@ -65,6 +65,15 @@ import type {
   ProxyCleanupPreview,
   ProxyCleanupResult,
   ProxyVerificationResult,
+  CoverageProposal,
+  EmbeddedAudioPolicyV1,
+  TranscriptRippleProposal,
+  TranscriptRippleMode,
+  TransitionType,
+  SceneMicroPreviewProposal,
+  ResolvedSequenceFrame,
+  ContinuityProposal,
+  ContinuityReceipt,
 } from "@openfilm/core";
 
 export interface VisionSampleProviderInfo {
@@ -121,12 +130,32 @@ export type {
 } from "@openfilm/application";
 export type { SceneDirectionOptions } from "@openfilm/solver";
 import type { SceneDirectionOptions } from "@openfilm/solver";
-import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
+import type {
+  EditorDocument,
+  TimelineCommand,
+  ContinuityAnalysisOptions,
+} from "@openfilm/solver";
 import type {
   AnalysisRecoveryState,
   AnalysisRecoveryInput,
+  ContinuityAcceptanceInput,
 } from "@openfilm/application";
-export type { AnalysisRecoveryInput } from "@openfilm/application";
+export type {
+  AnalysisRecoveryInput,
+  ContinuityAcceptanceInput,
+} from "@openfilm/application";
+export type {
+  CoverageProposal,
+  EmbeddedAudioPolicyV1,
+  TranscriptRippleProposal,
+  TranscriptRippleMode,
+  TransitionType,
+  SceneMicroPreviewProposal,
+  ResolvedSequenceFrame,
+  ContinuityProposal,
+  ContinuityReceipt,
+  ContinuityOverride,
+} from "@openfilm/core";
 
 /** Runtime controls belong to the connected server, not the portable job record. */
 export interface AnalysisJobRecoveryState extends AnalysisRecoveryState {
@@ -1933,6 +1962,102 @@ export const api = {
     post<EditorState>(
       `/compositions/${encodeURIComponent(id)}/graphic-agent/accept`,
       body,
+    ),
+  proposeCoverage: (
+    id: string,
+    body: {
+      bRollClipId: string;
+      primaryClipId?: string;
+      audioPolicy?: EmbeddedAudioPolicyV1;
+      sourceHash?: string;
+    },
+  ) =>
+    post<CoverageProposal>(
+      `/compositions/${encodeURIComponent(id)}/coverage/propose`,
+      body,
+    ),
+  applyCoverage: (
+    id: string,
+    body: {
+      baseRevision: string;
+      requestId?: string;
+      proposal: CoverageProposal;
+    },
+  ) =>
+    post<EditorState>(
+      `/compositions/${encodeURIComponent(id)}/coverage/apply`,
+      body,
+    ),
+  proposeTranscriptRipple: (
+    id: string,
+    body: {
+      assetId: string;
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    },
+  ) =>
+    post<TranscriptRippleProposal>(
+      `/compositions/${encodeURIComponent(id)}/transcript/ripple-propose`,
+      body,
+    ),
+  applyTranscriptRipple: (
+    id: string,
+    body: {
+      assetId: string;
+      baseRevision: string;
+      requestId?: string;
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    },
+  ) =>
+    post<EditorState>(
+      `/compositions/${encodeURIComponent(id)}/transcript/ripple-apply`,
+      body,
+    ),
+  previewContinuity: (
+    id: string,
+    body?: { options?: ContinuityAnalysisOptions },
+  ) =>
+    post<{ proposal: ContinuityProposal; preview: EditorDocument }>(
+      `/compositions/${encodeURIComponent(id)}/continuity/propose`,
+      body ?? {},
+    ),
+  applyContinuity: (id: string, body: ContinuityAcceptanceInput) =>
+    post<{
+      project: OpenFilmProject;
+      receipt: ContinuityReceipt;
+      proposal: ContinuityProposal;
+    }>(`/compositions/${encodeURIComponent(id)}/continuity/apply`, body),
+  previewMicroPreview: (
+    id: string,
+    body: {
+      targetClipId: string;
+      transition: { type: TransitionType; duration: number };
+    },
+  ) =>
+    post<SceneMicroPreviewProposal>(
+      `/compositions/${encodeURIComponent(id)}/micro-preview`,
+      body,
+    ),
+  seekMicroPreview: (
+    previewId: string,
+    body: { offsetSeconds: number; compositionId?: string },
+  ) =>
+    post<ResolvedSequenceFrame>(
+      `/micro-preview/${encodeURIComponent(previewId)}/seek`,
+      body,
+    ),
+  applyMicroPreview: (previewId: string, body?: { compositionId?: string }) =>
+    post<{ ok: boolean; state?: EditorState }>(
+      `/micro-preview/${encodeURIComponent(previewId)}/apply`,
+      body ?? {},
+    ),
+  cancelMicroPreview: (previewId: string) =>
+    post<{ ok: boolean }>(
+      `/micro-preview/${encodeURIComponent(previewId)}/cancel`,
+      {},
     ),
   edit: (
     id: string,

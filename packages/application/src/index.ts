@@ -124,6 +124,10 @@ import {
   type TitleStyle,
   type ExportProfile,
   type AudioAutomation,
+  type CoverageProposal,
+  type EmbeddedAudioPolicyV1,
+  type TranscriptRippleMode,
+  type TranscriptRippleProposal,
 } from "@openfilm/core";
 import { GraphicSceneService } from "./graphic-scenes.js";
 import { TimelineEditor } from "./editor.js";
@@ -2473,6 +2477,49 @@ export class OpenFilmApplication {
     renameSync(temporary, path);
     atomicJsonSync(`${path}.report.json`, report);
     return { path, report };
+  }
+
+  proposeCoverage(
+    compositionId: string,
+    options: {
+      bRollClipId: string;
+      primaryClipId?: string;
+      audioPolicy?: EmbeddedAudioPolicyV1;
+      sourceHash?: string;
+    },
+  ): CoverageProposal {
+    const editor = new TimelineEditor(this);
+    return editor.proposeCoverage(compositionId, options);
+  }
+
+  async proposeTranscriptRipple(
+    compositionId: string,
+    assetId: string,
+    options: {
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    } = {},
+  ): Promise<TranscriptRippleProposal> {
+    return this.transcriptEditor.createRippleProposal(
+      compositionId,
+      assetId,
+      options,
+    );
+  }
+
+  async applyTranscriptRipple(
+    compositionId: string,
+    assetId: string,
+    options: {
+      baseRevision: string;
+      requestId?: string;
+      mode?: TranscriptRippleMode;
+      segmentIds?: readonly string[];
+      sourceRange?: { start: number; end: number };
+    },
+  ) {
+    return this.transcriptEditor.applyRipple(compositionId, assetId, options);
   }
 }
 
