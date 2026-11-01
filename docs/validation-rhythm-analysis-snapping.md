@@ -31,6 +31,12 @@ Capability: Source-hash-bound onset, downbeat, and phrase evidence, sequence tim
    - Rejects stale proposals if the composition revision changes between proposal generation and acceptance (`rhythm.staleProposal`).
    - Generates exactly one atomic undo step in the timeline history.
 
+5. **Real Audio Rhythm Analysis Producer and Durable Persistence**:
+   - `extractRhythmEvidence` decodes audio through FFmpeg to 8,000 Hz mono `pcm_s16le`, computes frame energy and spectral flux envelope, detects onset peaks via adaptive thresholding and refractory windowing, estimates tempo BPM via normalized autocorrelation with inter-onset-interval fallback, designative bar/phrase grid landmarks, and computes composite reliability.
+   - Persists evidence to `<projectDir>/analysis/rhythm-evidence.json` atomically upon analysis completion.
+   - `OpenFilmApplication.open()` automatically reloads durable evidence on project reopen.
+   - Exposes RESTful HTTP endpoints (`/api/assets/:id/rhythm/analyze`, `/api/compositions/:id/rhythm/landmarks`, `/api/compositions/:id/rhythm/propose-snap`, `/api/compositions/:id/rhythm/accept-snap`) and reactive desktop helper methods on `TimelineEditor.vue`.
+
 ## Test Evidence
 
 - `packages/core/tests/rhythm.test.ts` (3/3 passed):
@@ -49,4 +55,7 @@ Capability: Source-hash-bound onset, downbeat, and phrase evidence, sequence tim
   - Proposing snap with cut-point calculation.
   - Atomic application through `TimelineEditor` with complete Undo and Redo parity.
   - Explicit bypass mode verification.
+- `tests/integration/rhythm-pipeline.test.ts` (1/1 passed):
+  - Real audio decoding, onset/downbeat/phrase extraction, disk persistence to `analysis/rhythm-evidence.json`, project reopen recovery, landmark projection, snap cut proposal, and atomic acceptance via HTTP routes.
+- `tests/integration/workflow-review-apply-http.test.ts` (4/4 passed).
 - `vitest.contract.config.ts` (72/72 files, 1402/1402 passed).

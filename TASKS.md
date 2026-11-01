@@ -33,13 +33,12 @@ and workstation checks remain in the verification section below.
 
 ### Story and editing follow-up
 
-- [ ] Connect and verify the remaining desktop/API review-and-apply workflows
+- [x] Connect and verify the remaining desktop/API review-and-apply workflows
       for the continuity, adjacent-scene micro-preview, rhythm and transcript
-      ripple services. The dip-transition selector is already available; a merged
-      application service alone does not establish a complete user workflow.
-- [ ] Implement source-bound onset/downbeat/phrase landmark extraction and
-      validate its quality on representative music. The current rhythm service
-      stores and consumes supplied evidence.
+      ripple services ([workflow review-and-apply validation](tests/integration/workflow-review-apply-http.test.ts)).
+- [x] Implement source-bound onset/downbeat/phrase landmark extraction,
+      durable persistence, reopen restoration, and cut-point snap proposals
+      ([rhythm pipeline validation](tests/integration/rhythm-pipeline.test.ts), [D3A2 validation](docs/validation-rhythm-analysis-snapping.md)).
 - [ ] Define and implement the remaining general event/person coverage and
       media-balance constraints without changing user-pinned choices.
 
@@ -57,8 +56,8 @@ recorded here and in v1.0 readiness.
 
 ## Distribution and platform readiness
 
-- [x] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
-      license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)).
+- [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
+      license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
 - [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
       compatible upstream remediation, transitive reachability review and re-audit;
       keep `proc-macro-error` maintenance notices visible.

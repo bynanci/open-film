@@ -65,6 +65,10 @@ Capability: Professional edit semantics (Roll, Slip, Slide, Insert, Overwrite, L
   - Validates lift gap creation and downstream position stability.
   - Validates batch command execution.
 - `packages/solver/tests/editing.test.ts` (61/61 passed).
+- `packages/application/tests/cut-desk-persistence.test.ts` (14/14 passed):
+  - Validates application command validator accepts `roll`, `slip`, `slide`, `insert`, `overwrite`, `lift`, and `batch`.
+  - Validates external media asset resolution via asset loader.
+  - Validates full HTTP persistence route (`/api/compositions/:id/edit`), atomic Undo/Redo parity, and lock enforcement.
 - `pnpm test:contracts` (73/73 test files, 1427/1427 passed).
 - `pnpm typecheck` (0 errors).
 - Multi-locale parity across `en-US`, `zh-TW`, and `ja-JP` for all Cut Desk edit shortcut labels and tooltips.

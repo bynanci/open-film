@@ -47,6 +47,8 @@ Capability: Professional track controls (Target track, Lock, Mute, Solo, Visibil
   - Target track routing (automatic routing for video/audio insert and overwrite).
   - Sequence frame resolution and audio policy mix plan evaluation (visibility filtering, mute, solo isolation, multi-solo, mute precedence).
   - Model schema validation.
+- `packages/application/tests/cut-desk-persistence.test.ts` (14/14 passed):
+  - `track.update` persistence across `/api/compositions/:id/edit`, target track state saving, project reload, and atomic Undo/Redo.
 - Full contract test suite: 74 test files, 1445 tests passed (`pnpm test:contracts`).
 - i18n integrity check: 3017 semantic keys verified (`pnpm test:i18n`).
 - TypeScript strict check passed (`pnpm typecheck`).
