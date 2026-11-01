@@ -79,6 +79,7 @@ export const applicationErrorCodes = [
   "model.unavailable",
   "media.sceneFailed",
   "media.waveformFailed",
+  "media.rhythmFailed",
   "transcription.modelRequired",
   "transcription.modelInvalid",
   "transcription.runtimeUnavailable",

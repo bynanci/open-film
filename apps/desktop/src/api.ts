@@ -2059,6 +2059,53 @@ export const api = {
       `/micro-preview/${encodeURIComponent(previewId)}/cancel`,
       {},
     ),
+  analyzeRhythm: (
+    assetId: string,
+    body?: {
+      bpmHint?: number;
+      meterNumerator?: number;
+      meterDenominator?: number;
+      force?: boolean;
+    },
+  ) =>
+    post<import("@openfilm/core").RhythmAnalysisEvidence>(
+      `/assets/${encodeURIComponent(assetId)}/rhythm/analyze`,
+      body ?? {},
+    ),
+  getClipRhythmLandmarks: (compositionId: string, clipId: string) =>
+    request<{
+      landmarks: readonly import("@openfilm/core").TimelineRhythmLandmark[];
+    }>(
+      `/compositions/${encodeURIComponent(compositionId)}/rhythm/landmarks?clipId=${encodeURIComponent(clipId)}`,
+    ),
+  proposeRhythmSnap: (
+    compositionId: string,
+    body: {
+      clipId: string;
+      requestedTime: number;
+      targetEdge?: import("@openfilm/core").RhythmSnapTargetEdge;
+      tolerance?: number;
+      bypass?: boolean;
+    },
+  ) =>
+    post<import("@openfilm/core").RhythmSnapProposal>(
+      `/compositions/${encodeURIComponent(compositionId)}/rhythm/propose-snap`,
+      body,
+    ),
+  acceptRhythmSnap: (
+    compositionId: string,
+    body: {
+      proposal?: import("@openfilm/core").RhythmSnapProposal;
+      proposalId?: string;
+    },
+  ) =>
+    post<{
+      proposal: import("@openfilm/core").RhythmSnapProposal;
+      state: EditorState;
+    }>(
+      `/compositions/${encodeURIComponent(compositionId)}/rhythm/accept-snap`,
+      body,
+    ),
   edit: (
     id: string,
     body: {

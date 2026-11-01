@@ -2363,6 +2363,84 @@ async function applyTranscriptRipple(
   state.value = updated;
   emit("edited");
 }
+
+const rhythmBusy = ref(false);
+const rhythmProposal = ref<import("@openfilm/core").RhythmSnapProposal | null>(
+  null,
+);
+const rhythmLandmarks = ref<
+  readonly import("@openfilm/core").TimelineRhythmLandmark[]
+>([]);
+
+async function analyzeAssetRhythm(assetId: string) {
+  if (rhythmBusy.value) return;
+  rhythmBusy.value = true;
+  try {
+    const evidence = await api.analyzeRhythm(assetId);
+    return evidence;
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    rhythmBusy.value = false;
+  }
+}
+
+async function loadClipRhythmLandmarks(clipId: string) {
+  try {
+    const res = await api.getClipRhythmLandmarks(props.compositionId, clipId);
+    rhythmLandmarks.value = res.landmarks;
+    return res.landmarks;
+  } catch (err) {
+    reportNotice(localizeError(err));
+  }
+}
+
+async function proposeRhythmSnap(
+  clipId: string,
+  requestedTime: number,
+  options: {
+    targetEdge?: import("@openfilm/core").RhythmSnapTargetEdge;
+    tolerance?: number;
+    bypass?: boolean;
+  } = {},
+) {
+  if (rhythmBusy.value) return;
+  rhythmBusy.value = true;
+  try {
+    const proposal = await api.proposeRhythmSnap(props.compositionId, {
+      clipId,
+      requestedTime,
+      ...options,
+    });
+    rhythmProposal.value = proposal;
+    return proposal;
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    rhythmBusy.value = false;
+  }
+}
+
+async function acceptRhythmSnap(
+  proposal?: import("@openfilm/core").RhythmSnapProposal,
+) {
+  const target = proposal ?? rhythmProposal.value;
+  if (!target || rhythmBusy.value) return;
+  rhythmBusy.value = true;
+  try {
+    const res = await api.acceptRhythmSnap(props.compositionId, {
+      proposal: target,
+    });
+    state.value = res.state;
+    rhythmProposal.value = null;
+    emit("edited");
+    return res.proposal;
+  } catch (err) {
+    reportNotice(localizeError(err));
+  } finally {
+    rhythmBusy.value = false;
+  }
+}
 function editBeat() {
   if (!selectedBeat.value) return;
   const fields = {
@@ -3219,6 +3297,12 @@ defineExpose({
   activeMicroPreview,
   coverageProposal,
   continuityProposal,
+  analyzeAssetRhythm,
+  loadClipRhythmLandmarks,
+  proposeRhythmSnap,
+  acceptRhythmSnap,
+  rhythmProposal,
+  rhythmLandmarks,
 });
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";

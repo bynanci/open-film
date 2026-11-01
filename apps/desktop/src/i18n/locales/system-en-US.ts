@@ -86,6 +86,8 @@ export default {
         "Scene changes couldn't be detected. Check that the source video is available and playable, then try again or open the technical details.",
       waveformFailed:
         "The waveform couldn't be created. Check that the source has a playable audio track, then try again or open the technical details.",
+      rhythmFailed:
+        "Rhythm analysis couldn't be completed. Check that the source has a playable audio track, then try again or open the technical details.",
     },
     story: {
       mediaRequired: "Add some memories before creating a story.",

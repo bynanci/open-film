@@ -993,11 +993,16 @@ export type {
 export {
   generateWaveform,
   detectScenes,
+  extractRhythmEvidence,
   SOURCE_CLOCK_AUDIO_FILTER,
   WAVEFORM_CACHE_IDENTITY,
+  RHYTHM_CACHE_IDENTITY,
   sceneCacheIdentity,
 } from "./intelligence.js";
-export type { SceneDetectionOptions } from "./intelligence.js";
+export type {
+  SceneDetectionOptions,
+  RhythmAnalysisOptions,
+} from "./intelligence.js";
 
 export {
   CANONICAL_AUDIO_FILTER,

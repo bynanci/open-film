@@ -1,6 +1,9 @@
 // Modified by OpenFilm contributors on 2026-10-31. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   ApplicationError,
   validateRhythmAnalysisEvidence,
@@ -10,6 +13,12 @@ import {
   type RhythmSnapTargetEdge,
   type TimelineRhythmLandmark,
 } from "@openfilm/core";
+import {
+  extractRhythmEvidence,
+  hashFile,
+  localPath,
+  type RhythmAnalysisOptions,
+} from "@openfilm/media";
 import {
   buildRhythmSnapProposal,
   projectClipRhythmLandmarks,
@@ -39,6 +48,50 @@ export class RhythmService {
     return `${assetId}:${sourceHash.toLowerCase()}`;
   }
 
+  private get evidenceFilePath(): string {
+    return join(this.app.directory, "analysis", "rhythm-evidence.json");
+  }
+
+  /**
+   * Loads persisted rhythm evidence from project disk.
+   */
+  public async loadPersistedEvidence(): Promise<void> {
+    const path = this.evidenceFilePath;
+    if (!existsSync(path)) return;
+    try {
+      const content = await readFile(path, "utf8");
+      const raw = JSON.parse(content);
+      if (Array.isArray(raw)) {
+        for (const item of raw) {
+          try {
+            const validated = validateRhythmAnalysisEvidence(item);
+            const key = this.cacheKey(validated.assetId, validated.sourceHash);
+            this.evidenceCache.set(key, validated);
+          } catch {
+            // ignore corrupted individual cache entry
+          }
+        }
+      }
+    } catch {
+      // ignore read error
+    }
+  }
+
+  /**
+   * Saves cached rhythm evidence to project disk.
+   */
+  public async savePersistedEvidence(): Promise<void> {
+    const path = this.evidenceFilePath;
+    const dir = join(this.app.directory, "analysis");
+    try {
+      await mkdir(dir, { recursive: true });
+      const items = Array.from(this.evidenceCache.values());
+      await writeFile(path, JSON.stringify(items, null, 2), "utf8");
+    } catch {
+      // ignore write error
+    }
+  }
+
   /**
    * Stores validated rhythm analysis evidence bound to the asset ID and source hash.
    */
@@ -46,6 +99,50 @@ export class RhythmService {
     const validated = validateRhythmAnalysisEvidence(evidence);
     const key = this.cacheKey(validated.assetId, validated.sourceHash);
     this.evidenceCache.set(key, validated);
+    void this.savePersistedEvidence();
+  }
+
+  /**
+   * Analyzes an audio asset to extract real rhythm landmarks, BPM and meter,
+   * caching and persisting the results.
+   */
+  public async analyzeAsset(
+    assetId: string,
+    options?: RhythmAnalysisOptions & { force?: boolean },
+  ): Promise<RhythmAnalysisEvidence> {
+    const asset = this.app.catalog.getAsset(assetId);
+    if (!asset) {
+      throw new ApplicationError(
+        "request.notFound",
+        `Asset "${assetId}" was not found.`,
+      );
+    }
+
+    let sourceHash = asset.contentHash;
+    if (!sourceHash || !/^[0-9a-f]{64}$/i.test(sourceHash)) {
+      try {
+        sourceHash = await hashFile(localPath(asset.uri));
+      } catch {
+        throw new ApplicationError(
+          "media.missing",
+          `Source file for asset "${asset.name}" could not be accessed.`,
+          404,
+          { fileName: asset.name },
+        );
+      }
+    }
+
+    if (!options?.force) {
+      const cached = this.getEvidence(assetId, sourceHash);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const evidence = await extractRhythmEvidence(asset, sourceHash, options);
+    this.storeEvidence(evidence);
+    await this.savePersistedEvidence();
+    return evidence;
   }
 
   /**
@@ -72,13 +169,14 @@ export class RhythmService {
   public clearEvidence(assetId?: string): void {
     if (!assetId) {
       this.evidenceCache.clear();
-      return;
-    }
-    for (const key of this.evidenceCache.keys()) {
-      if (key.startsWith(`${assetId}:`)) {
-        this.evidenceCache.delete(key);
+    } else {
+      for (const key of this.evidenceCache.keys()) {
+        if (key.startsWith(`${assetId}:`)) {
+          this.evidenceCache.delete(key);
+        }
       }
     }
+    void this.savePersistedEvidence();
   }
 
   private getComposition(compositionId?: string) {

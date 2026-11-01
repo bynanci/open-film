@@ -734,6 +734,7 @@ export class OpenFilmApplication {
     );
     try {
       application.versions.recoverInterruptedRestore();
+      await application.rhythm.loadPersistedEvidence();
     } catch (error) {
       application.catalog.close();
       throw error;

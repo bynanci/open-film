@@ -71,11 +71,10 @@ async function openWorkflowServer() {
       end: 1.5,
       text: "Introduction spoken here",
       words: [
-        { text: "Introduction", start: 0, end: 0.7, sourceTiming: "verified" },
-        { text: "spoken", start: 0.7, end: 1.1, sourceTiming: "verified" },
-        { text: "here", start: 1.1, end: 1.5, sourceTiming: "verified" },
+        { text: "Introduction", start: 0, end: 0.7 },
+        { text: "spoken", start: 0.7, end: 1.1 },
+        { text: "here", start: 1.1, end: 1.5 },
       ],
-      sourceTiming: "verified",
     },
     {
       id: "seg-2",
@@ -83,11 +82,10 @@ async function openWorkflowServer() {
       end: 3.0,
       text: "Conclusion spoken here",
       words: [
-        { text: "Conclusion", start: 1.5, end: 2.2, sourceTiming: "verified" },
-        { text: "spoken", start: 2.2, end: 2.6, sourceTiming: "verified" },
-        { text: "here", start: 2.6, end: 3.0, sourceTiming: "verified" },
+        { text: "Conclusion", start: 1.5, end: 2.2 },
+        { text: "spoken", start: 2.2, end: 2.6 },
+        { text: "here", start: 2.6, end: 3.0 },
       ],
-      sourceTiming: "verified",
     },
   ];
 

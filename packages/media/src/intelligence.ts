@@ -5,8 +5,12 @@ import { createHash } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import {
   ApplicationError,
+  validateRhythmAnalysisEvidence,
   type AnalysisProvenance,
   type MediaAsset,
+  type RhythmAnalysisEvidence,
+  type RhythmLandmark,
+  type RhythmLandmarkKind,
   type SceneAnalysis,
   type TimelineMarker,
   type WaveformData,
@@ -20,7 +24,7 @@ const INITIAL_BUCKET_SAMPLES = PCM_RATE / 50;
 const MAX_PEAKS = 20_000;
 const MAX_MARKERS = 20_000;
 const MAX_DIAGNOSTIC_BYTES = 65_536;
-type AnalysisKind = "waveform" | "scene";
+type AnalysisKind = "waveform" | "scene" | "rhythm";
 
 /** Fill every packet gap; FFmpeg otherwise ignores gaps below its 100ms default. */
 export const SOURCE_CLOCK_AUDIO_FILTER =
@@ -31,6 +35,12 @@ export const WAVEFORM_CACHE_IDENTITY = {
   providerId: "openfilm.ffmpeg-waveform",
   version: "1",
   model: "source-clock-v2-channel-max-s16le-8000hz-max-20000-peaks",
+} as const;
+
+export const RHYTHM_CACHE_IDENTITY = {
+  providerId: "openfilm.ffmpeg-rhythm",
+  version: "1",
+  model: "energy-flux-onset-tempo-v1",
 } as const;
 
 export function sceneCacheIdentity(threshold = 0.3) {
@@ -46,15 +56,33 @@ export interface SceneDetectionOptions extends OperationOptions {
   threshold?: number;
 }
 
+export interface RhythmAnalysisOptions extends OperationOptions {
+  bpmHint?: number;
+  meterNumerator?: number;
+  meterDenominator?: number;
+}
+
 function failure(
   kind: AnalysisKind,
   asset: MediaAsset,
   reason: string,
   detail: string,
 ): ApplicationError {
+  const code =
+    kind === "waveform"
+      ? "media.waveformFailed"
+      : kind === "scene"
+        ? "media.sceneFailed"
+        : "media.rhythmFailed";
+  const title =
+    kind === "waveform"
+      ? "Waveform generation"
+      : kind === "scene"
+        ? "Scene detection"
+        : "Rhythm analysis";
   return new ApplicationError(
-    kind === "waveform" ? "media.waveformFailed" : "media.sceneFailed",
-    `${kind === "waveform" ? "Waveform generation" : "Scene detection"} failed for ${asset.name}: ${detail}`,
+    code,
+    `${title} failed for ${asset.name}: ${detail}`,
     422,
     { fileName: asset.name, reason },
     detail,
@@ -525,5 +553,326 @@ export async function detectScenes(
     };
   } catch (error) {
     rethrow(error, "scene", asset);
+  }
+}
+
+/** Decodes PCM audio, computes spectral/energy flux, extracts rhythm landmarks and estimates BPM. */
+export async function extractRhythmEvidence(
+  asset: MediaAsset,
+  sourceHash: string,
+  options: RhythmAnalysisOptions = {},
+): Promise<RhythmAnalysisEvidence> {
+  try {
+    const path = await sourcePath(asset, sourceHash, "rhythm", options.signal);
+    const probe = await probeSource(path, options.signal);
+    const audio = probe.streams.find((stream) => stream.codec_type === "audio");
+    if (!audio)
+      throw failure(
+        "rhythm",
+        asset,
+        "no-audio",
+        "This source has no audio stream.",
+      );
+
+    options.onProgress?.(0);
+    const frameSamples = 160; // 20ms at 8000Hz
+    const frameDuration = frameSamples / PCM_RATE; // 0.02s
+    const frameEnergies: number[] = [];
+
+    let currentFrameSquareSum = 0;
+    let currentFrameSampleCount = 0;
+    let carry: number | undefined;
+
+    const addSample = (sample: number) => {
+      const norm = sample / 32768;
+      currentFrameSquareSum += norm * norm;
+      currentFrameSampleCount++;
+      if (currentFrameSampleCount === frameSamples) {
+        frameEnergies.push(Math.sqrt(currentFrameSquareSum / frameSamples));
+        currentFrameSquareSum = 0;
+        currentFrameSampleCount = 0;
+      }
+    };
+
+    await streamFfmpeg(
+      [
+        "-hide_banner",
+        "-v",
+        "error",
+        "-nostdin",
+        "-threads",
+        "1",
+        ...(await localMediaInputOptions(path, options.signal)),
+        "-i",
+        path,
+        "-map",
+        `0:${audio.index}`,
+        "-vn",
+        "-sn",
+        "-dn",
+        "-af",
+        SOURCE_CLOCK_AUDIO_FILTER,
+        "-ac",
+        "1",
+        "-ar",
+        String(PCM_RATE),
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "s16le",
+        "pipe:1",
+      ],
+      options,
+      (chunk) => {
+        let offset = 0;
+        if (carry !== undefined && chunk.length) {
+          const value = carry | (chunk[0]! << 8);
+          addSample(value >= 32768 ? value - 65536 : value);
+          carry = undefined;
+          offset = 1;
+        }
+        for (; offset + 1 < chunk.length; offset += 2) {
+          addSample(chunk.readInt16LE(offset));
+        }
+        if (offset < chunk.length) carry = chunk[offset];
+      },
+    );
+
+    checkAbort(options.signal);
+    if (currentFrameSampleCount > 0) {
+      frameEnergies.push(
+        Math.sqrt(currentFrameSquareSum / currentFrameSampleCount),
+      );
+    }
+
+    if (frameEnergies.length === 0) {
+      throw failure(
+        "rhythm",
+        asset,
+        "empty-audio",
+        "FFmpeg produced no audio frames.",
+      );
+    }
+
+    const totalFrames = frameEnergies.length;
+    const fluxes = new Float32Array(totalFrames);
+    let maxFlux = 0;
+    for (let i = 0; i < totalFrames; i++) {
+      const prev = i > 0 ? frameEnergies[i - 1]! : 0;
+      const current = frameEnergies[i]!;
+      const diff = current - prev;
+      const flux = diff > 0 ? diff : 0;
+      fluxes[i] = flux;
+      if (flux > maxFlux) maxFlux = flux;
+    }
+
+    const normFluxes = new Float32Array(totalFrames);
+    if (maxFlux > 0) {
+      for (let i = 0; i < totalFrames; i++) {
+        normFluxes[i] = fluxes[i]! / maxFlux;
+      }
+    }
+
+    interface CandidateOnset {
+      frameIndex: number;
+      time: number;
+      strength: number;
+      confidence: number;
+    }
+    const candidateOnsets: CandidateOnset[] = [];
+    const windowHalf = 3;
+    let lastOnsetFrame = -10;
+
+    for (let i = 1; i < totalFrames - 1; i++) {
+      const val = normFluxes[i]!;
+      if (val <= 0.05) continue;
+      if (val <= normFluxes[i - 1]! || val < normFluxes[i + 1]!) continue;
+
+      const start = Math.max(0, i - windowHalf);
+      const end = Math.min(totalFrames - 1, i + windowHalf);
+      let localSum = 0;
+      for (let k = start; k <= end; k++) {
+        localSum += normFluxes[k]!;
+      }
+      const localMean = localSum / (end - start + 1);
+
+      if (val < Math.max(0.08, localMean * 1.3)) continue;
+
+      if (i - lastOnsetFrame < 4) {
+        if (
+          candidateOnsets.length > 0 &&
+          val > candidateOnsets.at(-1)!.strength
+        ) {
+          candidateOnsets.pop();
+        } else {
+          continue;
+        }
+      }
+
+      const time = Number((i * frameDuration).toFixed(3));
+      const strength = Math.min(1, Math.max(0, val));
+      const confidence = Math.min(1, Math.max(0.2, strength * 0.7 + 0.3));
+      candidateOnsets.push({ frameIndex: i, time, strength, confidence });
+      lastOnsetFrame = i;
+    }
+
+    let detectedBpm = 120;
+    if (candidateOnsets.length >= 2) {
+      let bestLag = -1;
+      let maxCorr = -1;
+      let totalCorrSum = 0;
+      let corrCount = 0;
+
+      for (
+        let lag = 15;
+        lag <= Math.min(50, Math.floor(totalFrames / 2));
+        lag++
+      ) {
+        let corr = 0;
+        const count = totalFrames - lag;
+        for (let k = 0; k < count; k++) {
+          corr += normFluxes[k]! * normFluxes[k + lag]!;
+        }
+        corr /= count;
+        totalCorrSum += corr;
+        corrCount++;
+        if (corr > maxCorr) {
+          maxCorr = corr;
+          bestLag = lag;
+        }
+      }
+
+      const avgCorr = corrCount > 0 ? totalCorrSum / corrCount : 0;
+      if (bestLag > 0 && maxCorr > avgCorr * 1.15) {
+        detectedBpm = Math.round(60 / (bestLag * frameDuration));
+      } else {
+        const iois: number[] = [];
+        for (let j = 0; j < candidateOnsets.length - 1; j++) {
+          const dt = candidateOnsets[j + 1]!.time - candidateOnsets[j]!.time;
+          if (dt >= 0.25 && dt <= 1.2) {
+            iois.push(dt);
+          }
+        }
+        if (iois.length > 0) {
+          iois.sort((a, b) => a - b);
+          const medianIoi = iois[Math.floor(iois.length / 2)]!;
+          detectedBpm = Math.round(60 / medianIoi);
+        }
+      }
+    }
+    const tempoBpm =
+      options.bpmHint && options.bpmHint > 0 ? options.bpmHint : detectedBpm;
+
+    const meterNumerator = options.meterNumerator ?? 4;
+    const meterDenominator = options.meterDenominator ?? 4;
+    const beatSec = 60 / tempoBpm;
+    const barSec = beatSec * meterNumerator;
+    const phraseSec = barSec * 4;
+
+    let bestPhi = 0;
+    let bestScore = -1;
+    const phiSteps = Math.max(1, Math.round(barSec / frameDuration));
+    for (let step = 0; step < phiSteps; step++) {
+      const phi = step * frameDuration;
+      let score = 0;
+      for (const onset of candidateOnsets) {
+        const rem = (((onset.time - phi) % barSec) + barSec) % barSec;
+        const dist = Math.min(rem, barSec - rem);
+        if (dist <= 0.06) {
+          score += onset.strength * (1 - dist / 0.06);
+        }
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestPhi = phi;
+      }
+    }
+
+    const landmarks: RhythmLandmark[] = [];
+    let alignedCount = 0;
+    for (const onset of candidateOnsets) {
+      const remBar = (((onset.time - bestPhi) % barSec) + barSec) % barSec;
+      const distBar = Math.min(remBar, barSec - remBar);
+
+      const remPhrase =
+        (((onset.time - bestPhi) % phraseSec) + phraseSec) % phraseSec;
+      const distPhrase = Math.min(remPhrase, phraseSec - remPhrase);
+
+      let kind: RhythmLandmarkKind = "onset";
+      let conf = onset.confidence;
+      let strength = onset.strength;
+
+      if (distPhrase <= 0.06) {
+        kind = "phrase";
+        conf = Math.min(1, conf * 1.15);
+        strength = Math.min(1, strength * 1.15);
+        alignedCount++;
+      } else if (distBar <= 0.06) {
+        kind = "downbeat";
+        conf = Math.min(1, conf * 1.1);
+        strength = Math.min(1, strength * 1.1);
+        alignedCount++;
+      }
+
+      landmarks.push({
+        time: onset.time,
+        kind,
+        confidence: Number(conf.toFixed(3)),
+        strength: Number(strength.toFixed(3)),
+      });
+    }
+
+    if (landmarks.length > 0 && !landmarks.some((l) => l.kind === "phrase")) {
+      landmarks[0]!.kind = "phrase";
+    } else if (
+      landmarks.length > 1 &&
+      !landmarks.some((l) => l.kind === "downbeat")
+    ) {
+      landmarks[1]!.kind = "downbeat";
+    }
+
+    landmarks.sort((a, b) => a.time - b.time);
+    const deduped: RhythmLandmark[] = [];
+    for (const lm of landmarks) {
+      if (
+        deduped.length > 0 &&
+        Math.abs(lm.time - deduped.at(-1)!.time) < 0.001
+      ) {
+        const prev = deduped.at(-1)!;
+        if (
+          lm.kind === "phrase" ||
+          (lm.kind === "downbeat" && prev.kind === "onset")
+        ) {
+          deduped[deduped.length - 1] = lm;
+        }
+      } else {
+        deduped.push(lm);
+      }
+    }
+
+    const alignedRatio =
+      candidateOnsets.length > 0 ? alignedCount / candidateOnsets.length : 0;
+    const reliability = Math.min(
+      0.98,
+      Math.max(0.5, 0.6 + 0.35 * alignedRatio),
+    );
+
+    options.onProgress?.(1);
+
+    const evidence: RhythmAnalysisEvidence = {
+      version: 1,
+      assetId: asset.id,
+      sourceHash: sourceHash.toLowerCase(),
+      tempoBpm,
+      meterNumerator,
+      meterDenominator,
+      reliability: Number(reliability.toFixed(3)),
+      landmarks: Object.freeze(deduped),
+      analyzedAt: new Date().toISOString(),
+    };
+
+    return validateRhythmAnalysisEvidence(evidence);
+  } catch (error) {
+    rethrow(error, "rhythm", asset);
   }
 }

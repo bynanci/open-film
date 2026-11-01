@@ -5351,6 +5351,88 @@ export async function startServer(options: ServerOptions = {}) {
             return;
           }
         }
+        const rhythmAssetMatch =
+          /^\/api\/assets\/([^/]+)\/rhythm\/analyze$/.exec(route);
+        if (method === "POST" && rhythmAssetMatch) {
+          const assetId = decodeURIComponent(rhythmAssetMatch[1]!);
+          const data = ((await body(request)) || {}) as Record<string, unknown>;
+          const evidence = await application.rhythm.analyzeAsset(assetId, {
+            bpmHint:
+              typeof data.bpmHint === "number" ? data.bpmHint : undefined,
+            meterNumerator:
+              typeof data.meterNumerator === "number"
+                ? data.meterNumerator
+                : undefined,
+            meterDenominator:
+              typeof data.meterDenominator === "number"
+                ? data.meterDenominator
+                : undefined,
+            force: Boolean(data.force),
+          });
+          json(response, 200, evidence);
+          return;
+        }
+        const rhythmLandmarksMatch =
+          /^\/api\/compositions\/([^/]+)\/rhythm\/landmarks$/.exec(route);
+        if (method === "GET" && rhythmLandmarksMatch) {
+          const compositionId = decodeURIComponent(rhythmLandmarksMatch[1]!);
+          const urlObj = new URL(request.url ?? "", "http://localhost");
+          const clipId = urlObj.searchParams.get("clipId");
+          if (!clipId) {
+            throw new HttpError(400, "clipId is required.");
+          }
+          const landmarks = application.rhythm.getLandmarksForClip(clipId, {
+            compositionId,
+          });
+          json(response, 200, { landmarks });
+          return;
+        }
+        const rhythmSnapMatch =
+          /^\/api\/compositions\/([^/]+)\/rhythm\/(propose-snap|accept-snap)$/.exec(
+            route,
+          );
+        if (method === "POST" && rhythmSnapMatch) {
+          const compositionId = decodeURIComponent(rhythmSnapMatch[1]!);
+          const action = rhythmSnapMatch[2];
+          const data = ((await body(request)) || {}) as Record<string, unknown>;
+
+          if (action === "propose-snap") {
+            const clipId = String(data.clipId ?? "");
+            const requestedTime = Number(data.requestedTime ?? 0);
+            const proposal = application.rhythm.proposeSnap(
+              clipId,
+              requestedTime,
+              {
+                compositionId,
+                targetEdge: data.targetEdge as "in" | "out" | "cut" | undefined,
+                tolerance:
+                  typeof data.tolerance === "number"
+                    ? data.tolerance
+                    : undefined,
+                bypass: Boolean(data.bypass),
+              },
+            );
+            json(response, 200, proposal);
+            return;
+          }
+
+          if (action === "accept-snap") {
+            const editor = editorFor(application);
+            const proposal = await application.rhythm.applySnap(
+              (data.proposal as import("@openfilm/core").RhythmSnapProposal) ??
+                String(data.proposalId ?? ""),
+              {
+                compositionId,
+                editor,
+              },
+            );
+            json(response, 200, {
+              proposal,
+              state: editor.get(compositionId),
+            });
+            return;
+          }
+        }
         const thumbnail = /^\/api\/thumbnail\/([^/]+)$/.exec(route);
         if (method === "GET" && thumbnail) {
           const asset = application.catalog.getAsset(
