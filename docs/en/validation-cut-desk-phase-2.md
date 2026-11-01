@@ -65,7 +65,7 @@ Capability: Professional edit semantics (Roll, Slip, Slide, Insert, Overwrite, L
   - Validates lift gap creation and downstream position stability.
   - Validates batch command execution.
 - `packages/solver/tests/editing.test.ts` (61/61 passed).
-- `packages/application/tests/cut-desk-persistence.test.ts` (14/14 passed):
+- `packages/application/tests/cut-desk-phase-2-3-persistence.test.ts` (14/14 passed):
   - Validates application command validator accepts `roll`, `slip`, `slide`, `insert`, `overwrite`, `lift`, and `batch`.
   - Validates external media asset resolution via asset loader.
   - Validates full HTTP persistence route (`/api/compositions/:id/edit`), atomic Undo/Redo parity, and lock enforcement.
