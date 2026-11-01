@@ -42,6 +42,8 @@ const groups = [
       { key: ",", label: "cutDesk.shortcutSheet.items.insert" },
       { key: ".", label: "cutDesk.shortcutSheet.items.overwrite" },
       { key: ";", label: "cutDesk.shortcutSheet.items.lift" },
+      { key: "[ · ]", label: "cutDesk.shortcutSheet.items.slip" },
+      { key: "Alt + [ · ]", label: "cutDesk.shortcutSheet.items.slide" },
       { key: "Delete", label: "cutDesk.shortcutSheet.items.rippleDelete" },
       { key: "M", label: "cutDesk.shortcutSheet.items.marker" },
     ],

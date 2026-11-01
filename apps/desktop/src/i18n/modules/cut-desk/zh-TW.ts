@@ -126,6 +126,8 @@ export default {
         insert: "插入來源片段至時間軸 (,)",
         overwrite: "覆寫來源片段至時間軸 (.)",
         lift: "提拔片段保留空隙 (;)",
+        slip: "於片段範圍內滑移來源媒體 ([ / ])",
+        slide: "滑動片段並調整相鄰剪接點 (Alt + [ / ])",
         rippleDelete: "漣漪刪除片段閉合空隙 (Delete)",
         marker: "新增來源標記",
         homeEnd: "跳至起始／結束邊界",

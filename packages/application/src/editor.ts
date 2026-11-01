@@ -425,6 +425,111 @@ function command(value: unknown, index: number): TimelineCommand {
     nested(data.proposal, `${path}.proposal`, validateRhythmSnapProposal);
     return structuredClone(data) as TimelineCommand;
   }
+  if (type === "roll") {
+    keys(data, ["type", "clipIdA", "clipIdB", "delta"], path);
+    nonempty(data.clipIdA, `${path}.clipIdA`);
+    nonempty(data.clipIdB, `${path}.clipIdB`);
+    if (data.clipIdA === data.clipIdB)
+      invalid(`${path}.clipIdB`, "clipIdA and clipIdB must be different");
+    finite(data.delta, `${path}.delta`);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type === "insert") {
+    keys(
+      data,
+      ["type", "assetId", "timelineStart", "sourceIn", "sourceOut", "trackId"],
+      path,
+    );
+    nonempty(data.assetId, `${path}.assetId`);
+    finite(data.timelineStart, `${path}.timelineStart`, 0);
+    if (Object.hasOwn(data, "sourceIn") && data.sourceIn !== undefined)
+      finite(data.sourceIn, `${path}.sourceIn`, 0);
+    if (Object.hasOwn(data, "sourceOut") && data.sourceOut !== undefined)
+      positive(data.sourceOut, `${path}.sourceOut`);
+    if (
+      Object.hasOwn(data, "sourceIn") &&
+      data.sourceIn !== undefined &&
+      Object.hasOwn(data, "sourceOut") &&
+      data.sourceOut !== undefined &&
+      Number(data.sourceOut) <= Number(data.sourceIn)
+    )
+      invalid(path, "sourceOut must be greater than sourceIn");
+    if (Object.hasOwn(data, "trackId") && data.trackId !== undefined)
+      nonempty(data.trackId, `${path}.trackId`);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type === "overwrite") {
+    keys(
+      data,
+      ["type", "assetId", "timelineStart", "sourceIn", "sourceOut", "trackId"],
+      path,
+    );
+    nonempty(data.assetId, `${path}.assetId`);
+    finite(data.timelineStart, `${path}.timelineStart`, 0);
+    if (Object.hasOwn(data, "sourceIn") && data.sourceIn !== undefined)
+      finite(data.sourceIn, `${path}.sourceIn`, 0);
+    if (Object.hasOwn(data, "sourceOut") && data.sourceOut !== undefined)
+      positive(data.sourceOut, `${path}.sourceOut`);
+    if (
+      Object.hasOwn(data, "sourceIn") &&
+      data.sourceIn !== undefined &&
+      Object.hasOwn(data, "sourceOut") &&
+      data.sourceOut !== undefined &&
+      Number(data.sourceOut) <= Number(data.sourceIn)
+    )
+      invalid(path, "sourceOut must be greater than sourceIn");
+    if (Object.hasOwn(data, "trackId") && data.trackId !== undefined)
+      nonempty(data.trackId, `${path}.trackId`);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type === "batch") {
+    keys(data, ["type", "commands", "transactionId"], path);
+    if (
+      Object.hasOwn(data, "transactionId") &&
+      data.transactionId !== undefined
+    )
+      nonempty(data.transactionId, `${path}.transactionId`);
+    if (
+      !Array.isArray(data.commands) ||
+      !data.commands.length ||
+      data.commands.length > COMMAND_LIMIT
+    )
+      invalid(
+        `${path}.commands`,
+        `expected between 1 and ${COMMAND_LIMIT} commands`,
+      );
+    const commands: TimelineCommand[] = [];
+    for (let i = 0; i < data.commands.length; i++) {
+      const sub = record(data.commands[i], `${path}.commands[${i}]`);
+      if (sub.type === "batch")
+        invalid(
+          `${path}.commands[${i}].type`,
+          "nested batch commands are not allowed",
+        );
+      commands.push(command(data.commands[i], i));
+    }
+    return {
+      type: "batch",
+      commands,
+      ...(data.transactionId !== undefined
+        ? { transactionId: data.transactionId as string }
+        : {}),
+    };
+  }
+  if (type === "track.update") {
+    keys(data, ["type", "trackId", "patch"], path);
+    nonempty(data.trackId, `${path}.trackId`);
+    const patch = record(data.patch, `${path}.patch`);
+    const allowedPatchFields = ["locked", "target", "muted", "solo", "visible"];
+    keys(patch, allowedPatchFields, `${path}.patch`);
+    if (!allowedPatchFields.some((f) => Object.hasOwn(patch, f)))
+      invalid(`${path}.patch`, "provide at least one track patch field");
+    for (const field of allowedPatchFields) {
+      if (Object.hasOwn(patch, field) && typeof patch[field] !== "boolean")
+        invalid(`${path}.patch.${field}`, "expected boolean");
+    }
+    return structuredClone(data) as TimelineCommand;
+  }
   if (type === "beat" || type === "regenerate-beat")
     nonempty(data.beatId, `${path}.beatId`);
   else nonempty(data.clipId, `${path}.clipId`);
@@ -573,6 +678,12 @@ function command(value: unknown, index: number): TimelineCommand {
       if (!Number.isInteger(finite(data.toIndex, `${path}.toIndex`, 0)))
         invalid(`${path}.toIndex`, "expected an integer");
       break;
+    case "slip":
+    case "slide":
+      fields.push("delta");
+      finite(data.delta, `${path}.delta`);
+      break;
+    case "lift":
     case "delete":
       break;
     case "replace":
@@ -920,6 +1031,23 @@ function validateGraphicSceneAgentTemplateBindings(
 }
 
 /** History and generic edit retries stay in memory; direction receipts are durable. */
+function extractReferencedAssetIds(item: TimelineCommand): string[] {
+  if (item.type === "graphic.scene.upsert")
+    return graphicSceneAssetIds([item.scene]);
+  if (
+    item.type === "replace" ||
+    item.type === "audio.add" ||
+    item.type === "insert" ||
+    item.type === "overwrite"
+  )
+    return [item.assetId];
+  if (item.type === "presentation" && item.layout?.secondary)
+    return [item.layout.secondary.assetId];
+  if (item.type === "batch")
+    return item.commands.flatMap(extractReferencedAssetIds);
+  return [];
+}
+
 export class TimelineEditor {
   private readonly histories = new Map<string, History>();
   private readonly requests = new Map<
@@ -1900,14 +2028,7 @@ export class TimelineEditor {
               "Photo ambient cells require at least one output pixel",
             );
         }
-        const referenced =
-          item.type === "graphic.scene.upsert"
-            ? graphicSceneAssetIds([item.scene])
-            : item.type === "replace" || item.type === "audio.add"
-              ? [item.assetId]
-              : item.type === "presentation" && item.layout?.secondary
-                ? [item.layout.secondary.assetId]
-                : [];
+        const referenced = extractReferencedAssetIds(item);
         for (const assetId of referenced) {
           if (assets.some((asset) => asset.id === assetId)) continue;
           const source = this.application.catalog.getAsset(assetId);
@@ -1919,16 +2040,17 @@ export class TimelineEditor {
           assets.push(source);
         }
       }
-      const audioAware =
-        parsed.commands.some(
-          (c) =>
-            c.type === "audio.timing" ||
+      const commandIsAudioAware = (c: TimelineCommand): boolean =>
+        c.type === "batch"
+          ? c.commands.some(commandIsAudioAware)
+          : c.type === "audio.timing" ||
             c.type === "coverage.set-clip" ||
             c.type === "coverage.apply-proposal" ||
             c.type === "coverage.set-bindings" ||
             c.type === "transcript.ripple" ||
-            c.type === "rhythm.snap",
-        ) ||
+            c.type === "rhythm.snap";
+      const audioAware =
+        parsed.commands.some(commandIsAudioAware) ||
         Boolean(before.composition.coverageAudioBindings?.length) ||
         before.composition.tracks.some((t) =>
           t.clips.some((c) => c.audioTiming || c.coverage),

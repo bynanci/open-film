@@ -452,4 +452,166 @@ describe("real timeline HTTP editing", () => {
     expect((await fetch(`${base}/api/source/missing-asset`)).status).toBe(404);
     expect(await readFile(join(root, "04-motion.mp4"))).toEqual(source);
   });
+
+  it("persists professional Cut Desk Phase 2 and 3 commands over HTTP", async () => {
+    const { directory, post, state } = await openEditor();
+    const initial = await state();
+
+    // 1. Roll edit over HTTP: roll boundary forward (photo 4 -> 5, motion 3 -> 2)
+    const rollResp = await post("/api/compositions/composition/edit", {
+      baseRevision: initial.revision,
+      commands: [
+        {
+          type: "roll",
+          clipIdA: "photo",
+          clipIdB: "motion",
+          delta: 1,
+        },
+      ],
+    });
+    expect(rollResp.status).toBe(200);
+    const rolled = (await rollResp.json()) as EditorState;
+    expect(rolled.composition.tracks[0]!.clips[0]!.timelineDuration).toBe(5);
+    expect(rolled.composition.tracks[0]!.clips[1]!.timelineStart).toBe(5);
+    expect(rolled.composition.tracks[0]!.clips[1]!.timelineDuration).toBe(2);
+
+    // 2. Slip edit over HTTP on motion clip (slip backward within 3s source)
+    const slipResp = await post("/api/compositions/composition/edit", {
+      baseRevision: rolled.revision,
+      commands: [
+        {
+          type: "slip",
+          clipId: "motion",
+          delta: -0.5,
+        },
+      ],
+    });
+    expect(slipResp.status).toBe(200);
+    const slipped = (await slipResp.json()) as EditorState;
+    expect(slipped.composition.tracks[0]!.clips[1]!.sourceIn).toBe(0.5);
+    expect(slipped.composition.tracks[0]!.clips[1]!.sourceOut).toBe(2.5);
+
+    // 3. Track controls (track.update) over HTTP
+    const trackResp = await post("/api/compositions/composition/edit", {
+      baseRevision: slipped.revision,
+      commands: [
+        {
+          type: "track.update",
+          trackId: "visuals",
+          patch: { target: true, visible: true },
+        },
+      ],
+    });
+    expect(trackResp.status).toBe(200);
+    const tracked = (await trackResp.json()) as EditorState;
+
+    // 4. Verify pin conflict: inserting into a pinned clip is rejected with 409
+    const pinnedInsertResp = await post("/api/compositions/composition/edit", {
+      baseRevision: tracked.revision,
+      commands: [
+        {
+          type: "insert",
+          assetId: "photo-asset",
+          timelineStart: 2,
+          sourceIn: 0,
+          sourceOut: 1,
+        },
+      ],
+    });
+    expect(pinnedInsertResp.status).toBe(409);
+
+    // 5. Insert edit at the end (beyond pinned clips) succeeds
+    const insertResp = await post("/api/compositions/composition/edit", {
+      baseRevision: tracked.revision,
+      commands: [
+        {
+          type: "insert",
+          assetId: "photo-asset",
+          timelineStart: 8,
+          sourceIn: 0,
+          sourceOut: 1,
+        },
+      ],
+    });
+    expect(insertResp.status).toBe(200);
+    const inserted = (await insertResp.json()) as EditorState;
+    const insertedClip = inserted.composition.tracks[0]!.clips.find(
+      (c) => c.timelineStart === 8,
+    )!;
+    expect(insertedClip).toBeDefined();
+
+    // 6. Lift edit over HTTP (lift the inserted clip)
+    const liftResp = await post("/api/compositions/composition/edit", {
+      baseRevision: inserted.revision,
+      commands: [
+        {
+          type: "lift",
+          clipId: insertedClip.id,
+        },
+      ],
+    });
+    expect(liftResp.status).toBe(200);
+    const lifted = (await liftResp.json()) as EditorState;
+    expect(
+      lifted.composition.tracks[0]!.clips.some((c) => c.id === insertedClip.id),
+    ).toBe(false);
+
+    // 7. Verify pin conflict: overwriting pinned photo is rejected with 409
+    const pinnedOverwriteResp = await post(
+      "/api/compositions/composition/edit",
+      {
+        baseRevision: lifted.revision,
+        commands: [
+          {
+            type: "overwrite",
+            assetId: "photo-asset",
+            timelineStart: 0,
+            sourceIn: 0,
+            sourceOut: 1,
+          },
+        ],
+      },
+    );
+    expect(pinnedOverwriteResp.status).toBe(409);
+
+    // 8. Explicitly unpin photo, then overwrite succeeds
+    const unpinResp = await post("/api/compositions/composition/edit", {
+      baseRevision: lifted.revision,
+      commands: [
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "photo" },
+          pinned: false,
+        },
+      ],
+    });
+    expect(unpinResp.status).toBe(200);
+    const unpinned = (await unpinResp.json()) as EditorState;
+
+    const overwriteResp = await post("/api/compositions/composition/edit", {
+      baseRevision: unpinned.revision,
+      commands: [
+        {
+          type: "overwrite",
+          assetId: "photo-asset",
+          timelineStart: 0,
+          sourceIn: 0,
+          sourceOut: 1,
+        },
+      ],
+    });
+    expect(overwriteResp.status).toBe(200);
+
+    // 9. Verify disk matches
+    const disk = JSON.parse(
+      await readFile(join(directory, "project.json"), "utf8"),
+    );
+    expect(disk.timelines[0].id).toBe("composition");
+
+    // 10. Undo over HTTP
+    const undoneResp = await post("/api/compositions/composition/undo", {
+      baseRevision: (await overwriteResp.json()).revision,
+    });
+    expect(undoneResp.status).toBe(200);
+  });
 });

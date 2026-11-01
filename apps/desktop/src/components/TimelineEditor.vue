@@ -2105,6 +2105,31 @@ function liftSelected() {
   if (selectedClip.value)
     command({ type: "lift", clipId: selectedClip.value.id });
 }
+function slipSelected(delta: number) {
+  if (selectedClip.value && delta)
+    command({ type: "slip", clipId: selectedClip.value.id, delta });
+}
+function slideSelected(delta: number) {
+  if (selectedClip.value && delta)
+    command({ type: "slide", clipId: selectedClip.value.id, delta });
+}
+function rollSelected(delta: number) {
+  if (!selectedClip.value || !delta || !state.value) return;
+  const clipId = selectedClip.value.id;
+  for (const track of state.value.composition.tracks) {
+    const index = track.clips.findIndex((c) => c.id === clipId);
+    if (index >= 0 && index < track.clips.length - 1) {
+      const nextClip = track.clips[index + 1]!;
+      command({
+        type: "roll",
+        clipIdA: clipId,
+        clipIdB: nextClip.id,
+        delta,
+      });
+      return;
+    }
+  }
+}
 function editBeat() {
   if (!selectedBeat.value) return;
   const fields = {
@@ -2468,6 +2493,18 @@ function keyboard(event: KeyboardEvent) {
   if (event.key === ";") {
     event.preventDefault();
     liftSelected();
+  }
+  if (event.key === "[" || event.key === "]") {
+    event.preventDefault();
+    const step = event.shiftKey ? 1 : 0.1;
+    const delta = event.key === "]" ? step : -step;
+    if (event.altKey) {
+      slideSelected(delta);
+    } else if (event.ctrlKey || event.metaKey) {
+      rollSelected(delta);
+    } else {
+      slipSelected(delta);
+    }
   }
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     event.preventDefault();

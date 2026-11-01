@@ -1133,6 +1133,116 @@ export function applyTimelineCommandInBatch(
 ): EditorDocument {
   return applyTimelineCommandInternal(document, assets, command, context, true);
 }
+export function resolveCommandOverrideTargets(
+  document: EditorDocument,
+  assets: readonly MediaAsset[],
+  command: TimelineCommand,
+): OverrideTarget[] {
+  const base = directOverrideTargets([command]);
+  if (command.type === "slide") {
+    try {
+      const { clip, track } = findClip(document, command.clipId);
+      const index = track.clips.indexOf(clip);
+      const prev = index > 0 ? track.clips[index - 1] : undefined;
+      const nextClip =
+        index < track.clips.length - 1 ? track.clips[index + 1] : undefined;
+      const prevAdjacent = prev
+        ? Math.abs(
+            prev.timelineStart + prev.timelineDuration - clip.timelineStart,
+          ) <= EPSILON
+        : false;
+      const nextAdjacent = nextClip
+        ? Math.abs(
+            clip.timelineStart + clip.timelineDuration - nextClip.timelineStart,
+          ) <= EPSILON
+        : false;
+      if (prevAdjacent && prev) {
+        base.push({ kind: "clip", clipId: prev.id });
+      }
+      if (nextAdjacent && nextClip) {
+        base.push({ kind: "clip", clipId: nextClip.id });
+      }
+    } catch {
+      // clip might not exist; validation will fail elsewhere
+    }
+  } else if (command.type === "insert") {
+    try {
+      let track = command.trackId
+        ? document.composition.tracks.find((t) => t.id === command.trackId)
+        : undefined;
+      if (!track) {
+        const asset = assets.find((a) => a.id === command.assetId);
+        const preferredType = asset?.mediaType === "audio" ? "audio" : "video";
+        track =
+          document.composition.tracks.find(
+            (t) => t.target && t.type === preferredType,
+          ) ??
+          document.composition.tracks.find((t) => t.type === preferredType) ??
+          document.composition.tracks.find((t) => t.target) ??
+          document.composition.tracks[0];
+      }
+      if (track) {
+        const targetClip = track.clips.find(
+          (c) =>
+            c.timelineStart < command.timelineStart - EPSILON &&
+            c.timelineStart + c.timelineDuration >
+              command.timelineStart + EPSILON,
+        );
+        if (targetClip) {
+          base.push({ kind: "clip", clipId: targetClip.id });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  } else if (command.type === "overwrite") {
+    try {
+      const asset = assets.find((a) => a.id === command.assetId);
+      const speed = 1;
+      const sourceIn = command.sourceIn ?? 0;
+      const sourceOut =
+        command.sourceOut ??
+        (asset?.mediaType === "image" ? 4 : asset ? sourceDuration(asset) : 0);
+      const duration = (sourceOut - sourceIn) / speed;
+      const overwriteStart = command.timelineStart;
+      const overwriteEnd = overwriteStart + duration;
+      let track = command.trackId
+        ? document.composition.tracks.find((t) => t.id === command.trackId)
+        : undefined;
+      if (!track) {
+        const preferredType = asset?.mediaType === "audio" ? "audio" : "video";
+        track =
+          document.composition.tracks.find(
+            (t) => t.target && t.type === preferredType,
+          ) ??
+          document.composition.tracks.find((t) => t.type === preferredType) ??
+          document.composition.tracks.find((t) => t.target) ??
+          document.composition.tracks[0];
+      }
+      if (track) {
+        for (const existing of track.clips) {
+          const existStart = existing.timelineStart;
+          const existEnd = existStart + existing.timelineDuration;
+          const overlaps = !(
+            existEnd <= overwriteStart + EPSILON ||
+            existStart >= overwriteEnd - EPSILON
+          );
+          if (overlaps) {
+            base.push({ kind: "clip", clipId: existing.id });
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  } else if (command.type === "batch") {
+    for (const sub of command.commands) {
+      base.push(...resolveCommandOverrideTargets(document, assets, sub));
+    }
+  }
+  return base;
+}
+
 function applyTimelineCommandInternal(
   document: EditorDocument,
   assets: MediaAsset[],
@@ -1141,9 +1251,12 @@ function applyTimelineCommandInternal(
   deferred: boolean,
 ): EditorDocument {
   const origin = context.origin ?? "automatic";
-  const writes = directOverrideTargets([command]);
+  const writes = resolveCommandOverrideTargets(document, assets, command);
   if (
-    (origin === "direct" && writes.length) ||
+    (origin === "direct" &&
+      (writes.length ||
+        command.type === "insert" ||
+        command.type === "overwrite")) ||
     command.type.startsWith("user-pin.")
   ) {
     if (!context.timebase)
@@ -1766,6 +1879,10 @@ function applyTimelineCommandRaw(
         fail(
           `Cannot insert: clip "${targetClip.id}" at insert position is locked.`,
         );
+      if (targetClip.userOverrides?.isUserPinned)
+        pinConflict(
+          `Cannot insert: clip "${targetClip.id}" at insert position is user-pinned.`,
+        );
       const targetSpeed = targetClip.transform?.speed ?? 1;
       const leftDuration = command.timelineStart - targetClip.timelineStart;
       const rightDuration = targetClip.timelineDuration - leftDuration;
@@ -1865,6 +1982,11 @@ function applyTimelineCommandRaw(
       if (overlaps && existing.locked) {
         fail(
           `Cannot overwrite: clip "${existing.id}" in the overwrite region is locked.`,
+        );
+      }
+      if (overlaps && existing.userOverrides?.isUserPinned) {
+        pinConflict(
+          `Cannot overwrite: clip "${existing.id}" in the overwrite region is user-pinned.`,
         );
       }
     }
@@ -2530,6 +2652,10 @@ function applyTimelineCommandRaw(
       if (prevAdjacent && prev) {
         if (prev.locked)
           fail(`Cannot slide edit: preceding clip "${prev.id}" is locked.`);
+        if (prev.userOverrides?.isUserPinned)
+          pinConflict(
+            `Cannot slide edit: preceding clip "${prev.id}" is user-pinned.`,
+          );
         const assetPrev = findAsset(assets, prev.assetId);
         if (assetPrev.state.locked)
           fail(
@@ -2553,6 +2679,10 @@ function applyTimelineCommandRaw(
       if (nextAdjacent && nextClip) {
         if (nextClip.locked)
           fail(`Cannot slide edit: following clip "${nextClip.id}" is locked.`);
+        if (nextClip.userOverrides?.isUserPinned)
+          pinConflict(
+            `Cannot slide edit: following clip "${nextClip.id}" is user-pinned.`,
+          );
         const assetNext = findAsset(assets, nextClip.assetId);
         if (assetNext.state.locked)
           fail(

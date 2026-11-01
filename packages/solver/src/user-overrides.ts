@@ -152,17 +152,21 @@ export function applyOverridePolicy(
     direct ? directOverrideTargets(commands).map(overrideTargetKey) : [],
   );
   const released = new Set<string>();
-  for (const command of commands) {
-    if (command.type === "delete" || command.type === "lift")
-      released.add(`clip:${command.clipId}`);
-    if (command.type === "graphic.scene.remove")
-      released.add(`graphic-scene:${command.sceneId}`);
-    if (command.type === "user-pin.set" && !command.pinned)
-      released.add(overrideTargetKey(command.target));
-    if (command.type === "user-pin.resolve")
-      for (const target of command.targets)
-        released.add(overrideTargetKey(target));
-  }
+  const collectReleased = (cmd: TimelineCommand) => {
+    if (cmd.type === "batch") {
+      for (const sub of cmd.commands) collectReleased(sub);
+      return;
+    }
+    if (cmd.type === "delete" || cmd.type === "lift")
+      released.add(`clip:${cmd.clipId}`);
+    if (cmd.type === "graphic.scene.remove")
+      released.add(`graphic-scene:${cmd.sceneId}`);
+    if (cmd.type === "user-pin.set" && !cmd.pinned)
+      released.add(overrideTargetKey(cmd.target));
+    if (cmd.type === "user-pin.resolve")
+      for (const target of cmd.targets) released.add(overrideTargetKey(target));
+  };
+  for (const command of commands) collectReleased(command);
   for (const [key, previous] of old) {
     if (authorized.has(key) && !current.has(key) && !released.has(key))
       pinConflict(
@@ -264,8 +268,12 @@ export function applyOverridePolicy(
       continue;
     }
     const targets = directOverrideTargets([command]);
-    if (command.type === "clip.split") {
-      // The edit implementation creates exactly one new occurrence, never infer it from asset ID.
+    if (
+      command.type === "clip.split" ||
+      command.type === "insert" ||
+      command.type === "overwrite"
+    ) {
+      // The edit implementation creates new occurrences, never infer it from asset ID.
       for (const [key, item] of current)
         if (key.startsWith("clip:") && !old.has(key))
           targets.push({ kind: "clip", clipId: item.owner.id });
@@ -278,9 +286,16 @@ export function applyOverridePolicy(
         previous = old.get(key)?.owner;
       const categories: UserLockedAttribute[] = ["timing"];
       if (
-        ["trim", "speed", "clip.split", "roll", "slip", "slide"].includes(
-          command.type,
-        )
+        [
+          "trim",
+          "speed",
+          "clip.split",
+          "roll",
+          "slip",
+          "slide",
+          "insert",
+          "overwrite",
+        ].includes(command.type)
       )
         categories.push("inOutRange");
       if (command.type === "presentation" && Object.hasOwn(command, "motion"))

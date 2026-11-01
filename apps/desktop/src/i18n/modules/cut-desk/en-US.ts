@@ -131,6 +131,8 @@ export default {
         insert: "Insert source range into sequence (,)",
         overwrite: "Overwrite source range onto sequence (.)",
         lift: "Lift clip leaving gap (;)",
+        slip: "Slip source media within clip bounds ([ / ])",
+        slide: "Slide clip adjusting adjacent cuts (Alt + [ / ])",
         rippleDelete: "Ripple delete clip closing gap (Delete)",
         marker: "Add source marker",
         homeEnd: "Jump to beginning / end of bounds",
