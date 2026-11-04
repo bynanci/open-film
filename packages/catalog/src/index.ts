@@ -1313,11 +1313,54 @@ export class ProjectCatalog {
     if (!Object.hasOwn(orders, order))
       throw new Error("Unsupported asset order");
     const filter = assetFilter(options);
-    const rows = this.database
-      .prepare(
-        `SELECT data FROM assets ${filter.sql} ORDER BY ${orders[order]} LIMIT ? OFFSET ?`,
-      )
-      .all(...filter.params, limit, offset);
+    let rows: Record<string, unknown>[];
+    if (order === "chronological" && !filter.sql) {
+      const ownsReadSnapshot = !this.database.isTransaction;
+      if (ownsReadSnapshot) this.database.exec("BEGIN");
+      try {
+        const nonNullRows = (pageOffset: number, pageLimit: number) =>
+          this.database
+            .prepare(
+              "SELECT data FROM assets WHERE captured_at IS NOT NULL ORDER BY captured_at ASC,id ASC LIMIT ? OFFSET ?",
+            )
+            .all(pageLimit, pageOffset);
+        const nullRows = (pageOffset: number, pageLimit: number) =>
+          this.database
+            .prepare(
+              "SELECT data FROM assets WHERE captured_at IS NULL ORDER BY id ASC LIMIT ? OFFSET ?",
+            )
+            .all(pageLimit, pageOffset);
+        if (offset === 0) {
+          rows = nonNullRows(0, limit);
+          if (rows.length < limit)
+            rows.push(...nullRows(0, limit - rows.length));
+        } else {
+          const nonNullCount = Number(
+            this.database
+              .prepare(
+                "SELECT COUNT(*) AS count FROM assets WHERE captured_at IS NOT NULL",
+              )
+              .get()?.count ?? 0,
+          );
+          if (offset < nonNullCount) {
+            rows = nonNullRows(offset, Math.min(limit, nonNullCount - offset));
+            if (rows.length < limit)
+              rows.push(...nullRows(0, limit - rows.length));
+          } else rows = nullRows(offset - nonNullCount, limit);
+        }
+        if (ownsReadSnapshot) this.database.exec("COMMIT");
+      } catch (error) {
+        if (ownsReadSnapshot && this.database.isTransaction)
+          this.database.exec("ROLLBACK");
+        throw error;
+      }
+    } else {
+      rows = this.database
+        .prepare(
+          `SELECT data FROM assets ${filter.sql} ORDER BY ${orders[order]} LIMIT ? OFFSET ?`,
+        )
+        .all(...filter.params, limit, offset);
+    }
     return rows.map((row) => JSON.parse(String(row.data)) as MediaAsset);
   }
 

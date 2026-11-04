@@ -22,15 +22,78 @@ export * from "./story-planner.js";
 export * from "./preset-story-plan.js";
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value));
-const date = (asset: MediaAsset): number =>
-  asset.capturedAt && Number.isFinite(Date.parse(asset.capturedAt))
-    ? Date.parse(asset.capturedAt)
-    : Infinity;
+const date = (asset: MediaAsset): number => {
+  if (!asset.capturedAt) return Infinity;
+  const timestamp = Date.parse(asset.capturedAt);
+  return Number.isFinite(timestamp) ? timestamp : Infinity;
+};
 
-/** Offline ranking uses observable evidence and returns every contributing factor. */
-export function scoreAsset(
+interface HashOwners {
+  firstId: string;
+  secondId?: string;
+}
+
+interface AssetScoringIndex {
+  contentHashOwners: Map<string, HashOwners>;
+  perceptualHashOwners: Map<string, HashOwners>;
+  chronologicalEdgeIds: Set<string>;
+  eventAssetIds?: Set<string>;
+}
+
+function addHashOwner(
+  owners: Map<string, HashOwners>,
+  hash: string | undefined,
+  assetId: string,
+) {
+  if (!hash) return;
+  const current = owners.get(hash);
+  if (!current) owners.set(hash, { firstId: assetId });
+  else if (current.firstId !== assetId && current.secondId === undefined)
+    current.secondId = assetId;
+}
+
+function hasOtherHashOwner(
+  owners: Map<string, HashOwners>,
+  hash: string | undefined,
+  assetId: string,
+): boolean {
+  if (!hash) return false;
+  const current = owners.get(hash);
+  return (
+    !!current && (current.firstId !== assetId || current.secondId !== undefined)
+  );
+}
+
+function createAssetScoringIndex(context: StoryContext): AssetScoringIndex {
+  const contentHashOwners = new Map<string, HashOwners>();
+  const perceptualHashOwners = new Map<string, HashOwners>();
+  const dated = [] as { id: string; timestamp: number }[];
+  for (const asset of context.assets ?? []) {
+    addHashOwner(contentHashOwners, asset.contentHash, asset.id);
+    addHashOwner(perceptualHashOwners, asset.perceptualHash, asset.id);
+    const timestamp = date(asset);
+    if (Number.isFinite(timestamp)) dated.push({ id: asset.id, timestamp });
+  }
+  dated.sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
+  const chronologicalEdgeIds = new Set<string>();
+  if (dated.length) {
+    chronologicalEdgeIds.add(dated[0]!.id);
+    chronologicalEdgeIds.add(dated.at(-1)!.id);
+  }
+  return {
+    contentHashOwners,
+    perceptualHashOwners,
+    chronologicalEdgeIds,
+    ...(context.eventAssetIds
+      ? { eventAssetIds: new Set(context.eventAssetIds) }
+      : {}),
+  };
+}
+
+function scoreAssetWithIndex(
   asset: MediaAsset,
-  context: StoryContext = {},
+  context: StoryContext,
+  index: AssetScoringIndex,
 ): ScoreResult {
   if (asset.state.rejected)
     return {
@@ -43,7 +106,7 @@ export function scoreAsset(
         },
       ],
     };
-  const assets = context.assets ?? [];
+  const capturedAt = date(asset);
   const pixels = asset.dimensions
     ? asset.dimensions.width * asset.dimensions.height
     : undefined;
@@ -51,19 +114,17 @@ export function scoreAsset(
     pixels && Number.isFinite(pixels) && pixels > 0
       ? clamp(pixels / (1920 * 1080))
       : 0.5;
-  const duplicate = assets.some(
-    (other) =>
-      other.id !== asset.id &&
-      ((!!asset.contentHash && other.contentHash === asset.contentHash) ||
-        (!!asset.perceptualHash &&
-          other.perceptualHash === asset.perceptualHash)),
-  );
-  const ordered = assets
-    .filter((other) => Number.isFinite(date(other)))
-    .sort((a, b) => date(a) - date(b) || a.id.localeCompare(b.id));
-  const edge = ordered[0]?.id === asset.id || ordered.at(-1)?.id === asset.id;
+  const duplicate =
+    hasOtherHashOwner(index.contentHashOwners, asset.contentHash, asset.id) ||
+    hasOtherHashOwner(
+      index.perceptualHashOwners,
+      asset.perceptualHash,
+      asset.id,
+    );
+  const edge = index.chronologicalEdgeIds.has(asset.id);
   const preferred = context.preferredTags ?? [];
   const matching = preferred.filter((tag) => asset.tags.includes(tag));
+  const inPreferredEvent = index.eventAssetIds?.has(asset.id) ?? false;
   const factors = [
     {
       id: "user-rating",
@@ -96,10 +157,10 @@ export function scoreAsset(
     },
     {
       id: "chronological-importance",
-      score: Number.isFinite(date(asset))
+      score: Number.isFinite(capturedAt)
         ? (edge ? 1 : 0.6) * (asset.capturedAtConfidence ?? 1)
         : 0.3,
-      reason: !Number.isFinite(date(asset))
+      reason: !Number.isFinite(capturedAt)
         ? "Capture date unknown."
         : edge
           ? "At a chronological boundary of the supplied collection."
@@ -114,13 +175,9 @@ export function scoreAsset(
     },
     {
       id: "event-relevance",
-      score: context.eventAssetIds
-        ? context.eventAssetIds.includes(asset.id)
-          ? 1
-          : 0
-        : 0.5,
+      score: context.eventAssetIds ? (inPreferredEvent ? 1 : 0) : 0.5,
       reason: context.eventAssetIds
-        ? context.eventAssetIds.includes(asset.id)
+        ? inPreferredEvent
           ? "Included in the preferred event."
           : "Outside the preferred event."
         : "No preferred event supplied.",
@@ -149,6 +206,22 @@ export function scoreAsset(
   if (!weightSum)
     throw new Error("At least one scoring factor must have a positive weight.");
   return { score: clamp(total / weightSum), factors };
+}
+
+/** Prepare collection-wide evidence once when scoring several assets together. */
+export function createAssetScorer(
+  context: StoryContext = {},
+): (asset: MediaAsset) => ScoreResult {
+  const index = createAssetScoringIndex(context);
+  return (asset) => scoreAssetWithIndex(asset, context, index);
+}
+
+/** Score one asset; reuse createAssetScorer when scoring a collection. */
+export function scoreAsset(
+  asset: MediaAsset,
+  context: StoryContext = {},
+): ScoreResult {
+  return scoreAssetWithIndex(asset, context, createAssetScoringIndex(context));
 }
 
 export interface CreateStoryOptions {

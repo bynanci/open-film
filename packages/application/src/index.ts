@@ -138,13 +138,13 @@ export {
 import { ProjectCatalog } from "@openfilm/catalog";
 import { clusterEvents, findDuplicates } from "@openfilm/events";
 import {
+  createAssetScorer,
   createStory,
   createStoryArc,
   storyArcBeatText,
   STORY_ARC_IDS,
   resolveFilmSettings,
   localizeProjectContent,
-  scoreAsset,
 } from "@openfilm/story";
 import { compose as solve } from "@openfilm/solver";
 import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
@@ -1985,9 +1985,9 @@ export class OpenFilmApplication {
         "story.scopeTooLarge",
         "A beat can rank at most 2000 candidates.",
       );
-    const assets = ids.flatMap((id) => {
-      const asset = this.catalog.getAsset(id);
-      return asset ? [asset] : [];
+    const assets = this.catalog.listAssets({
+      ids,
+      limit: Math.max(1, ids.length),
     });
     const protectedIds = new Set([
       ...(beat.selectedAssetIds ?? []),
@@ -1998,6 +1998,7 @@ export class OpenFilmApplication {
       ),
       ...assets.filter((asset) => asset.state.locked).map((asset) => asset.id),
     ]);
+    const scoreAsset = createAssetScorer({ assets });
     const ranked = assets
       .filter(
         (asset) =>
@@ -2006,7 +2007,7 @@ export class OpenFilmApplication {
       )
       .map((asset) => ({
         id: asset.id,
-        score: scoreAsset(asset, { assets }).score,
+        score: scoreAsset(asset).score,
       }))
       .sort(
         (left, right) =>

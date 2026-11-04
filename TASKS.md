@@ -8,7 +8,7 @@ work.
 
 Status reviewed against
 [`main`](https://github.com/bynanci/open-film/commit/main)
-on 2026-11-01. The latest published source release remains **v0.4.0**.
+on 2026-11-04. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -114,8 +114,11 @@ change. Discuss their scope before implementation.
 - [ ] Additional local vision, embedding and language-provider implementations;
       optional local transcription already has an implementation.
 - [ ] Archive-scale incremental analysis and background worker scheduling.
-- [ ] Reproducible 10,000–100,000-asset performance benchmarks before advertising
-      support at those scales.
+- [x] Reproducible 10,000–100,000-row Catalog benchmark for chronological paging,
+      search, lookup, summary scans and seeding ([method, results and limits](docs/validation-catalog-scale-benchmark.md)).
+      This is Catalog evidence, not end-to-end support at those library sizes.
+- [ ] Optimize large-catalog name/tag search and evaluate cursor pagination using
+      the [Catalog scale measurements](docs/validation-catalog-scale-benchmark.md).
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
 - [ ] Evaluate remote image-to-video adapters against verified APIs, consent,
