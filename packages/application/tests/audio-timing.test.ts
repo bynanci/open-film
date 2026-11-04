@@ -121,6 +121,40 @@ describe("audio timing transactions", () => {
       "1.2.0",
     );
   });
+  it("accepts an explicit audio source-range edit inside a batch", async () => {
+    const { editor } = await fixture();
+    const initial = editor.get("c");
+    const linked = await editor.edit("c", {
+      baseRevision: initial.revision,
+      commands: [{ type: "audio.timing", clipId: "a", timing }],
+    });
+
+    const adjusted = await editor.edit("c", {
+      baseRevision: linked.revision,
+      commands: [
+        {
+          type: "batch",
+          commands: [
+            {
+              type: "audio.timing",
+              clipId: "a",
+              timing: {
+                ...timing,
+                sourceInSample: 12000,
+                sourceOutSample: 36000,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(adjusted.composition.tracks[0]!.clips[0]!.audioTiming).toEqual({
+      ...timing,
+      sourceInSample: 12000,
+      sourceOutSample: 36000,
+    });
+  });
   it("rejects parser injection and actual decoded source exhaustion without writes", async () => {
     const { editor, file } = await fixture(),
       before = editor.get("c"),

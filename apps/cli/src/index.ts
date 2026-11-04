@@ -57,6 +57,9 @@ Usage:
   openfilm proxy cleanup-accept --project <film.openfilm> --preview-file <review.json> --confirm
   openfilm proxy recover --project <film.openfilm> --fingerprint <sha256> --confirm-stopped
   openfilm scenes <asset-id> --project <film.openfilm>
+  openfilm silence analyze <asset-id> --project <film.openfilm> [--threshold-db -40 --min-silence 0.5]
+  openfilm silence preview <asset-id> --project <film.openfilm> --composition <id> [--threshold-db -40 --min-silence 0.5 --padding 0.12]
+  openfilm silence apply --project <film.openfilm> --review <silence-review.json> --confirm [--request-id <id>]
   openfilm intelligence jobs --project <film.openfilm>
   openfilm intelligence recovery <job-id> --project <film.openfilm>
   openfilm intelligence recover <job-id> --project <film.openfilm> --confirm-stopped
@@ -266,6 +269,9 @@ function parse(args: string[]) {
     "delivery-mode",
     "handles",
     "coverage-id",
+    "threshold-db",
+    "min-silence",
+    "padding",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -1258,6 +1264,69 @@ async function main() {
         state,
       });
       print({ asset: app.catalog.getAsset(id) });
+    } else if (command === "silence") {
+      const action = positional[1];
+      if (action === "apply") {
+        if (options.confirm !== true)
+          throw new Error(
+            "Review the saved silence proposal, then use --confirm to apply it.",
+          );
+        if (
+          positional[2] ||
+          ["threshold-db", "min-silence", "padding", "composition"].some(
+            (key) => options[key] !== undefined,
+          )
+        )
+          throw new Error(
+            "Apply uses the exact saved review; generate a new preview to change its asset, composition or parameters.",
+          );
+        print(
+          await app.silence.apply(
+            await reviewJsonFile(value(options, "review"), "review"),
+            {
+              requestId: value(options, "request-id"),
+            },
+          ),
+        );
+      } else if (action === "analyze" || action === "preview") {
+        const id = positional[2];
+        if (!id || positional[3])
+          throw new Error("Specify one media asset ID.");
+        const compositionId = value(options, "composition");
+        if (action === "preview" && !compositionId)
+          throw new Error("Choose --composition for the silence preview.");
+        if (
+          action === "analyze" &&
+          (options.padding !== undefined || compositionId)
+        )
+          throw new Error(
+            "Use silence preview to select a composition and padding.",
+          );
+        const analysisOptions = {
+          thresholdDb: Number(value(options, "threshold-db") ?? -40),
+          minimumSilenceSeconds: Number(value(options, "min-silence") ?? 0.5),
+          signal: controller.signal,
+          onProgress: (progress: number) =>
+            console.error(
+              JSON.stringify({
+                event: "silence.analysis.progress",
+                assetId: id,
+                progress,
+              }),
+            ),
+        };
+        print(
+          action === "analyze"
+            ? await app.silence.analyzeAsset(id, analysisOptions)
+            : await app.silence.createProposal(compositionId!, id, {
+                ...analysisOptions,
+                paddingSeconds: Number(value(options, "padding") ?? 0.12),
+              }),
+        );
+      } else
+        throw new Error(
+          "Choose silence analyze, preview or apply. Run openfilm --help.",
+        );
     } else if (["transcribe", "waveform", "scenes"].includes(command)) {
       const id = positional[1];
       if (!id) throw new Error("Specify a media asset ID.");

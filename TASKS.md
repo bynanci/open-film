@@ -18,6 +18,39 @@ on 2026-11-04. The latest published source release remains **v0.4.0**.
 
 ## Editing and story workflow
 
+### Media intelligence: reviewed silence candidate (2026-11-04)
+
+This branch candidate implements a bounded CLI/application slice with the
+focused acceptance evidence below. The full media gate remains open; see the
+[dated validation record](docs/validation-media-intelligence-2026-11-04.md).
+It uses existing FFmpeg and installs no Auto-Editor,
+Python/GPU runtime, or external model. The eleven upstream projects are
+references and future candidates, not eleven delivered adapters. See the
+[integration guide](docs/en/media-intelligence-integrations.md),
+[繁體中文](docs/media-intelligence-integrations.md) and
+[ADR 012](docs/adr/012-reviewed-media-intelligence.md).
+
+- [x] Accept source-bound low-energy evidence: 48 kHz/20 ms, first audio stream,
+      per-channel peak maximum, zero-based containers/delayed audio/packet gaps,
+      rejection of nonzero container starts, bounded parameters, duration/interval
+      limits, cancellation and no-audio failures. Do not label
+      the result as speech VAD.
+- [x] Accept the complete CLI analyze → JSON preview → confirmed apply workflow
+      with durable exact review, source hash and Composition revision checks;
+      generic and batch editor routes must enforce the same acceptance boundary.
+- [x] Verify trim/speed and padding projection, locks/pins, supported ripple
+      synchronization, fail-closed independent audio timing, and session-local
+      Undo/Redo. Separate CLI invocations do not share undo history.
+- [x] Record focused tests, build/type checks and remaining platform limits for
+      this candidate before marking its implemented scope accepted.
+- [ ] Pass the final candidate's full media gate in the configured CI environment;
+      the local broad run is not a passing release check.
+- [ ] Follow up with desktop review and a durable background job lifecycle;
+      HTTP/UI and restart/resume are outside the first CLI/application slice.
+- [ ] Admit additional scene/rhythm, mask/restoration, stabilization/interpolation,
+      separation or browser-rendering providers only after quality, timing,
+      runtime and code/weight rights checks. Reuse existing capabilities.
+
 ### Professional Cut Desk
 
 - [ ] **Phase 4:** finish the remaining finishing interactions and physical workstation checks. Reuse the existing proxy, sequence-waveform and audio-policy implementations.

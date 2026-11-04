@@ -76,6 +76,7 @@ const exportDocs = keepExisting([
 
 const intelligence = keepExisting([
   guide("媒體智慧", "en/media-intelligence"),
+  guide("靜音審閱與工具整合", "media-intelligence-integrations"),
   guide("轉錄", "en/transcription"),
   guide("場景腳本規劃", "en/scene-script-planning"),
   guide("場景方向編輯", "en/scene-direction-editing"),
@@ -189,6 +190,10 @@ const englishReference = keepExisting([
   guide("Export profiles", "en/export-profiles"),
   guide("NLE compatibility", "en/nle-compatibility"),
   guide("Media intelligence", "en/media-intelligence"),
+  guide(
+    "Silence review and tool integrations",
+    "en/media-intelligence-integrations",
+  ),
   guide("Architecture", "en/architecture"),
   guide("Internationalization", "en/i18n"),
   guide("Glossary", "en/glossary"),

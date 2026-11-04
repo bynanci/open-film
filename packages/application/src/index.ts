@@ -60,6 +60,8 @@ import { MicroPreviewService } from "./micro-preview.js";
 export * from "./micro-preview.js";
 import { RhythmService } from "./rhythm.js";
 export * from "./rhythm.js";
+import { SilenceService } from "./silence.js";
+export * from "./silence.js";
 import { PipelineService } from "./pipeline-orchestrator.js";
 export * from "./pipeline-orchestrator.js";
 import { CreativeVariantService } from "./creative-variants.js";
@@ -420,6 +422,7 @@ export class OpenFilmApplication {
   readonly continuity: ContinuityService;
   readonly microPreview: MicroPreviewService;
   readonly rhythm: RhythmService;
+  readonly silence: SilenceService;
   readonly pipeline: PipelineService;
   readonly creativeVariants: CreativeVariantService;
   readonly sourceDraft: SourceDraftService;
@@ -558,6 +561,7 @@ export class OpenFilmApplication {
       this.continuity = new ContinuityService(this);
       this.microPreview = new MicroPreviewService(this);
       this.rhythm = new RhythmService(this);
+      this.silence = new SilenceService(this);
       this.pipeline = new PipelineService(this);
       this.creativeVariants = new CreativeVariantService(this, (next) =>
         this.publishProject(next),

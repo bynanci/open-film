@@ -159,7 +159,7 @@ type ProbeStream = {
   channels?: number;
   disposition?: { attached_pic?: number };
 };
-async function probeSource(path: string, signal?: AbortSignal) {
+export async function probeSource(path: string, signal?: AbortSignal) {
   const output = await runProcess(
     "ffprobe",
     [
@@ -188,7 +188,7 @@ async function probeSource(path: string, signal?: AbortSignal) {
 }
 
 /** Drain both pipes with bounded diagnostics; decoded PCM is consumed, never buffered. */
-function streamFfmpeg(
+export function streamFfmpeg(
   args: string[],
   options: OperationOptions,
   stdout: (chunk: Buffer) => void,

@@ -63,6 +63,9 @@ import {
   applyTranscriptRipple,
   validateTranscriptRippleProposal,
   type TranscriptRippleProposal,
+  applySilenceCutProposal,
+  validateSilenceCutProposal,
+  type SilenceCutProposal,
   fnv1a64Mix,
   validateRhythmSnapProposal,
   type RhythmSnapProposal,
@@ -149,6 +152,11 @@ export type TimelineCommand =
   | {
       type: "transcript.ripple";
       proposal: TranscriptRippleProposal;
+    }
+  | {
+      type: "silence.ripple";
+      reviewId: string;
+      proposal: SilenceCutProposal;
     }
   | {
       type: "rhythm.snap";
@@ -1704,6 +1712,13 @@ function applyTimelineCommandRaw(
   if (command.type === "transcript.ripple") {
     const proposal = validateTranscriptRippleProposal(command.proposal);
     next.composition = applyTranscriptRipple(next.composition, proposal);
+    return next;
+  }
+  if (command.type === "silence.ripple") {
+    const proposal = validateSilenceCutProposal(command.proposal);
+    next.composition = applySilenceCutProposal(next.composition, proposal, {
+      assets,
+    });
     return next;
   }
   if (command.type === "rhythm.snap") {
