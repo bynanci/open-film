@@ -294,3 +294,51 @@ but merge/CI remains open. D3B2 durable coverage records remain a separate task.
 Physical Windows/macOS audio/keyboard/display, human listening, real Resolve/NLE
 and native-installer workstation gates remain unverified; published stable
 remains v0.4.0.
+
+## Nested batch audio validation — 2026-11-04
+
+A regression test reproduced a contract bug on the `c068b8f` base: changing an
+existing independent-audio source range through an explicit `batch` was rejected
+as an indirect source-coordinate change. `validateAudioEdit` inspected only the
+outer command, so it missed the nested `audio.timing` clip ID. The validator now
+flattens command leaves before identifying edited clips and explicit delete or
+reset operations. Source and stream validation remains unchanged.
+
+The new integration regression failed on the unmodified base with
+`timeline.audioTimingConflict` and passed after the fix. Local checks on the
+candidate derived from `c068b8fdf2a09832443db892770b22ad3e5a36e6`:
+
+- Application audio transactions: 7/7; solver audio timing: 14/14.
+- Cut Desk persistence: 21/21; transcript ripple: 4/4; rhythm integrity and
+  pipeline: 3/3.
+- Full Vitest: 434 files, 5713/5713 tests, 464.03 seconds. The run used
+  `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv-v2026/bin/python` with
+  OpenTimelineIO 0.18.1. An initial run without that configured parser had one
+  environment-only NLE-handoff failure; its focused rerun and the full rerun
+  with the parser configured passed.
+- `pnpm format:check`, `pnpm test:i18n`, `pnpm lint`, `pnpm typecheck`,
+  `pnpm build`, and all 18 official interchange checks passed. The existing
+  Vite chunk-size advisory remains.
+- Audio-policy browser gate: 2/2 Chromium cases passed in 10.8 seconds.
+
+This is local evidence only; the patch has no hosted CI run yet. Full browser
+shards were not rerun locally. Candidate-bound native workstation, Resolve,
+hardware-audio and v1 release gates above remain open.
+
+## PR #100 integrated batch and truncated-audio regression — 2026-11-04
+
+The follow-up was integrated into PR #100 after confirming its changed paths do
+not overlap the source-bound silence implementation. The tested code tree
+`2219753882cebcd4b5b7ce1026bb26063c1352f7` contains current main `fcc0013`, the
+reviewed-media PR, a nested-batch audio-timing validation fix, and rejection of
+truncated audio whose container index advertises a longer duration. The new
+truncated-MP4 test reproduced the unsafe `1.26–5.00 s` silence proposal before
+the FFmpeg `-xerror` guard and now verifies typed `media.unsupported` rejection.
+
+On that exact code tree, seven focused application, solver, media, core and CLI
+test files passed **77/77 tests**. TypeScript/Vue typecheck, scoped ESLint,
+Prettier, `pnpm test:i18n` (3,033 semantic keys), `pnpm test:docs-i18n` (152
+English reference mirrors), and `git diff --check` passed. Full hosted checks
+were restarted for the updated PR head; this focused local result does not
+replace the hosted full-media, browser-shard, native-shell, render or Windows
+recovery gates. DCO and physical workstation gates remain open.

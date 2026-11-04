@@ -1005,6 +1005,12 @@ export type {
 } from "./intelligence.js";
 
 export {
+  analyzeAudioActivity,
+  AUDIO_ACTIVITY_IDENTITY,
+} from "./audio-activity.js";
+export type { AudioActivityOptions } from "./audio-activity.js";
+
+export {
   CANONICAL_AUDIO_FILTER,
   inspectCanonicalAudio,
   assertCanonicalAudioCurrent,

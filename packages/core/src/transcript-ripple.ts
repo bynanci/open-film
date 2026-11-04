@@ -407,11 +407,19 @@ function applySingleRippleInterval(
   composition: Composition,
   tStart: number,
   tEnd: number,
+  reservedClipIds: Set<string>,
 ): void {
   const delta = tEnd - tStart;
   if (delta <= EPSILON) return;
 
   let splitCounter = 1;
+  const splitId = (clipId: string): string => {
+    let candidate: string;
+    do candidate = `${clipId}-rip-${splitCounter++}`;
+    while (reservedClipIds.has(candidate));
+    reservedClipIds.add(candidate);
+    return candidate;
+  };
 
   // 1. Primary/visual tracks
   for (const track of composition.tracks) {
@@ -451,7 +459,7 @@ function applySingleRippleInterval(
 
         const rightClip: Clip = {
           ...structuredClone(clip),
-          id: `${clip.id}-rip-${splitCounter++}`,
+          id: splitId(clip.id),
           timelineStart: tStart,
           timelineDuration: rightDuration,
           sourceIn: rightSourceIn,
@@ -607,24 +615,60 @@ export function applyTranscriptRipple(
   proposal: TranscriptRippleProposal,
   timebase?: ProjectTimebaseV1,
 ): Composition {
-  const result = structuredClone(composition);
   validateTranscriptRippleProposal(proposal);
-
+  // Retain the transcript wrapper's established no-op contract; the generic
+  // primitive accepts only intervals and has no proposal total to inspect.
   if (
     !proposal.timelineIntervals.length ||
     proposal.totalDurationReduced <= EPSILON
-  ) {
-    return result;
+  )
+    return structuredClone(composition);
+  return applyTimelineRippleIntervals(
+    composition,
+    proposal.timelineIntervals,
+    timebase,
+  );
+}
+
+/** Shared, source-agnostic ripple primitive. Callers verify their own evidence and protection policy. */
+export function applyTimelineRippleIntervals(
+  composition: Composition,
+  intervals: readonly TranscriptRippleInterval[],
+  timebase?: ProjectTimebaseV1,
+): Composition {
+  const result = structuredClone(composition);
+  const ascending = [...intervals].sort((a, b) => a.start - b.start);
+  let previousEnd = 0;
+  for (const interval of ascending) {
+    if (
+      !Number.isFinite(interval.start) ||
+      !Number.isFinite(interval.end) ||
+      interval.start < previousEnd ||
+      interval.end <= interval.start ||
+      interval.end > composition.duration + EPSILON
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Ripple intervals must be ordered, non-overlapping ranges inside the composition.",
+      );
+    previousEnd = interval.end;
   }
+  if (!ascending.length) return result;
+  const reservedClipIds = new Set(
+    result.tracks.flatMap((track) => track.clips.map((clip) => clip.id)),
+  );
 
   // Process intervals in descending order so earlier timestamps remain unchanged
   // while later intervals are processed.
-  const descendingIntervals = [...proposal.timelineIntervals].sort(
-    (a, b) => b.start - a.start,
-  );
+  const descendingIntervals = ascending.reverse();
 
   for (const interval of descendingIntervals) {
-    applySingleRippleInterval(result, interval.start, interval.end);
+    applySingleRippleInterval(
+      result,
+      interval.start,
+      interval.end,
+      reservedClipIds,
+    );
   }
 
   // Clean up stale coverage bindings and re-resolve

@@ -37,6 +37,7 @@ export * from "./user-overrides.js";
 export * from "./audio-policy.js";
 export * from "./coverage.js";
 export * from "./transcript-ripple.js";
+export * from "./audio-activity.js";
 export * from "./continuity.js";
 export * from "./micro-preview.js";
 export * from "./rhythm.js";

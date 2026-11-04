@@ -26,6 +26,22 @@ records identify their individual limits.
 
 ## Current focus
 
+### Add reviewed local media-intelligence workflows
+
+The 2026-11-04 branch candidate adds a first slice of low-energy/silence evidence
+and explicit review/apply through the CLI and application service. It reuses
+FFmpeg, preserves source identity and editor transactions, and does not install
+Auto-Editor or bundle eleven media tools/models. This is a branch candidate,
+not a published-release or completed workstation-verification claim.
+
+Next slices are desktop review and a durable job lifecycle, followed by optional
+providers whose quality, clocks, runtime costs and artifact rights are verified.
+Existing scene/rhythm analysis, primary-color adjustment, role-based stems and
+GraphicScenes remain the foundation. See the
+[eleven-project integration reference](docs/en/media-intelligence-integrations.md),
+[繁體中文](docs/media-intelligence-integrations.md) and
+[ADR 012](docs/adr/012-reviewed-media-intelligence.md).
+
 ### Make the everyday editing workflow dependable
 
 Build on the completed Professional Cut Desk Phase 1A–1C implementations. Finish

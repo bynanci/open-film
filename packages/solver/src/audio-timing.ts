@@ -20,6 +20,13 @@ function clips(document: EditorDocument): Map<string, Clip> {
     ),
   );
 }
+function flattenCommands(
+  commands: readonly TimelineCommand[],
+): TimelineCommand[] {
+  return commands.flatMap((command) =>
+    command.type === "batch" ? flattenCommands(command.commands) : [command],
+  );
+}
 /** Translate the sound start once from the actual saved picture movement, preserving source/effect clocks. */
 export function translateIndependentAudio(
   before: EditorDocument,
@@ -53,6 +60,7 @@ export function validateAudioEdit(
   commands: readonly TimelineCommand[],
   context: Required<TimelineEditContext>,
 ): void {
+  const leaves = flattenCommands(commands);
   const previous = clips(before),
     current = clips(after),
     byAsset = new Map(assets.map((a) => [a.id, a]));
@@ -60,7 +68,7 @@ export function validateAudioEdit(
     ![...previous.values(), ...current.values()].some(
       (c) => c.audioTiming || c.coverage,
     ) &&
-    !commands.some(
+    !leaves.some(
       (c) =>
         c.type === "audio.timing" ||
         c.type === "coverage.set-clip" ||
@@ -85,7 +93,7 @@ export function validateAudioEdit(
     }
   }
   const targeted = new Set(
-    commands.flatMap((c) => ("clipId" in c ? [c.clipId] : [])),
+    leaves.flatMap((c) => ("clipId" in c ? [c.clipId] : [])),
   );
   for (const prior of previous.values())
     if (prior.audioTiming) {
@@ -94,7 +102,7 @@ export function validateAudioEdit(
         !next &&
         !(
           context.origin === "direct" &&
-          commands.some((c) => c.type === "delete" && c.clipId === prior.id)
+          leaves.some((c) => c.type === "delete" && c.clipId === prior.id)
         )
       )
         conflict(
@@ -103,7 +111,7 @@ export function validateAudioEdit(
       if (
         next &&
         !next.audioTiming &&
-        !commands.some(
+        !leaves.some(
           (c) =>
             c.type === "audio.timing" &&
             c.clipId === prior.id &&

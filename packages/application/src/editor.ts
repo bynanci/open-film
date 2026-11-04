@@ -32,6 +32,7 @@ import {
   validateCoverageProposal,
   validateCoverageAudioBindings,
   validateTranscriptRippleProposal,
+  validateSilenceCutProposal,
   validateRhythmSnapProposal,
   promoteAudioProject,
   validateFilmLook,
@@ -431,6 +432,12 @@ function command(value: unknown, index: number): TimelineCommand {
   if (type === "transcript.ripple") {
     keys(data, ["type", "proposal"], path);
     nested(data.proposal, `${path}.proposal`, validateTranscriptRippleProposal);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type === "silence.ripple") {
+    keys(data, ["type", "reviewId", "proposal"], path);
+    nonempty(data.reviewId, `${path}.reviewId`);
+    nested(data.proposal, `${path}.proposal`, validateSilenceCutProposal);
     return structuredClone(data) as TimelineCommand;
   }
   if (type === "rhythm.snap") {
@@ -1045,6 +1052,7 @@ function validateGraphicSceneAgentTemplateBindings(
 
 /** History and generic edit retries stay in memory; direction receipts are durable. */
 function extractReferencedAssetIds(item: TimelineCommand): string[] {
+  if (item.type === "silence.ripple") return [item.proposal.assetId];
   if (item.type === "graphic.scene.upsert")
     return graphicSceneAssetIds([item.scene]);
   if (
@@ -2021,7 +2029,24 @@ export class TimelineEditor {
         throw new TimelineEditorError(
           "A reviewed audio Apply requires a single-command transaction.",
         );
+      if (
+        allLeaves.length !== 1 &&
+        allLeaves.some((item) => item.type === "silence.ripple")
+      )
+        throw new TimelineEditorError(
+          "A reviewed silence Apply requires a single-command transaction.",
+        );
+      const reviewedSourceGuards: Array<() => void> = [];
       for (const item of allLeaves) {
+        if (item.type === "silence.ripple")
+          reviewedSourceGuards.push(
+            await this.application.silence.verifyReviewedProposal(
+              item.reviewId,
+              item.proposal,
+              compositionId,
+              parsed.baseRevision,
+            ),
+          );
         if (
           item.type === "primary-color" &&
           item.scope === "clip" &&
@@ -2115,6 +2140,7 @@ export class TimelineEditor {
             c.type === "coverage.apply-proposal" ||
             c.type === "coverage.set-bindings" ||
             c.type === "transcript.ripple" ||
+            c.type === "silence.ripple" ||
             c.type === "rhythm.snap";
       const audioAware =
         parsed.commands.some(commandIsAudioAware) ||
@@ -2153,6 +2179,7 @@ export class TimelineEditor {
         const automaticCommand = (item: TimelineCommand) =>
           origin === "automatic" ||
           item.type === "regenerate-beat" ||
+          item.type === "silence.ripple" ||
           (item.type === "volume" && !!item.audioReviewId) ||
           (item.type === "primary-color" &&
             item.scope === "clip" &&
@@ -2235,6 +2262,7 @@ export class TimelineEditor {
           }
           if (
             item.type === "regenerate-beat" ||
+            item.type === "silence.ripple" ||
             flattenCommands([item]).some(
               (c) =>
                 c.type === "user-pin.resolve" ||
@@ -2339,6 +2367,8 @@ export class TimelineEditor {
         });
       this.current(compositionId, parsed.baseRevision);
 
+      for (const guard of reviewedSourceGuards) guard();
+
       // Typography inherited by a run depends on the actual Composition frame.
       // Validate detached candidates before persistence without loading fonts.
       try {
@@ -2377,8 +2407,11 @@ export class TimelineEditor {
         undefined,
         undefined,
         undefined,
-        audioFacts.length
-          ? () => assertCanonicalAudioCurrent(audioFacts)
+        audioFacts.length || reviewedSourceGuards.length
+          ? () => {
+              assertCanonicalAudioCurrent(audioFacts);
+              for (const guard of reviewedSourceGuards) guard();
+            }
           : undefined,
       );
       if (parsed.requestId) {
