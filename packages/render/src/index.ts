@@ -1294,7 +1294,11 @@ export class FFmpegRenderer {
         "-sws_flags",
         "+accurate_rnd+bitexact",
         "-filter_complex",
-        filters.join(";"),
+        // Output -sws_flags does not reach complex-graph scale filters or
+        // their automatically inserted pixel-format conversions. Configure
+        // the graph's swscale defaults as well so identical owned PNG inputs
+        // use deterministic rounding throughout the composed frame.
+        `sws_flags=+accurate_rnd+bitexact;${filters.join(";")}`,
       );
       if (options.maximumOutputBytes !== undefined)
         args.push("-fs", String(options.maximumOutputBytes));

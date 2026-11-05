@@ -104,3 +104,18 @@ CI 修正は既存 suites／signing keys を保った公式 HTTPS archive と有
 format、license が合格し、独立 review で blocker はありません。全5878件は application source が同一の
 `f681df7` の結果です。最終 head の hosted gate は改めて必要です。ローカル Cargo／GTK／WebKit がないため
 `pnpm test:native` は未実行です。hosted native-shell 合格を実機 installer 検証として扱っていません。
+
+### Complex graph の決定的 pixel conversion
+
+`0100dfad5dde7114fd906c81dbc718ff68159f26` の Windows recovery は、同じ保存済み PNG を
+使った十二回目の render で六 pixel／十 RGB channels の差を検出しました。保存された MP4 を
+独立に decode すると保存 RGB と完全一致し、title／caption／GraphicScene PNG hash も同じです。
+失敗した [Windows run 42129370648](https://github.com/bynanci/open-film/actions/runs/42129370648)
+は合格として数えません。
+実 FFmpeg debug test は、出力側 `-sws_flags` が complex graph の scale 設定へ届かないことを
+修正前に検出しました。graph 内に accurate rounding／bitexact の default を宣言し、profile の
+明示 scale と profile なしの自動 pixel conversion の実 context が両 flags を持つことを検証します。
+独立 CLI control で赤 fixture の253→252を確認し、完全一致 assertion を維持しました。
+encoder 設定、geometry、繰り返し pixel equality、PCM 許容誤差を緩和していません。
+新 runtime test も Windows FFmpeg9 gate に追加しました。全 local suite と新 head の hosted CI が
+必要で、この限定 test の合格だけで Windows drift の解決を宣言しません。最終結果は PR に記録します。

@@ -74,6 +74,8 @@ remain separate acceptance scopes. See the
       include original DSP histories in the existing Record preparation budget.
       [PR #114](https://github.com/bynanci/open-film/pull/114) records the exact
       candidate, independent review and required hosted checks before merge.
+      Complex-graph scaling now receives deterministic rounding flags; unchanged
+      exact-pixel Windows probes remain a final-head merge gate.
 - [x] Provide the desktop Precision Review/Apply surface over the durable API
       ([PR #108](https://github.com/bynanci/open-film/pull/108)).
 - [x] Implement and locally validate immutable Silence rendered audition through the existing Record

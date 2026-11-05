@@ -434,7 +434,7 @@ The exact signed head and final hosted results belong to
 result above remains evidence only for `e7ede94`. Physical workstation,
 human listening, signing/notarization and release gates remain open.
 
-Final corrected-source local gates: **447 files / 5,878 tests passed** in
+Audio-correction local gates (`f681df7`): **447 files / 5,878 tests passed** in
 552.62 seconds with `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python`
 (OpenTimelineIO 0.18.1; FFmpeg 7.1.5). An earlier foreground attempt ended
 without a completion report; only this completed exit-0 rerun is counted.
@@ -469,3 +469,29 @@ source at `f681df7`; final hosted gates must pass on the follow-up head.
 are unavailable in this workspace. The hosted native-shell job ran successfully
 on `f681df7` and is required again for the final head. This is automated evidence,
 not installer signing or physical workstation acceptance.
+
+### Deterministic complex-graph conversion
+
+Windows recovery on `0100dfad5dde7114fd906c81dbc718ff68159f26` exposed a
+separate rendering defect: repeat 12 of an identical owned-PNG render differed
+in six pixels / ten RGB channels. The original and repeated MP4 independently
+decoded to the retained RGB files exactly; the captured title, caption and
+GraphicScene PNG hashes were unchanged. This was not a font replacement or a
+decoder mismatch. The failed run is retained as failed evidence:
+[Windows 42129370648](https://github.com/bynanci/open-film/actions/runs/42129370648).
+
+A real FFmpeg debug regression demonstrated that output-level `-sws_flags`
+does not configure complex-graph scalers: before the fix their flags lacked
+`0x40000` (accurate rounding) and `0x80000` (bitexact arithmetic). The renderer
+now declares these defaults in the filter graph itself. The regression runs
+both profiled explicit scaling and an unprofiled automatic pixel conversion;
+it verifies the actual configured contexts and an encoded 12-frame MP4. It
+failed before the production fix and passes afterward. An independent CLI
+YUV-to-RGBA-to-YUV control justified the exact red fixture's 253-to-252 change;
+the test still requires exact equality. Encoder settings, geometry contracts,
+repeated-render pixel equality and PCM error bounds remain unchanged.
+
+The runtime regression also runs in Windows recovery with the pinned FFmpeg9
+runtime. A full local suite and fresh final-head hosted checks are required;
+passing this flag regression alone does not prove the Windows drift resolved.
+The PR records their final outcomes separately from earlier source candidates.

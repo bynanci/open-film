@@ -39,7 +39,9 @@ versioned 48 kHz clock map for gain/fade/ducking preservation through reviewed
 ripple and direct split. Incompatible sample spans, J/L timing and mapped
 source/tempo changes fail closed. Explicit envelope reset and original-source
 Collect preserve reviewability; Record also bounds the retained DSP history.
-The PR records final review and CI results. Actual-media listening and workstation gates remain
+Complex-graph deterministic rounding is validated through actual FFmpeg contexts
+and unchanged Windows pixel probes. The PR records final review and CI results.
+Actual-media listening and workstation gates remain
 open. No Auto-Editor runtime or eleven upstream tools/models are installed.
 
 Next slices are hosted validation and integration review for the automation
