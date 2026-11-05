@@ -42,13 +42,14 @@ discovery/loading remains deferred. See [local presets](local-presets.md) and
 [validation](validation-local-presets.md).
 
 Multi-source analysis keeps project evidence separate from local capabilities.
-Catalog schema v6 stores logical selections, occurrences/membership, SHA-256
+Catalog schema v7 stores logical selections, occurrences/membership, SHA-256
 content identities, immutable asset content versions, manifests, scoped runs and
 review decisions. Browser handles, native grants, staging paths, leases,
 credentials and attempt owners remain private operational state. Every durable
-catalog table has an explicit portable-semantic, local-operational or cache
-policy; Collect Media projects only selected reachable evidence and VACUUMs the
-result. Named Version v5 payloads retain their original bytes/hash. Public
+durable semantic catalog table has an explicit portable-semantic, local-operational or cache
+policy; the derived FTS5 name/tag index is rebuilt on restore and excluded from
+semantic row revisions and source clocks. Collect Media projects only selected
+reachable evidence and VACUUMs the result. Named Version v5 payloads retain their original bytes/hash. Public
 inspect validates and reports the saved schema, while diff uses saved metadata;
 asset-aware restore/rebase paths upgrade only a private temporary copy before
 publishing the live catalog. See

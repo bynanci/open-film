@@ -21,7 +21,7 @@ gate applied throughout, not a claim that unavailable workstation tests passed.
 
 ### Durable semantics versus private operational state
 
-Catalog schema v6 owns portable project meaning: logical source descriptions,
+Catalog schema v7 owns portable project meaning: logical source descriptions,
 occurrences and membership, content identities, asset content versions,
 Expected/Verified Manifests, analysis runs/results, and review decisions.
 

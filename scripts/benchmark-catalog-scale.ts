@@ -171,6 +171,21 @@ async function benchmarkCatalog(assetCount: number, root: string) {
         limit: pageSize,
         ...(cursorAtOffset(offset) ? { cursor: cursorAtOffset(offset) } : {}),
       });
+    const escapedPattern = (search: string) =>
+      `%${search.replace(/[\\%_]/gu, "\\$&")}%`;
+    const legacySubstringSearch = (search: string) =>
+      diagnosticDatabase!
+        .prepare(
+          `SELECT data FROM assets
+           WHERE name LIKE ? ESCAPE '\\'
+              OR EXISTS (
+                SELECT 1 FROM json_each(assets.data,'$.tags')
+                WHERE value LIKE ? ESCAPE '\\'
+              )
+           ORDER BY captured_at IS NULL,captured_at ASC,id ASC LIMIT ?`,
+        )
+        .all(escapedPattern(search), escapedPattern(search), pageSize)
+        .map((row) => (JSON.parse(String(row.data)) as MediaAsset).id);
     const legacyFirstPage = measure(
       () => legacyPage(0),
       (ids) => assert.deepEqual(ids, expectedPageIds(0)),
@@ -209,12 +224,20 @@ async function benchmarkCatalog(assetCount: number, root: string) {
       () => cursorPage(lastOffset).assets.map((asset) => asset.id),
       (ids) => assert.deepEqual(ids, expectedPageIds(lastOffset)),
     );
+    const legacyExactNameSearch = measure(
+      () => legacySubstringSearch(lastName),
+      (ids) => assert.deepEqual(ids, [lastId]),
+    );
     const exactNameSearch = measure(
       () =>
         catalog
           .listAssets({ query: lastName, limit: pageSize })
           .map((asset) => asset.id),
       (ids) => assert.deepEqual(ids, [lastId]),
+    );
+    const legacyTagSearch = measure(
+      () => legacySubstringSearch(lastBatchTag),
+      (ids) => assert.deepEqual(ids, expectedTagPageIds),
     );
     const tagSearch = measure(
       () =>
@@ -299,18 +322,73 @@ async function benchmarkCatalog(assetCount: number, root: string) {
       pageSize,
       0,
     );
+    const legacySearchPlan = diagnosticDatabase!
+      .prepare(
+        `EXPLAIN QUERY PLAN
+        SELECT id FROM assets
+        WHERE name LIKE ? ESCAPE '\\'
+           OR EXISTS (
+             SELECT 1 FROM json_each(assets.data,'$.tags')
+             WHERE value LIKE ? ESCAPE '\\'
+           )
+        ORDER BY captured_at IS NULL,captured_at ASC,id ASC LIMIT ?`,
+      )
+      .all(escapedPattern(lastName), escapedPattern(lastName), pageSize)
+      .map((row) => String(row.detail));
+    const indexedSearchPlan = diagnosticDatabase!
+      .prepare(
+        `EXPLAIN QUERY PLAN
+        SELECT candidate.id FROM asset_search
+        JOIN assets AS candidate ON candidate.rowid=asset_search.rowid
+        WHERE asset_search.name LIKE ? OR asset_search.search_tags LIKE ?`,
+      )
+      .all(escapedPattern(lastName), escapedPattern(lastName))
+      .map((row) => String(row.detail));
     const memoryAfterReads = process.memoryUsage();
     diagnosticDatabase.close();
     diagnosticDatabase = undefined;
     catalog.close();
     catalogClosed = true;
     const databasePath = join(directory, "database.sqlite");
-    const databaseSizeBytes = (await stat(databasePath)).size;
+    const currentSchemaBytes = (await stat(databasePath)).size;
+    const legacyDatabase = new DatabaseSync(databasePath);
+    try {
+      legacyDatabase.exec(`
+        DROP TRIGGER asset_search_insert;
+        DROP TRIGGER asset_search_delete;
+        DROP TRIGGER asset_search_update;
+        DROP TABLE asset_search;
+        ALTER TABLE assets DROP COLUMN search_tags;
+        PRAGMA user_version=6;
+        VACUUM;
+      `);
+    } finally {
+      legacyDatabase.close();
+    }
+    const schemaV6Bytes = (await stat(databasePath)).size;
+    const migrationStarted = performance.now();
+    const migratedCatalog = new ProjectCatalog(directory);
+    const searchIndexMigrationMilliseconds =
+      performance.now() - migrationStarted;
+    try {
+      assert.deepEqual(
+        migratedCatalog
+          .listAssets({ query: lastName, limit: pageSize })
+          .map((asset) => asset.id),
+        [lastId],
+      );
+    } finally {
+      migratedCatalog.close();
+    }
+    const migratedDatabaseBytes = (await stat(databasePath)).size;
     return {
       assetCount,
       fixtureSha256,
       seedMilliseconds,
-      databaseSizeBytes,
+      databaseSizeBytes: migratedDatabaseBytes,
+      databaseSizeBeforeV6MigrationBytes: schemaV6Bytes,
+      databaseSizeBeforeDowngradeBytes: currentSchemaBytes,
+      searchIndexMigrationMilliseconds,
       queryPlans: {
         chronologicalPage: chronologicalPagePlan,
         cursorPage: cursorPagePlan,
@@ -318,6 +396,8 @@ async function benchmarkCatalog(assetCount: number, root: string) {
         countDatedAssets: nonNullCountPlan,
         datedPage: datedPagePlan,
         undatedPage: undatedPagePlan,
+        legacySubstringSearch: legacySearchPlan,
+        indexedSubstringSearch: indexedSearchPlan,
       },
       memoryBytes: {
         beforeSeedRss: memoryBeforeSeed.rss,
@@ -339,7 +419,9 @@ async function benchmarkCatalog(assetCount: number, root: string) {
         lastPage,
         cursorLastPage,
         exactNameSearch,
+        legacyExactNameSearch,
         tagSearch,
+        legacyTagSearch,
         pointLookup,
         fullSummaryScan: summaryScan,
       },
@@ -375,7 +457,7 @@ try {
   const result = {
     measuredAt: new Date().toISOString(),
     method:
-      "Generated video-asset catalogs with 10,000 and 100,000 rows. Each database is seeded in one IMMEDIATE transaction. One warm-up plus five measured repetitions cover first/middle/last chronological 60-row pages, exact-name LIKE search, JSON-tag search, ID lookup and a complete paged summary scan. Setup, seeding, database bytes and unforced process memory observations are recorded separately. No source media is created or decoded.",
+      "Generated video-asset catalogs with 10,000 and 100,000 rows. Each database is seeded in one IMMEDIATE transaction. One warm-up plus five measured repetitions compare the previous escaped-LIKE name/tag scan with indexed public Catalog search and cover first/middle/last chronological 60-row pages, ID lookup and a complete paged summary scan. Query plans, schema v6-to-v7 migration time, database bytes and unforced process-memory observations are recorded separately. No source media is created or decoded.",
     repository: repositoryState,
     runtime: {
       node: process.version,

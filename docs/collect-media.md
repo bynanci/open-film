@@ -1,6 +1,6 @@
 # Collect Media 可攜式套件
 
-Collect Media 會複製開啟與算繪影片所需的已儲存專案資料，建立可搬移的套件；不會搬移或改寫原始檔案。桌面應用程式、HTTP 與 CLI 共用 @openfilm/application 的 CollectMediaService。此服務沿用既有 Composition 作為唯一剪輯時間軸，專案 schema 保持 1.0.0；素材目錄使用可加成遷移的 schema v6。
+Collect Media 會複製開啟與算繪影片所需的已儲存專案資料，建立可搬移的套件；不會搬移或改寫原始檔案。桌面應用程式、HTTP 與 CLI 共用 @openfilm/application 的 CollectMediaService。此服務沿用既有 Composition 作為唯一剪輯時間軸，專案 schema 保持 1.0.0；素材目錄使用可加成遷移的 schema v7。
 
 ## 範圍與檢查
 

@@ -148,7 +148,13 @@ function evidence(database: DatabaseSync) {
       "review_batches",
     ].map((table) => [
       table,
-      database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
+      database
+        .prepare(
+          table === "assets"
+            ? `SELECT id,uri,name,media_type,captured_at,rating,favorite,rejected,locked,data FROM assets ORDER BY rowid`
+            : `SELECT * FROM ${table} ORDER BY rowid`,
+        )
+        .all(),
     ]),
   );
 }

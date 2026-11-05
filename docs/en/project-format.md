@@ -82,13 +82,16 @@ remains verbatim. These additive fields retain schema 1.0.0 and require no catal
 migration. UI language and theme are local preferences outside the project.
 
 The manifest is validated before atomic temporary-file replacement. The current
-catalog uses SQLite schema `PRAGMA user_version=6`, WAL mode, indexed fields for
-listing and typed columns plus bounded JSON descriptors for extensible asset
-data. Versioned migrations through v6 preserve prior assets and jobs while adding
-transcript/knowledge identity, review evidence and multi-source semantic tables;
-some steps rebuild affected tables, while the complete migration runs
-transactionally and rolls back on failure. Large
-transcripts use bounded segment pages, with words stored alongside each segment.
+catalog uses SQLite schema `PRAGMA user_version=7`, WAL mode, indexed fields for
+listing and search, and typed columns plus bounded JSON descriptors for extensible
+asset data. Versioned migrations through v7 preserve prior assets and jobs while
+adding transcript/knowledge identity, review evidence, multi-source semantic
+tables and an FTS5 trigram index for literal name/tag substrings. Queries shorter
+than three characters or containing LIKE escape characters or NUL retain the
+compatible LIKE path. The search index is derived from asset data, rebuilt during
+snapshot restore, and excluded from semantic logical revisions. The complete
+migration runs transactionally and rolls back on failure. Large transcripts use
+bounded segment pages, with words stored alongside each segment.
 Manifest schema remains 1.0.0. See
 [media intelligence](../media-intelligence.md).
 User preference patches change rating/state/tags while keeping source descriptors.
@@ -201,7 +204,7 @@ remain unique and opaque while their `openfilm.managedSource.relativePath` point
 to the shared source bytes. Font files and their resolver bindings are stored in
 `fonts/` and checked by hash when a collected project opens. Package receipts
 remain outside project schema 1.0.0; the filtered portable catalog uses current
-schema v6. Projects without those receipts continue to open as before. See
+schema v7. Projects without those receipts continue to open as before. See
 [Collect Media](collect-media.md) for the directory/ZIP and Verify contract.
 
 ## Validation and migration

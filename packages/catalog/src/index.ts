@@ -45,6 +45,79 @@ export * from "./transcript-editor-store.js";
 export * from "./knowledge-store.js";
 export * from "./multi-source-store.js";
 
+function validateAssetSearchSchema(database: DatabaseSync): void {
+  const assetColumns = new Set(
+    database
+      .prepare("PRAGMA table_info(assets)")
+      .all()
+      .map((column) => String(column.name)),
+  );
+  const searchColumns = database
+    .prepare("PRAGMA table_info(asset_search)")
+    .all()
+    .map((column) => String(column.name));
+  const searchSql = String(
+    database
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='asset_search'",
+      )
+      .get()?.sql ?? "",
+  )
+    .toLowerCase()
+    .replace(/[\s"`]/gu, "");
+  const triggers = new Set(
+    database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('asset_search_insert','asset_search_delete','asset_search_update')",
+      )
+      .all()
+      .map((row) => String(row.name)),
+  );
+  if (
+    !assetColumns.has("search_tags") ||
+    searchColumns.join(",") !== "name,search_tags" ||
+    !searchSql.includes("usingfts5(") ||
+    !searchSql.includes("content='assets'") ||
+    !searchSql.includes("content_rowid='rowid'") ||
+    !searchSql.includes("tokenize='trigram'") ||
+    !searchSql.includes("detail='none'") ||
+    ["asset_search_insert", "asset_search_delete", "asset_search_update"].some(
+      (name) => !triggers.has(name),
+    )
+  )
+    throw new Error("Catalog asset search index has an invalid schema.");
+}
+
+function migrateAssetSearchSchema(database: DatabaseSync): void {
+  database.exec(`
+    ALTER TABLE assets ADD COLUMN search_tags TEXT NOT NULL DEFAULT '';
+    UPDATE assets SET search_tags=COALESCE((
+      SELECT group_concat(value,char(31)) FROM json_each(assets.data,'$.tags')
+    ),'');
+    CREATE VIRTUAL TABLE asset_search USING fts5(
+      name,search_tags,content='assets',content_rowid='rowid',
+      tokenize='trigram',detail='none'
+    );
+    CREATE TRIGGER asset_search_insert AFTER INSERT ON assets BEGIN
+      INSERT INTO asset_search(rowid,name,search_tags)
+      VALUES(NEW.rowid,NEW.name,NEW.search_tags);
+    END;
+    CREATE TRIGGER asset_search_delete AFTER DELETE ON assets BEGIN
+      INSERT INTO asset_search(asset_search,rowid,name,search_tags)
+      VALUES('delete',OLD.rowid,OLD.name,OLD.search_tags);
+    END;
+    CREATE TRIGGER asset_search_update AFTER UPDATE OF name,search_tags ON assets
+    WHEN OLD.name IS NOT NEW.name OR OLD.search_tags IS NOT NEW.search_tags
+    BEGIN
+      INSERT INTO asset_search(asset_search,rowid,name,search_tags)
+      VALUES('delete',OLD.rowid,OLD.name,OLD.search_tags);
+      INSERT INTO asset_search(rowid,name,search_tags)
+      VALUES(NEW.rowid,NEW.name,NEW.search_tags);
+    END;
+    INSERT INTO asset_search(asset_search) VALUES('rebuild');
+  `);
+}
+
 export {
   CATALOG_SCHEMA_VERSION,
   CatalogIntelligenceStore,
@@ -221,6 +294,7 @@ function validateDeclaredCatalogSchema(
     new CatalogKnowledgeStore(database, version >= 5);
   }
   if (version >= 6) validateMultiSourceSchema(database);
+  if (version >= 7) validateAssetSearchSchema(database);
 }
 
 function migrateCatalogDatabase(database: DatabaseSync, version: number): void {
@@ -246,6 +320,7 @@ function migrateCatalogDatabase(database: DatabaseSync, version: number): void {
     if (version < 4) migrateTranscriptSegmentIdentity(database);
     if (version < 5) migrateSceneScriptReviewSchema(database);
     if (version < 6) migrateMultiSourceSchema(database);
+    if (version < 7) migrateAssetSearchSchema(database);
     database.exec(`PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`);
   } catch (error) {
     database.exec("ROLLBACK");
@@ -365,17 +440,25 @@ function logicalCatalogRevision(database: DatabaseSync): string {
     )
     .all()
     .map((row) => String(row.name));
-  const rows = tables.map((table) => {
-    const quoted = `"${table.replaceAll('"', '""')}"`;
-    return [
-      table,
-      database
-        .prepare(`SELECT * FROM ${quoted}`)
-        .all()
-        .map((row) => JSON.stringify(row))
-        .sort(),
-    ];
-  });
+  const rows = tables
+    .filter(
+      (table) => table !== "asset_search" && !table.startsWith("asset_search_"),
+    )
+    .map((table) => {
+      const quoted = `"${table.replaceAll('"', '""')}"`;
+      return [
+        table,
+        database
+          .prepare(
+            table === "assets"
+              ? `SELECT id,uri,name,media_type,captured_at,rating,favorite,rejected,locked,data FROM ${quoted}`
+              : `SELECT * FROM ${quoted}`,
+          )
+          .all()
+          .map((row) => JSON.stringify(row))
+          .sort(),
+      ];
+    });
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -455,8 +538,10 @@ export function inspectCollectSourceClockAssets(
       )
       .all();
     for (const { name } of tables) {
-      const table = String(name),
-        policy = CATALOG_TABLE_POLICIES[table];
+      const table = String(name);
+      if (table === "asset_search" || table.startsWith("asset_search_"))
+        continue;
+      const policy = CATALOG_TABLE_POLICIES[table];
       if (!policy) invalid();
       if (table === "assets" || policy !== "portable-semantic") continue;
       const quoted = `"${table.replaceAll('"', '""')}"`;
@@ -649,7 +734,7 @@ export function createPortableCatalogSnapshot(
       sanitizePortableMultiSourceRows(database);
       const update = database.prepare(`
         UPDATE assets SET uri=?,name=?,media_type=?,captured_at=?,rating=?,
-          favorite=?,rejected=?,locked=?,data=? WHERE id=?
+          favorite=?,rejected=?,locked=?,data=?,search_tags=? WHERE id=?
       `);
       for (const asset of assets) {
         const result = update.run(
@@ -662,6 +747,7 @@ export function createPortableCatalogSnapshot(
           Number(Boolean(asset.state.rejected)),
           Number(Boolean(asset.state.locked)),
           JSON.stringify(asset),
+          asset.tags.join("\u001f"),
           asset.id,
         );
         if (Number(result.changes) !== 1)
@@ -818,11 +904,28 @@ function assetFilter(
   }
   const search = options.query ?? options.search;
   if (search) {
-    clauses.push(
-      "(name LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM json_each(assets.data,'$.tags') WHERE value LIKE ? ESCAPE '\\'))",
-    );
     const query = `%${search.replace(/[\\%_]/gu, "\\$&")}%`;
-    params.push(query, query);
+    if (
+      [...search].length >= 3 &&
+      !/[\\%_]/u.test(search) &&
+      ![...search].some((character) => character.charCodeAt(0) === 0)
+    ) {
+      clauses.push(`id IN (
+        SELECT candidate.id
+        FROM asset_search
+        JOIN assets AS candidate ON candidate.rowid=asset_search.rowid
+        WHERE asset_search.name LIKE ? OR asset_search.search_tags LIKE ?
+      ) AND (name LIKE ? ESCAPE '\\' OR EXISTS (
+        SELECT 1 FROM json_each(assets.data,'$.tags')
+        WHERE value LIKE ? ESCAPE '\\'
+      ))`);
+      params.push(query, query, query, query);
+    } else {
+      clauses.push(
+        "(name LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM json_each(assets.data,'$.tags') WHERE value LIKE ? ESCAPE '\\'))",
+      );
+      params.push(query, query);
+    }
   }
   return {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
@@ -1090,6 +1193,8 @@ export class ProjectCatalog {
       const quoteIdentifier = (identifier: string) =>
         `"${identifier.replaceAll('"', '""')}"`;
       for (const table of tables) {
+        if (table === "asset_search" || table.startsWith("asset_search_"))
+          continue;
         const quoted = quoteIdentifier(table);
         const columns = this.database
           .prepare(`PRAGMA main.table_info(${quoted})`)
@@ -1103,6 +1208,9 @@ export class ProjectCatalog {
           `INSERT INTO main.${quoted} (${projection}) SELECT ${projection} FROM version_snapshot.${quoted}`,
         );
       }
+      this.database.exec(
+        "INSERT INTO main.asset_search(asset_search) VALUES('rebuild')",
+      );
       if (
         this.database.prepare("PRAGMA main.integrity_check").get()
           ?.integrity_check !== "ok"
@@ -1160,11 +1268,12 @@ export class ProjectCatalog {
     this.database
       .prepare(
         `INSERT INTO assets
-      (id,uri,name,media_type,captured_at,rating,favorite,rejected,locked,data)
-      VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+      (id,uri,name,media_type,captured_at,rating,favorite,rejected,locked,data,search_tags)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
       uri=excluded.uri,name=excluded.name,media_type=excluded.media_type,
       captured_at=excluded.captured_at,rating=excluded.rating,
-      favorite=excluded.favorite,rejected=excluded.rejected,locked=excluded.locked,data=excluded.data
+      favorite=excluded.favorite,rejected=excluded.rejected,locked=excluded.locked,
+      data=excluded.data,search_tags=excluded.search_tags
     `,
       )
       .run(
@@ -1178,6 +1287,7 @@ export class ProjectCatalog {
         Number(Boolean(asset.state.rejected)),
         Number(Boolean(asset.state.locked)),
         JSON.stringify(asset),
+        asset.tags.join("\u001f"),
       );
   }
 
@@ -1362,10 +1472,15 @@ export class ProjectCatalog {
         return next;
       });
       const update = this.database.prepare(
-        "UPDATE assets SET uri=?,data=? WHERE id=?",
+        "UPDATE assets SET uri=?,data=?,search_tags=? WHERE id=?",
       );
       for (const asset of nextAssets)
-        update.run(asset.uri, JSON.stringify(asset), asset.id);
+        update.run(
+          asset.uri,
+          JSON.stringify(asset),
+          asset.tags.join("\u001f"),
+          asset.id,
+        );
       this.database.exec("COMMIT");
       return nextAssets;
     } catch (error) {

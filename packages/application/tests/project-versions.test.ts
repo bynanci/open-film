@@ -148,7 +148,7 @@ describe("named project versions", () => {
       expect(sha256(readFileSync(path))).toBe(hash);
     expect(
       app.versions.inspect(restored.checkpointVersionId).catalogSchemaVersion,
-    ).toBe(6);
+    ).toBe(7);
   });
 
   it("restores and renders captions, graphics, two synthetic photos, and audio across sessions", async () => {
