@@ -60,9 +60,17 @@ not an RSS or real-workstation measurement. It does not make the existing
 Editor document asset pool lazy; some story configurations still provide that
 full pool to the parent workspace.
 
+The production build was measured on the same Linux x64 workstation, Node.js
+24.19.0, pnpm 11.19.0 and Vite 8.2.4. Main at `4de4ec5965f3c0bce01f074b2a354721e4fa771d`
+built to 1,754.08 kB minified JavaScript / 516.27 kB gzip and 306.57 kB CSS /
+48.51 kB gzip. Candidate `2dfb8298c1ddda027334c14275f3e4edbb255928` built to
+1,759.76 kB / 517.85 kB JavaScript and 306.79 kB / 48.53 kB CSS. The candidate
+adds 5.68 kB minified JavaScript and 1.58 kB gzip (about 0.32%); it does not
+reduce bundle size. Both builds retain Vite's large-chunk warning. These are
+artifact-size measurements, not startup-latency measurements.
+
 Remaining work: index literal substring name/tag search without changing its
-semantics and measure lazy-loading less-used Desktop workspaces. The current
-production build reports a 1.72 MB minified main JavaScript chunk (508 KB gzip);
-browser navigation and native cold-start measurements are needed before setting
-a code-splitting goal. Synthetic Catalog numbers do not guarantee Desktop
-support at 100k assets, real media or across workstations.
+semantics and measure lazy-loading less-used Desktop workspaces. Browser
+navigation and native cold-start measurements are needed before setting a
+code-splitting goal. Synthetic Catalog numbers do not guarantee Desktop support
+at 100k assets, real media or across workstations.

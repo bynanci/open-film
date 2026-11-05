@@ -52,9 +52,9 @@ schema migration was needed.
 
 ## Keyset cursor follow-up
 
-Measured on 2026-11-05 on the same generated SQLite fixtures, process and
-environment for the existing indexed `OFFSET` path and the new chronological
-keyset path. Environment: Linux x64, Node.js 24.19.0, SQLite 3.53.3, AMD EPYC
+Re-measured on the rebased candidate after the latest main changes, comparing
+the indexed `OFFSET` path and chronological keyset path against the same
+generated fixtures. Environment: Linux x64, Node.js 24.19.0, SQLite 3.53.3, AMD EPYC
 9V45 (5 logical CPUs exposed to the process). Each case has one warm-up and five
 measured runs; the table gives the median and observed range in milliseconds.
 Both paths asserted the exact same 60 asset IDs. Cursor measurements start from
@@ -63,15 +63,15 @@ the total time to traverse every page sequentially.
 
 |  Assets | Page   | Indexed `OFFSET` median [min, max] | Keyset median [min, max] | Ratio |
 | ------: | ------ | ---------------------------------: | -----------------------: | ----: |
-|  10,000 | First  |               0.098 [0.084, 0.146] |     0.084 [0.079, 0.199] |  1.2× |
-|  10,000 | Middle |               0.270 [0.210, 0.311] |     0.152 [0.092, 0.292] |  1.8× |
-|  10,000 | Last   |               0.137 [0.134, 0.164] |     0.090 [0.084, 0.105] |  1.5× |
-| 100,000 | First  |               0.089 [0.077, 0.207] |     0.105 [0.085, 0.206] |  0.8× |
-| 100,000 | Middle |               1.967 [1.789, 2.261] |     0.106 [0.092, 0.157] | 18.5× |
-| 100,000 | Last   |               1.291 [1.236, 1.353] |     0.099 [0.091, 0.218] | 13.0× |
+|  10,000 | First  |               0.098 [0.085, 0.103] |     0.100 [0.087, 0.166] |  1.0× |
+|  10,000 | Middle |               0.246 [0.214, 0.329] |     0.157 [0.096, 0.240] |  1.6× |
+|  10,000 | Last   |               0.145 [0.139, 0.182] |     0.092 [0.091, 0.111] |  1.6× |
+| 100,000 | First  |               0.114 [0.090, 0.148] |     0.108 [0.088, 0.126] |  1.1× |
+| 100,000 | Middle |               2.389 [2.024, 2.589] |     0.135 [0.097, 0.187] | 17.7× |
+| 100,000 | Last   |               1.322 [1.168, 1.594] |     0.098 [0.095, 0.156] | 13.5× |
 
-First-page performance is equivalent within the overlapping observed ranges.
-Deep middle and last pages were 18.5× and 13.0× faster than the current
+First-page results are effectively equivalent within the observed ranges.
+Deep middle and last pages were 17.7× and 13.5× faster than the current
 indexed-offset path in this synthetic 100,000-row workload. `EXPLAIN QUERY PLAN` reports a composite
 `assets_capture` range seek on `(captured_at,id)` for dated cursors, and an
 `assets_capture` seek on `(captured_at,id)` for null-date cursors. The page API
@@ -89,22 +89,23 @@ API rows and rendered options; they do not measure RSS, real media, or the
 existing parent Editor document asset pool. The cursor does not pin a snapshot
 across separate HTTP requests: catalog edits between pages can change later
 results, as with ordinary live pagination. At 100,000 rows, substring name and
-tag searches remain full-catalog scans; this run measured 61.31 ms and 59.89 ms
+tag searches remain full-catalog scans; this run measured 62.71 ms and 61.84 ms
 medians respectively. Search indexing remains explicit follow-up work.
 
-The exact-source run was measured at `2026-11-05T03:58:41.233Z` on clean commit
-`c64dd3f6eefc16c5d164de13bac434749de4d9bf`. Its 10,000-row fixture SHA-256 is
+The exact-source rerun was measured at `2026-11-05T09:30:46.267Z` on clean commit
+`2dfb8298c1ddda027334c14275f3e4edbb255928`, after rebasing on main
+`4de4ec5965f3c0bce01f074b2a354721e4fa771d`. Its 10,000-row fixture SHA-256 is
 `1aee6a1f4ba747be349110b9a0983b00673f547c8479cc38a269ee24876eeccb`; the
 100,000-row fixture SHA-256 is
 `84eb8bdf90026c544b2e6e339f448a421bd22a364ec71b59b70880ea48e7563e`. The
 benchmark script SHA-256 is
 `42ad2add42aa453611a624ead6bc66b5184d4809355d367b5dd738873d34ccd0`, the
 Catalog source SHA-256 is
-`86361514b8fb33c38d706826376ebb178f515854b0444c7d10d47b53f25ca073`, and the
-validator source SHA-256 is
-`1c0a5f4a868be0cf44299874a1eaec0d707f49f70559372400de7431173d3328`. The
+`45e8ba4a09ad8a6f9d640eee7c18ef59e3b9df29c339646816867acac2af850f`, and the
+MediaAsset validation source SHA-256 is
+`d0a19ea43dff6558fd13d5722c8da364168d0a925f2b0437df69bf4b4068e048`. The
 captured JSON output SHA-256 is
-`a21186ab0bb1486fc97b2ba77cd7e7e379caf66f3068924e8782bbeaf62ce07f`.
+`5e71dc78c4c6c028e1c7b0b6d1fb0ca97e62974eed1679a273d7511bb190ae6a`.
 
 This is a synthetic Catalog measurement, not end-to-end Desktop evidence at
 100,000 assets or a latency guarantee. The browser regression uses 121 generated
