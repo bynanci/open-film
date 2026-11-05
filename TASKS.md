@@ -193,6 +193,10 @@ change. Discuss their scope before implementation.
       200-row page and keeps only selected dependencies between pages; the
       existing Editor document asset pool is unchanged. See the
       [picker scale validation](docs/validation-catalog-scale-benchmark.md).
+- [ ] Defer the non-English UI message catalogs until their locale is selected.
+      The candidate keeps English in the initial bundle and emits separate
+      Traditional Chinese/Japanese chunks; see the
+      [locale loading validation](docs/validation-desktop-locale-loading.md).
 - [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
       initial JavaScript bundle (current build: 1.72 MB minified / 508 KB gzip).
       Record browser navigation and native cold-start measurements before setting
