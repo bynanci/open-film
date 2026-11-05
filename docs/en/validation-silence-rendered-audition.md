@@ -239,3 +239,21 @@ preparing audition, with reused source/clip/Composition IDs. It verifies the new
 project has no previous result/timecodes, old PCM returns typed 404 and both saved
 timelines remain unchanged. Unit tests use fully valid late responses for both
 project and Composition changes and reject stale UI/error publication.
+
+## CI 整合修正 / CI integration follow-up
+
+[Verify 42019074008](https://github.com/bynanci/open-film/actions/runs/42019074008)
+on head `d0f195b14da28857a0d58b88fae428fe564b9f12` passed contracts, all four
+browser shards, native-shell, docs and the separate platform QA workflows.
+Its full media lane reported 367 files / 4346 tests passed and four failures in
+`precision-render-boundary.test.ts`: the strict recursive SFC test loader lacked
+the new child's actual `recordAudioPlayback` dependency. The missing import was
+reproduced locally before fixing the fixture; no render-boundary assertions or
+unknown-import rejection were relaxed. Both Precision boundary/navigation suites
+then passed 92/92 locally, with lint and typecheck passing.
+
+修正只將真實 Record playback 模組加入該測試載入器的明確依賴表，並保留未知
+import 的拒絕。Production renderer／剪輯邏輯未變更。CI 的合成試聽 artifact
+現在於失敗時也會嘗試保存，檔名仍限制為 `silence-audition-*`，缺少證據仍報錯。
+此段記錄歷史失敗與修正證據；最終 head 的完整 CI 必須另行通過，不能以先前 head
+的綠燈取代。
