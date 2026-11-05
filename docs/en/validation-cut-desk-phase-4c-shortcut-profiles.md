@@ -2,17 +2,19 @@
 
 - Date: 2026-11-05
 - Feature branch: `codex/cut-desk-phase-4c-shortcut-profiles`
-- Stacked review base: `codex/cut-desk-phase-4a-scopes` at `9a7d4deff841c3fc99bfd25e397360971c36c7e9` (PR #112)
+- Stacked review base: `codex/cut-desk-phase-4a-scopes` at `b3f36f6295713968c86aec4dc0320f20c4805910` (PR #112)
 - Main beneath that branch: `0485b3115c962d9b21f6884536155f4b79393a88`
 
 Phase 4C is isolated from the original mixed worktree and contains only the
 shortcut-profile feature. It is proposed as a stacked PR so its diff excludes
-Phase 4A; it can be retargeted to `main` after PR #112 merges. PR #112 is still
-waiting for its final browser E2E shard at the time of this record.
+Phase 4A; it can be retargeted to `main` after PR #112 merges. PR #112 advanced
+to `b3f36f6` with a test-only Split Wipe control update; its fresh checks are
+running.
 
 The previous #112 browser shard 4 run hit its 45-minute job limit while
 installing Linux media packages, so the required-lanes check failed because
-that shard was cancelled. GitHub reran the failed jobs; the retry is pending.
+that shard was cancelled. The second run exposed an outdated compare-control
+count, fixed in #112 commit `b3f36f6` before the current run.
 
 ## Delivered scope
 
@@ -46,8 +48,15 @@ click timeout boundary. A retry timed out while generating the shared
 `professionalCutDeskFixture` in the `beforeAll` hook. Neither attempt reached
 the shortcut assertions, and the cause is unconfirmed; neither is passing
 evidence for this base. The same profile scenario passed once before rebasing
-onto PR #112's final test-host fix.
-The PR's GitHub checks must provide the clean-runner browser validation.
+onto PR #112's final test-host fix. The PR's GitHub checks must provide the
+clean-runner browser validation.
+
+The initial #113 browser run also found that the native-runtime shortcut test
+fixture did not inject the profile resolver and used nonstandard codes for
+letter events. The fixture now injects the default profile/resolver and uses
+`KeyJ`-style codes. A direct Windows run is blocked while esbuild resolves
+Vue's internal packages through the local `.pnp.cjs`; GitHub CI must validate
+the updated fixture.
 
 ## Remaining verification
 

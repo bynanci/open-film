@@ -3,6 +3,10 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { build, transformSync } from "esbuild";
 import { expect, test, type Page } from "@playwright/test";
+import {
+  defaultShortcutProfile,
+  resolveShortcutAction,
+} from "../../apps/desktop/src/shortcut-profiles";
 
 const desktop = createRequire(resolve("apps/desktop/package.json"));
 const compiler = desktop("vue/compiler-sfc");
@@ -35,6 +39,7 @@ const handlers = {
   precision: keyboard("PrecisionEditor"),
   trim: keyboard("PrecisionEditor", "moveTrim"),
 };
+const activeShortcutProfile = { value: defaultShortcutProfile };
 let fixture: string;
 test.beforeAll(async () => {
   // Run the real Gate template/lifecycle and exact editor window handlers.
@@ -123,6 +128,8 @@ async function mount(page: Page) {
     state.shortcutCounts = counts;
     state.shortcutMode = mode;
     const timelineContext = {
+      activeShortcutProfile,
+      resolveShortcutAction,
       shortcutIsolation: { value: false },
       recordTarget: { value: false },
       directionBlocked: { value: false },
@@ -137,6 +144,8 @@ async function mount(page: Page) {
       },
     };
     const precisionContext = {
+      activeShortcutProfile,
+      resolveShortcutAction,
       props: { active: true },
       playable: { value: true },
       addMarker: () => {
@@ -333,7 +342,12 @@ test("Source shortcuts preserve Chromium defaults and counters in IME, editable,
         const results = keys.map((key) => {
           const event = new KeyboardEvent("keydown", {
             key,
-            code: key === " " ? "Space" : key,
+            code:
+              key === " "
+                ? "Space"
+                : /^[a-z]$/i.test(key)
+                  ? `Key${key.toUpperCase()}`
+                  : key,
             isComposing: context === "ime",
             bubbles: true,
             cancelable: true,
