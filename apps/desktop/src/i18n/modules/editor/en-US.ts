@@ -289,6 +289,11 @@ export default {
         "Use a local PNG alpha mask and optional background fill. Source photos remain unchanged; no remote image service is used.",
       importAssets: "Import local photo layers",
       libraryError: "Could not load local photo layers. Try again.",
+      libraryLoading: "Loading photo layers…",
+      libraryPages: "Photo layer pages",
+      libraryPage: "Images {from}–{to} of {total}",
+      previousPage: "Previous images",
+      nextPage: "Next images",
       sourceHashRequired:
         "Import and save this local photo before editing its depth layers.",
       durationRule:
@@ -393,6 +398,12 @@ export default {
       choosePhoto: "Choose a photo",
       noPhotos:
         "Add a local photo to this project before creating a photo template.",
+      photoCatalogFailed: "Could not load the photo catalog. Try again.",
+      loadingPhotos: "Loading project photos…",
+      photoCatalogPages: "Photo catalog pages",
+      photoCatalogPage: "Photos {from}–{to} of {total}",
+      previousPhotos: "Previous photos",
+      nextPhotos: "Next photos",
       photoRequired: "Choose an available local photo for each position.",
       protectFocus: "Protect this important image area",
       protectedRegionHint:

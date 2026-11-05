@@ -50,6 +50,68 @@ the count and both ranges on one SQLite snapshot. SQLite reports `assets_capture
 index searches for the dated count, dated page and undated page. No catalog
 schema migration was needed.
 
+## Keyset cursor follow-up
+
+Re-measured on the rebased candidate after the latest main changes, comparing
+the indexed `OFFSET` path and chronological keyset path against the same
+generated fixtures. Environment: Linux x64, Node.js 24.19.0, SQLite 3.53.3, AMD EPYC
+9V45 (5 logical CPUs exposed to the process). Each case has one warm-up and five
+measured runs; the table gives the median and observed range in milliseconds.
+Both paths asserted the exact same 60 asset IDs. Cursor measurements start from
+a known preceding-row cursor and measure one page request; they do not measure
+the total time to traverse every page sequentially.
+
+|  Assets | Page   | Indexed `OFFSET` median [min, max] | Keyset median [min, max] | Ratio |
+| ------: | ------ | ---------------------------------: | -----------------------: | ----: |
+|  10,000 | First  |               0.098 [0.085, 0.103] |     0.100 [0.087, 0.166] |  1.0× |
+|  10,000 | Middle |               0.246 [0.214, 0.329] |     0.157 [0.096, 0.240] |  1.6× |
+|  10,000 | Last   |               0.145 [0.139, 0.182] |     0.092 [0.091, 0.111] |  1.6× |
+| 100,000 | First  |               0.114 [0.090, 0.148] |     0.108 [0.088, 0.126] |  1.1× |
+| 100,000 | Middle |               2.389 [2.024, 2.589] |     0.135 [0.097, 0.187] | 17.7× |
+| 100,000 | Last   |               1.322 [1.168, 1.594] |     0.098 [0.095, 0.156] | 13.5× |
+
+First-page results are effectively equivalent within the observed ranges.
+Deep middle and last pages were 17.7× and 13.5× faster than the current
+indexed-offset path in this synthetic 100,000-row workload. `EXPLAIN QUERY PLAN` reports a composite
+`assets_capture` range seek on `(captured_at,id)` for dated cursors, and an
+`assets_capture` seek on `(captured_at,id)` for null-date cursors. The page API
+reads each individual page in one SQLite read snapshot, preserves equal-time and
+null-last ordering, validates cursor version/shape, and adds no schema
+migration. Existing offset-based APIs remain available.
+
+Desktop browsing, the lazily paged PhotoDepth and Photo Relationship pickers,
+and the Motion video picker use the cursor path. The two photo pickers request
+one page of at most 200 rows at a time and preserve only selected dependencies
+when navigating. On a synthetic 10,000-image component fixture, opening each
+picker requests 200 rows in one call instead of traversing 50 pages; focused
+regressions verify selection retention and bounded options. These tests count
+API rows and rendered options; they do not measure RSS, real media, or the
+existing parent Editor document asset pool. The cursor does not pin a snapshot
+across separate HTTP requests: catalog edits between pages can change later
+results, as with ordinary live pagination. At 100,000 rows, substring name and
+tag searches remain full-catalog scans; this run measured 62.71 ms and 61.84 ms
+medians respectively. Search indexing remains explicit follow-up work.
+
+The exact-source rerun was measured at `2026-11-05T09:30:46.267Z` on clean commit
+`2dfb8298c1ddda027334c14275f3e4edbb255928`, after rebasing on main
+`4de4ec5965f3c0bce01f074b2a354721e4fa771d`. Its 10,000-row fixture SHA-256 is
+`1aee6a1f4ba747be349110b9a0983b00673f547c8479cc38a269ee24876eeccb`; the
+100,000-row fixture SHA-256 is
+`84eb8bdf90026c544b2e6e339f448a421bd22a364ec71b59b70880ea48e7563e`. The
+benchmark script SHA-256 is
+`42ad2add42aa453611a624ead6bc66b5184d4809355d367b5dd738873d34ccd0`, the
+Catalog source SHA-256 is
+`45e8ba4a09ad8a6f9d640eee7c18ef59e3b9df29c339646816867acac2af850f`, and the
+MediaAsset validation source SHA-256 is
+`d0a19ea43dff6558fd13d5722c8da364168d0a925f2b0437df69bf4b4068e048`. The
+captured JSON output SHA-256 is
+`5e71dc78c4c6c028e1c7b0b6d1fb0ca97e62974eed1679a273d7511bb190ae6a`.
+
+This is a synthetic Catalog measurement, not end-to-end Desktop evidence at
+100,000 assets or a latency guarantee. The browser regression uses 121 generated
+assets to verify that the Desktop next-page action sends a cursor and loads a
+different page.
+
 ## Reproducibility and limits
 
 The output records five raw samples per read, fixture SHA-256 values and hashes

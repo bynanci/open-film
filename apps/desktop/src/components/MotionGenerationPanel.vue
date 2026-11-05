@@ -50,6 +50,7 @@ const videoQuery = ref(""),
   videoLoading = ref(false),
   chosenVideos = ref<MediaAsset[]>([]);
 const videoPageSize = 100;
+const videoPageCursors = new Map<number, string>();
 let videoLoadGeneration = 0;
 let epoch = 0,
   controller: AbortController | undefined,
@@ -100,6 +101,7 @@ watch(
     props.sourceVersion,
   ],
   async () => {
+    videoPageCursors.clear();
     reset();
     candidates.value = [];
     failed.value = false;
@@ -136,6 +138,7 @@ watch(
     sceneId.value,
   ],
   () => {
+    videoPageCursors.clear();
     reset();
     candidates.value = [];
   },
@@ -162,7 +165,10 @@ async function loadVideos(offset = 0) {
   const load = ++videoLoadGeneration;
   const projectId = props.projectId;
   const query = videoQuery.value.trim();
-  if (query !== loadedVideoQuery.value) offset = 0;
+  if (query !== loadedVideoQuery.value) {
+    offset = 0;
+    videoPageCursors.clear();
+  }
   const owned = () =>
     token === epoch &&
     load === videoLoadGeneration &&
@@ -171,20 +177,28 @@ async function loadVideos(offset = 0) {
   videoLoading.value = true;
   failed.value = false;
   try {
-    const result = await api.assets(
-      new URLSearchParams({
-        mediaType: "video",
-        limit: String(videoPageSize),
-        offset: String(offset),
-        search: query,
-      }),
-    );
+    const params = new URLSearchParams({
+      mediaType: "video",
+      limit: String(videoPageSize),
+      cursorMode: "keyset",
+      search: query,
+    });
+    if (offset > 0) {
+      const cursor = videoPageCursors.get(offset);
+      if (!cursor) offset = 0;
+      else params.set("cursor", cursor);
+    }
+    const result = await api.assets(params);
     if (owned()) {
       videos.value = result.assets.filter(
         (a) => a.mediaType === "video" && !a.state.locked && !a.state.rejected,
       );
       videoOffset.value = offset;
       videoTotal.value = result.total;
+      const nextOffset = offset + videoPageSize;
+      if (result.nextCursor)
+        videoPageCursors.set(nextOffset, result.nextCursor);
+      else videoPageCursors.delete(nextOffset);
       loadedVideoQuery.value = query;
     }
   } catch {

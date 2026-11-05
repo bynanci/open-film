@@ -479,3 +479,42 @@ test("offers the English-default film language for a legacy project without rena
     settings.getByLabel(uiText("en-US", "app.settings.currentFilmLanguage")),
   ).toHaveValue("ja-JP");
 });
+
+test("browses the main media library with seekable chronological cursors", async ({
+  page,
+}) => {
+  const fixture = await prepareProject("Cursor collection", 121);
+  const assetRequests: URL[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/assets") assetRequests.push(url);
+  });
+  await page.goto("/");
+  await openFilm(page, fixture.path);
+  const all = page
+    .getByRole("navigation", { name: "Library view", exact: true })
+    .getByRole("button", { name: /^All\b/ });
+  await all.click();
+  const cards = page.locator(".contact-sheet .asset-card");
+  await expect(cards).toHaveCount(60);
+  const pagination = page.locator(".library-main .pagination");
+  await expect(pagination).toContainText("1–60 of 121 memories");
+  await pagination.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(pagination).toContainText("61–120 of 121 memories");
+  await expect(cards).toHaveCount(60);
+  await expect(
+    cards.getByRole("button", { name: "Inspect memory-060.png", exact: true }),
+  ).toBeVisible();
+  await expect(
+    pagination.getByRole("button", { name: "Previous", exact: true }),
+  ).toBeEnabled();
+
+  const keysetRequests = assetRequests.filter(
+    (url) => url.searchParams.get("cursorMode") === "keyset",
+  );
+  expect(keysetRequests.length).toBeGreaterThanOrEqual(2);
+  expect(keysetRequests[0]!.searchParams.has("cursor")).toBe(false);
+  expect(keysetRequests.some((url) => url.searchParams.get("cursor"))).toBe(
+    true,
+  );
+});

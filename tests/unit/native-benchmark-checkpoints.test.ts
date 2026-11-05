@@ -690,6 +690,7 @@ describe("actual workspace readiness guards", () => {
       targetDuration: ref(0),
       maxDuration: ref(0),
       rememberProject: () => {},
+      resetAssetPagination: () => {},
       reloadAssets: async () => true,
       // Initial media loading is separate from the native receipt/readiness
       // guards exercised here; its real helper has its own failure-path tests.
@@ -1428,6 +1429,7 @@ describe("actual workspace readiness guards", () => {
       refreshProject: async () => true,
       restoreWorkspace: () => {},
       refreshRecents: async () => {},
+      resetAssetPagination: () => {},
       restoreScriptReviewTarget: () => {},
       document: { querySelector: () => ({ getClientRects: () => [1] }) },
     };

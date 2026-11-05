@@ -121,6 +121,8 @@ function host(
     assets,
     search,
     assetMutations: new Map(),
+    assetPageCursors: new Map<number, string>(),
+    resetAssetPagination: () => {},
     offset: ref(0),
     pageSize: 60,
     libraryFilter: ref("all"),

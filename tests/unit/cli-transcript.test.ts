@@ -38,7 +38,11 @@ afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
 });
 
-async function fixture(assetId: string, transcribed = true) {
+async function fixture(
+  assetId: string,
+  transcribed = true,
+  additionalAssetIds: string[] = [],
+) {
   const directory = await mkdtemp(join(tmpdir(), "openfilm-cli-revision-"));
   fixtureDirectories.push(directory);
   const projectDirectory = join(directory, "film.openfilm");
@@ -67,6 +71,18 @@ async function fixture(assetId: string, transcribed = true) {
       state: {},
       metadata: {},
     });
+    for (const id of additionalAssetIds)
+      app.catalog.upsertAsset({
+        id,
+        uri: pathToFileURL(join(directory, `${id}.wav`)).href,
+        name: `${id}.wav`,
+        mediaType: "audio",
+        duration: 2,
+        contentHash: sourceHash,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
     if (transcribed)
       app.catalog.intelligence.replaceTranscript({
         id: "persisted-provider-result",
@@ -113,6 +129,35 @@ async function fixture(assetId: string, transcribed = true) {
 }
 
 describe("bundled CLI transcript read revisions", () => {
+  it("lists Catalog pages with cursors while retaining offset pagination", async () => {
+    const setup = await fixture("cursor-a", false, ["cursor-b", "cursor-c"]);
+    const first = await setup.cli<{
+      assets: { id: string }[];
+      total: number;
+      nextCursor: string | null;
+    }>(["list", "--cursor", "first", "--limit", "2"]);
+    expect(first.assets.map(({ id }) => id)).toEqual(["cursor-a", "cursor-b"]);
+    expect(first.total).toBe(3);
+    expect(first.nextCursor).toEqual(expect.any(String));
+
+    const second = await setup.cli<{
+      assets: { id: string }[];
+      total: number;
+      nextCursor: string | null;
+    }>(["list", "--cursor", first.nextCursor!, "--limit", "2"]);
+    expect(second.assets.map(({ id }) => id)).toEqual(["cursor-c"]);
+    expect(second.nextCursor).toBeNull();
+
+    const legacy = await setup.cli<{
+      assets: { id: string }[];
+      total: number;
+      nextCursor?: string;
+    }>(["list", "--offset", "2", "--limit", "2"]);
+    expect(legacy.assets.map(({ id }) => id)).toEqual(["cursor-c"]);
+    expect(legacy.total).toBe(3);
+    expect(legacy.nextCursor).toBeUndefined();
+  });
+
   it.each([
     { label: "canonical reserved asset", assetId: "edit", canonical: true },
     { label: "legacy shorthand", assetId: "訪問 # & media", canonical: false },

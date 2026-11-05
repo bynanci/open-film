@@ -1,7 +1,13 @@
 import { afterEach, expect, it, vi } from "vitest";
 import * as core from "@openfilm/core";
 import * as story from "@openfilm/story";
-import { flatten, hostNode, loadComponent, vue } from "./helpers/vue-sfc-host";
+import {
+  flatten,
+  hostNode,
+  loadComponent,
+  mountComponent,
+  vue,
+} from "./helpers/vue-sfc-host";
 
 function nodeText(node: ReturnType<typeof hostNode>): string {
   return (
@@ -25,6 +31,106 @@ class HostDocument {
   activeElement = null;
 }
 afterEach(() => vi.unstubAllGlobals());
+
+it("pages the photo catalog instead of materializing every Library image", async () => {
+  vi.stubGlobal("Document", HostDocument);
+  vi.stubGlobal("ShadowRoot", class {});
+  vi.stubGlobal("document", new HostDocument());
+  const library = Array.from({ length: 10_000 }, (_, index) => ({
+    id: `photo-${index}`,
+    name: `Photo ${index}`,
+    mediaType: "image",
+    uri: `file:///synthetic/${index}.jpg`,
+    contentHash: "a".repeat(64),
+    tags: [],
+    state: {},
+    metadata: {},
+  }));
+  let returnedAssets = 0;
+  const assets = vi.fn(async (params: URLSearchParams) => {
+    const offset = Number(params.get("cursor") ?? 0);
+    const limit = Number(params.get("limit"));
+    const page = library.slice(offset, offset + limit);
+    returnedAssets += page.length;
+    return {
+      assets: page,
+      total: library.length,
+      nextCursor:
+        offset + page.length < library.length ? String(offset + limit) : null,
+    };
+  });
+  const component = loadComponent(
+    "apps/desktop/src/components/GraphicSceneTemplateStudio.vue",
+    {
+      "@openfilm/core": core,
+      "@openfilm/story": story,
+      "@openfilm/solver": {},
+      "vue-i18n": { useI18n: () => ({ t: (key: string) => key }) },
+      "../api": { api: { assets } },
+    },
+  );
+  const props = vue.reactive({
+    scenes: [] as core.GraphicScene[],
+    records: [] as core.GraphicSceneTemplateRecord[],
+    duration: 8,
+    width: 320,
+    height: 180,
+    locale: "en-US" as const,
+    assets: [] as core.MediaAsset[],
+    disabled: false,
+  });
+  const mounted = mountComponent(component, props);
+  const nodes = () => flatten(mounted.root);
+  const button = (key: string) =>
+    nodes().find(
+      (item) => item.tag === "button" && nodeText(item).includes(key),
+    );
+  const settle = async () => {
+    for (let i = 0; i < 16; i++) {
+      await Promise.resolve();
+      await vue.nextTick();
+    }
+  };
+  try {
+    await settle();
+    (button("editor.templates.photos")!.props.onClick as () => void)();
+    await settle();
+    expect(assets).toHaveBeenCalledTimes(1);
+    expect(returnedAssets).toBe(200);
+    expect(assets.mock.calls[0]![0].get("limit")).toBe("200");
+    expect(assets.mock.calls[0]![0].get("cursorMode")).toBe("keyset");
+    expect(
+      nodes().some(
+        (item) => item.tag === "option" && item.props.value === "photo-9999",
+      ),
+    ).toBe(false);
+    expect(button("editor.templates.nextPhotos")).toBeDefined();
+
+    (button("editor.templates.nextPhotos")!.props.onClick as () => void)();
+    await settle();
+    expect(assets).toHaveBeenCalledTimes(2);
+    expect(assets.mock.calls[1]![0].get("cursor")).toBe("200");
+    expect(
+      nodes().some(
+        (item) => item.tag === "option" && item.props.value === "photo-200",
+      ),
+    ).toBe(true);
+    expect(
+      nodes().some(
+        (item) => item.tag === "option" && item.props.value === "photo-0",
+      ),
+    ).toBe(true);
+    expect(
+      nodes().filter(
+        (item) =>
+          item.tag === "option" &&
+          String(item.props.value).startsWith("photo-"),
+      ).length,
+    ).toBeLessThanOrEqual(201);
+  } finally {
+    mounted.unmount();
+  }
+});
 
 it("shows a command rejection instead of reporting a template as saved", async () => {
   vi.stubGlobal("Document", HostDocument);

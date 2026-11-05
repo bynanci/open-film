@@ -267,6 +267,11 @@ const total = ref(0);
 const librarySummary = ref({ total: 0, images: 0, videos: 0, audio: 0 });
 const offset = ref(0);
 const pageSize = 60;
+const assetPageCursors = new Map<number, string>();
+function resetAssetPagination() {
+  offset.value = 0;
+  assetPageCursors.clear();
+}
 const search = ref("");
 const stateFilter = ref("");
 const mediaFilter = ref("");
@@ -979,6 +984,7 @@ async function reloadAssets(): Promise<boolean> {
     offset: String(offset.value),
     limit: String(pageSize),
   });
+  let cursorMode = false;
   if (libraryFilter.value === "missing") {
     const ids = Object.values(sourceStatuses.value)
       .filter((status) => status.status !== "available")
@@ -986,7 +992,7 @@ async function reloadAssets(): Promise<boolean> {
     if (!ids.length) {
       assets.value = [];
       total.value = 0;
-      offset.value = 0;
+      resetAssetPagination();
       return true;
     }
     offset.value = Math.min(
@@ -1007,6 +1013,17 @@ async function reloadAssets(): Promise<boolean> {
     );
     params.set("offset", "0");
   } else {
+    cursorMode = true;
+    params.set("cursorMode", "keyset");
+    params.delete("offset");
+    if (offset.value > 0) {
+      const cursor = assetPageCursors.get(offset.value);
+      if (cursor) params.set("cursor", cursor);
+      else {
+        resetAssetPagination();
+        params.set("offset", "0");
+      }
+    }
     if (search.value) params.set("search", search.value);
     if (stateFilter.value) params.set("state", stateFilter.value);
     if (mediaFilter.value) params.set("mediaType", mediaFilter.value);
@@ -1015,6 +1032,11 @@ async function reloadAssets(): Promise<boolean> {
   if (project.value?.id !== projectId || generation !== assetsGeneration)
     return false;
   assets.value = cacheFetchedAssets(result.assets, cachedBefore);
+  if (cursorMode) {
+    const nextOffset = offset.value + pageSize;
+    if (result.nextCursor) assetPageCursors.set(nextOffset, result.nextCursor);
+    else assetPageCursors.delete(nextOffset);
+  }
   if (result.summary) librarySummary.value = result.summary;
   total.value =
     libraryFilter.value === "missing"
@@ -1041,6 +1063,7 @@ async function run(label: string, action: () => Promise<void>) {
 }
 async function boot() {
   resetJobView();
+  resetAssetPagination();
   assets.value = [];
   total.value = 0;
   librarySummary.value = { total: 0, images: 0, videos: 0, audio: 0 };
@@ -1192,7 +1215,7 @@ async function resetProjectView() {
   assets.value = [];
   total.value = 0;
   librarySummary.value = { total: 0, images: 0, videos: 0, audio: 0 };
-  offset.value = 0;
+  resetAssetPagination();
   assetCache.value = {};
   mediaStatus.value = null;
   relinkOpen.value = false;
@@ -1476,7 +1499,7 @@ async function selectLibraryFilter(value: typeof libraryFilter.value) {
   libraryView.value =
     value === "events" || value === "duplicates" ? value : "all";
   groupSelection.value = null;
-  offset.value = 0;
+  resetAssetPagination();
   stateFilter.value = value === "favorite" || value === "rejected" ? value : "";
   if (value === "events" || value === "duplicates") {
     if (!analyzed.value) await analyze();
@@ -1773,7 +1796,7 @@ async function rateAsset(asset: MediaAsset, rating: number) {
   });
 }
 async function applyFilters() {
-  offset.value = 0;
+  resetAssetPagination();
   groupSelection.value = null;
   await run("findingMedia", async () => {
     await reloadAssets();
@@ -1809,7 +1832,7 @@ async function openGroup(group: {
   index?: number;
 }) {
   groupSelection.value = group;
-  offset.value = 0;
+  resetAssetPagination();
   await run("openingMoment", async () => {
     await reloadAssets();
   });

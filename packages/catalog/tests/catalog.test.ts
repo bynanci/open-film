@@ -16,13 +16,13 @@ afterEach(async () => {
   );
 });
 
-function asset(id: string, time: string): MediaAsset {
+function asset(id: string, time?: string): MediaAsset {
   return {
     id,
     uri: pathToFileURL(`/tmp/${id}.png`).href,
     name: `${id}.png`,
     mediaType: "image",
-    capturedAt: time,
+    ...(time ? { capturedAt: time } : {}),
     tags: [],
     state: {},
     metadata: { "example.data": { nested: true } },
@@ -81,6 +81,47 @@ describe("real SQLite catalog", () => {
     expect(catalog.getAsset("b")?.tags).toEqual(["holiday"]);
     expect(catalog.listJobs()[0]?.status).toBe("cancelled");
     expect([...catalog.iterateAssetSummaries()][0]?.metadata).toEqual({});
+    catalog.close();
+  });
+
+  it("pages chronological assets with stable cursors across equal and missing dates", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-catalog-cursor-"));
+    directories.push(directory);
+    const catalog = new ProjectCatalog(directory);
+    for (const item of [
+      asset("asset-a", "2024-01-01T00:00:00.000Z"),
+      asset("asset-b", "2024-02-01T00:00:00.000Z"),
+      asset("asset-c", "2024-02-01T00:00:00.000Z"),
+      asset("asset-d"),
+    ])
+      catalog.upsertAsset(item);
+
+    const first = catalog.listAssetPage({ limit: 2 });
+    expect(first.assets.map(({ id }) => id)).toEqual(["asset-a", "asset-b"]);
+    expect(first.nextCursor).toBeTruthy();
+    const second = catalog.listAssetPage({
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    expect(second.assets.map(({ id }) => id)).toEqual(["asset-c", "asset-d"]);
+    expect(second.nextCursor).toBeNull();
+    expect(
+      catalog.listAssetPage({ limit: 2, cursor: first.nextCursor! }).assets,
+    ).toEqual(second.assets);
+
+    catalog.close();
+  });
+
+  it("rejects malformed asset page cursors and validates cursor page limits", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-catalog-cursor-invalid-"),
+    );
+    directories.push(directory);
+    const catalog = new ProjectCatalog(directory);
+    expect(() => catalog.listAssetPage({ cursor: "not-a-cursor" })).toThrow(
+      /cursor/i,
+    );
+    expect(() => catalog.listAssetPage({ limit: 0 })).toThrow(/limit/i);
     catalog.close();
   });
 

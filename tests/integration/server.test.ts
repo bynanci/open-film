@@ -415,6 +415,27 @@ describe("loopback application boundary", () => {
       total: 0,
       summary: { total: 0, images: 0, videos: 0, audio: 0 },
     });
+    expect(
+      await (
+        await fetch(`${base}/api/assets?cursorMode=keyset&limit=60`)
+      ).json(),
+    ).toEqual({
+      assets: [],
+      total: 0,
+      nextCursor: null,
+      summary: { total: 0, images: 0, videos: 0, audio: 0 },
+    });
+    expect(
+      (
+        await fetch(
+          `${base}/api/assets?cursorMode=keyset&cursor=invalid&limit=60`,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await fetch(`${base}/api/assets?cursorMode=keyset&offset=60&limit=60`))
+        .status,
+    ).toBe(400);
     const opened = await fetch(`${base}/api/project/open`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
