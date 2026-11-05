@@ -19,23 +19,27 @@ and the [contributing guide](CONTRIBUTING.md).
 | v1.0                                                               | Release goal                    | Published when the documented readiness criteria are met; the package version alone does not establish a release.     |
 
 The status below was reconciled against `main` at
-[`a88470f`](https://github.com/bynanci/open-film/commit/a88470f65ac26ac59b962227440dc57d2a5b5169)
-on 2026-10-31. A merged implementation, an automated check and a physical
-workstation test describe different evidence. Feature guides and validation
-records identify their individual limits.
+[`e3f94f9`](https://github.com/bynanci/open-film/commit/e3f94f9cda161a3f955275a1a77f5f13d2bf7834)
+on 2026-11-05. This branch candidate adds durable silence Jobs and HTTP routes;
+that work remains a PR candidate until reviewed and integrated. A merged
+implementation, an automated check and a physical workstation test describe
+different evidence. Feature guides and validation records identify their limits.
 
 ## Current focus
 
 ### Add reviewed local media-intelligence workflows
 
-The 2026-11-04 branch candidate adds a first slice of low-energy/silence evidence
-and explicit review/apply through the CLI and application service. It reuses
-FFmpeg, preserves source identity and editor transactions, and does not install
-Auto-Editor or bundle eleven media tools/models. This is a branch candidate,
-not a published-release or completed workstation-verification claim.
+The 2026-11-04 CLI/application slice and the 2026-11-05 durable Job/API candidate
+add source-bound low-energy analysis, restart-safe review and explicit Apply.
+They reuse FFmpeg, existing SQLite reservation and owner recovery, the
+`SilenceService` and one TimelineEditor. Analysis never automatically edits the
+Composition. Affected clips with local audio automation fail closed before a
+Review is published until ripple remapping is proven. The candidate remains a
+PR until reviewed; the desktop Review UI and full media/workstation gates remain
+open. No Auto-Editor runtime or eleven upstream tools/models are installed.
 
-Next slices are desktop review and a durable job lifecycle, followed by optional
-providers whose quality, clocks, runtime costs and artifact rights are verified.
+Next slices are desktop review and optional providers whose quality, clocks,
+runtime costs and artifact rights are verified.
 Existing scene/rhythm analysis, primary-color adjustment, role-based stems and
 GraphicScenes remain the foundation. See the
 [eleven-project integration reference](docs/en/media-intelligence-integrations.md),

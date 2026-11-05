@@ -1,7 +1,7 @@
 # ADR 012: Source-bound media intelligence with explicit reviewed edits
 
-Status: Accepted for the local silence CLI/application slice; external adapters remain future work.
-Date: 2026-11-04.
+Status: Accepted for the local silence CLI/application/HTTP Job slice; the desktop review UI and external adapters remain future work.
+Date: 2026-11-05.
 
 ## Context
 
@@ -25,10 +25,10 @@ Energy thresholds do not establish whether speech or meaningful content is absen
    Analysis binds to the actual original bytes and records parameters and
    algorithm identity. Processing produces a separate derived asset. An
    analysis result never edits a Composition merely by completing.
-2. Implement the first silence slice as foreground, cancellable CLI commands
-   and `app.silence` operations: analyze, create a review proposal, and apply
-   the reviewed proposal with explicit confirmation. HTTP, desktop UI,
-   background scheduling, and restart/resume are separate slices.
+2. Implement silence analysis through foreground CLI commands, `app.silence`
+   operations and a durable HTTP Job API. Every completed analysis remains a
+   review proposal until the user explicitly accepts it. The desktop review UI
+   remains a separate slice.
 3. Analyze the first audio stream at 48 kHz with 20 ms windows and the maximum
    per-channel peak. Accept zero-based container starts and preserve audio-stream
    delays and packet gaps. Reject nonzero container start time with 422 rather
@@ -60,6 +60,22 @@ Energy thresholds do not establish whether speech or meaningful content is absen
    checks. Use source PTS/time bases and explicit sample clocks when adapting
    output. Pin model artifacts and their terms separately from repository code.
    No new external model is downloaded or bundled by this decision.
+8. Store silence lifecycle state in the existing SQLite `Job` table and reserve
+   analysis through the existing `BEGIN IMMEDIATE` slot and owner-token CAS.
+   Capture project, asset, Composition revision and actual source hash before
+   work starts; keep freshness separate from `queued`, `running`,
+   `waiting-review`, `failed` and `cancelled`. Same `requestId` plus the same
+   normalized request returns the existing Job; changed content is a conflict.
+   Recover only through the existing owner liveness/checkpoint proof. Retry is
+   explicit and preserves the original revision/hash/options.
+9. The HTTP layer delegates analysis, persisted Review reads and edits to the
+   existing `SilenceService` and `TimelineEditor`. Apply receipts are bounded
+   project data written in the same manifest save as the ripple edit. A matching
+   replay acknowledges the saved edit after restart; a different payload is
+   rejected. No Job state automatically invokes an edit.
+10. Until the shared ripple primitive can remap clip-local gain curves exactly,
+    do not create a silence Review when a proposed cut trims or splits a clip
+    with audio automation. Whole-clip timeline shifts keep their local curves.
 
 ## Alternatives considered
 
@@ -88,10 +104,17 @@ and resource boundary requiring its own decision.
 
 ## Consequences
 
-The first workflow stays local and uses the existing media runtime and one
+The workflow stays local and uses the existing media runtime and one
 authoritative Composition. Users inspect the exact plan before changing their
 project, and the existing editor history can undo or redo the accepted change
-within the same application session.
+within the same application session. The HTTP editor endpoints and Silence Job
+Apply share the application's TimelineEditor instance so Apply enters that
+session's existing history. Jobs and Review proposals survive restart;
+an interrupted owner is recovered to a failed Job and must be retried explicitly.
+The Apply receipt survives application restart even though session Undo/Redo
+history does not. Reviews that would split or trim automated clips are rejected
+with a typed error until automation remapping is supported; automation on intact
+shifted clips is preserved.
 Original media remains unchanged. Silence results are limited to one audio
 stream and 20 ms analysis resolution; they are not semantic speech boundaries.
 Some edits with independent audio timing are deliberately unsupported.
@@ -111,6 +134,12 @@ failure cleanup. Verify trim/speed projection, padding, rejection of stale or
 altered review records, generic/batch acceptance enforcement, lock/pin conflicts,
 unsupported audio timing, and complete Composition Undo/Redo. Keep focused
 test evidence distinct from cross-platform CI and real-workstation validation.
+For the durable Job/API slice, verify real HTTP create/read/review/cancel/retry/
+recover/apply routes, same-request replay, exact stale fences, SQLite slot
+reservation, late callback fencing, separate-process recovery, and an edit whose
+project receipt survives restart and repairs a failed Job acknowledgement.
+Also verify that Apply through HTTP participates in the same live TimelineEditor
+Undo/Redo history exposed by the desktop composition endpoints.
 
 This ADR extends [ADR 005](005-local-first.md) and retains the single-composition
 and hard-constraint principles in [ADR 003](003-project-format.md) and

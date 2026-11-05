@@ -96,6 +96,8 @@ export default {
         "ストーリーを保存できませんでした。選択した思い出と長さの制限を確認してください。",
     },
     timeline: {
+      audioAutomationConflict:
+        "無音リップル編集でクリップが短縮または分割され、クリップ内の音量オートメーションに影響します。先にオートメーションを調整してください。",
       audioTimingConflict:
         "この編集は独立音声の範囲と競合します。先に音声タイミングを調整または明示的にリセットしてください。",
       audioCaptionConflict:

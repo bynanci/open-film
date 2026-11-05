@@ -1403,7 +1403,9 @@ export class ProxyCacheService {
         limit: 1,
       });
       let status: ProxyCacheHealth["entries"][number]["status"] =
-        job?.status === "completed" ? "missing" : (job?.status ?? "missing");
+        job && ["queued", "running", "failed", "cancelled"].includes(job.status)
+          ? (job.status as ProxyCacheHealth["entries"][number]["status"])
+          : "missing";
       if (job?.status === "running" && job.proxyCache?.cancelRequestedAt)
         status = "cancelling";
       let bytes: number | undefined;

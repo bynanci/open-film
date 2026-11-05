@@ -61,7 +61,9 @@ export * from "./micro-preview.js";
 import { RhythmService } from "./rhythm.js";
 export * from "./rhythm.js";
 import { SilenceService } from "./silence.js";
+import { SilenceJobService } from "./silence-jobs.js";
 export * from "./silence.js";
+export * from "./silence-jobs.js";
 import { PipelineService } from "./pipeline-orchestrator.js";
 export * from "./pipeline-orchestrator.js";
 import { CreativeVariantService } from "./creative-variants.js";
@@ -403,6 +405,7 @@ export class OpenFilmApplication {
   readonly textOverlays: NativeTextOverlayService;
   readonly photoPresentation: PhotoPresentationService;
   readonly catalog: ProjectCatalog;
+  readonly timelineEditor: TimelineEditor;
   readonly intelligence: MediaIntelligence;
   readonly transcriptEditor: TranscriptEditor;
   readonly captions: CaptionService;
@@ -423,6 +426,7 @@ export class OpenFilmApplication {
   readonly microPreview: MicroPreviewService;
   readonly rhythm: RhythmService;
   readonly silence: SilenceService;
+  readonly silenceJobs: SilenceJobService;
   readonly pipeline: PipelineService;
   readonly creativeVariants: CreativeVariantService;
   readonly sourceDraft: SourceDraftService;
@@ -453,6 +457,7 @@ export class OpenFilmApplication {
     // could have advanced while open() was awaiting filesystem work.
     this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
+    this.timelineEditor = new TimelineEditor(this);
     try {
       const proxyProject = () => this.project;
       this.proxyCache = new ProxyCacheService(
@@ -562,6 +567,17 @@ export class OpenFilmApplication {
       this.microPreview = new MicroPreviewService(this);
       this.rhythm = new RhythmService(this);
       this.silence = new SilenceService(this);
+      this.silenceJobs = new SilenceJobService(
+        this,
+        this.silence,
+        () => {
+          this.activeJobs++;
+        },
+        () => {
+          this.activeJobs--;
+        },
+        this.timelineEditor,
+      );
       this.pipeline = new PipelineService(this);
       this.creativeVariants = new CreativeVariantService(this, (next) =>
         this.publishProject(next),
@@ -761,6 +777,7 @@ export class OpenFilmApplication {
             "transcribe",
             "waveform",
             "scenes",
+            "silence-analysis",
             "analysis-run",
             "proxy",
           ].includes(job.type)

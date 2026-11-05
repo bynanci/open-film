@@ -39,6 +39,37 @@ function job(
     updatedAt: "2026-10-07T00:00:01Z",
   };
 }
+function silenceJob(
+  id = "silence-1",
+  requestId = "create-1",
+  token = "silence-owner",
+): Job {
+  return {
+    id,
+    type: "silence-analysis",
+    assetId: "source",
+    status: "queued",
+    progress: 0,
+    analysisOwner: { host: "not-liveness-evidence", pid: 1, token },
+    createdAt: "2026-10-07T00:00:00Z",
+    updatedAt: "2026-10-07T00:00:01Z",
+    silenceAnalysis: {
+      version: 1,
+      projectId: "project-1",
+      compositionId: "timeline-1",
+      baseRevision: "a".repeat(64),
+      requestId,
+      requestFingerprint: "b".repeat(64),
+      options: {
+        thresholdDb: -40,
+        minimumSilenceSeconds: 0.5,
+        paddingSeconds: 0.12,
+      },
+      sourceHash: hash,
+      attempt: 1,
+    },
+  };
+}
 function transcript(id: string): TranscriptDocument {
   return {
     id,
@@ -497,4 +528,138 @@ it("does not change reservations when a claim changes its operation, asset or ow
       } as Job),
     ).toThrowError(expect.objectContaining({ status: 400 }));
   expect(f.storedJob()).toEqual(queued);
+});
+
+it("reserves silence idempotently and conflicts on a changed request fingerprint", async () => {
+  const f = await fixture();
+  const queued = silenceJob();
+  expect(f.first.intelligence.reserveSilenceAnalysisJob(queued)).toEqual({
+    job: queued,
+    created: true,
+  });
+  expect(
+    f.second.intelligence.reserveSilenceAnalysisJob({
+      ...silenceJob("a-new-random-job-id", "create-1", "another-owner"),
+    }),
+  ).toEqual({ job: queued, created: false });
+  expect(
+    f.second.intelligence.reserveSilenceAnalysisJob({
+      ...silenceJob("changed-snapshot", "create-1", "another-owner"),
+      silenceAnalysis: {
+        ...queued.silenceAnalysis!,
+        baseRevision: "f".repeat(64),
+        sourceHash: "e".repeat(64),
+      },
+    }),
+  ).toEqual({ job: queued, created: false });
+  expect(() =>
+    f.second.intelligence.reserveSilenceAnalysisJob({
+      ...silenceJob("different-input", "create-1"),
+      silenceAnalysis: {
+        ...queued.silenceAnalysis!,
+        requestFingerprint: "c".repeat(64),
+      },
+    }),
+  ).toThrowError(
+    expect.objectContaining({ code: "request.invalid", status: 409 }),
+  );
+  expect(f.second.listJobs()).toEqual([queued]);
+});
+
+it("shares the project analysis reservation and releases it only after waiting-review", async () => {
+  const f = await fixture();
+  const queued = silenceJob();
+  f.first.intelligence.reserveSilenceAnalysisJob(queued);
+  expect(() =>
+    f.second.intelligence.reserveAnalysisJob(job("waveform")),
+  ).toThrowError(expect.objectContaining({ code: "jobs.busy", status: 409 }));
+  const running = { ...queued, status: "running" as const, stage: "analyzing" };
+  expect(f.first.intelligence.claimAnalysisReservation(queued, running)).toBe(
+    true,
+  );
+  const waiting = {
+    ...running,
+    status: "waiting-review" as const,
+    progress: 1,
+    silenceAnalysis: {
+      ...queued.silenceAnalysis!,
+      reviewId: "d".repeat(64),
+    },
+  };
+  expect(f.first.intelligence.transitionOwnedSilenceJob(running, waiting)).toBe(
+    true,
+  );
+  expect(f.first.intelligence.transitionOwnedSilenceJob(running, waiting)).toBe(
+    false,
+  );
+  expect(
+    f.second.intelligence.reserveAnalysisJob(job("waveform")),
+  ).toBeUndefined();
+  expect(f.second.listJobs().map(({ type, status }) => [type, status])).toEqual(
+    [
+      ["silence-analysis", "waiting-review"],
+      ["waveform", "queued"],
+    ],
+  );
+});
+
+it("retries only an exact failed silence job with a new owner and idempotent retry request", async () => {
+  const f = await fixture();
+  const queued = silenceJob();
+  f.first.intelligence.reserveSilenceAnalysisJob(queued);
+  const running = { ...queued, status: "running" as const };
+  expect(f.first.intelligence.claimAnalysisReservation(queued, running)).toBe(
+    true,
+  );
+  const failed = { ...running, status: "failed" as const };
+  expect(f.first.intelligence.transitionOwnedSilenceJob(running, failed)).toBe(
+    true,
+  );
+  const otherQueued = job("waveform");
+  f.first.intelligence.reserveAnalysisJob(otherQueued);
+  const otherRunning = { ...otherQueued, status: "running" as const };
+  expect(
+    f.first.intelligence.claimAnalysisReservation(otherQueued, otherRunning),
+  ).toBe(true);
+  expect(
+    f.first.intelligence.saveOwnedAnalysisJob({
+      ...otherRunning,
+      status: "completed",
+    }),
+  ).toBe(true);
+  const retry = {
+    ...failed,
+    status: "queued" as const,
+    progress: 0,
+    stage: "queued",
+    analysisOwner: { ...failed.analysisOwner!, token: "retry-owner" },
+    silenceAnalysis: {
+      ...failed.silenceAnalysis!,
+      attempt: 2,
+      retryRequests: [
+        { requestId: "retry-1", fingerprint: "e".repeat(64), attempt: 2 },
+      ],
+    },
+  };
+  expect(
+    f.second.intelligence.retrySilenceAnalysisJob(failed, retry, "retry-1"),
+  ).toEqual({ job: retry, created: true });
+  expect(
+    f.first.intelligence.retrySilenceAnalysisJob(failed, retry, "retry-1"),
+  ).toEqual({ job: retry, created: false });
+  expect(
+    f.second.intelligence.saveOwnedAnalysisJob({
+      ...running,
+      progress: 0.8,
+    }),
+  ).toBe(false);
+  expect(f.second.listJobs().find((saved) => saved.id === retry.id)).toEqual(
+    retry,
+  );
+  expect(
+    f.second.listJobs().find((saved) => saved.id === otherQueued.id),
+  ).toMatchObject({
+    type: "waveform",
+    status: "completed",
+  });
 });

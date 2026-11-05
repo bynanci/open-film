@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   ApplicationError,
+  validateJob,
   validateMediaAsset,
   validateProxyCacheTask,
   type Job,
@@ -1462,10 +1463,18 @@ export class ProjectCatalog {
 
   saveJob(job: Job): void {
     id(job.id);
+    if (job.status === "waiting-review" && job.type !== "silence-analysis")
+      throw new Error("Only silence analysis jobs can wait for review");
+    if (job.type === "silence-analysis") validateJob(job);
     if (
-      !["queued", "running", "completed", "failed", "cancelled"].includes(
-        job.status,
-      )
+      ![
+        "queued",
+        "running",
+        "waiting-review",
+        "completed",
+        "failed",
+        "cancelled",
+      ].includes(job.status)
     )
       throw new Error("Invalid job status");
     if (job.proxyCache !== undefined) {
@@ -1514,12 +1523,17 @@ export class ProjectCatalog {
       if (
         !Array.isArray(options.statuses) ||
         !options.statuses.length ||
-        options.statuses.length > 5 ||
+        options.statuses.length > 6 ||
         options.statuses.some(
           (status) =>
-            !["queued", "running", "completed", "failed", "cancelled"].includes(
-              status,
-            ),
+            ![
+              "queued",
+              "running",
+              "waiting-review",
+              "completed",
+              "failed",
+              "cancelled",
+            ].includes(status),
         )
       )
         throw new Error("Invalid job status filter.");

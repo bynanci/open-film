@@ -1,7 +1,8 @@
 # Media-analysis ownership and recovery
 
-Opening a film must not stop transcription, waveform generation or scene analysis
-that another OpenFilm process is still running. These three operations now use
+Opening a film must not stop transcription, waveform generation, scene analysis
+or reviewed silence analysis that another OpenFilm process is still running.
+These operations use
 the existing Job model with an optional `analysisOwner` execution identity. No
 new worker runtime or catalog migration is needed; legacy ownerless jobs remain
 readable and require explicit recovery when unfinished.
@@ -52,15 +53,19 @@ ownership. macOS still has no verified automatic dead-owner detection and retain
 the explicit workstation confirmation gate.
 
 Opening or starting analysis recovers only proven-dead work. Alive or unknown
-unfinished work keeps the analysis slot occupied. This is scoped to the three
-media-analysis operations, not a general multi-writer contract for project files,
-import, rendering or every plugin.
+unfinished work keeps the analysis slot occupied. `silence-analysis` uses the
+same project reservation and owner proof. Its `waiting-review` state releases
+the shared analysis slot while preserving the exact Review for inspection.
+Analysis completion never applies an edit.
+
+This is scoped to media-analysis operations, not a general multi-writer contract
+for project files, import, rendering or every plugin.
 
 ## Durable boundaries
 
 - Reservation checks and INSERT run in one SQLite `BEGIN IMMEDIATE` transaction.
-  All three analysis operations share one project slot. Another process cannot
-  start duplicate work or reuse an existing Job ID.
+  Transcription, waveform, scene and silence analysis share one project slot.
+  Another process cannot start duplicate work or reuse an existing Job ID.
 - Execution consumes the exact queued reservation once, with a locally owned
   token. Progress and terminal failure/cancellation are UPDATE-only and require
   matching owner, asset, operation and durable active status.
@@ -70,6 +75,25 @@ import, rendering or every plugin.
 - Explicit recovery rotates the owner and compare-and-sets the exact stored Job.
   Retained callbacks, obsolete results and HTTP preparation failures cannot
   revive that execution or overwrite the successor's saved result.
+- Silence Jobs capture project, asset, Composition, revision, actual SHA-256,
+  normalized detector options, owner token and attempt in SQLite. Create request
+  IDs are idempotent: identical normalized input returns the original Job, while
+  changed input returns 409. Freshness (`current`, `stale`, `unverified`) is
+  independent of the Job state.
+- Silence retry preserves the captured revision, source hash and options, and
+  rotates the owner. Stale retries are rejected. Up to 100 retry receipts remain
+  durable so an old retry ID cannot start a new attempt after a later failure.
+- Silence Apply accepts only the privately persisted Review through the existing
+  `SilenceService` and `TimelineEditor` `silence.ripple` command. A bounded
+  project manifest receipt is saved with the edit; replay after restart repairs
+  a failed Job acknowledgement without applying twice. New Apply operations
+  fail closed when the project reaches 200 receipts.
+- Review creation fails with `timeline.audioAutomationConflict` when a silence
+  cut would trim or split a clip carrying local gain points, fades or ducking.
+  The current ripple contract does not remap those clip-local curves, so it does
+  not publish a Review that could move the curve, restart a fade, or exceed the
+  shortened clip. Automation on a clip shifted intact by a ripple remains valid.
+  Adjust the affected clip and create a new Review before applying the edit.
 
 Application callers, HTTP and CLI share these boundaries. Logical cancellation
 from [PR #8](https://github.com/bynanci/open-film/pull/8) still releases a provider
@@ -93,6 +117,46 @@ state, confirmation capability, checkpoint and token. POST
 local or proven-live foreign owner rejects takeover. A changed checkpoint rejects
 the request without changing saved evidence.
 
+### Silence Job HTTP contract
+
+All paths below are local-server endpoints. Request bodies reject unknown
+fields. Identity, reservation, ownership, stale revision/hash and idempotency
+conflicts return 409. A Review is returned only when the Job durably owns its
+`reviewId`.
+
+| Request                                 | Body                                                         | Response                            |
+| --------------------------------------- | ------------------------------------------------------------ | ----------------------------------- |
+| `POST /api/silence/jobs`                | `{ projectId, requestId, assetId, compositionId, options? }` | `202 { job, created, freshness }`   |
+| `GET /api/silence/jobs/:jobId`          | —                                                            | `200 { job, freshness, recovery? }` |
+| `GET /api/silence/jobs/:jobId/review`   | —                                                            | `200 { job, freshness, review }`    |
+| `POST /api/silence/jobs/:jobId/cancel`  | `{}`                                                         | `200 { job }`                       |
+| `POST /api/silence/jobs/:jobId/retry`   | `{ requestId }`                                              | `202 { job, created }`              |
+| `POST /api/silence/jobs/:jobId/recover` | `{ confirmStopped, checkpoint, ownerToken? }`                | `200 { job }`                       |
+| `POST /api/silence/jobs/:jobId/apply`   | `{ reviewId, proposal, requestId }`                          | `200 { job, edit }`                 |
+
+`options` is bounded to `thresholdDb` [-80, -10],
+`minimumSilenceSeconds` [0.1, 30] and `paddingSeconds` [0, 2]. Defaults are
+-40 dBFS, 0.5 seconds and 0.12 seconds. Repeating a create request with the same
+`requestId` and normalized payload returns the original Job and never starts
+another runner; changed input with that key returns 409.
+
+Cancel is available only to this process's active owner or its locally owned
+queued reservation. Recover requires stopped-process confirmation and the exact
+observed checkpoint and owner token; it never signals another process. Recovery
+moves interrupted work to `failed`; retry remains explicit. `waiting-review` and
+`completed` reviews remain fetchable, but Apply requires the exact persisted
+proposal. Reusing an Apply request ID with a different proposal or review ID is
+rejected.
+
+SQLite owns Job state. Review JSON stays in the project-private
+`analysis/silence-reviews/` directory. Review publication precedes the
+`waiting-review` Job compare-and-set, so a failed Job write can leave an
+inaccessible orphan Review but cannot make it listable or applicable. Apply
+receipts store identifiers and hashes only; they do not contain proposal text or
+media bytes.
+
 See [validation](validation-media-analysis-recovery.md) for exact executed gates.
+The Silence Job/API slice has a separate dated
+[validation record](validation-silence-durable-jobs-2026-11-05.md).
 Real ASR quality, GPU, cameras, large 4K sources, native installers and Resolve
 remain separate [workstation gates](workstation-qa.md).

@@ -226,6 +226,41 @@ export type PhotoEasing = PhotoMotion["easing"];
 
 /** Accepted direction evidence is retained in a bounded project history. */
 export const MAX_SCENE_DIRECTION_RECEIPTS = 100;
+/** Durable Apply acknowledgements are bounded inside the project manifest. */
+export const MAX_SILENCE_APPLY_RECEIPTS = 200;
+
+export interface SilenceAnalysisJobDataV1 {
+  version: 1;
+  projectId: string;
+  compositionId: string;
+  baseRevision: string;
+  requestId: string;
+  requestFingerprint: string;
+  options: {
+    thresholdDb: number;
+    minimumSilenceSeconds: number;
+    paddingSeconds: number;
+  };
+  sourceHash: string;
+  reviewId?: string;
+  retryRequests?: { requestId: string; fingerprint: string; attempt: number }[];
+  attempt: number;
+  applyRequestId?: string;
+  applyFingerprint?: string;
+  appliedRevision?: string;
+}
+
+export interface SilenceApplyReceiptV1 {
+  version: 1;
+  jobId: string;
+  requestId: string;
+  fingerprint: string;
+  compositionId: string;
+  reviewId: string;
+  baseRevision: string;
+  appliedRevision: string;
+  appliedAt: string;
+}
 
 interface SceneDirectionReceiptActionBase {
   id: string;
@@ -477,6 +512,8 @@ export interface OpenFilmProject {
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
   sceneDirectionReceipts?: SceneDirectionReceipt[];
+  /** Idempotency receipts for explicitly accepted silence edits. */
+  silenceApplyReceipts?: SilenceApplyReceiptV1[];
   continuityReceipts?: import("./continuity.js").ContinuityReceipt[];
   presetApplicationReceipts?: import("./presets.js").PresetApplicationReceipt[];
 }
@@ -499,7 +536,12 @@ export interface SimilarityGroup {
 }
 
 export type JobStatus =
-  "queued" | "running" | "completed" | "failed" | "cancelled";
+  | "queued"
+  | "running"
+  | "waiting-review"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
 /** Local review execution identity; unknown or foreign owners are never assumed dead. */
 export interface ReviewExecutionOwner {
@@ -526,6 +568,8 @@ export interface Job {
   reviewOwner?: ReviewExecutionOwner;
   /** Local execution identity for transcription, waveform and scene analysis. */
   analysisOwner?: ReviewExecutionOwner;
+  /** Durable lifecycle and identities for review-first silence analysis. */
+  silenceAnalysis?: SilenceAnalysisJobDataV1;
   /** Durable, project-local attempt state; removed from portable project packages. */
   attempt?: import("./multi-source.js").JobAttempt;
   /** Project-private preview preparation; excluded from portable catalogs. */

@@ -97,6 +97,8 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      audioAutomationConflict:
+        "Silence trimming would shorten or split a clip with local audio automation. Adjust the clip automation first.",
       audioTimingConflict:
         "The independent sound range conflicts with this edit. Adjust or explicitly reset sound timing first.",
       audioCaptionConflict:

@@ -55,7 +55,12 @@ export interface AnalysisRecoveryInput {
   ownerToken?: string;
 }
 
-const ANALYSIS_OPERATIONS = ["transcribe", "waveform", "scenes"] as const;
+const ANALYSIS_OPERATIONS = [
+  "transcribe",
+  "waveform",
+  "scenes",
+  "silence-analysis",
+] as const;
 function activeAnalysis(job: Job): boolean {
   return (
     ANALYSIS_OPERATIONS.some((operation) => operation === job.type) &&
@@ -224,8 +229,15 @@ export class MediaIntelligence {
     return hash;
   }
 
-  sourceIdentity(assetId: string): Promise<string> {
-    return this.identity(this.asset(assetId));
+  sourceIdentity(
+    assetId: string,
+    options: { signal?: AbortSignal; fresh?: boolean } = {},
+  ): Promise<string> {
+    return this.identity(
+      this.asset(assetId),
+      options.signal,
+      options.fresh ?? false,
+    );
   }
 
   async readWaveforms(
@@ -511,7 +523,7 @@ export class MediaIntelligence {
       errors: [
         ...(job.errors ?? []),
         {
-          uri: "",
+          uri: job.type === "silence-analysis" ? "local-media" : "",
           stage: "interrupted",
           message: manual
             ? "The user confirmed the previous analysis process stopped. Retry this task; previously saved analysis remains available."

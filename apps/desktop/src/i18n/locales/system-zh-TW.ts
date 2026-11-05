@@ -79,6 +79,8 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      audioAutomationConflict:
+        "靜音漣波剪輯會縮短或分割含有片段本地音量自動化的素材。請先調整該片段的音量自動化。",
       audioTimingConflict:
         "此編輯與獨立聲音範圍衝突。請先調整或明確重設聲音時序。",
       audioCaptionConflict:
