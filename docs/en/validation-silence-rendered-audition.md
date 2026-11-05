@@ -203,3 +203,19 @@ Silence Jobs HTTP, Record PCM HTTP, actual audition media and source-verificatio
 cancellation. This is the related local selection; it is not a claim that the
 entire local media suite or native workstation QA was run. CI runs the full
 existing lanes on the submitted candidate. No assertions were skipped or relaxed.
+
+## 已提交的量測證據 / Committed measurement evidence
+
+The clean implementation commit
+`11b3171af41bc466ed52c7bdb45548c59de7cbd6` was rerun with the candidate SHA
+in `OPENFILM_QA_CANDIDATE_SHA`: the actual FFmpeg audition suite passed 14/14.
+The following JSON records contain that SHA, original source hashes, output
+filenames/hashes, before/after loudness and detailed meter/seam observations:
+
+- [44.1 kHz reuse evidence](https://github.com/bynanci/open-film/blob/feat/silence-rendered-audition/docs/evidence/silence-audition/silence-audition-44100-reuse.json)
+- [48 kHz trim/speed evidence](https://github.com/bynanci/open-film/blob/feat/silence-rendered-audition/docs/evidence/silence-audition/silence-audition-48000-trim-speed.json)
+
+本機實際媒體證據合計約 7.2 MB，全部為合成 WAV／MP4；media binary 不提交到
+repository，由 CI artifact 提供。上述 JSON 的輸出 hash 來自本機指定 FFmpeg 版本，
+不代表不同 FFmpeg／編碼器版本的 MP4 必須逐位元相同；跨環境沿用既有 PCM 精度契約。
+最終 PR head 的 CI 結果另於 PR 回報，不能將此本機 commit 的結果冒充新 head 的 CI。
