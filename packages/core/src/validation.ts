@@ -15,6 +15,7 @@ import {
 import {
   PROJECT_SCHEMA_VERSION,
   PROJECT_CONTENT_LOCALES,
+  MAX_SILENCE_APPLY_RECEIPTS,
   MAX_SCENE_DIRECTION_RECEIPTS,
   FILM_LOOK_PRESET_IDS,
   type Composition,
@@ -863,6 +864,149 @@ function sceneDirectionReceipts(value: unknown, path: string): void {
   });
 }
 
+function silenceApplyReceipts(value: unknown, path: string): void {
+  const receipts = array(value, path);
+  if (receipts.length > MAX_SILENCE_APPLY_RECEIPTS)
+    fail(
+      path,
+      `at most ${MAX_SILENCE_APPLY_RECEIPTS} silence Apply receipts are supported`,
+    );
+  const jobIds = new Set<string>();
+  const requestIds = new Set<string>();
+  receipts.forEach((entry, index) => {
+    const receiptPath = `${path}[${index}]`;
+    const receipt = presentationObject(entry, receiptPath, [
+      "version",
+      "jobId",
+      "requestId",
+      "fingerprint",
+      "compositionId",
+      "reviewId",
+      "baseRevision",
+      "appliedRevision",
+      "appliedAt",
+    ]);
+    versionOne(receipt, receiptPath);
+    for (const key of ["fingerprint", "reviewId", "baseRevision", "appliedRevision"])
+      directionDigest(receipt[key], `${receiptPath}.${key}`);
+    for (const key of ["jobId", "requestId", "compositionId"])
+      receiptIdentifier(receipt[key], `${receiptPath}.${key}`);
+    const jobId = String(receipt.jobId);
+    const requestId = String(receipt.requestId);
+    if (jobIds.has(jobId))
+      fail(`${receiptPath}.jobId`, "duplicate silence Apply job receipt");
+    if (requestIds.has(requestId))
+      fail(`${receiptPath}.requestId`, "duplicate silence Apply request receipt");
+    jobIds.add(jobId);
+    requestIds.add(requestId);
+    timestamp(receipt.appliedAt, `${receiptPath}.appliedAt`);
+  });
+}
+
+function silenceAnalysisJob(value: unknown, path: string, status: unknown): void {
+  const job = presentationObject(value, path, [
+    "version",
+    "projectId",
+    "compositionId",
+    "baseRevision",
+    "requestId",
+    "requestFingerprint",
+    "options",
+    "sourceHash",
+    "reviewId",
+    "retryRequests",
+    "attempt",
+    "applyRequestId",
+    "applyFingerprint",
+    "appliedRevision",
+  ]);
+  versionOne(job, path);
+  for (const key of ["projectId", "compositionId", "requestId"])
+    receiptIdentifier(job[key], `${path}.${key}`);
+  for (const key of ["baseRevision", "requestFingerprint"])
+    directionDigest(job[key], `${path}.${key}`);
+  if (job.sourceHash !== undefined)
+    directionDigest(job.sourceHash, `${path}.sourceHash`);
+  if (job.reviewId !== undefined)
+    directionDigest(job.reviewId, `${path}.reviewId`);
+  const options = presentationObject(job.options, `${path}.options`, [
+    "thresholdDb",
+    "minimumSilenceSeconds",
+    "paddingSeconds",
+  ]);
+  number(options.thresholdDb, `${path}.options.thresholdDb`, -80, -10);
+  number(
+    options.minimumSilenceSeconds,
+    `${path}.options.minimumSilenceSeconds`,
+    0.1,
+    30,
+  );
+  number(options.paddingSeconds, `${path}.options.paddingSeconds`, 0, 2);
+  if (!Number.isSafeInteger(job.attempt) || Number(job.attempt) < 1)
+    fail(`${path}.attempt`, "expected a positive safe integer");
+  if (job.retryRequests !== undefined) {
+    const requests = array(job.retryRequests, `${path}.retryRequests`);
+    if (requests.length > 100)
+      fail(`${path}.retryRequests`, "at most 100 retry receipts are supported");
+    const requestIds = new Set<string>();
+    let previousAttempt = 1;
+    requests.forEach((entry, index) => {
+      const retryPath = `${path}.retryRequests[${index}]`;
+      const retry = presentationObject(entry, retryPath, [
+        "requestId",
+        "fingerprint",
+        "attempt",
+      ]);
+      receiptIdentifier(retry.requestId, `${retryPath}.requestId`);
+      directionDigest(retry.fingerprint, `${retryPath}.fingerprint`);
+      if (
+        !Number.isSafeInteger(retry.attempt) ||
+        Number(retry.attempt) <= previousAttempt ||
+        Number(retry.attempt) > Number(job.attempt)
+      )
+        fail(`${retryPath}.attempt`, "expected a strictly increasing retry attempt");
+      const requestId = String(retry.requestId);
+      if (requestIds.has(requestId))
+        fail(`${retryPath}.requestId`, "duplicate retry request receipt");
+      requestIds.add(requestId);
+      previousAttempt = Number(retry.attempt);
+    });
+  }
+  if (
+    (job.applyRequestId === undefined) !==
+    (job.applyFingerprint === undefined)
+  )
+    fail(path, "applyRequestId and applyFingerprint must be stored together");
+  if (job.applyRequestId !== undefined) {
+    receiptIdentifier(job.applyRequestId, `${path}.applyRequestId`);
+    directionDigest(job.applyFingerprint, `${path}.applyFingerprint`);
+  }
+  if (job.appliedRevision !== undefined)
+    directionDigest(job.appliedRevision, `${path}.appliedRevision`);
+  if (status === "waiting-review" || status === "completed") {
+    if (job.sourceHash === undefined)
+      fail(`${path}.sourceHash`, "required after analysis completes");
+    if (job.reviewId === undefined)
+      fail(`${path}.reviewId`, "required while a review is awaiting Apply");
+  }
+  if (
+    (job.appliedRevision !== undefined ||
+      job.applyRequestId !== undefined ||
+      job.applyFingerprint !== undefined) &&
+    (job.appliedRevision === undefined ||
+      job.applyRequestId === undefined ||
+      job.applyFingerprint === undefined)
+  )
+    fail(path, "Apply receipt identity and revision must be stored together");
+  if (
+    status === "completed" &&
+    (job.appliedRevision === undefined ||
+      job.applyRequestId === undefined ||
+      job.applyFingerprint === undefined)
+  )
+    fail(path, "completed silence jobs require an Apply acknowledgement");
+}
+
 function continuityReceiptsValidation(value: unknown, path: string): void {
   const receipts = array(value, path);
   if (receipts.length > MAX_CONTINUITY_RECEIPTS)
@@ -1571,6 +1715,7 @@ export function validateProject(
     });
   });
   optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
+  optional(data, "silenceApplyReceipts", path, silenceApplyReceipts);
   optional(data, "continuityReceipts", path, continuityReceiptsValidation);
   optional(data, "presetApplicationReceipts", path, (value) =>
     validatePresetReceipts(value, String(data.id)),
@@ -1606,10 +1751,28 @@ export function validateJob(value: unknown): Job {
   choice(data.status, `${path}.status`, [
     "queued",
     "running",
+    "waiting-review",
     "completed",
     "failed",
     "cancelled",
   ]);
+  if (data.status === "waiting-review" && data.type !== "silence-analysis")
+    fail(`${path}.status`, "waiting-review is only supported by silence analysis");
+  if (data.type === "silence-analysis") {
+    receiptIdentifier(data.assetId, `${path}.assetId`);
+    silenceAnalysisJob(data.silenceAnalysis, `${path}.silenceAnalysis`, data.status);
+    const owner = object(data.analysisOwner, `${path}.analysisOwner`);
+    receiptIdentifier(owner.host, `${path}.analysisOwner.host`);
+    receiptIdentifier(owner.token, `${path}.analysisOwner.token`);
+    if (
+      !Number.isSafeInteger(owner.pid) ||
+      Number(owner.pid) < 1 ||
+      Number(owner.pid) > 2147483647
+    )
+      fail(`${path}.analysisOwner.pid`, "expected a positive process ID");
+  } else if (Object.hasOwn(data, "silenceAnalysis")) {
+    fail(`${path}.silenceAnalysis`, "only valid on silence-analysis jobs");
+  }
   optional(data, "progress", path, (v, p) => number(v, p, 0, 1));
   for (const key of ["storyId", "beatId"]) optional(data, key, path, string);
   optional(data, "scriptField", path, (value, fieldPath) =>

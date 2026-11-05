@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import {
   ApplicationError,
+  validateJob,
   validateSceneAnalysis,
   validateTimelineMarker,
   validateTranscriptDocument,
@@ -40,7 +41,12 @@ export interface OwnedAnalysisCompletionOptions {
   ownedCompletion?: Job;
 }
 
-const ANALYSIS_OPERATIONS = ["transcribe", "waveform", "scenes"];
+const ANALYSIS_OPERATIONS = [
+  "transcribe",
+  "waveform",
+  "scenes",
+  "silence-analysis",
+];
 
 function validIdentifier(value: unknown): value is string {
   return (
@@ -84,6 +90,19 @@ function validateAnalysisJob(
       "request.invalid",
       "Invalid media analysis job.",
     );
+  if (job.type === "silence-analysis") {
+    try {
+      validateJob(job);
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid durable silence analysis job.",
+        400,
+        undefined,
+        String(error),
+      );
+    }
+  }
 }
 
 function sameAnalysis(job: Job, next: Job): boolean {
@@ -99,6 +118,52 @@ function sameAnalysisOwner(job: Job, next: Job): boolean {
     job.analysisOwner.host === next.analysisOwner.host &&
     job.analysisOwner.pid === next.analysisOwner.pid &&
     job.analysisOwner.token === next.analysisOwner.token,
+  );
+}
+
+function sameSilenceIdentity(job: Job, next: Job): boolean {
+  const left = job.silenceAnalysis,
+    right = next.silenceAnalysis;
+  return Boolean(
+    job.type === "silence-analysis" &&
+    next.type === "silence-analysis" &&
+    left &&
+    right &&
+    left.version === right.version &&
+    left.projectId === right.projectId &&
+    left.compositionId === right.compositionId &&
+    left.baseRevision === right.baseRevision &&
+    left.requestId === right.requestId &&
+    left.requestFingerprint === right.requestFingerprint &&
+    left.options.thresholdDb === right.options.thresholdDb &&
+    left.options.minimumSilenceSeconds === right.options.minimumSilenceSeconds &&
+    left.options.paddingSeconds === right.options.paddingSeconds &&
+    left.attempt === right.attempt &&
+    (left.sourceHash === undefined || left.sourceHash === right.sourceHash) &&
+    (left.reviewId === undefined || left.reviewId === right.reviewId) &&
+    JSON.stringify(left.retryRequests ?? []) ===
+      JSON.stringify(right.retryRequests ?? []),
+  );
+}
+
+function sameSilenceRequest(job: Job, next: Job): boolean {
+  const left = job.silenceAnalysis,
+    right = next.silenceAnalysis;
+  return Boolean(
+    job.type === "silence-analysis" &&
+    next.type === "silence-analysis" &&
+    job.assetId === next.assetId &&
+    left &&
+    right &&
+    left.version === right.version &&
+    left.projectId === right.projectId &&
+    left.compositionId === right.compositionId &&
+    left.baseRevision === right.baseRevision &&
+    left.requestId === right.requestId &&
+    left.requestFingerprint === right.requestFingerprint &&
+    left.options.thresholdDb === right.options.thresholdDb &&
+    left.options.minimumSilenceSeconds === right.options.minimumSilenceSeconds &&
+    left.options.paddingSeconds === right.options.paddingSeconds,
   );
 }
 
@@ -245,35 +310,78 @@ export class CatalogIntelligenceStore {
 
   /** Reserve one project analysis before any provider or decoder is invoked. */
   reserveAnalysisJob(job: Job): void {
+    if (job.type === "silence-analysis")
+      throw new ApplicationError(
+        "request.invalid",
+        "Silence jobs require request-idempotent reservation.",
+      );
     validateAnalysisJob(job, ["queued"]);
     this.transaction(() => {
-      if (this.database.prepare("SELECT 1 FROM jobs WHERE id=?").get(job.id))
-        throw new ApplicationError(
-          "request.invalid",
-          "Media analysis job ID already exists.",
-          409,
-        );
-      if (
-        this.database
-          .prepare(
-            `SELECT 1 FROM jobs WHERE json_extract(data,'$.type') IN ('transcribe','waveform','scenes')
-           AND json_extract(data,'$.status') IN ('queued','running') LIMIT 1`,
-          )
-          .get()
-      )
-        throw new ApplicationError(
-          "jobs.busy",
-          "Wait for the active media analysis before starting another task.",
-          409,
-        );
-      this.database
-        .prepare("INSERT INTO jobs(id,created_at,data) VALUES(?,?,?)")
-        .run(
-          job.id,
-          job.createdAt ?? new Date().toISOString(),
-          JSON.stringify(job),
-        );
+      this.insertAnalysisReservation(job);
     });
+  }
+
+  /** Reserve silence work atomically with its request-id idempotency check. */
+  reserveSilenceAnalysisJob(job: Job): { job: Job; created: boolean } {
+    validateAnalysisJob(job, ["queued"]);
+    if (job.type !== "silence-analysis" || !job.silenceAnalysis)
+      throw new ApplicationError(
+        "request.invalid",
+        "A durable silence analysis job is required.",
+      );
+    return this.transaction(() => {
+      const existing = this.database
+        .prepare(
+          `SELECT data FROM jobs WHERE json_extract(data,'$.type')='silence-analysis'
+           AND json_extract(data,'$.silenceAnalysis.requestId')=? LIMIT 1`,
+        )
+        .get(job.silenceAnalysis!.requestId);
+      if (existing) {
+        const prior = validateJob(JSON.parse(String(existing.data)));
+        validateAnalysisJob(prior, [
+          "queued",
+          "running",
+          "waiting-review",
+          "completed",
+          "failed",
+          "cancelled",
+        ]);
+        if (!sameSilenceRequest(prior, job))
+          throw new ApplicationError(
+            "request.invalid",
+            "This requestId is already bound to another silence analysis.",
+            409,
+          );
+        return { job: structuredClone(prior), created: false };
+      }
+      this.insertAnalysisReservation(job);
+      return { job: structuredClone(job), created: true };
+    });
+  }
+
+  private insertAnalysisReservation(job: Job): void {
+    if (this.database.prepare("SELECT 1 FROM jobs WHERE id=?").get(job.id))
+      throw new ApplicationError(
+        "request.invalid",
+        "Media analysis job ID already exists.",
+        409,
+      );
+    if (
+      this.database
+        .prepare(
+          `SELECT 1 FROM jobs WHERE json_extract(data,'$.type') IN ('transcribe','waveform','scenes','silence-analysis')
+           AND json_extract(data,'$.status') IN ('queued','running') LIMIT 1`,
+        )
+        .get()
+    )
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active media analysis before starting another task.",
+        409,
+      );
+    this.database
+      .prepare("INSERT INTO jobs(id,created_at,data) VALUES(?,?,?)")
+      .run(job.id, job.createdAt ?? new Date().toISOString(), JSON.stringify(job));
   }
 
   /** Consume the exact queued reservation once, without claiming foreign work. */
@@ -282,7 +390,9 @@ export class CatalogIntelligenceStore {
     validateAnalysisJob(running, ["running"]);
     if (
       !sameAnalysis(observed, running) ||
-      !sameAnalysisOwner(observed, running)
+      !sameAnalysisOwner(observed, running) ||
+      (observed.type === "silence-analysis" &&
+        !sameSilenceIdentity(observed, running))
     )
       throw new ApplicationError(
         "request.invalid",
@@ -296,9 +406,34 @@ export class CatalogIntelligenceStore {
 
   /** Terminal attempts and changed owners can never publish progress again. */
   saveOwnedAnalysisJob(job: Job): boolean {
+    if (job.type === "silence-analysis") {
+      validateAnalysisJob(job, ["running"]);
+      return this.transaction(() => {
+        const row = this.database
+          .prepare("SELECT data FROM jobs WHERE id=?")
+          .get(job.id);
+        if (!row) return false;
+        const observed = validateJob(JSON.parse(String(row.data)));
+        if (observed.status !== "running") return false;
+        validateAnalysisJob(observed, ["running"]);
+        if (
+          !sameAnalysis(observed, job) ||
+          !sameAnalysisOwner(observed, job) ||
+          !sameSilenceIdentity(observed, job) ||
+          observed.silenceAnalysis!.reviewId !== job.silenceAnalysis!.reviewId ||
+          (job.progress ?? 0) < (observed.progress ?? 0)
+        )
+          return false;
+        const result = this.database
+          .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+          .run(JSON.stringify(job), job.id, String(row.data));
+        return Number(result.changes) === 1;
+      });
+    }
     validateAnalysisJob(job, [
       "queued",
       "running",
+      "waiting-review",
       "completed",
       "failed",
       "cancelled",
@@ -309,9 +444,15 @@ export class CatalogIntelligenceStore {
     const statuses =
       job.status === "queued"
         ? ["queued"]
-        : ["running", "completed"].includes(job.status)
+        : job.status === "running"
           ? ["running"]
-          : ["queued", "running"];
+          : job.status === "waiting-review"
+            ? ["running"]
+            : job.status === "completed"
+              ? job.type === "silence-analysis"
+                ? ["waiting-review"]
+                : ["running"]
+              : ["queued", "running"];
     const result = this.database
       .prepare(
         `UPDATE jobs SET data=? WHERE id=? AND json_extract(data,'$.type')=?
@@ -331,6 +472,121 @@ export class CatalogIntelligenceStore {
         statuses[1] ?? statuses[0]!,
       );
     return Number(result.changes) === 1;
+  }
+
+  /** Exact silence lifecycle transitions; callbacks cannot cross a terminal edge. */
+  transitionOwnedSilenceJob(observed: Job, next: Job): boolean {
+    const allowed: Record<string, readonly string[]> = {
+      queued: ["running", "failed", "cancelled"],
+      running: ["waiting-review", "failed", "cancelled"],
+      "waiting-review": ["completed"],
+    };
+    validateAnalysisJob(observed, ["queued", "running", "waiting-review"]);
+    validateAnalysisJob(next, ["running", "waiting-review", "failed", "cancelled", "completed"]);
+    if (
+      observed.type !== "silence-analysis" ||
+      next.type !== "silence-analysis" ||
+      !allowed[observed.status]?.includes(next.status) ||
+      !sameAnalysis(observed, next) ||
+      !sameAnalysisOwner(observed, next) ||
+      !sameSilenceIdentity(observed, next) ||
+      (next.progress ?? 0) < (observed.progress ?? 0)
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid silence job state transition.",
+      );
+    const result = this.database
+      .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+      .run(JSON.stringify(next), observed.id, JSON.stringify(observed));
+    return Number(result.changes) === 1;
+  }
+
+  /** Retry one failed attempt with a new owner; retry request replay is durable. */
+  retrySilenceAnalysisJob(
+    observed: Job,
+    next: Job,
+    requestId: string,
+  ): { job: Job; created: boolean } {
+    validateAnalysisJob(observed, ["failed", "cancelled"]);
+    validateAnalysisJob(next, ["queued"]);
+    if (
+      observed.type !== "silence-analysis" ||
+      next.type !== "silence-analysis" ||
+      !validIdentifier(requestId) ||
+      !sameAnalysis(observed, next) ||
+      !sameSilenceRequest(observed, next) ||
+      sameAnalysisOwner(observed, next) ||
+      observed.silenceAnalysis?.sourceHash !== next.silenceAnalysis?.sourceHash ||
+      next.silenceAnalysis!.attempt !== observed.silenceAnalysis!.attempt + 1
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid silence analysis retry.",
+        409,
+      );
+    const currentReceipts = observed.silenceAnalysis!.retryRequests ?? [];
+    const retryReceipts = next.silenceAnalysis!.retryRequests ?? [];
+    if (
+      retryReceipts.length !== currentReceipts.length + 1 ||
+      currentReceipts.some(
+        (receipt, index) =>
+          JSON.stringify(receipt) !== JSON.stringify(retryReceipts[index]),
+      ) ||
+      retryReceipts.at(-1)?.requestId !== requestId ||
+      retryReceipts.at(-1)?.attempt !== next.silenceAnalysis!.attempt
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "The retry receipt is invalid or this job has reached its retry limit.",
+        409,
+      );
+    return this.transaction(() => {
+      const row = this.database
+        .prepare("SELECT data FROM jobs WHERE id=?")
+        .get(observed.id);
+      if (!row)
+        throw new ApplicationError("request.notFound", "Silence job not found.", 404);
+      const stored = validateJob(JSON.parse(String(row.data)));
+      const priorReceipt = stored.silenceAnalysis?.retryRequests?.find(
+        (receipt) => receipt.requestId === requestId,
+      );
+      if (priorReceipt) {
+        const requested = retryReceipts.at(-1)!;
+        if (priorReceipt.fingerprint !== requested.fingerprint)
+          throw new ApplicationError(
+            "request.invalid",
+            "This retry requestId is already bound to another attempt.",
+            409,
+          );
+        return { job: structuredClone(stored), created: false };
+      }
+      if (currentReceipts.length >= 100)
+        throw new ApplicationError(
+          "request.invalid",
+          "This silence job has reached its retry request limit.",
+          409,
+        );
+      if (
+        JSON.stringify(stored) !== JSON.stringify(observed) ||
+        !sameSilenceRequest(stored, observed)
+      )
+        throw new ApplicationError(
+          "request.invalid",
+          "The silence job changed before retry.",
+          409,
+        );
+      const updated = this.database
+        .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+        .run(JSON.stringify(next), observed.id, JSON.stringify(observed));
+      if (Number(updated.changes) !== 1)
+        throw new ApplicationError(
+          "request.invalid",
+          "The silence job changed during retry.",
+          409,
+        );
+      return { job: structuredClone(next), created: true };
+    });
   }
 
   /** Explicit recovery rotates ownership only against the inspected checkpoint. */

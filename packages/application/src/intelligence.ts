@@ -55,7 +55,12 @@ export interface AnalysisRecoveryInput {
   ownerToken?: string;
 }
 
-const ANALYSIS_OPERATIONS = ["transcribe", "waveform", "scenes"] as const;
+const ANALYSIS_OPERATIONS = [
+  "transcribe",
+  "waveform",
+  "scenes",
+  "silence-analysis",
+] as const;
 function activeAnalysis(job: Job): boolean {
   return (
     ANALYSIS_OPERATIONS.some((operation) => operation === job.type) &&
