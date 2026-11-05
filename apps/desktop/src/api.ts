@@ -74,6 +74,7 @@ import type {
   ResolvedSequenceFrame,
   ContinuityProposal,
   ContinuityReceipt,
+  SilenceCutProposal,
 } from "@openfilm/core";
 
 export interface VisionSampleProviderInfo {
@@ -195,6 +196,16 @@ export interface EditorState extends EditorDocument {
   acknowledgedRevision?: string;
   canUndo: boolean;
   canRedo: boolean;
+}
+
+export type SilenceFreshness = "current" | "stale" | "unverified";
+export interface SilenceJobState {
+  job: Job;
+  freshness: SilenceFreshness;
+  recovery?: AnalysisJobRecoveryState;
+}
+export interface SilenceReviewState extends SilenceJobState {
+  review: { reviewId: string; proposal: SilenceCutProposal };
 }
 
 export interface ScenePlanOptions {
@@ -1569,6 +1580,84 @@ export const api = {
     }>(`/assets?${params}`),
   jobs: (signal?: AbortSignal) =>
     request<JobsState>("/jobs", { ...(signal ? { signal } : {}) }),
+  silenceCreate: (
+    input: {
+      projectId: string;
+      requestId: string;
+      assetId: string;
+      compositionId: string;
+      options: {
+        thresholdDb: number;
+        minimumSilenceSeconds: number;
+        paddingSeconds: number;
+      };
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ job: Job; created: boolean; freshness: SilenceFreshness }>(
+      "/silence/jobs",
+      input,
+      signal,
+    ),
+  silenceJob: (jobId: string, signal?: AbortSignal) =>
+    request<SilenceJobState>(`/silence/jobs/${encodeURIComponent(jobId)}`, {
+      ...(signal ? { signal } : {}),
+    }),
+  silenceReview: (jobId: string, signal?: AbortSignal) =>
+    request<SilenceReviewState>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/review`,
+      { ...(signal ? { signal } : {}) },
+    ),
+  silenceRevise: (
+    jobId: string,
+    input: {
+      requestId: string;
+      reviewId: string;
+      selectedCandidateIds: string[];
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ job: Job; created: boolean }>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/review`,
+      input,
+      signal,
+    ),
+  silenceCancel: (jobId: string, signal?: AbortSignal) =>
+    post<{ job: Job }>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/cancel`,
+      {},
+      signal,
+    ),
+  silenceRetry: (jobId: string, requestId: string, signal?: AbortSignal) =>
+    post<{ job: Job; created: boolean }>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/retry`,
+      { requestId },
+      signal,
+    ),
+  silenceRecover: (
+    jobId: string,
+    input: { confirmStopped: true; checkpoint: string; ownerToken?: string },
+    signal?: AbortSignal,
+  ) =>
+    post<{ job: Job }>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/recover`,
+      input,
+      signal,
+    ),
+  silenceApply: (
+    jobId: string,
+    input: {
+      reviewId: string;
+      proposal: SilenceCutProposal;
+      requestId: string;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ job: Job; edit: EditorState }>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/apply`,
+      input,
+      signal,
+    ),
   clearMotion: (projectId: string) =>
     post<{ ok: boolean }>("/motion-generation/clear", { projectId }),
   motionProviders: () =>

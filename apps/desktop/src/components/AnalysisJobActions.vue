@@ -27,8 +27,9 @@ const confirmButton = ref<HTMLButtonElement | null>(null);
 const recoverButton = ref<HTMLButtonElement | null>(null);
 const active = computed(
   () =>
-    ["transcribe", "waveform", "scenes"].includes(props.job.type) &&
-    ["queued", "running"].includes(props.job.status),
+    ["transcribe", "waveform", "scenes", "silence-analysis"].includes(
+      props.job.type,
+    ) && ["queued", "running"].includes(props.job.status),
 );
 const canCancel = computed(
   () =>

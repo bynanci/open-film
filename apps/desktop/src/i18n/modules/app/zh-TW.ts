@@ -1120,6 +1120,7 @@ export default {
       status: {
         queued: "已排入佇列",
         running: "執行中",
+        "waiting-review": "需要審閱",
         completed: "已完成",
         cancelled: "已取消",
         failed: "需要處理",

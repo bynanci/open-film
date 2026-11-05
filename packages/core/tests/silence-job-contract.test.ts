@@ -60,6 +60,41 @@ it("validates and round-trips waiting-review silence jobs with exact identities"
   expect(validateJob(completed)).toEqual(completed);
 });
 
+it("validates a selection-only Review Job as an all-or-nothing source identity", () => {
+  const base = silenceJob();
+  const derived = {
+    ...base,
+    id: "silence-derived-1",
+    silenceAnalysis: {
+      ...base.silenceAnalysis,
+      requestId: "review-selection-1",
+      requestFingerprint: digest("e"),
+      parentJobId: base.id,
+      sourceReviewId: digest("d"),
+      selectedCandidateIds: ["silence-0001-1s-2o"],
+    },
+  };
+  expect(validateJob(derived)).toEqual(derived);
+  expect(() =>
+    validateJob({
+      ...derived,
+      silenceAnalysis: {
+        ...derived.silenceAnalysis,
+        selectedCandidateIds: ["silence-0001-1s-2o", "silence-0001-1s-2o"],
+      },
+    }),
+  ).toThrow(/duplicate candidate/u);
+  expect(() =>
+    validateJob({
+      ...derived,
+      silenceAnalysis: {
+        ...derived.silenceAnalysis,
+        sourceReviewId: undefined,
+      },
+    }),
+  ).toThrow(/together/u);
+});
+
 it.each([
   { type: "transcribe" },
   { silenceAnalysis: undefined },

@@ -210,6 +210,65 @@ describe("bounded source-clock audio activity evidence", () => {
 });
 
 describe("silence cut proposals", () => {
+  it("keeps per-candidate source/timeline locations and accepts only the reviewed selection", () => {
+    const measured = createSilenceCutProposal(
+      composition(),
+      evidence(),
+      options,
+    );
+    expect(measured.candidates).toHaveLength(2);
+    expect(measured.candidates[0]).toMatchObject({
+      sourceInterval: { start: 2, end: 4 },
+      timelineIntervals: [
+        { start: 2.25, end: 3.75 },
+        { start: 8.125, end: 8.875 },
+      ],
+      durationReduced: 2.25,
+    });
+
+    const selected = createSilenceCutProposal(composition(), evidence(), {
+      ...options,
+      selectedCandidateIds: [measured.candidates[0]!.id],
+    });
+    expect(selected.selectedCandidateIds).toEqual([measured.candidates[0]!.id]);
+    expect(selected.timelineIntervals).toEqual([
+      { start: 2.25, end: 3.75 },
+      { start: 8.125, end: 8.875 },
+    ]);
+    expect(selected.totalDurationReduced).toBe(2.25);
+    expect(
+      applySilenceCutProposal(composition(), selected, { assets }).duration,
+    ).toBe(11.75);
+    expect(() =>
+      createSilenceCutProposal(composition(), evidence(), {
+        ...options,
+        selectedCandidateIds: ["silence-unknown"],
+      }),
+    ).toThrow(/candidate/i);
+  });
+
+  it("rejects candidate-to-timeline mappings that were changed after review", () => {
+    const proposal = createSilenceCutProposal(
+      composition(),
+      evidence(),
+      options,
+    );
+    const forged = structuredClone(proposal);
+    const first = forged.candidates[0]!;
+    const second = forged.candidates[1]!;
+    [first.timelineIntervals, second.timelineIntervals] = [
+      second.timelineIntervals,
+      first.timelineIntervals,
+    ];
+    [first.durationReduced, second.durationReduced] = [
+      second.durationReduced,
+      first.durationReduced,
+    ];
+    expect(() =>
+      applySilenceCutProposal(composition(), forged, { assets }),
+    ).toThrow(/no longer matches current timeline geometry/u);
+  });
+
   it("retains the existing transcript wrapper's explicit zero-total no-op semantics", () => {
     const before = composition();
     const after = applyTranscriptRipple(before, {

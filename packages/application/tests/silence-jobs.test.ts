@@ -209,6 +209,43 @@ it("runs the existing SilenceService into review, applies once, and replays afte
   expect(await hashFile(f.source)).toBe(review.review.proposal.sourceHash);
 });
 
+it("creates a durable selection-only child Job without changing the parent Review", async () => {
+  const f = await fixture();
+  const created = await f.app.silenceJobs.create(createInput(f.app));
+  const parent = await f.app.silenceJobs.run(created.job.id);
+  const parentReview = await f.app.silenceJobs.getReview(parent.id);
+  const request = {
+    requestId: "selection-child-1",
+    reviewId: parentReview.review.reviewId,
+    selectedCandidateIds: [],
+  };
+  const derived = await f.app.silenceJobs.revise(parent.id, request);
+
+  expect(derived.created).toBe(true);
+  expect(derived.job).toMatchObject({
+    type: "silence-analysis",
+    status: "queued",
+    silenceAnalysis: {
+      parentJobId: parent.id,
+      sourceReviewId: parentReview.review.reviewId,
+      selectedCandidateIds: [],
+    },
+  });
+  const waiting = await f.app.silenceJobs.run(derived.job.id);
+  expect(waiting.status).toBe("waiting-review");
+  const childReview = await f.app.silenceJobs.getReview(waiting.id);
+  expect(childReview.review.reviewId).not.toBe(parentReview.review.reviewId);
+  expect(childReview.review.proposal.selectedCandidateIds).toEqual([]);
+  expect(childReview.review.proposal.timelineIntervals).toEqual([]);
+  expect(await f.app.silenceJobs.getReview(parent.id)).toEqual(parentReview);
+  await expect(
+    f.app.silenceJobs.revise(parent.id, request),
+  ).resolves.toMatchObject({
+    created: false,
+    job: { id: derived.job.id },
+  });
+});
+
 it("keeps a durable Apply receipt when the Job acknowledgement fails and repairs it on exact replay", async () => {
   const f = await fixture();
   const { job } = await f.app.silenceJobs.create(createInput(f.app));

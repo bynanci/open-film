@@ -1276,12 +1276,27 @@ export async function startServer(options: ServerOptions = {}) {
             json(response, 200, {
               job,
               freshness,
-              ...(recovery ? { recovery } : {}),
+              ...(recovery
+                ? { recovery: { ...recovery, canCancel: active.has(jobId) } }
+                : {}),
             });
             return;
           }
           if (method === "GET" && action === "review") {
             json(response, 200, await application.silenceJobs.getReview(jobId));
+            return;
+          }
+          if (method === "POST" && action === "review") {
+            const data = await body(request);
+            keys(data, ["requestId", "reviewId", "selectedCandidateIds"]);
+            const result = await application.silenceJobs.revise(jobId, {
+              requestId: text(data, "requestId"),
+              reviewId: text(data, "reviewId"),
+              selectedCandidateIds: data.selectedCandidateIds as string[],
+            });
+            if (result.created && result.job.status === "queued")
+              startSilenceJob(application, result.job.id);
+            json(response, 202, result);
             return;
           }
           if (method === "POST" && action === "cancel") {

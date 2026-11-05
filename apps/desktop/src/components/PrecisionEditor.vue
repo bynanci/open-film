@@ -14,9 +14,11 @@ import {
   timebaseKey,
   sequenceFrameAt,
   sequenceTimeAt,
+  type Composition,
   type Clip,
   type Job,
   type MediaAsset,
+  type SilenceCutCandidate,
   type TimelineMarker,
   type ProjectSettings,
 } from "@openfilm/core";
@@ -53,6 +55,7 @@ import type { CommitTransactionResult } from "../composables/useTimelineEditor";
 import TimecodeField from "./TimecodeField.vue";
 import AnalysisJobActions from "./AnalysisJobActions.vue";
 import PrecisionTranscript from "./PrecisionTranscript.vue";
+import SilenceReviewPanel from "./SilenceReviewPanel.vue";
 
 const props = defineProps<{
   projectId: string;
@@ -73,11 +76,14 @@ const props = defineProps<{
   unavailable?: boolean;
   sourceVersion?: number;
   height?: number;
+  composition?: Composition;
+  assets?: readonly MediaAsset[];
   clips: { id: string; label: string }[];
   submit: (command: TimelineCommand) => boolean;
 }>();
 const emit = defineEmits<{
   select: [clipId: string];
+  applied: [];
   activity: [];
   recoverAnalysis: [job: Job, input: AnalysisRecoveryInput];
 }>();
@@ -182,7 +188,9 @@ const transcriptionReady = computed(
     languageOptions.value.some((choice) => choice.value === language.value),
 );
 const execution = ref("auto");
-const panel = ref<"transcript" | "analysis" | "markers">("transcript");
+const panel = ref<"transcript" | "analysis" | "markers" | "silence">(
+  "transcript",
+);
 const pageOffset = ref(0);
 const pageSize = 100;
 const markerPage = ref(0);
@@ -206,6 +214,13 @@ let drag: {
 } | null = null;
 let dragFrame: number | undefined;
 let pendingDragSeek: number | undefined;
+const silenceWaveform = shallowRef<{
+  assetId: string;
+  candidates: (SilenceCutCandidate & { selected: boolean })[];
+} | null>(null);
+let pendingSilencePreview:
+  { assetId: string; start: number; end: number } | undefined;
+let silencePreviewEnd: number | undefined;
 
 const supported = computed(
   () =>
@@ -361,6 +376,16 @@ const clipTime = computed(() => {
 const wavePath = computed(() =>
   waveformPath(data.value?.waveform, viewStart.value, viewDuration.value),
 );
+const visibleSilenceCandidates = computed(() => {
+  const overlay = silenceWaveform.value;
+  return overlay && overlay.assetId === props.asset?.id
+    ? overlay.candidates.filter(
+        (candidate) =>
+          candidate.sourceInterval.end >= viewStart.value &&
+          candidate.sourceInterval.start <= viewEnd.value,
+      )
+    : [];
+});
 const silent = computed(
   () =>
     !!data.value?.waveform &&
@@ -656,12 +681,26 @@ function configurePlayback() {
 }
 function loaded() {
   configurePlayback();
-  seek(playhead.value);
+  const preview = pendingSilencePreview;
+  if (preview && preview.assetId === props.asset?.id) {
+    pendingSilencePreview = undefined;
+    previewSilenceRange(preview.start, preview.end);
+  } else seek(playhead.value);
 }
 function updatedTime() {
   if (!player.value) return;
   playhead.value = player.value.currentTime;
-  if (shuttleTier.value > 0 && playhead.value >= sourceRange.value[1]) {
+  if (silencePreviewEnd !== undefined && playhead.value >= silencePreviewEnd) {
+    const end = silencePreviewEnd;
+    silencePreviewEnd = undefined;
+    seek(end);
+    return;
+  }
+  if (
+    silencePreviewEnd === undefined &&
+    shuttleTier.value > 0 &&
+    playhead.value >= sourceRange.value[1]
+  ) {
     seek(sourceRange.value[1]);
     return;
   }
@@ -686,6 +725,7 @@ const sourceRange = computed(() =>
 );
 function stop() {
   transportGeneration++;
+  silencePreviewEnd = undefined;
   if (reverseTimer !== undefined) clearInterval(reverseTimer);
   reverseTimer = undefined;
   shuttleTier.value = 0;
@@ -799,6 +839,38 @@ function step(direction: -1 | 1, seconds = false) {
 function togglePlayback() {
   if (playing.value || (player.value && !player.value.paused)) stop();
   else play();
+}
+function previewSilenceRange(start: number, end: number) {
+  stop();
+  seek(start, false);
+  silencePreviewEnd = end;
+  shuttleTier.value = 1;
+  configurePlayback();
+  startPlayback();
+}
+function selectSilenceSource(assetId: string, clipId: string) {
+  if (assetId !== props.asset?.id) emit("select", clipId);
+}
+function previewSilence(assetId: string, start: number, end: number) {
+  pendingSilencePreview = { assetId, start, end };
+  silencePreviewEnd = undefined;
+  if (assetId === props.asset?.id) {
+    pendingSilencePreview = undefined;
+    previewSilenceRange(start, end);
+    return;
+  }
+  const clipId = props.composition?.tracks
+    .filter((track) => track.timing !== "overlay")
+    .flatMap((track) => track.clips)
+    .find((clip) => clip.assetId === assetId)?.id;
+  if (clipId) emit("select", clipId);
+  else pendingSilencePreview = undefined;
+}
+function updateSilenceCandidates(
+  assetId: string,
+  candidates: (SilenceCutCandidate & { selected: boolean })[],
+) {
+  silenceWaveform.value = { assetId, candidates };
 }
 function mediaPlayed() {
   if (!player.value || player.value.paused) return;
@@ -1153,6 +1225,14 @@ function keyboard(event: KeyboardEvent) {
 // Both editors stay mounted, so Story volume changes must update this player
 // even when no source range or lock changed and no loadedmetadata event fires.
 watch([player, () => props.clip?.transform?.volume], configurePlayback);
+watch(
+  [() => props.projectId, () => props.compositionId],
+  () => {
+    pendingSilencePreview = undefined;
+    stop();
+  },
+  { flush: "sync" },
+);
 watch(languageOptions, (options) => {
   if (
     providers.value &&
@@ -1433,13 +1513,24 @@ defineExpose({
         <aside class="precision-panel">
           <div class="precision-panel-tabs">
             <button
-              v-for="tab in ['transcript', 'analysis', 'markers'] as const"
+              v-for="tab in [
+                'transcript',
+                'analysis',
+                'markers',
+                'silence',
+              ] as const"
               :key="tab"
               :aria-pressed="panel === tab"
               :class="{ selected: panel === tab }"
               @click="panel = tab"
             >
-              {{ t(`precision.${tab}`) }}
+              {{
+                t(
+                  tab === "silence"
+                    ? "precision.silence.title"
+                    : `precision.${tab}`,
+                )
+              }}
             </button>
           </div>
           <section
@@ -1600,6 +1691,28 @@ defineExpose({
                 {{ t("precision.refreshProvider") }}
               </button>
             </details>
+          </section>
+          <section v-else-if="panel === 'silence'" class="precision-silence">
+            <SilenceReviewPanel
+              v-if="composition && assets"
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :revision="revision"
+              :composition="composition"
+              :assets="assets"
+              :source-asset-id="asset?.id"
+              :active="active"
+              :busy="analysisBusy || busy"
+              :waveform-ready="!!data?.waveform"
+              @select-source="selectSilenceSource"
+              @preview="previewSilence"
+              @waveform-candidates="updateSilenceCandidates"
+              @applied="emit('applied')"
+              @activity="emit('activity')"
+            />
+            <p v-else class="editor-note" role="status">
+              {{ t("precision.silence.compositionUnavailable") }}
+            </p>
           </section>
           <section
             v-else
@@ -1806,6 +1919,25 @@ defineExpose({
                 :width="Math.max(0, x(trimOut) - x(trimIn))"
                 height="100"
                 class="precision-selected-range"
+              />
+              <rect
+                v-for="candidate in visibleSilenceCandidates"
+                :key="candidate.id"
+                :x="x(candidate.sourceInterval.start)"
+                y="7"
+                :width="
+                  Math.max(
+                    2,
+                    x(candidate.sourceInterval.end) -
+                      x(candidate.sourceInterval.start),
+                  )
+                "
+                height="86"
+                :class="
+                  candidate.selected
+                    ? 'precision-silence-candidate selected'
+                    : 'precision-silence-candidate excluded'
+                "
               />
               <path :d="wavePath" class="precision-wave-path" />
               <line

@@ -558,6 +558,67 @@ export class SilenceService {
     });
   }
 
+  /** Create an immutable selection review from saved evidence, without re-decoding. */
+  public async createDerivedProposal(
+    sourceReviewId: string,
+    identity: {
+      compositionId: string;
+      baseRevision: string;
+      sourceHash: string;
+    },
+    selectedCandidateIds: readonly string[],
+  ): Promise<SilenceReviewEnvelope> {
+    if (!HASH.test(sourceReviewId)) invalid("Invalid source reviewId.");
+    const expected = object(
+      identity,
+      ["compositionId", "baseRevision", "sourceHash"],
+      "silence review identity",
+    );
+    const compositionId = identifier(expected.compositionId, "compositionId");
+    const baseRevision = String(expected.baseRevision);
+    const sourceHash = String(expected.sourceHash);
+    if (!HASH.test(baseRevision) || !HASH.test(sourceHash))
+      invalid(
+        "A derived silence Review requires captured revision and source hash.",
+      );
+    if (
+      !Array.isArray(selectedCandidateIds) ||
+      selectedCandidateIds.length > 2000 ||
+      selectedCandidateIds.some(
+        (id) => typeof id !== "string" || !id.trim() || id.length > 128,
+      ) ||
+      new Set(selectedCandidateIds).size !== selectedCandidateIds.length
+    )
+      invalid("Choose unique measured silence candidate identifiers.");
+
+    const source = await this.readProposal(sourceReviewId);
+    const parent = source.proposal;
+    if (
+      parent.compositionId !== compositionId ||
+      parent.baseRevision !== baseRevision ||
+      parent.sourceHash !== sourceHash
+    )
+      stale("The source Review no longer matches the captured edit context.");
+    this.assertTimeline(compositionId, baseRevision);
+    const before = this.editor.get(compositionId);
+    const proposal = validateSilenceCutProposal(
+      createSilenceCutProposal(before.composition, parent.evidence, {
+        baseRevision,
+        paddingSeconds: parent.paddingSeconds,
+        assets: before.assets,
+        selectedCandidateIds,
+      }),
+    );
+    const assertSource = await this.verifySource(parent.assetId, sourceHash);
+    this.assertTimeline(compositionId, baseRevision);
+    const projectId = this.app.project.id;
+    const reviewId = recordId(projectId, proposal);
+    await this.persistReview({ version: 1, projectId, reviewId, proposal });
+    assertSource();
+    this.assertTimeline(compositionId, baseRevision);
+    return immutable({ reviewId, proposal });
+  }
+
   private async createProposalInternal(
     compositionId: string,
     assetId: string,

@@ -4174,6 +4174,8 @@ onBeforeUnmount(() => {
           "
           :source-version="sourceVersion"
           :height="workspaceHeight"
+          :composition="state?.composition"
+          :assets="state?.assets ?? []"
           :clips="clipOptions"
           :submit="command"
           @select="
@@ -4183,6 +4185,7 @@ onBeforeUnmount(() => {
             }
           "
           @activity="emit('activity')"
+          @applied="load"
           @recover-analysis="
             (job, input) => emit('recoverAnalysis', job, input)
           "
@@ -4262,6 +4265,8 @@ onBeforeUnmount(() => {
                 "
                 :source-version="sourceVersion"
                 :height="workspaceHeight"
+                :composition="state?.composition"
+                :assets="state?.assets ?? []"
                 :clips="clipOptions"
                 :submit="command"
                 @select="
@@ -4271,6 +4276,7 @@ onBeforeUnmount(() => {
                   }
                 "
                 @activity="emit('activity')"
+                @applied="load"
                 @recover-analysis="
                   (job, input) => emit('recoverAnalysis', job, input)
                 "

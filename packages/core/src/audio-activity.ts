@@ -40,16 +40,27 @@ export interface SilenceCutProposal {
   sourceHash: string;
   evidence: AudioActivityEvidence;
   paddingSeconds: number;
+  candidates: SilenceCutCandidate[];
+  selectedCandidateIds: string[];
   sourceIntervals: TranscriptRippleInterval[];
   timelineIntervals: TranscriptRippleInterval[];
   totalDurationReduced: number;
   affectedClipIds: string[];
 }
 
+export interface SilenceCutCandidate {
+  id: string;
+  sourceInterval: TranscriptRippleInterval;
+  sourceIntervals: TranscriptRippleInterval[];
+  timelineIntervals: TranscriptRippleInterval[];
+  durationReduced: number;
+}
+
 export interface CreateSilenceCutOptions {
   baseRevision: string;
   paddingSeconds?: number;
   assets?: readonly MediaAsset[];
+  selectedCandidateIds?: readonly string[];
 }
 
 function invalid(path: string, message: string): never {
@@ -283,6 +294,8 @@ export function validateSilenceCutProposal(value: unknown): SilenceCutProposal {
     "sourceHash",
     "evidence",
     "paddingSeconds",
+    "candidates",
+    "selectedCandidateIds",
     "sourceIntervals",
     "timelineIntervals",
     "totalDurationReduced",
@@ -304,6 +317,115 @@ export function validateSilenceCutProposal(value: unknown): SilenceCutProposal {
     `${path}.timelineIntervals`,
     Number.MAX_SAFE_INTEGER,
   );
+  const candidates = list(data.candidates, `${path}.candidates`).map(
+    (entry, index): SilenceCutCandidate => {
+      const candidatePath = `${path}.candidates[${index}]`;
+      const candidate = object(entry, candidatePath, [
+        "id",
+        "sourceInterval",
+        "sourceIntervals",
+        "timelineIntervals",
+        "durationReduced",
+      ]);
+      const id = text(candidate.id, `${candidatePath}.id`, 128);
+      if (!/^silence-[a-z0-9-]+$/u.test(id))
+        invalid(
+          `${candidatePath}.id`,
+          "expected a stable silence candidate ID",
+        );
+      const sourceInterval = intervals(
+        [candidate.sourceInterval],
+        `${candidatePath}.sourceInterval`,
+        evidence.duration,
+      )[0]!;
+      const sourceIntervals = intervals(
+        candidate.sourceIntervals,
+        `${candidatePath}.sourceIntervals`,
+        evidence.duration,
+      );
+      const timelineIntervals = intervals(
+        candidate.timelineIntervals,
+        `${candidatePath}.timelineIntervals`,
+        Number.MAX_SAFE_INTEGER,
+      );
+      const durationReduced = number(
+        candidate.durationReduced,
+        `${candidatePath}.durationReduced`,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      );
+      if (
+        Math.abs(
+          durationReduced -
+            timelineIntervals.reduce(
+              (sum, range) => sum + range.end - range.start,
+              0,
+            ),
+        ) > RANGE_EPSILON
+      )
+        invalid(
+          `${candidatePath}.durationReduced`,
+          "does not match its timeline intervals",
+        );
+      return {
+        id,
+        sourceInterval,
+        sourceIntervals,
+        timelineIntervals,
+        durationReduced,
+      };
+    },
+  );
+  if (
+    candidates.length !== evidence.silenceIntervals.length ||
+    candidates.some(
+      (candidate, index) =>
+        candidate.sourceInterval.start !==
+          evidence.silenceIntervals[index]?.start ||
+        candidate.sourceInterval.end !== evidence.silenceIntervals[index]?.end,
+    )
+  )
+    invalid(`${path}.candidates`, "must map every measured source interval");
+  if (
+    new Set(candidates.map((candidate) => candidate.id)).size !==
+    candidates.length
+  )
+    invalid(`${path}.candidates`, "duplicate candidate IDs");
+  const selectedCandidateIds = list(
+    data.selectedCandidateIds,
+    `${path}.selectedCandidateIds`,
+  ).map((id, index) => text(id, `${path}.selectedCandidateIds[${index}]`, 128));
+  if (
+    new Set(selectedCandidateIds).size !== selectedCandidateIds.length ||
+    selectedCandidateIds.some(
+      (id) => !candidates.some((candidate) => candidate.id === id),
+    )
+  )
+    invalid(
+      `${path}.selectedCandidateIds`,
+      "must contain unique known candidate IDs",
+    );
+  const selectedIds = new Set(selectedCandidateIds);
+  const expectedSourceIntervals = merge(
+    candidates
+      .filter((candidate) => selectedIds.has(candidate.id))
+      .flatMap((candidate) => candidate.sourceIntervals),
+  );
+  const expectedTimelineIntervals = merge(
+    candidates
+      .filter((candidate) => selectedIds.has(candidate.id))
+      .flatMap((candidate) => candidate.timelineIntervals),
+  );
+  if (
+    JSON.stringify(expectedSourceIntervals) !==
+      JSON.stringify(sourceIntervals) ||
+    JSON.stringify(expectedTimelineIntervals) !==
+      JSON.stringify(timelineIntervals)
+  )
+    invalid(
+      path,
+      "the aggregate proposal no longer matches selected candidates",
+    );
   const totalDurationReduced = number(
     data.totalDurationReduced,
     `${path}.totalDurationReduced`,
@@ -337,6 +459,8 @@ export function validateSilenceCutProposal(value: unknown): SilenceCutProposal {
     sourceHash,
     evidence,
     paddingSeconds: number(data.paddingSeconds, `${path}.paddingSeconds`, 0, 2),
+    candidates,
+    selectedCandidateIds,
     sourceIntervals,
     timelineIntervals,
     totalDurationReduced,
@@ -417,49 +541,80 @@ export function createSilenceCutProposal(
     );
   if (targetClips.length > MAX_SILENCE_INTERVALS)
     invalid("composition", "too many source instances for one silence review");
-  const cuts = evidence.silenceIntervals
-    .map(({ start, end }) => ({
-      start: start + paddingSeconds,
-      end: end - paddingSeconds,
-    }))
-    .filter(({ start, end }) => end - start > RIPPLE_EPSILON);
-  const sourceRanges: TranscriptRippleInterval[] = [];
-  const timelineRanges: TranscriptRippleInterval[] = [];
-  for (const clip of targetClips) {
-    const speed = clip.transform?.speed ?? 1;
-    const sourceIn = clip.sourceIn ?? 0;
-    const playedOut = sourceIn + clip.timelineDuration * speed;
-    const sourceOut = clip.sourceOut ?? playedOut;
-    if (
-      !Number.isFinite(speed) ||
-      speed <= 0 ||
-      sourceIn < 0 ||
-      sourceOut > evidence.duration + RANGE_EPSILON ||
-      playedOut > sourceOut + RANGE_EPSILON
-    )
-      throw new ApplicationError(
-        "timeline.conflict",
-        "A source instance extends outside the analyzed source clock.",
-        409,
-      );
-    for (const cut of cuts) {
-      const start = Math.max(sourceIn, cut.start);
-      const end = Math.min(playedOut, sourceOut, cut.end);
-      if ((end - start) / speed <= RIPPLE_EPSILON) continue;
-      sourceRanges.push({ start, end });
-      timelineRanges.push({
-        start: clip.timelineStart + (start - sourceIn) / speed,
-        end: Math.min(
-          clip.timelineStart + clip.timelineDuration,
-          clip.timelineStart + (end - sourceIn) / speed,
+  const candidates: SilenceCutCandidate[] = evidence.silenceIntervals.map(
+    (sourceInterval, index) => {
+      const cut = {
+        start: sourceInterval.start + paddingSeconds,
+        end: sourceInterval.end - paddingSeconds,
+      };
+      const sourceRanges: TranscriptRippleInterval[] = [];
+      const timelineRanges: TranscriptRippleInterval[] = [];
+      for (const clip of targetClips) {
+        const speed = clip.transform?.speed ?? 1;
+        const sourceIn = clip.sourceIn ?? 0;
+        const playedOut = sourceIn + clip.timelineDuration * speed;
+        const sourceOut = clip.sourceOut ?? playedOut;
+        if (
+          !Number.isFinite(speed) ||
+          speed <= 0 ||
+          sourceIn < 0 ||
+          sourceOut > evidence.duration + RANGE_EPSILON ||
+          playedOut > sourceOut + RANGE_EPSILON
+        )
+          throw new ApplicationError(
+            "timeline.conflict",
+            "A source instance extends outside the analyzed source clock.",
+            409,
+          );
+        if (cut.end - cut.start <= RIPPLE_EPSILON) continue;
+        const start = Math.max(sourceIn, cut.start);
+        const end = Math.min(playedOut, sourceOut, cut.end);
+        if ((end - start) / speed <= RIPPLE_EPSILON) continue;
+        sourceRanges.push({ start, end });
+        timelineRanges.push({
+          start: clip.timelineStart + (start - sourceIn) / speed,
+          end: Math.min(
+            clip.timelineStart + clip.timelineDuration,
+            clip.timelineStart + (end - sourceIn) / speed,
+          ),
+        });
+      }
+      const sourceMapped = merge(sourceRanges);
+      const timelineMapped = merge(timelineRanges);
+      return {
+        id: `silence-${String(index + 1).padStart(4, "0")}-${Math.round(sourceInterval.start * 1000).toString(36)}-${Math.round(sourceInterval.end * 1000).toString(36)}`,
+        sourceInterval,
+        sourceIntervals: sourceMapped,
+        timelineIntervals: timelineMapped,
+        durationReduced: timelineMapped.reduce(
+          (sum, range) => sum + range.end - range.start,
+          0,
         ),
-      });
-      if (timelineRanges.length > MAX_SILENCE_INTERVALS)
-        invalid("timelineIntervals", "too many mapped cuts for one review");
-    }
-  }
-  const sourceIntervals = merge(sourceRanges);
-  const timelineIntervals = merge(timelineRanges);
+      };
+    },
+  );
+  const requestedSelection = options.selectedCandidateIds
+    ? [...options.selectedCandidateIds]
+    : candidates.map((candidate) => candidate.id);
+  if (
+    new Set(requestedSelection).size !== requestedSelection.length ||
+    requestedSelection.some(
+      (id) => !candidates.some((candidate) => candidate.id === id),
+    )
+  )
+    invalid("selectedCandidateIds", "must contain unique known candidate IDs");
+  const selected = new Set(requestedSelection);
+  const selectedCandidates = candidates.filter((candidate) =>
+    selected.has(candidate.id),
+  );
+  const sourceIntervals = merge(
+    selectedCandidates.flatMap((candidate) => candidate.sourceIntervals),
+  );
+  const timelineIntervals = merge(
+    selectedCandidates.flatMap((candidate) => candidate.timelineIntervals),
+  );
+  if (timelineIntervals.length > MAX_SILENCE_INTERVALS)
+    invalid("timelineIntervals", "too many mapped cuts for one review");
   const affectedClipIds: string[] = [];
   const firstCut = timelineIntervals[0]?.start;
   if (firstCut !== undefined) {
@@ -536,6 +691,10 @@ export function createSilenceCutProposal(
     sourceHash: evidence.sourceHash,
     evidence,
     paddingSeconds,
+    candidates,
+    selectedCandidateIds: candidates
+      .filter((candidate) => selected.has(candidate.id))
+      .map((candidate) => candidate.id),
     sourceIntervals,
     timelineIntervals,
     totalDurationReduced: timelineIntervals.reduce(
@@ -565,9 +724,12 @@ export function applySilenceCutProposal(
   const current = createSilenceCutProposal(composition, proposal.evidence, {
     baseRevision: proposal.baseRevision,
     paddingSeconds: proposal.paddingSeconds,
+    selectedCandidateIds: proposal.selectedCandidateIds,
     assets: options.assets,
   });
   for (const key of [
+    "candidates",
+    "selectedCandidateIds",
     "sourceIntervals",
     "timelineIntervals",
     "totalDurationReduced",

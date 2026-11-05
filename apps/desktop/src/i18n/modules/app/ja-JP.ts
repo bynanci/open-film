@@ -1181,6 +1181,7 @@ export default {
       status: {
         queued: "待機中",
         running: "実行中",
+        "waiting-review": "レビューが必要",
         completed: "完了",
         cancelled: "キャンセル済み",
         failed: "確認が必要",

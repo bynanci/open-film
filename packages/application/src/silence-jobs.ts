@@ -35,6 +35,12 @@ export interface SilenceJobApplyInput {
   requestId: string;
 }
 
+export interface SilenceJobReviseInput {
+  requestId: string;
+  reviewId: string;
+  selectedCandidateIds: string[];
+}
+
 export type SilenceFreshness = "current" | "stale" | "unverified";
 export interface SilenceJobCreateResult {
   job: Job;
@@ -327,6 +333,116 @@ export class SilenceJobService {
     return { job, freshness: await this.freshness(job), review };
   }
 
+  /** Reserve a new Job and immutable Review for an explicit candidate selection. */
+  async revise(
+    jobId: string,
+    value: SilenceJobReviseInput,
+  ): Promise<SilenceJobCreateResult> {
+    identifier(jobId, "jobId");
+    const input = object(
+      value,
+      ["requestId", "reviewId", "selectedCandidateIds"],
+      "silence Review selection",
+    );
+    const requestId = identifier(input.requestId, "requestId");
+    const reviewId = identifier(input.reviewId, "reviewId");
+    if (
+      !Array.isArray(input.selectedCandidateIds) ||
+      input.selectedCandidateIds.length > 2000 ||
+      input.selectedCandidateIds.some(
+        (id) => typeof id !== "string" || !id.trim() || id.length > 128,
+      ) ||
+      new Set(input.selectedCandidateIds).size !==
+        input.selectedCandidateIds.length
+    )
+      invalid("Choose unique silence candidate identifiers.");
+
+    const parent = this.get(jobId);
+    const identity = parent.silenceAnalysis!;
+    if (parent.status !== "waiting-review" || identity.reviewId !== reviewId)
+      throw conflict(
+        "Only the current saved Review can create a new selection Review.",
+      );
+    const sourceReview = await this.silence.readProposal(reviewId);
+    this.assertReviewBound(parent, sourceReview);
+    const selected = new Set(input.selectedCandidateIds as string[]);
+    if (
+      [...selected].some(
+        (id) =>
+          !sourceReview.proposal.candidates.some(
+            (candidate) => candidate.id === id,
+          ),
+      )
+    )
+      invalid("The selection contains a candidate outside this Review.");
+    const selectedCandidateIds = sourceReview.proposal.candidates
+      .filter((candidate) => selected.has(candidate.id))
+      .map((candidate) => candidate.id);
+    const fingerprint = digest({
+      version: 1,
+      parentJobId: parent.id,
+      sourceReviewId: reviewId,
+      requestId,
+      projectId: identity.projectId,
+      compositionId: identity.compositionId,
+      baseRevision: identity.baseRevision,
+      sourceHash: identity.sourceHash,
+      options: identity.options,
+      selectedCandidateIds,
+    });
+    const prior =
+      this.application.catalog.intelligence.getSilenceAnalysisByRequestId(
+        requestId,
+      );
+    if (prior) {
+      if (prior.silenceAnalysis?.requestFingerprint !== fingerprint)
+        throw conflict(
+          "This requestId is already bound to another Review selection.",
+        );
+      return { job: prior, created: false };
+    }
+    if (this.application.hasActiveJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job before updating this Review.",
+        409,
+      );
+    if ((await this.freshness(parent)) !== "current")
+      throw conflict(
+        "The source or Composition is stale; selection was refused.",
+      );
+
+    const now = new Date().toISOString();
+    const child: Job = {
+      id: randomUUID(),
+      type: "silence-analysis",
+      status: "queued",
+      progress: 0,
+      stage: "queued",
+      assetId: parent.assetId,
+      analysisOwner: createReviewOwner(),
+      createdAt: now,
+      updatedAt: now,
+      silenceAnalysis: {
+        version: 1,
+        projectId: identity.projectId,
+        compositionId: identity.compositionId,
+        baseRevision: identity.baseRevision,
+        requestId,
+        requestFingerprint: fingerprint,
+        options: { ...identity.options },
+        sourceHash: identity.sourceHash,
+        parentJobId: parent.id,
+        sourceReviewId: reviewId,
+        selectedCandidateIds,
+        attempt: 1,
+      },
+    };
+    return this.application.catalog.intelligence.reserveSilenceAnalysisJob(
+      validateJob(child),
+    );
+  }
+
   async run(jobId: string, signal?: AbortSignal): Promise<Job> {
     const queued = this.get(jobId);
     if (queued.status !== "queued") return queued;
@@ -385,19 +501,29 @@ export class SilenceJobService {
         }
         running = next;
       };
-      const review = await this.silence.createBoundProposal(
-        jobData.compositionId,
-        queued.assetId!,
-        {
-          baseRevision: jobData.baseRevision,
-          sourceHash: jobData.sourceHash,
-        },
-        {
-          ...jobData.options,
-          signal: effectiveSignal,
-          onProgress,
-        },
-      );
+      const review = jobData.sourceReviewId
+        ? await this.silence.createDerivedProposal(
+            jobData.sourceReviewId,
+            {
+              compositionId: jobData.compositionId,
+              baseRevision: jobData.baseRevision,
+              sourceHash: jobData.sourceHash,
+            },
+            jobData.selectedCandidateIds ?? [],
+          )
+        : await this.silence.createBoundProposal(
+            jobData.compositionId,
+            queued.assetId!,
+            {
+              baseRevision: jobData.baseRevision,
+              sourceHash: jobData.sourceHash,
+            },
+            {
+              ...jobData.options,
+              signal: effectiveSignal,
+              onProgress,
+            },
+          );
       effectiveSignal.throwIfAborted();
       const waiting: Job = {
         ...running,
