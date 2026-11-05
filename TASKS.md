@@ -173,16 +173,18 @@ change. Discuss their scope before implementation.
       search, lookup, summary scans and seeding ([method, results and limits](docs/validation-catalog-scale-benchmark.md)).
       This is Catalog evidence, not end-to-end support at those library sizes.
 - [x] Add versioned keyset cursors for chronological Catalog pages and use them
-      in the main Desktop library, full-catalog photo pickers, Motion video
+      in the main Desktop library, paged photo pickers, Motion video
       picker, server API and CLI. Keep legacy offset callers compatible; see the
       [Catalog scale measurements](docs/validation-catalog-scale-benchmark.md)
       and [fcc00131 check review](docs/validation-fcc00131-follow-up.md).
 - [ ] Add semantics-preserving indexing for literal substring name/tag search.
       Current `LIKE` behavior and tag matching must remain compatible; benchmark
       and evaluate a migration before replacing the scan.
-- [ ] Bound memory in the full-catalog Story Template and PhotoDepth pickers.
-      Cursor paging removes repeated offset scans, but those pickers still collect
-      all matching descriptors before display.
+- [x] Bound additional descriptor and option memory in the Story Template and
+      PhotoDepth pickers with lazy keyset pages. Each selector displays one
+      200-row page and keeps only selected dependencies between pages; the
+      existing Editor document asset pool is unchanged. See the
+      [picker scale validation](docs/validation-catalog-scale-benchmark.md).
 - [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
       initial JavaScript bundle (current build: 1.72 MB minified / 508 KB gzip).
       Record browser navigation and native cold-start measurements before setting

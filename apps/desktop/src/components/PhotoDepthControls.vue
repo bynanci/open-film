@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from "vue";
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   GraphicImageNode,
@@ -27,14 +27,18 @@ const emit = defineEmits<{
   importAssets: [];
 }>();
 const { t } = useI18n();
+const libraryPageSize = 200;
 const libraryAssets = shallowRef<MediaAsset[]>([]);
+const selectedLibraryAssets = shallowRef<MediaAsset[]>([]);
 const libraryError = ref(false);
 const libraryRetry = ref(0);
-const assets = computed(() => [
-  ...new Map(
-    [...libraryAssets.value, ...props.assets].map((asset) => [asset.id, asset]),
-  ).values(),
-]);
+const libraryLoading = ref(false);
+const libraryOffset = ref(0);
+const libraryPageCount = ref(0);
+const libraryTotal = ref(0);
+const libraryNextCursor = ref<string | null>(null);
+const libraryCursors = new Map<number, string>();
+let libraryGeneration = 0;
 const eligibleImage = (asset: MediaAsset) => {
   try {
     const uri = new URL(asset.uri);
@@ -48,41 +52,41 @@ const eligibleImage = (asset: MediaAsset) => {
     return false;
   }
 };
-watch(
-  [() => props.projectId, () => props.dependencyVersion, libraryRetry],
-  async ([projectId], previous, onCleanup) => {
-    let stale = false;
-    onCleanup(() => {
-      stale = true;
-    });
-    if (projectId !== previous[0]) libraryAssets.value = [];
-    libraryError.value = false;
-    try {
-      const images: MediaAsset[] = [];
-      let cursor: string | undefined;
-      while (!stale) {
-        const query = new URLSearchParams({
-          mediaType: "image",
-          limit: "200",
-          cursorMode: "keyset",
-        });
-        if (cursor) query.set("cursor", cursor);
-        const page = await api.assets(query);
-        if (stale) return;
-        images.push(...page.assets.filter(eligibleImage));
-        if (!page.assets.length || !page.nextCursor) break;
-        cursor = page.nextCursor;
-      }
-      if (!stale) libraryAssets.value = images;
-    } catch {
-      if (!stale) libraryError.value = true;
-    }
-  },
-  { immediate: true },
-);
 const selectedMaskId = ref("");
 const selectedBackgroundId = ref("");
 const backgroundKind = ref<"source" | "asset">("source");
+function assetById(assetId: string | undefined) {
+  if (!assetId) return undefined;
+  return (
+    props.assets.find((asset) => asset.id === assetId) ??
+    libraryAssets.value.find((asset) => asset.id === assetId) ??
+    selectedLibraryAssets.value.find((asset) => asset.id === assetId)
+  );
+}
+const pickerAssets = computed(() => {
+  const byId = new Map<string, MediaAsset>();
+  for (const asset of [...selectedLibraryAssets.value, ...libraryAssets.value])
+    byId.set(asset.id, asset);
+  const recipe = props.scene.photoDepth;
+  const referencedIds = [
+    props.node.assetId,
+    selectedMaskId.value,
+    selectedBackgroundId.value,
+    ...(recipe?.nodeId === props.node.id && recipe.mode === "parallax"
+      ? [
+          recipe.maskAssetId,
+          ...(recipe.background.kind === "asset"
+            ? [recipe.background.assetId]
+            : []),
+        ]
+      : []),
+  ];
+  for (const assetId of referencedIds) {
+    const asset = props.assets.find((item) => item.id === assetId);
+    if (asset) byId.set(asset.id, asset);
+  }
+  return [...byId.values()];
+});
 const selectedMask = computed(() =>
   pngMasks.value.find((asset) => asset.id === selectedMaskId.value),
 );
@@ -90,20 +94,18 @@ const fallbackReason =
   ref<NonNullable<PhotoDepthRecipe["fallbackReason"]>>("mask-not-available");
 const showLayers = ref(false);
 
-const source = computed(() =>
-  props.assets.find((asset) => asset.id === props.node.assetId),
-);
+const source = computed(() => assetById(props.node.assetId));
 const isPng = (asset: MediaAsset) =>
   asset.mediaType === "image" &&
   (asset.codec?.toLowerCase().includes("png") || /\.png$/iu.test(asset.name));
 const pngMasks = computed(() =>
-  assets.value.filter(
+  pickerAssets.value.filter(
     (asset) =>
       asset.id !== props.node.assetId && isPng(asset) && eligibleImage(asset),
   ),
 );
 const backgrounds = computed(() =>
-  assets.value.filter(
+  pickerAssets.value.filter(
     (asset) =>
       eligibleImage(asset) &&
       asset.id !== props.node.assetId &&
@@ -121,6 +123,25 @@ const depth = computed(() =>
 const parallax = computed(() =>
   depth.value?.mode === "parallax" ? depth.value : undefined,
 );
+watch(
+  [() => props.projectId, selectedMaskId, selectedBackgroundId],
+  ([projectId, maskId, backgroundId], previous) => {
+    const sameProject = projectId === previous[0];
+    const previouslySelected = sameProject ? selectedLibraryAssets.value : [];
+    const ids = [...new Set([maskId, backgroundId].filter(Boolean))];
+    selectedLibraryAssets.value = ids.flatMap((assetId) => {
+      const asset =
+        props.assets.find((candidate) => candidate.id === assetId) ??
+        libraryAssets.value.find((candidate) => candidate.id === assetId) ??
+        previouslySelected.find((candidate) => candidate.id === assetId);
+      return asset && eligibleImage(asset) ? [asset] : [];
+    });
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  libraryGeneration++;
+});
 const seconds = computed(() => props.node.end - props.node.start);
 const eligibility = computed(() => {
   if (!source.value || !eligibleImage(source.value)) return "source";
@@ -141,15 +162,72 @@ const canCreateParallax = computed(() =>
     eligibility: eligibility.value,
   }),
 );
-const currentMask = computed(() =>
-  assets.value.find((asset) => asset.id === parallax.value?.maskAssetId),
-);
+const currentMask = computed(() => assetById(parallax.value?.maskAssetId));
 const currentBackground = computed(() => {
   const recipe = parallax.value;
   const background = recipe?.background;
   if (background?.kind !== "asset") return undefined;
-  return assets.value.find((asset) => asset.id === background.assetId);
+  return assetById(background.assetId);
 });
+
+async function loadLibraryPage(offset = 0) {
+  if (offset > 0 && !libraryCursors.has(offset)) return;
+  const generation = ++libraryGeneration;
+  const projectId = props.projectId;
+  const cursor = offset > 0 ? libraryCursors.get(offset) : undefined;
+  libraryLoading.value = true;
+  libraryError.value = false;
+  const query = new URLSearchParams({
+    mediaType: "image",
+    limit: String(libraryPageSize),
+    cursorMode: "keyset",
+  });
+  if (cursor) query.set("cursor", cursor);
+  try {
+    const page = await api.assets(query);
+    if (generation !== libraryGeneration || projectId !== props.projectId)
+      return;
+    libraryAssets.value = page.assets.filter(eligibleImage);
+    libraryOffset.value = offset;
+    libraryPageCount.value = page.assets.length;
+    libraryTotal.value = page.total;
+    libraryNextCursor.value = page.nextCursor ?? null;
+    const nextOffset = offset + libraryPageSize;
+    if (page.nextCursor) libraryCursors.set(nextOffset, page.nextCursor);
+    else libraryCursors.delete(nextOffset);
+  } catch {
+    if (generation === libraryGeneration) libraryError.value = true;
+  } finally {
+    if (generation === libraryGeneration) libraryLoading.value = false;
+  }
+}
+
+function loadNextLibraryPage() {
+  if (libraryNextCursor.value)
+    void loadLibraryPage(libraryOffset.value + libraryPageSize);
+}
+
+function loadPreviousLibraryPage() {
+  if (libraryOffset.value > 0)
+    void loadLibraryPage(Math.max(0, libraryOffset.value - libraryPageSize));
+}
+
+watch(
+  [() => props.projectId, () => props.dependencyVersion, libraryRetry],
+  ([projectId], previous) => {
+    libraryGeneration++;
+    libraryAssets.value = [];
+    libraryCursors.clear();
+    libraryOffset.value = 0;
+    libraryPageCount.value = 0;
+    libraryTotal.value = 0;
+    libraryNextCursor.value = null;
+    libraryError.value = false;
+    if (projectId !== previous[0]) selectedLibraryAssets.value = [];
+    void loadLibraryPage(0);
+  },
+  { immediate: true },
+);
 const startTime = computed(() => props.scene.start + props.node.start);
 const middleTime = computed(() => startTime.value + seconds.value / 2);
 const endTime = computed(() =>
@@ -165,7 +243,7 @@ watch(
     () => props.node.id,
     () => props.node.assetId,
     () => depth.value,
-    () => assets.value,
+    () => pickerAssets.value,
   ],
   ([sceneId, nodeId, assetId, recipe], previous) => {
     const sameTarget =
@@ -174,11 +252,22 @@ watch(
       assetId === previous[2];
     const previousRecipe = previous[3];
     if (sameTarget && recipe === previousRecipe) {
-      if (!pngMasks.value.some((asset) => asset.id === selectedMaskId.value))
+      if (
+        !pngMasks.value.some((asset) => asset.id === selectedMaskId.value) &&
+        !(
+          recipe?.mode === "parallax" &&
+          recipe.maskAssetId === selectedMaskId.value
+        )
+      )
         selectedMaskId.value = pngMasks.value[0]?.id ?? "";
       if (
         !backgrounds.value.some(
           (asset) => asset.id === selectedBackgroundId.value,
+        ) &&
+        !(
+          recipe?.mode === "parallax" &&
+          recipe.background.kind === "asset" &&
+          recipe.background.assetId === selectedBackgroundId.value
         )
       )
         selectedBackgroundId.value = backgrounds.value[0]?.id ?? "";
@@ -238,7 +327,10 @@ function save(recipe: PhotoDepthRecipe | undefined) {
   emit(
     "command",
     { type: "graphic.scene.upsert", scene },
-    assets.value.filter((asset) => ids.has(asset.id)),
+    [...ids].flatMap((assetId) => {
+      const asset = assetById(assetId);
+      return asset ? [asset] : [];
+    }),
   );
 }
 
@@ -366,9 +458,17 @@ function updateBackground() {
     <p class="editor-muted">{{ t("editor.photoDepth.description") }}</p>
     <p v-if="libraryError" class="editor-error" role="alert">
       {{ t("editor.photoDepth.libraryError") }}
-      <button type="button" class="editor-button" @click="libraryRetry++">
+      <button
+        type="button"
+        class="editor-button"
+        :disabled="libraryLoading"
+        @click="libraryRetry++"
+      >
         {{ t("editor.graphics.retry") }}
       </button>
+    </p>
+    <p v-else-if="libraryLoading && !libraryTotal" role="status">
+      {{ t("editor.photoDepth.libraryLoading") }}
     </p>
     <p v-if="eligibility === 'source'" class="editor-muted">
       {{ t("editor.photoDepth.sourceHashRequired") }}
@@ -458,6 +558,38 @@ function updateBackground() {
         </option>
       </select>
     </label>
+    <div
+      v-if="libraryTotal > libraryPageSize"
+      class="photo-depth-library-pages"
+      role="group"
+      :aria-label="t('editor.photoDepth.libraryPages')"
+    >
+      <button
+        type="button"
+        class="editor-button"
+        :disabled="disabled || libraryLoading || libraryOffset === 0"
+        @click="loadPreviousLibraryPage"
+      >
+        {{ t("editor.photoDepth.previousPage") }}
+      </button>
+      <span role="status">
+        {{
+          t("editor.photoDepth.libraryPage", {
+            from: libraryPageCount ? libraryOffset + 1 : 0,
+            to: Math.min(libraryOffset + libraryPageCount, libraryTotal),
+            total: libraryTotal,
+          })
+        }}
+      </span>
+      <button
+        type="button"
+        class="editor-button"
+        :disabled="disabled || libraryLoading || !libraryNextCursor"
+        @click="loadNextLibraryPage"
+      >
+        {{ t("editor.photoDepth.nextPage") }}
+      </button>
+    </div>
     <template v-if="parallax">
       <div class="photo-depth-field-grid">
         <label
@@ -643,6 +775,12 @@ function updateBackground() {
 .photo-depth-controls label {
   display: grid;
   gap: 0.35rem;
+}
+.photo-depth-library-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
 }
 .photo-depth-assets {
   display: flex;

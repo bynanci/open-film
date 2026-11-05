@@ -79,13 +79,18 @@ reads each individual page in one SQLite read snapshot, preserves equal-time and
 null-last ordering, validates cursor version/shape, and adds no schema
 migration. Existing offset-based APIs remain available.
 
-Desktop browsing and full-catalog photo/video picker loops use the cursor path.
-The cursor does not pin a snapshot across separate HTTP requests: catalog edits
-between pages can change what later pages contain, as with ordinary live
-pagination. The full-catalog photo pickers still materialize their descriptors
-in memory. At 100,000 rows, substring name and tag searches remain full-catalog
-scans; this run measured 61.31 ms and 59.89 ms medians respectively. Search
-indexing and bounded/lazy picker memory remain explicit follow-up work.
+Desktop browsing, the lazily paged PhotoDepth and Photo Relationship pickers,
+and the Motion video picker use the cursor path. The two photo pickers request
+one page of at most 200 rows at a time and preserve only selected dependencies
+when navigating. On a synthetic 10,000-image component fixture, opening each
+picker requests 200 rows in one call instead of traversing 50 pages; focused
+regressions verify selection retention and bounded options. These tests count
+API rows and rendered options; they do not measure RSS, real media, or the
+existing parent Editor document asset pool. The cursor does not pin a snapshot
+across separate HTTP requests: catalog edits between pages can change later
+results, as with ordinary live pagination. At 100,000 rows, substring name and
+tag searches remain full-catalog scans; this run measured 61.31 ms and 59.89 ms
+medians respectively. Search indexing remains explicit follow-up work.
 
 The exact-source run was measured at `2026-11-05T03:58:41.233Z` on clean commit
 `c64dd3f6eefc16c5d164de13bac434749de4d9bf`. Its 10,000-row fixture SHA-256 is

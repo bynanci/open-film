@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { GRAPHIC_SCENE_TEMPLATE_LIMITS } from "@openfilm/core";
 import type {
@@ -74,14 +74,28 @@ const notice = ref("");
 const busy = ref(false);
 const photoCatalogBusy = ref(false);
 const photoCatalogLoaded = ref(false);
+const photoCatalogError = ref(false);
+const photoPageSize = 200;
+const photoPageOffset = ref(0);
+const photoPageCount = ref(0);
+const photoTotal = ref(0);
+const photoNextCursor = ref<string | null>(null);
+const photoPageCursors = new Map<number, string>();
 const catalogImages = ref<MediaAsset[]>([]);
+const selectedCatalogPhotos = ref<MediaAsset[]>([]);
+let photoCatalogGeneration = 0;
 const motionEnabled = ref(true);
 const motionDuration = ref(0.4);
 const motionEasing = ref<GraphicEasing>("ease-out");
 const imageAssets = computed(() =>
-  (photoCatalogLoaded.value ? catalogImages.value : props.assets).filter(
-    (asset) => asset.mediaType === "image" && !asset.state.rejected,
-  ),
+  [
+    ...new Map(
+      [...catalogImages.value, ...selectedCatalogPhotos.value].map((asset) => [
+        asset.id,
+        asset,
+      ]),
+    ).values(),
+  ].filter((asset) => asset.mediaType === "image" && !asset.state.rejected),
 );
 const existing = computed(() =>
   props.records.find((record) => record.sceneId === selectedSceneId.value),
@@ -224,7 +238,8 @@ watch(selectedSceneId, (id) => {
 watch(selectedTemplate, (template) => {
   if (existing.value?.templateId !== template) selectedSceneId.value = "";
   if (!selectedSceneId.value) loadRecord(undefined);
-  if (template === "photo-relationship") void loadPhotoCatalog();
+  if (template === "photo-relationship" && !photoCatalogLoaded.value)
+    void loadPhotoCatalog();
 });
 watch(
   () => [props.width, props.height, props.duration, props.locale] as const,
@@ -235,38 +250,79 @@ watch(
   { immediate: true },
 );
 
-async function loadPhotoCatalog() {
-  if (photoCatalogLoaded.value || photoCatalogBusy.value) return;
+async function loadPhotoCatalog(offset = 0) {
+  if (photoCatalogBusy.value || (offset > 0 && !photoPageCursors.has(offset)))
+    return;
+  const generation = ++photoCatalogGeneration;
   photoCatalogBusy.value = true;
-  const images: MediaAsset[] = [];
+  photoCatalogError.value = false;
   try {
-    let cursor: string | undefined;
-    while (true) {
-      const query = new URLSearchParams({
-        mediaType: "image",
-        limit: "200",
-        cursorMode: "keyset",
-      });
-      if (cursor) query.set("cursor", cursor);
-      const page = await api.assets(query);
-      images.push(...page.assets);
-      if (!page.nextCursor || !page.assets.length) break;
-      cursor = page.nextCursor;
-    }
-    catalogImages.value = images;
+    const query = new URLSearchParams({
+      mediaType: "image",
+      limit: String(photoPageSize),
+      cursorMode: "keyset",
+    });
+    const cursor = offset > 0 ? photoPageCursors.get(offset) : undefined;
+    if (cursor) query.set("cursor", cursor);
+    const page = await api.assets(query);
+    if (generation !== photoCatalogGeneration) return;
+    catalogImages.value = page.assets;
+    photoPageOffset.value = offset;
+    photoPageCount.value = page.assets.length;
+    photoTotal.value = page.total;
+    photoNextCursor.value = page.nextCursor ?? null;
+    const nextOffset = offset + photoPageSize;
+    if (page.nextCursor) photoPageCursors.set(nextOffset, page.nextCursor);
+    else photoPageCursors.delete(nextOffset);
     photoCatalogLoaded.value = true;
+    if (page.assets.length === 0 && photoIds.value.length)
+      photoIds.value[0] = "";
     if (
       photoIds.value.length &&
-      !images.some((asset) => asset.id === photoIds.value[0])
+      !photoIds.value[0] &&
+      page.assets.some((asset) => !asset.state.rejected)
     )
       photoIds.value[0] =
-        images.find((asset) => !asset.state.rejected)?.id ?? "";
+        page.assets.find((asset) => !asset.state.rejected)?.id ?? "";
   } catch {
-    // Composition assets remain available as a useful local fallback.
+    if (generation === photoCatalogGeneration) photoCatalogError.value = true;
   } finally {
-    photoCatalogBusy.value = false;
+    if (generation === photoCatalogGeneration) photoCatalogBusy.value = false;
   }
 }
+
+function loadNextPhotoPage() {
+  if (photoNextCursor.value)
+    void loadPhotoCatalog(photoPageOffset.value + photoPageSize);
+}
+
+function loadPreviousPhotoPage() {
+  if (photoPageOffset.value > 0)
+    void loadPhotoCatalog(Math.max(0, photoPageOffset.value - photoPageSize));
+}
+
+function retainSelectedPhotos() {
+  const selectedIds = [...new Set(photoIds.value.filter(Boolean))];
+  selectedCatalogPhotos.value = selectedIds.flatMap((assetId) => {
+    const asset =
+      catalogImages.value.find((candidate) => candidate.id === assetId) ??
+      selectedCatalogPhotos.value.find(
+        (candidate) => candidate.id === assetId,
+      ) ??
+      props.assets.find((candidate) => candidate.id === assetId);
+    return asset && asset.mediaType === "image" ? [asset] : [];
+  });
+}
+
+watch(
+  [() => photoIds.value.join("\u0000"), () => catalogImages.value],
+  retainSelectedPhotos,
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  photoCatalogGeneration++;
+});
 
 function addMessage() {
   if (messages.value.length >= 4) return;
@@ -1061,9 +1117,55 @@ function selectRecord(event: Event) {
           <option value="bookends">{{ t("editor.templates.bookends") }}</option>
         </select>
       </label>
-      <p v-if="!imageAssets.length" class="template-help">
+      <p v-if="photoCatalogError" class="template-error" role="alert">
+        {{ t("editor.templates.photoCatalogFailed") }}
+        <button
+          type="button"
+          class="editor-button"
+          :disabled="photoCatalogBusy"
+          @click="loadPhotoCatalog(0)"
+        >
+          {{ t("editor.graphics.retry") }}
+        </button>
+      </p>
+      <p v-else-if="photoCatalogBusy" role="status" class="template-help">
+        {{ t("editor.templates.loadingPhotos") }}
+      </p>
+      <p v-else-if="!imageAssets.length" class="template-help">
         {{ t("editor.templates.noPhotos") }}
       </p>
+      <div
+        v-if="photoTotal > photoPageSize"
+        role="group"
+        :aria-label="t('editor.templates.photoCatalogPages')"
+        class="template-photo-pages"
+      >
+        <button
+          type="button"
+          class="editor-button"
+          :disabled="disabled || photoCatalogBusy || photoPageOffset === 0"
+          @click="loadPreviousPhotoPage"
+        >
+          {{ t("editor.templates.previousPhotos") }}
+        </button>
+        <span role="status">
+          {{
+            t("editor.templates.photoCatalogPage", {
+              from: photoPageCount ? photoPageOffset + 1 : 0,
+              to: Math.min(photoPageOffset + photoPageCount, photoTotal),
+              total: photoTotal,
+            })
+          }}
+        </span>
+        <button
+          type="button"
+          class="editor-button"
+          :disabled="disabled || photoCatalogBusy || !photoNextCursor"
+          @click="loadNextPhotoPage"
+        >
+          {{ t("editor.templates.nextPhotos") }}
+        </button>
+      </div>
       <fieldset
         v-for="(_assetId, index) in photoIds"
         :key="index"
@@ -1074,7 +1176,10 @@ function selectRecord(event: Event) {
         </legend>
         <label class="template-field"
           >{{ t("editor.templates.replacePhoto") }}
-          <select v-model="photoIds[index]" :disabled="disabled">
+          <select
+            v-model="photoIds[index]"
+            :disabled="disabled || photoCatalogBusy"
+          >
             <option value="">{{ t("editor.templates.choosePhoto") }}</option>
             <option
               v-for="asset in imageAssets"
@@ -1195,6 +1300,12 @@ function selectRecord(event: Event) {
 .template-gallery .editor-button {
   min-height: 48px;
   white-space: normal;
+}
+.template-photo-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
 }
 .template-field {
   display: grid;

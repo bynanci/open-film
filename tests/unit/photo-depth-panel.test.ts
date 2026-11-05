@@ -66,9 +66,11 @@ function text(node: HostNode): string {
 async function fixture(
   recipe?: PhotoDepthRecipe,
   initialAssetIds?: string[],
-  readLibrary?: (
-    params: URLSearchParams,
-  ) => Promise<{ assets: MediaAsset[]; total: number }>,
+  readLibrary?: (params: URLSearchParams) => Promise<{
+    assets: MediaAsset[];
+    total: number;
+    nextCursor?: string | null;
+  }>,
 ) {
   class HostDocument {
     activeElement = null;
@@ -83,7 +85,9 @@ async function fixture(
       "../api": {
         thumbnailUrl: () => "/synthetic-thumbnail.png",
         api: {
-          assets: readLibrary ?? (async () => ({ assets: [], total: 0 })),
+          assets:
+            readLibrary ??
+            (async () => ({ assets, total: assets.length, nextCursor: null })),
         },
       },
       "../photo-depth-controls": { canCreatePhotoDepth },
@@ -244,17 +248,7 @@ describe("PhotoDepth recipe controls", () => {
     expect(panel.button("editor.graphics.retry")).toBeUndefined();
   });
 
-  it("queries every Library image page outside the explicit story pool and passes only chosen dependencies with the command", async () => {
-    const library = Array.from({ length: 200 }, (_, index): MediaAsset => ({
-      id: `remote-${index}`,
-      name: `remote-${index}.png`,
-      mediaType: "image",
-      uri: `https://synthetic.invalid/${index}.png`,
-      contentHash: hash,
-      tags: [],
-      state: {},
-      metadata: {},
-    }));
+  it("loads only one bounded Library page and lets the user page to photo dependencies", async () => {
     const local = (id: string): MediaAsset => ({
       id,
       name: `${id}.png`,
@@ -265,15 +259,28 @@ describe("PhotoDepth recipe controls", () => {
       state: {},
       metadata: {},
     });
-    library.push(
-      local("new-mask"),
-      local("new-background"),
-      local("unselected"),
+    const library = Array.from({ length: 10_000 }, (_, index): MediaAsset =>
+      index === 200
+        ? local("new-mask")
+        : index === 201
+          ? local("new-background")
+          : {
+              id: `remote-${index}`,
+              name: `remote-${index}.png`,
+              mediaType: "image",
+              uri: `https://synthetic.invalid/${index}.png`,
+              contentHash: hash,
+              tags: [],
+              state: {},
+              metadata: {},
+            },
     );
+    let returnedAssets = 0;
     const reads = vi.fn(async (params: URLSearchParams) => {
       const offset = Number(params.get("cursor") ?? 0);
       const limit = Number(params.get("limit"));
       const assets = library.slice(offset, offset + limit);
+      returnedAssets += assets.length;
       return {
         assets,
         total: library.length,
@@ -285,20 +292,30 @@ describe("PhotoDepth recipe controls", () => {
     });
     const panel = await fixture(undefined, ["source"], reads);
     for (let index = 0; index < 12; index++) await vue.nextTick();
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(returnedAssets).toBe(200);
+    expect(reads.mock.calls[0]![0].get("limit")).toBe("200");
+    expect(reads.mock.calls[0]![0].get("cursorMode")).toBe("keyset");
+    expect(reads.mock.calls[0]![0].get("mediaType")).toBe("image");
+    expect(panel.button("editor.photoDepth.nextPage")).toBeDefined();
+    await panel.click("editor.photoDepth.nextPage");
     expect(reads).toHaveBeenCalledTimes(2);
-    expect(reads.mock.calls.map(([params]) => params.get("cursor"))).toEqual([
-      null,
-      "200",
-    ]);
-    expect(
-      reads.mock.calls.every(([params]) => params.get("mediaType") === "image"),
-    ).toBe(true);
+    expect(reads.mock.calls[1]![0].get("cursor")).toBe("200");
     expect(
       text(panel.control("editor.photoDepth.foregroundMask")!),
     ).not.toContain("remote-");
     await panel.model("editor.photoDepth.foregroundMask", "new-mask");
     await panel.model("editor.photoDepth.backgroundMode", "asset");
     await panel.model("editor.photoDepth.background", "new-background");
+    await panel.click("editor.photoDepth.previousPage");
+    expect(reads).toHaveBeenCalledTimes(3);
+    await panel.click("editor.photoDepth.nextPage");
+    expect(reads).toHaveBeenCalledTimes(4);
+    expect(
+      flatten(panel.control("editor.photoDepth.foregroundMask")!).filter(
+        (node) => node.tag === "option",
+      ).length,
+    ).toBeLessThanOrEqual(203);
     expect(panel.button("editor.photoDepth.create")!.props.disabled).toBe(
       false,
     );

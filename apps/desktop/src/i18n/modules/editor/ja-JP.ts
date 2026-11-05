@@ -289,6 +289,11 @@ export default {
       importAssets: "写真レイヤーをローカルから読み込む",
       libraryError:
         "ローカルの写真レイヤーを読み込めませんでした。再試行してください。",
+      libraryLoading: "写真レイヤーを読み込み中…",
+      libraryPages: "写真レイヤーのページ",
+      libraryPage: "写真 {from}～{to} / {total}",
+      previousPage: "前の写真",
+      nextPage: "次の写真",
       sourceHashRequired:
         "深度レイヤーを編集する前に、写真をローカルに読み込んで保存してください。",
       durationRule:
@@ -395,6 +400,12 @@ export default {
       choosePhoto: "写真を選択",
       noPhotos:
         "写真テンプレートを作るには、先にローカル写真をプロジェクトに追加してください。",
+      photoCatalogFailed: "写真カタログを読み込めません。再試行してください。",
+      loadingPhotos: "プロジェクトの写真を読み込み中…",
+      photoCatalogPages: "写真カタログのページ",
+      photoCatalogPage: "写真 {from}～{to} / {total}",
+      previousPhotos: "前の写真",
+      nextPhotos: "次の写真",
       photoRequired: "各位置に利用可能なローカル写真を選択してください。",
       protectFocus: "この大切な範囲を保護",
       protectedRegionHint:

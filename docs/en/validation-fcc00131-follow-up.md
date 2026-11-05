@@ -40,10 +40,28 @@ used by Desktop library browsing, photo/video pickers, HTTP and CLI. Measurement
 query plans, limits and reproduction instructions are in the
 [Catalog scale benchmark](validation-catalog-scale-benchmark.md).
 
+## Lazy photo selector validation
+
+The PhotoDepth and Photo Relationship pickers previously requested every
+chronological page when opened. Their page size was 200, so a synthetic
+10,000-image catalog required 50 sequential requests and materialized all 10,000
+rows in each picker. Both now request one page on activation, expose previous /
+next controls, and retain only the current page plus selected photo dependencies.
+Changing pages preserves the selected mask, background and template photos.
+
+The 10,000-image component regressions in `tests/unit/photo-depth-panel.test.ts`
+and `tests/unit/graphic-scene-template-studio.test.ts` verify one initial request
+and 200 returned rows (a 98% reduction in initial picker rows versus the full
+scan). They also page forward and backward, verify that selections remain
+available across pages, and cap rendered photo options at the current page plus
+the selected entries. This is deterministic request/descriptor-count evidence,
+not an RSS or real-workstation measurement. It does not make the existing
+Editor document asset pool lazy; some story configurations still provide that
+full pool to the parent workspace.
+
 Remaining work: index literal substring name/tag search without changing its
-semantics; bound/lazily load full-catalog photo picker memory; and evaluate
-lazy-loading less-used Desktop workspaces. The current production build reports
-a 1.72 MB minified main JavaScript chunk (508 KB gzip); browser navigation and
-native cold-start measurements are needed before setting a code-splitting goal.
-Synthetic Catalog numbers do not guarantee Desktop support for 100k assets,
-real media or workstations.
+semantics and measure lazy-loading less-used Desktop workspaces. The current
+production build reports a 1.72 MB minified main JavaScript chunk (508 KB gzip);
+browser navigation and native cold-start measurements are needed before setting
+a code-splitting goal. Synthetic Catalog numbers do not guarantee Desktop
+support at 100k assets, real media or across workstations.
