@@ -136,10 +136,11 @@ function sameSilenceIdentity(job: Job, next: Job): boolean {
     left.requestId === right.requestId &&
     left.requestFingerprint === right.requestFingerprint &&
     left.options.thresholdDb === right.options.thresholdDb &&
-    left.options.minimumSilenceSeconds === right.options.minimumSilenceSeconds &&
+    left.options.minimumSilenceSeconds ===
+      right.options.minimumSilenceSeconds &&
     left.options.paddingSeconds === right.options.paddingSeconds &&
     left.attempt === right.attempt &&
-    (left.sourceHash === undefined || left.sourceHash === right.sourceHash) &&
+    left.sourceHash === right.sourceHash &&
     (left.reviewId === undefined || left.reviewId === right.reviewId) &&
     JSON.stringify(left.retryRequests ?? []) ===
       JSON.stringify(right.retryRequests ?? []),
@@ -158,11 +159,11 @@ function sameSilenceRequest(job: Job, next: Job): boolean {
     left.version === right.version &&
     left.projectId === right.projectId &&
     left.compositionId === right.compositionId &&
-    left.baseRevision === right.baseRevision &&
     left.requestId === right.requestId &&
     left.requestFingerprint === right.requestFingerprint &&
     left.options.thresholdDb === right.options.thresholdDb &&
-    left.options.minimumSilenceSeconds === right.options.minimumSilenceSeconds &&
+    left.options.minimumSilenceSeconds ===
+      right.options.minimumSilenceSeconds &&
     left.options.paddingSeconds === right.options.paddingSeconds,
   );
 }
@@ -359,6 +360,21 @@ export class CatalogIntelligenceStore {
     });
   }
 
+  getSilenceAnalysisByRequestId(requestId: string): Job | undefined {
+    if (!validIdentifier(requestId))
+      throw new ApplicationError(
+        "request.invalid",
+        "A valid silence analysis requestId is required.",
+      );
+    const row = this.database
+      .prepare(
+        `SELECT data FROM jobs WHERE json_extract(data,'$.type')='silence-analysis'
+         AND json_extract(data,'$.silenceAnalysis.requestId')=? LIMIT 1`,
+      )
+      .get(requestId);
+    return row ? validateJob(JSON.parse(String(row.data))) : undefined;
+  }
+
   private insertAnalysisReservation(job: Job): void {
     if (this.database.prepare("SELECT 1 FROM jobs WHERE id=?").get(job.id))
       throw new ApplicationError(
@@ -381,7 +397,11 @@ export class CatalogIntelligenceStore {
       );
     this.database
       .prepare("INSERT INTO jobs(id,created_at,data) VALUES(?,?,?)")
-      .run(job.id, job.createdAt ?? new Date().toISOString(), JSON.stringify(job));
+      .run(
+        job.id,
+        job.createdAt ?? new Date().toISOString(),
+        JSON.stringify(job),
+      );
   }
 
   /** Consume the exact queued reservation once, without claiming foreign work. */
@@ -420,7 +440,8 @@ export class CatalogIntelligenceStore {
           !sameAnalysis(observed, job) ||
           !sameAnalysisOwner(observed, job) ||
           !sameSilenceIdentity(observed, job) ||
-          observed.silenceAnalysis!.reviewId !== job.silenceAnalysis!.reviewId ||
+          observed.silenceAnalysis!.reviewId !==
+            job.silenceAnalysis!.reviewId ||
           (job.progress ?? 0) < (observed.progress ?? 0)
         )
           return false;
@@ -482,7 +503,13 @@ export class CatalogIntelligenceStore {
       "waiting-review": ["completed"],
     };
     validateAnalysisJob(observed, ["queued", "running", "waiting-review"]);
-    validateAnalysisJob(next, ["running", "waiting-review", "failed", "cancelled", "completed"]);
+    validateAnalysisJob(next, [
+      "running",
+      "waiting-review",
+      "failed",
+      "cancelled",
+      "completed",
+    ]);
     if (
       observed.type !== "silence-analysis" ||
       next.type !== "silence-analysis" ||
@@ -516,8 +543,11 @@ export class CatalogIntelligenceStore {
       !validIdentifier(requestId) ||
       !sameAnalysis(observed, next) ||
       !sameSilenceRequest(observed, next) ||
+      observed.silenceAnalysis?.baseRevision !==
+        next.silenceAnalysis?.baseRevision ||
       sameAnalysisOwner(observed, next) ||
-      observed.silenceAnalysis?.sourceHash !== next.silenceAnalysis?.sourceHash ||
+      observed.silenceAnalysis?.sourceHash !==
+        next.silenceAnalysis?.sourceHash ||
       next.silenceAnalysis!.attempt !== observed.silenceAnalysis!.attempt + 1
     )
       throw new ApplicationError(
@@ -546,7 +576,11 @@ export class CatalogIntelligenceStore {
         .prepare("SELECT data FROM jobs WHERE id=?")
         .get(observed.id);
       if (!row)
-        throw new ApplicationError("request.notFound", "Silence job not found.", 404);
+        throw new ApplicationError(
+          "request.notFound",
+          "Silence job not found.",
+          404,
+        );
       const stored = validateJob(JSON.parse(String(row.data)));
       const priorReceipt = stored.silenceAnalysis?.retryRequests?.find(
         (receipt) => receipt.requestId === requestId,
@@ -576,6 +610,19 @@ export class CatalogIntelligenceStore {
           "The silence job changed before retry.",
           409,
         );
+      if (
+        this.database
+          .prepare(
+            `SELECT 1 FROM jobs WHERE id<>? AND json_extract(data,'$.type') IN ('transcribe','waveform','scenes','silence-analysis')
+             AND json_extract(data,'$.status') IN ('queued','running') LIMIT 1`,
+          )
+          .get(observed.id)
+      )
+        throw new ApplicationError(
+          "jobs.busy",
+          "Wait for the active media analysis before retrying this task.",
+          409,
+        );
       const updated = this.database
         .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
         .run(JSON.stringify(next), observed.id, JSON.stringify(observed));
@@ -597,7 +644,9 @@ export class CatalogIntelligenceStore {
     validateAnalysisJob(recovered, ["failed", "cancelled"]);
     if (
       !sameAnalysis(observed, recovered) ||
-      observed.analysisOwner?.token === recovered.analysisOwner!.token
+      observed.analysisOwner?.token === recovered.analysisOwner!.token ||
+      (observed.type === "silence-analysis" &&
+        !sameSilenceIdentity(observed, recovered))
     )
       throw new ApplicationError(
         "request.invalid",

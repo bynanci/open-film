@@ -241,7 +241,7 @@ export interface SilenceAnalysisJobDataV1 {
     minimumSilenceSeconds: number;
     paddingSeconds: number;
   };
-  sourceHash?: string;
+  sourceHash: string;
   reviewId?: string;
   retryRequests?: { requestId: string; fingerprint: string; attempt: number }[];
   attempt: number;

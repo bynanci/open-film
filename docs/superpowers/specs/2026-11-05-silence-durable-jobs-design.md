@@ -110,8 +110,7 @@ verification, regardless of the summary freshness value.
 baseRevision, appliedRevision, appliedAt }`. The existing editor writes this
 receipt in the same atomic project manifest publication as the accepted
 Composition. An exact repeated request acknowledges the recorded revision
-without replaying the command; reusing its request ID with another payload is a
-409. This also lets the durable Job transition be retried safely after a
+without replaying the command; reusing its request ID with another payload is a 409. This also lets the durable Job transition be retried safely after a
 SQLite write failure.
 
 ## HTTP contract
@@ -119,15 +118,15 @@ SQLite write failure.
 All routes require the current local project and use the server's existing
 strict JSON field validation and error envelope.
 
-| Method and route | Request | Result |
-| --- | --- | --- |
-| `POST /api/silence/jobs` | `{ projectId, requestId, assetId, compositionId, options? }` | `202 { job, freshness }`; idempotent duplicate returns the same durable job without starting another worker |
-| `GET /api/silence/jobs/:jobId` | none | `200 { job, freshness, recovery? }` |
-| `GET /api/silence/jobs/:jobId/review` | none | `200 { job, freshness, review }` only when the job owns a persisted review |
-| `POST /api/silence/jobs/:jobId/cancel` | `{}` | `200 { job }`; only a local abort controller can cancel |
-| `POST /api/silence/jobs/:jobId/retry` | `{ requestId }` | `202 { job }`; only failed/cancelled attempts, same captured identities, new owner token |
-| `POST /api/silence/jobs/:jobId/recover` | `{ confirmStopped, checkpoint, ownerToken? }` | `200 { job }`; exact checkpoint and stopped-owner confirmation required |
-| `POST /api/silence/jobs/:jobId/apply` | `{ reviewId, proposal, requestId }` | `200 { job, edit }`; exact persisted proposal and captured identities required |
+| Method and route                        | Request                                                      | Result                                                                                                      |
+| --------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `POST /api/silence/jobs`                | `{ projectId, requestId, assetId, compositionId, options? }` | `202 { job, freshness }`; idempotent duplicate returns the same durable job without starting another worker |
+| `GET /api/silence/jobs/:jobId`          | none                                                         | `200 { job, freshness, recovery? }`                                                                         |
+| `GET /api/silence/jobs/:jobId/review`   | none                                                         | `200 { job, freshness, review }` only when the job owns a persisted review                                  |
+| `POST /api/silence/jobs/:jobId/cancel`  | `{}`                                                         | `200 { job }`; only a local abort controller can cancel                                                     |
+| `POST /api/silence/jobs/:jobId/retry`   | `{ requestId }`                                              | `202 { job }`; only failed/cancelled attempts, same captured identities, new owner token                    |
+| `POST /api/silence/jobs/:jobId/recover` | `{ confirmStopped, checkpoint, ownerToken? }`                | `200 { job }`; exact checkpoint and stopped-owner confirmation required                                     |
+| `POST /api/silence/jobs/:jobId/apply`   | `{ reviewId, proposal, requestId }`                          | `200 { job, edit }`; exact persisted proposal and captured identities required                              |
 
 Unknown jobs/reviews return 404; invalid bodies return 400; identity,
 reservation, owner, freshness and repeated-key conflicts return 409; unsupported

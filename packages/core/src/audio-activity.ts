@@ -465,12 +465,25 @@ export function createSilenceCutProposal(
   if (firstCut !== undefined) {
     for (const track of composition.tracks)
       for (const clip of track.clips) {
-        if (
-          clip.timelineStart + clip.timelineDuration <=
-          firstCut + RIPPLE_EPSILON
-        )
-          continue;
+        const clipStart = clip.timelineStart;
+        const clipEnd = clip.timelineStart + clip.timelineDuration;
+        if (clipEnd <= firstCut + RIPPLE_EPSILON) continue;
         affectedClipIds.push(clip.id);
+        const locallyTrimmed = timelineIntervals.some((interval) => {
+          const overlaps =
+            clipStart < interval.end - RIPPLE_EPSILON &&
+            clipEnd > interval.start + RIPPLE_EPSILON;
+          const fullyRemoved =
+            clipStart >= interval.start - RIPPLE_EPSILON &&
+            clipEnd <= interval.end + RIPPLE_EPSILON;
+          return overlaps && !fullyRemoved;
+        });
+        if (clip.audioAutomation && locallyTrimmed)
+          throw new ApplicationError(
+            "timeline.audioAutomationConflict",
+            `Silence ripple cannot preserve clip-local audio automation while trimming or splitting clip "${clip.id}". Adjust the clip before creating a new review.`,
+            409,
+          );
         if (
           track.locked ||
           clip.locked ||

@@ -18,14 +18,15 @@ on 2026-11-04. The latest published source release remains **v0.4.0**.
 
 ## Editing and story workflow
 
-### Media intelligence: reviewed silence candidate (2026-11-04)
+### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 
-This branch candidate implements a bounded CLI/application slice with the
-focused acceptance evidence below. The full media gate remains open; see the
-[dated validation record](docs/validation-media-intelligence-2026-11-04.md).
-It uses existing FFmpeg and installs no Auto-Editor,
-Python/GPU runtime, or external model. The eleven upstream projects are
-references and future candidates, not eleven delivered adapters. See the
+The branch candidate adds the durable `silence-analysis` Job and HTTP lifecycle
+to the earlier CLI/application review slice. It uses the existing
+`SilenceService`, SQLite reservations, owner recovery and TimelineEditor; it
+does not add an editing engine, provider, model or new timeline. The desktop
+review UI, full media gate and platform workstation checks remain open. See the
+[dated validation record](docs/validation-silence-durable-jobs-2026-11-05.md),
+[recovery and API contract](docs/media-analysis-recovery.md),
 [integration guide](docs/en/media-intelligence-integrations.md),
 [繁體中文](docs/media-intelligence-integrations.md) and
 [ADR 012](docs/adr/012-reviewed-media-intelligence.md).
@@ -43,10 +44,31 @@ references and future candidates, not eleven delivered adapters. See the
       Undo/Redo. Separate CLI invocations do not share undo history.
 - [x] Record focused tests, build/type checks and remaining platform limits for
       this candidate before marking its implemented scope accepted.
+- [x] Persist `silence-analysis` Job identity, exact source hash and Composition
+      revision, request-idempotent reservation, owner-fenced state transitions,
+      `waiting-review`, cancellation, explicit retry and conservative recovery.
+- [x] Provide real HTTP create/status/Review/cancel/retry/recover/apply routes
+      that share `SilenceService` and `TimelineEditor`; require the exact
+      persisted proposal and never auto-apply analysis.
+- [x] Persist a bounded Apply acknowledgement with the same project manifest
+      save as the ripple edit, including exact replay after restart and repair
+      after a Job acknowledgement write failure.
+- [x] Verify synthetic WAV analysis through real HTTP, two-process owner
+      recovery, request replay, cancellation, retry, stale callback rejection,
+      source/revision fencing and duplicate Apply.
+- [x] Preserve silence ripple protections for locked clips, user-pinned clips,
+      independent audio timing, and the active TimelineEditor Undo/Redo stack.
+- [x] Reject proposal creation before publishing a Review if a ripple would
+      trim or split a clip with local audio gain automation; retain automation
+      when a whole clip is shifted intact.
 - [ ] Pass the final candidate's full media gate in the configured CI environment;
       the local broad run is not a passing release check.
-- [ ] Follow up with desktop review and a durable background job lifecycle;
-      HTTP/UI and restart/resume are outside the first CLI/application slice.
+- [ ] Add exact local gain/fade/ducking curve remapping to split/trim ripple
+      operations, with preview/render equivalence; until then affected clips
+      remain safely blocked during silence Review creation.
+- [ ] Add the desktop Review/Apply surface over this API; until then the Job
+      review is available through the local HTTP contract and existing editor
+      workflow.
 - [ ] Admit additional scene/rhythm, mask/restoration, stabilization/interpolation,
       separation or browser-rendering providers only after quality, timing,
       runtime and code/weight rights checks. Reuse existing capabilities.

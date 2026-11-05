@@ -542,6 +542,16 @@ it("reserves silence idempotently and conflicts on a changed request fingerprint
       ...silenceJob("a-new-random-job-id", "create-1", "another-owner"),
     }),
   ).toEqual({ job: queued, created: false });
+  expect(
+    f.second.intelligence.reserveSilenceAnalysisJob({
+      ...silenceJob("changed-snapshot", "create-1", "another-owner"),
+      silenceAnalysis: {
+        ...queued.silenceAnalysis!,
+        baseRevision: "f".repeat(64),
+        sourceHash: "e".repeat(64),
+      },
+    }),
+  ).toEqual({ job: queued, created: false });
   expect(() =>
     f.second.intelligence.reserveSilenceAnalysisJob({
       ...silenceJob("different-input", "create-1"),
@@ -550,7 +560,9 @@ it("reserves silence idempotently and conflicts on a changed request fingerprint
         requestFingerprint: "c".repeat(64),
       },
     }),
-  ).toThrowError(expect.objectContaining({ code: "request.invalid", status: 409 }));
+  ).toThrowError(
+    expect.objectContaining({ code: "request.invalid", status: 409 }),
+  );
   expect(f.second.listJobs()).toEqual([queued]);
 });
 
@@ -558,9 +570,9 @@ it("shares the project analysis reservation and releases it only after waiting-r
   const f = await fixture();
   const queued = silenceJob();
   f.first.intelligence.reserveSilenceAnalysisJob(queued);
-  expect(() => f.second.intelligence.reserveAnalysisJob(job("waveform"))).toThrowError(
-    expect.objectContaining({ code: "jobs.busy", status: 409 }),
-  );
+  expect(() =>
+    f.second.intelligence.reserveAnalysisJob(job("waveform")),
+  ).toThrowError(expect.objectContaining({ code: "jobs.busy", status: 409 }));
   const running = { ...queued, status: "running" as const, stage: "analyzing" };
   expect(f.first.intelligence.claimAnalysisReservation(queued, running)).toBe(
     true,
@@ -574,17 +586,21 @@ it("shares the project analysis reservation and releases it only after waiting-r
       reviewId: "d".repeat(64),
     },
   };
-  expect(
-    f.first.intelligence.transitionOwnedSilenceJob(running, waiting),
-  ).toBe(true);
+  expect(f.first.intelligence.transitionOwnedSilenceJob(running, waiting)).toBe(
+    true,
+  );
   expect(f.first.intelligence.transitionOwnedSilenceJob(running, waiting)).toBe(
     false,
   );
-  expect(f.second.intelligence.reserveAnalysisJob(job("waveform"))).toBeUndefined();
-  expect(f.second.listJobs().map(({ type, status }) => [type, status])).toEqual([
-    ["silence-analysis", "waiting-review"],
-    ["waveform", "queued"],
-  ]);
+  expect(
+    f.second.intelligence.reserveAnalysisJob(job("waveform")),
+  ).toBeUndefined();
+  expect(f.second.listJobs().map(({ type, status }) => [type, status])).toEqual(
+    [
+      ["silence-analysis", "waiting-review"],
+      ["waveform", "queued"],
+    ],
+  );
 });
 
 it("retries only an exact failed silence job with a new owner and idempotent retry request", async () => {
@@ -596,8 +612,20 @@ it("retries only an exact failed silence job with a new owner and idempotent ret
     true,
   );
   const failed = { ...running, status: "failed" as const };
+  expect(f.first.intelligence.transitionOwnedSilenceJob(running, failed)).toBe(
+    true,
+  );
+  const otherQueued = job("waveform");
+  f.first.intelligence.reserveAnalysisJob(otherQueued);
+  const otherRunning = { ...otherQueued, status: "running" as const };
   expect(
-    f.first.intelligence.transitionOwnedSilenceJob(running, failed),
+    f.first.intelligence.claimAnalysisReservation(otherQueued, otherRunning),
+  ).toBe(true);
+  expect(
+    f.first.intelligence.saveOwnedAnalysisJob({
+      ...otherRunning,
+      status: "completed",
+    }),
   ).toBe(true);
   const retry = {
     ...failed,
@@ -625,5 +653,13 @@ it("retries only an exact failed silence job with a new owner and idempotent ret
       progress: 0.8,
     }),
   ).toBe(false);
-  expect(f.second.listJobs()).toEqual([retry]);
+  expect(f.second.listJobs().find((saved) => saved.id === retry.id)).toEqual(
+    retry,
+  );
+  expect(
+    f.second.listJobs().find((saved) => saved.id === otherQueued.id),
+  ).toMatchObject({
+    type: "waveform",
+    status: "completed",
+  });
 });

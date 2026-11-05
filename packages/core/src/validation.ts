@@ -887,7 +887,12 @@ function silenceApplyReceipts(value: unknown, path: string): void {
       "appliedAt",
     ]);
     versionOne(receipt, receiptPath);
-    for (const key of ["fingerprint", "reviewId", "baseRevision", "appliedRevision"])
+    for (const key of [
+      "fingerprint",
+      "reviewId",
+      "baseRevision",
+      "appliedRevision",
+    ])
       directionDigest(receipt[key], `${receiptPath}.${key}`);
     for (const key of ["jobId", "requestId", "compositionId"])
       receiptIdentifier(receipt[key], `${receiptPath}.${key}`);
@@ -896,14 +901,21 @@ function silenceApplyReceipts(value: unknown, path: string): void {
     if (jobIds.has(jobId))
       fail(`${receiptPath}.jobId`, "duplicate silence Apply job receipt");
     if (requestIds.has(requestId))
-      fail(`${receiptPath}.requestId`, "duplicate silence Apply request receipt");
+      fail(
+        `${receiptPath}.requestId`,
+        "duplicate silence Apply request receipt",
+      );
     jobIds.add(jobId);
     requestIds.add(requestId);
     timestamp(receipt.appliedAt, `${receiptPath}.appliedAt`);
   });
 }
 
-function silenceAnalysisJob(value: unknown, path: string, status: unknown): void {
+function silenceAnalysisJob(
+  value: unknown,
+  path: string,
+  status: unknown,
+): void {
   const job = presentationObject(value, path, [
     "version",
     "projectId",
@@ -925,8 +937,7 @@ function silenceAnalysisJob(value: unknown, path: string, status: unknown): void
     receiptIdentifier(job[key], `${path}.${key}`);
   for (const key of ["baseRevision", "requestFingerprint"])
     directionDigest(job[key], `${path}.${key}`);
-  if (job.sourceHash !== undefined)
-    directionDigest(job.sourceHash, `${path}.sourceHash`);
+  directionDigest(job.sourceHash, `${path}.sourceHash`);
   if (job.reviewId !== undefined)
     directionDigest(job.reviewId, `${path}.reviewId`);
   const options = presentationObject(job.options, `${path}.options`, [
@@ -964,7 +975,10 @@ function silenceAnalysisJob(value: unknown, path: string, status: unknown): void
         Number(retry.attempt) <= previousAttempt ||
         Number(retry.attempt) > Number(job.attempt)
       )
-        fail(`${retryPath}.attempt`, "expected a strictly increasing retry attempt");
+        fail(
+          `${retryPath}.attempt`,
+          "expected a strictly increasing retry attempt",
+        );
       const requestId = String(retry.requestId);
       if (requestIds.has(requestId))
         fail(`${retryPath}.requestId`, "duplicate retry request receipt");
@@ -1757,10 +1771,17 @@ export function validateJob(value: unknown): Job {
     "cancelled",
   ]);
   if (data.status === "waiting-review" && data.type !== "silence-analysis")
-    fail(`${path}.status`, "waiting-review is only supported by silence analysis");
+    fail(
+      `${path}.status`,
+      "waiting-review is only supported by silence analysis",
+    );
   if (data.type === "silence-analysis") {
     receiptIdentifier(data.assetId, `${path}.assetId`);
-    silenceAnalysisJob(data.silenceAnalysis, `${path}.silenceAnalysis`, data.status);
+    silenceAnalysisJob(
+      data.silenceAnalysis,
+      `${path}.silenceAnalysis`,
+      data.status,
+    );
     const owner = object(data.analysisOwner, `${path}.analysisOwner`);
     receiptIdentifier(owner.host, `${path}.analysisOwner.host`);
     receiptIdentifier(owner.token, `${path}.analysisOwner.token`);

@@ -793,7 +793,6 @@ export async function startServer(options: ServerOptions = {}) {
         "Wait for running jobs and source scans before switching or closing this project.",
       );
   };
-  const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
   const relinkers = new WeakMap<OpenFilmApplication, MediaRelinker>();
   const relinkerFor = (application: OpenFilmApplication) => {
     let relinker = relinkers.get(application);
@@ -803,13 +802,31 @@ export async function startServer(options: ServerOptions = {}) {
     }
     return relinker;
   };
-  const editorFor = (application: OpenFilmApplication) => {
-    let editor = editors.get(application);
-    if (!editor) {
-      editor = new TimelineEditor(application);
-      editors.set(application, editor);
-    }
-    return editor;
+  const editorFor = (application: OpenFilmApplication) =>
+    application.timelineEditor;
+  const startSilenceJob = (
+    application: OpenFilmApplication,
+    jobId: string,
+  ): void => {
+    if (active.has(jobId)) return;
+    const controller = new AbortController();
+    active.set(jobId, controller);
+    const handled = application.silenceJobs
+      .run(jobId, controller.signal)
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        const job = application.catalog.getJob(jobId);
+        console.error("OpenFilm silence Job persistence failed", {
+          jobId,
+          status: job?.status,
+          code: errorInfo(error).code,
+        });
+      })
+      .finally(() => {
+        active.delete(jobId);
+        tasks.delete(handled);
+      });
+    tasks.add(handled);
   };
   let mutationQueue = Promise.resolve();
   let closing = false;
@@ -930,6 +947,7 @@ export async function startServer(options: ServerOptions = {}) {
         const cancellation =
           method === "POST" &&
           (/^\/api\/(?:jobs|analysis-runs)\/[^/]+\/cancel$/.test(route) ||
+            /^\/api\/silence\/jobs\/[^/]+\/cancel$/.test(route) ||
             route === "/api/proxy-cache/cancel");
         const nonMutatingGraphicAgentPreview =
           method === "POST" &&
@@ -1217,6 +1235,111 @@ export async function startServer(options: ServerOptions = {}) {
             path: app?.directory ?? null,
           });
           return;
+        }
+        if (method === "POST" && route === "/api/silence/jobs") {
+          const application = current();
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "requestId",
+            "assetId",
+            "compositionId",
+            "options",
+          ]);
+          const result = await application.silenceJobs.create(data);
+          if (result.created && result.job.status === "queued")
+            startSilenceJob(application, result.job.id);
+          json(response, 202, {
+            job: result.job,
+            created: result.created,
+            freshness: result.created
+              ? "current"
+              : await application.silenceJobs.freshness(result.job),
+          });
+          return;
+        }
+        const silenceJobRoute =
+          /^\/api\/silence\/jobs\/([^/]+)(?:\/(review|cancel|retry|recover|apply))?$/.exec(
+            route,
+          );
+        if (silenceJobRoute) {
+          const application = current();
+          const jobId = decodeURIComponent(silenceJobRoute[1]!);
+          const action = silenceJobRoute[2];
+          if (method === "GET" && action === undefined) {
+            const job = application.silenceJobs.get(jobId);
+            const freshness = await application.silenceJobs.freshness(job);
+            const recovery =
+              job.status === "queued" || job.status === "running"
+                ? application.intelligence.analysisRecoveryStatus(jobId)
+                : undefined;
+            json(response, 200, {
+              job,
+              freshness,
+              ...(recovery ? { recovery } : {}),
+            });
+            return;
+          }
+          if (method === "GET" && action === "review") {
+            json(response, 200, await application.silenceJobs.getReview(jobId));
+            return;
+          }
+          if (method === "POST" && action === "cancel") {
+            const data = await body(request);
+            keys(data, []);
+            json(response, 200, {
+              job: await application.silenceJobs.cancel(jobId),
+            });
+            return;
+          }
+          if (method === "POST" && action === "retry") {
+            const data = await body(request);
+            keys(data, ["requestId"]);
+            const result = await application.silenceJobs.retry(
+              jobId,
+              text(data, "requestId"),
+            );
+            if (result.created && result.job.status === "queued")
+              startSilenceJob(application, result.job.id);
+            json(response, 202, result);
+            return;
+          }
+          if (method === "POST" && action === "recover") {
+            const data = await body(request);
+            keys(data, ["confirmStopped", "checkpoint", "ownerToken"]);
+            if (typeof data.confirmStopped !== "boolean")
+              throw new HttpError(400, "confirmStopped must be a boolean.");
+            if (typeof data.checkpoint !== "string" || !data.checkpoint)
+              throw new HttpError(400, "Include the observed Job checkpoint.");
+            if (
+              data.ownerToken !== undefined &&
+              typeof data.ownerToken !== "string"
+            )
+              throw new HttpError(400, "ownerToken must be a string.");
+            if (active.has(jobId))
+              throw new HttpError(
+                409,
+                "This silence Job is still active in this process.",
+                "jobs.busy",
+              );
+            const job = application.silenceJobs.recover(jobId, {
+              confirmStopped: data.confirmStopped,
+              checkpoint: data.checkpoint,
+              ownerToken: data.ownerToken as string | undefined,
+            });
+            json(response, 200, { job });
+            return;
+          }
+          if (method === "POST" && action === "apply") {
+            const data = await body(request);
+            keys(data, ["reviewId", "proposal", "requestId"]);
+            json(
+              response,
+              200,
+              await application.silenceJobs.apply(jobId, data),
+            );
+            return;
+          }
         }
         if (method === "POST" && route === "/api/project/close") {
           requireIdleProject();
@@ -2659,7 +2782,7 @@ export async function startServer(options: ServerOptions = {}) {
             decodeURIComponent(versionRoute[1]!),
             input,
           );
-          editors.delete(application);
+          application.timelineEditor.resetSessionState();
           json(response, 200, {
             ...result,
             project: application.project,

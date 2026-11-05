@@ -38,11 +38,13 @@ import {
   validateFilmLook,
   validatePrimaryColorCorrection,
   MAX_TITLE_LENGTH,
+  canonicalPresetJson,
   validatePresetSnapshot,
   type PresetAcceptInput,
   type PresetApplicationReceipt,
   type PresetSelection,
   MAX_SCENE_DIRECTION_RECEIPTS,
+  MAX_SILENCE_APPLY_RECEIPTS,
   isCaptionTextValid,
   validateGraphicScenes,
   validateGraphicSceneTemplates,
@@ -54,6 +56,7 @@ import {
   type GraphicSceneTemplateRecord,
   type SceneDirectionReceipt,
   type SceneDirectionReceiptAction,
+  type SilenceApplyReceiptV1,
 } from "@openfilm/core";
 import {
   applyTimelineCommand,
@@ -141,6 +144,33 @@ export interface AudioHandleFacts {
 const HISTORY_LIMIT = 100;
 const REQUEST_LIMIT = 200;
 const COMMAND_LIMIT = 100;
+
+export interface SilenceApplyFingerprintInput {
+  jobId: string;
+  requestId: string;
+  compositionId: string;
+  reviewId: string;
+  baseRevision: string;
+  proposal: unknown;
+}
+
+export function silenceApplyFingerprint(
+  input: SilenceApplyFingerprintInput,
+): string {
+  return createHash("sha256")
+    .update(
+      canonicalPresetJson({
+        version: 1,
+        jobId: input.jobId,
+        requestId: input.requestId,
+        compositionId: input.compositionId,
+        reviewId: input.reviewId,
+        baseRevision: input.baseRevision,
+        proposal: input.proposal,
+      }),
+    )
+    .digest("hex");
+}
 
 interface History {
   revision: string;
@@ -1082,6 +1112,13 @@ export class TimelineEditor {
 
   constructor(private readonly application: OpenFilmApplication) {}
 
+  /** Drop session history and idempotency caches after replacing the project. */
+  resetSessionState(): void {
+    this.histories.clear();
+    this.requests.clear();
+    this.graphicSceneAgentPlans.clear();
+  }
+
   get(compositionId: string): TimelineEditorState {
     nonempty(compositionId, "compositionId");
     const composition = this.application.project.timelines.find(
@@ -1978,6 +2015,28 @@ export class TimelineEditor {
     return this.commitEdit(compositionId, input, "direct");
   }
 
+  /** Durable Job acceptance path; the accepted edit and receipt share one save. */
+  async applySilenceReview(
+    jobId: string,
+    requestId: string,
+    reviewId: string,
+    proposal: unknown,
+  ): Promise<TimelineEditorState> {
+    nonempty(jobId, "jobId");
+    nonempty(requestId, "requestId");
+    const validated = validateSilenceCutProposal(proposal);
+    return this.commitEdit(
+      validated.compositionId,
+      {
+        baseRevision: validated.baseRevision,
+        requestId,
+        commands: [{ type: "silence.ripple", reviewId, proposal: validated }],
+      },
+      "direct",
+      jobId,
+    );
+  }
+
   /** Internal producers retain the same parser, queue, protections and writer. */
   async [automaticTimelineEdit](
     compositionId: string,
@@ -1990,11 +2049,81 @@ export class TimelineEditor {
     compositionId: string,
     input: TimelineEditInput,
     origin: EditOrigin,
+    durableSilenceJobId?: string,
   ): Promise<TimelineEditorState> {
     const parsed = editInput(input);
     nonempty(compositionId, "compositionId");
     return this.serialize(async () => {
       const fingerprint = editFingerprint(compositionId, parsed, origin);
+      const leaves = flattenCommands(parsed.commands);
+      let durableSilenceReceipt:
+        | Omit<SilenceApplyReceiptV1, "appliedRevision" | "appliedAt">
+        | undefined;
+      if (durableSilenceJobId !== undefined) {
+        if (
+          !parsed.requestId ||
+          leaves.length !== 1 ||
+          leaves[0]?.type !== "silence.ripple"
+        )
+          throw new TimelineEditorError(
+            "A durable silence Apply requires one reviewed silence command and a request ID.",
+          );
+        const command = leaves[0];
+        durableSilenceReceipt = {
+          version: 1,
+          jobId: durableSilenceJobId,
+          requestId: parsed.requestId,
+          fingerprint: silenceApplyFingerprint({
+            jobId: durableSilenceJobId,
+            requestId: parsed.requestId,
+            compositionId,
+            reviewId: command.reviewId,
+            baseRevision: parsed.baseRevision,
+            proposal: command.proposal,
+          }),
+          compositionId,
+          reviewId: command.reviewId,
+          baseRevision: parsed.baseRevision,
+        };
+        const prior = this.application.project.silenceApplyReceipts?.find(
+          (receipt) => receipt.jobId === durableSilenceJobId,
+        );
+        if (prior) {
+          if (
+            prior.requestId !== durableSilenceReceipt.requestId ||
+            prior.fingerprint !== durableSilenceReceipt.fingerprint ||
+            prior.compositionId !== compositionId ||
+            prior.reviewId !== durableSilenceReceipt.reviewId ||
+            prior.baseRevision !== parsed.baseRevision
+          )
+            throw new TimelineEditorError(
+              "A silence Job Apply receipt is already bound to another request.",
+              409,
+            );
+          return {
+            ...this.get(compositionId),
+            acknowledgedRevision: prior.appliedRevision,
+          };
+        }
+        const durableJob = this.application.catalog.getJob(durableSilenceJobId);
+        const jobIdentity = durableJob?.silenceAnalysis;
+        if (
+          !durableJob ||
+          durableJob.type !== "silence-analysis" ||
+          durableJob.status !== "waiting-review" ||
+          !jobIdentity ||
+          jobIdentity.projectId !== this.application.project.id ||
+          jobIdentity.compositionId !== compositionId ||
+          jobIdentity.baseRevision !== parsed.baseRevision ||
+          jobIdentity.reviewId !== leaves[0]!.reviewId ||
+          jobIdentity.sourceHash !== leaves[0]!.proposal.sourceHash ||
+          durableJob.assetId !== leaves[0]!.proposal.assetId
+        )
+          throw new TimelineEditorError(
+            "The durable silence Job no longer owns this reviewed edit.",
+            409,
+          );
+      }
       const receipt = parsed.requestId
         ? this.requests.get(parsed.requestId)
         : undefined;
@@ -2009,7 +2138,7 @@ export class TimelineEditor {
           acknowledgedRevision: receipt.revision,
         };
       }
-      const allLeaves = flattenCommands(parsed.commands);
+      const allLeaves = leaves;
       if (
         allLeaves.length !== 1 &&
         allLeaves.some(
@@ -2413,6 +2542,7 @@ export class TimelineEditor {
               for (const guard of reviewedSourceGuards) guard();
             }
           : undefined,
+        durableSilenceReceipt,
       );
       if (parsed.requestId) {
         this.requests.set(parsed.requestId, {
@@ -2532,6 +2662,10 @@ export class TimelineEditor {
     presetReceipt?: PresetApplicationReceipt,
     presetSelection?: PresetSelection,
     assertCurrent?: () => void,
+    silenceApplyReceipt?: Omit<
+      SilenceApplyReceiptV1,
+      "appliedRevision" | "appliedAt"
+    >,
   ): Promise<TimelineEditorState> {
     if (
       next.composition.id !== compositionId ||
@@ -2544,10 +2678,32 @@ export class TimelineEditor {
     const previousProject = this.application.project;
     let candidate;
     try {
+      let durableReceipt: SilenceApplyReceiptV1 | undefined;
+      if (silenceApplyReceipt) {
+        const receipts = previousProject.silenceApplyReceipts ?? [];
+        if (receipts.length >= MAX_SILENCE_APPLY_RECEIPTS)
+          throw new TimelineEditorError(
+            "The project has reached its durable silence Apply receipt limit.",
+            409,
+          );
+        durableReceipt = {
+          ...silenceApplyReceipt,
+          appliedRevision: revisionFor(next, before.assets),
+          appliedAt: new Date().toISOString(),
+        };
+      }
       candidate = validateProject(
         promoteAudioProject(
           promotePinnedProject({
             ...previousProject,
+            ...(durableReceipt
+              ? {
+                  silenceApplyReceipts: [
+                    ...(previousProject.silenceApplyReceipts ?? []),
+                    durableReceipt,
+                  ],
+                }
+              : {}),
             ...(presetReceipt
               ? {
                   presetApplicationReceipts:

@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   ApplicationError,
+  validateJob,
   validateMediaAsset,
   validateProxyCacheTask,
   type Job,
@@ -1473,9 +1474,7 @@ export class ProjectCatalog {
         "completed",
         "failed",
         "cancelled",
-      ].includes(
-        job.status,
-      )
+      ].includes(job.status)
     )
       throw new Error("Invalid job status");
     if (job.proxyCache !== undefined) {

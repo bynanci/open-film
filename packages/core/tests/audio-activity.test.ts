@@ -280,37 +280,76 @@ describe("silence cut proposals", () => {
     ).toEqual(composition());
   });
 
-  it.each(["track", "clip", "source", "pin", "independent-audio"] as const)(
-    "rejects affected %s protection",
-    (protection) => {
-      const comp = composition(),
-        library = structuredClone(assets);
-      const last = comp.tracks[0]!.clips[2]!;
-      if (protection === "track") comp.tracks[0]!.locked = true;
-      if (protection === "clip") last.locked = true;
-      if (protection === "source") library[1]!.state.locked = true;
-      if (protection === "pin")
-        last.userOverrides = {
-          version: 1,
-          isUserPinned: true,
-          lockedAttributes: ["timing"],
-        };
-      if (protection === "independent-audio")
-        last.audioTiming = {
-          version: 1,
-          sampleRate: 48000,
-          timelineStartSample: 480000,
-          sourceInSample: 0,
-          sourceOutSample: 192000,
-        };
-      expect(() =>
-        createSilenceCutProposal(comp, evidence(), {
-          ...options,
-          assets: library,
-        }),
-      ).toThrow(/locked|pinned|independent sound/i);
-    },
-  );
+  it.each([
+    "track",
+    "clip",
+    "source",
+    "pin",
+    "independent-audio",
+    "audio-automation",
+  ] as const)("rejects affected %s protection", (protection) => {
+    const comp = composition(),
+      library = structuredClone(assets);
+    const last = comp.tracks[0]!.clips[2]!;
+    if (protection === "track") comp.tracks[0]!.locked = true;
+    if (protection === "clip") last.locked = true;
+    if (protection === "source") library[1]!.state.locked = true;
+    if (protection === "pin")
+      last.userOverrides = {
+        version: 1,
+        isUserPinned: true,
+        lockedAttributes: ["timing"],
+      };
+    if (protection === "independent-audio")
+      last.audioTiming = {
+        version: 1,
+        sampleRate: 48000,
+        timelineStartSample: 480000,
+        sourceInSample: 0,
+        sourceOutSample: 192000,
+      };
+    if (protection === "audio-automation")
+      comp.tracks[0]!.clips[0]!.audioAutomation = {
+        version: 1,
+        role: "music",
+        fadeIn: 0.5,
+        fadeOut: 1,
+        points: [{ time: 3, gain: 0.5 }],
+        ducking: [
+          {
+            start: 1,
+            end: 3.5,
+            gain: 0.6,
+            attack: 0.2,
+            release: 0.2,
+          },
+        ],
+      };
+    expect(() =>
+      createSilenceCutProposal(comp, evidence(), {
+        ...options,
+        assets: library,
+      }),
+    ).toThrow(/locked|pinned|independent sound|audio automation/i);
+  });
+
+  it("keeps clip-local audio automation intact when ripple only shifts the whole clip", () => {
+    const comp = composition();
+    const untouched = comp.tracks[0]!.clips[0]!;
+    untouched.timelineDuration = 1;
+    untouched.sourceOut = 1;
+    untouched.audioAutomation = {
+      version: 1,
+      role: "dialogue",
+      fadeIn: 0.2,
+      points: [{ time: 0.5, gain: 0.8 }],
+    };
+    const proposal = createSilenceCutProposal(comp, evidence(), options);
+    const applied = applySilenceCutProposal(comp, proposal, { assets });
+    expect(applied.tracks[0]!.clips[0]!.audioAutomation).toEqual(
+      untouched.audioAutomation,
+    );
+  });
 
   it("protects graphic scene pins and allows a protected clip before all cuts", () => {
     const comp = composition();

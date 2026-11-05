@@ -63,12 +63,19 @@ it("validates and round-trips waiting-review silence jobs with exact identities"
 it.each([
   { type: "transcribe" },
   { silenceAnalysis: undefined },
+  {
+    silenceAnalysis: { ...silenceJob().silenceAnalysis, sourceHash: undefined },
+  },
   { silenceAnalysis: { ...silenceJob().silenceAnalysis, baseRevision: "bad" } },
   { silenceAnalysis: { ...silenceJob().silenceAnalysis, sourceHash: "bad" } },
   {
     silenceAnalysis: {
       ...silenceJob().silenceAnalysis,
-      options: { thresholdDb: -9, minimumSilenceSeconds: 0.5, paddingSeconds: 0.12 },
+      options: {
+        thresholdDb: -9,
+        minimumSilenceSeconds: 0.5,
+        paddingSeconds: 0.12,
+      },
     },
   },
   { analysisOwner: undefined },

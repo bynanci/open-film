@@ -36,6 +36,8 @@ export interface SilenceReviewEnvelope {
 }
 export interface SilenceApplyOptions {
   requestId?: string;
+  /** Present only when accepting a persisted Silence Job. */
+  jobId?: string;
   /** Share the caller's editor to keep its undo/redo and request history. */
   editor?: TimelineEditor;
 }
@@ -233,6 +235,10 @@ export class SilenceService {
       );
     recordedHash(asset);
     return asset;
+  }
+
+  public validateSourceAsset(assetId: string): MediaAsset {
+    return structuredClone(this.source(assetId));
   }
 
   public async analyzeAsset(
@@ -524,6 +530,40 @@ export class SilenceService {
     assetId: string,
     options: SilenceReviewOptions = {},
   ): Promise<SilenceReviewEnvelope> {
+    return this.createProposalInternal(compositionId, assetId, options);
+  }
+
+  /** Analysis Job entry point bound to the identities captured at reservation. */
+  public async createBoundProposal(
+    compositionId: string,
+    assetId: string,
+    identity: { baseRevision: string; sourceHash: string },
+    options: SilenceReviewOptions = {},
+  ): Promise<SilenceReviewEnvelope> {
+    const expected = object(
+      identity,
+      ["baseRevision", "sourceHash"],
+      "silence analysis identity",
+    );
+    if (
+      typeof expected.baseRevision !== "string" ||
+      !HASH.test(expected.baseRevision) ||
+      typeof expected.sourceHash !== "string" ||
+      !HASH.test(expected.sourceHash)
+    )
+      invalid("Silence analysis requires a captured revision and source hash.");
+    return this.createProposalInternal(compositionId, assetId, options, {
+      baseRevision: expected.baseRevision,
+      sourceHash: expected.sourceHash,
+    });
+  }
+
+  private async createProposalInternal(
+    compositionId: string,
+    assetId: string,
+    options: SilenceReviewOptions,
+    expected?: { baseRevision: string; sourceHash: string },
+  ): Promise<SilenceReviewEnvelope> {
     identifier(compositionId, "compositionId");
     const data = object(
       options,
@@ -540,7 +580,15 @@ export class SilenceService {
     );
     parsed.signal?.throwIfAborted();
     const before = this.editor.get(compositionId);
+    if (expected && before.revision !== expected.baseRevision)
+      stale("The captured timeline revision changed before analysis started.");
     const evidence = await this.analyzeAsset(assetId, parsed);
+    if (expected && evidence.sourceHash !== expected.sourceHash)
+      throw new ApplicationError(
+        "source.changed",
+        "The source hash changed after the silence Job was reserved.",
+        409,
+      );
     this.assertTimeline(compositionId, before.revision);
     const proposal = validateSilenceCutProposal(
       createSilenceCutProposal(before.composition, evidence, {
@@ -565,6 +613,15 @@ export class SilenceService {
     assertSource();
     this.assertTimeline(compositionId, before.revision);
     return immutable({ reviewId, proposal });
+  }
+
+  /** Read only the exact, validated Review already persisted by this service. */
+  public async readProposal(reviewId: string): Promise<SilenceReviewEnvelope> {
+    const stored = await this.readReview(reviewId);
+    return immutable({
+      reviewId: stored.record.reviewId,
+      proposal: validateSilenceCutProposal(stored.record.proposal),
+    });
   }
 
   public async verifyReviewedProposal(
@@ -611,11 +668,12 @@ export class SilenceService {
     const reviewed = envelope(value);
     const parsed = object(
       options,
-      ["requestId", "editor"],
+      ["requestId", "editor", "jobId"],
       "silence apply options",
     );
     if (parsed.requestId !== undefined)
       identifier(parsed.requestId, "requestId");
+    if (parsed.jobId !== undefined) identifier(parsed.jobId, "jobId");
     if (
       parsed.editor !== undefined &&
       !(parsed.editor instanceof TimelineEditor)
@@ -627,6 +685,18 @@ export class SilenceService {
       );
     // The editor re-verifies durable review, sources, and every nested leaf.
     // Keep request receipts and undo/redo in the caller's editor or our own.
+    if (parsed.jobId !== undefined) {
+      if (parsed.requestId === undefined)
+        invalid("A durable Silence Job Apply requires a requestId.");
+      return (
+        (parsed.editor as TimelineEditor | undefined) ?? this.editor
+      ).applySilenceReview(
+        parsed.jobId as string,
+        parsed.requestId as string,
+        reviewed.reviewId,
+        reviewed.proposal,
+      );
+    }
     return ((parsed.editor as TimelineEditor | undefined) ?? this.editor).edit(
       reviewed.proposal.compositionId,
       {

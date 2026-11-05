@@ -229,8 +229,15 @@ export class MediaIntelligence {
     return hash;
   }
 
-  sourceIdentity(assetId: string): Promise<string> {
-    return this.identity(this.asset(assetId));
+  sourceIdentity(
+    assetId: string,
+    options: { signal?: AbortSignal; fresh?: boolean } = {},
+  ): Promise<string> {
+    return this.identity(
+      this.asset(assetId),
+      options.signal,
+      options.fresh ?? false,
+    );
   }
 
   async readWaveforms(
@@ -516,7 +523,7 @@ export class MediaIntelligence {
       errors: [
         ...(job.errors ?? []),
         {
-          uri: "",
+          uri: job.type === "silence-analysis" ? "local-media" : "",
           stage: "interrupted",
           message: manual
             ? "The user confirmed the previous analysis process stopped. Retry this task; previously saved analysis remains available."
