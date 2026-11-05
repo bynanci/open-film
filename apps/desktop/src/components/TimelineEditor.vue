@@ -2994,6 +2994,8 @@ function keyboard(event: KeyboardEvent) {
     } else if (recordAction === "record.lift") {
       event.preventDefault();
       if (!event.repeat) void liftRecord(recordOwner.value);
+    } else if (event.key.toLowerCase() === "m") {
+      event.preventDefault();
     }
     return;
   }
