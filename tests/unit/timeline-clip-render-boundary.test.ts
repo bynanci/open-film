@@ -370,6 +370,13 @@ async function mountTimeline(
     "vue-i18n": { useI18n },
     "@openfilm/core": core,
     "../source-color": { sourceColorStyle },
+    "../frame-scopes": {
+      FRAME_SCOPE_MAX_DIMENSION: 512,
+      FRAME_SCOPE_COLUMNS: 128,
+      FRAME_SCOPE_LEVELS: 256,
+      FRAME_SCOPE_VECTOR_SIZE: 128,
+      analyzeDecodedFrame: () => undefined,
+    },
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
