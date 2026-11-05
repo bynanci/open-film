@@ -1,5 +1,30 @@
 # Reproducible render QA (D7A)
 
+## 2026-11-05 — bounded retry for pinned asset downloads
+
+The post-merge Render QA run for `af31f15b4462ef7224b290c545129c11e3b42361`
+failed during pinned-font acquisition, before rendering: the first and third
+attempts saw transient connection timeouts on macOS and Linux. The second
+`--failed`-only attempt correctly failed closed because it did not contain the
+full three-platform report set.
+
+Pinned downloads now make at most two requests per URL hop when fetch or body
+streaming reports a network/timeout error, or the server returns HTTP 408, 425,
+429, 500, 502, 503 or 504. A numeric or date `Retry-After` is honored up to ten
+seconds. Redirect allowlists, byte limits, pinned SHA-256 verification and the
+three-hop redirect bound remain in force; partial response bodies are discarded
+before retry, and permanent HTTP or integrity failures still stop immediately.
+
+Local verification passed the seven acquisition and evidence suites (134 tests),
+the contract suite (1,479 tests), formatting, ESLint and TypeScript/Vue checks.
+The first local font-staging attempt could not reach `raw.githubusercontent.com`
+without the configured proxy and exhausted the bounded retries. With
+`NODE_USE_ENV_PROXY=1`, the same pinned bytes passed admission. The actual
+synthetic render suite then passed **1/1** with its receipt under
+`/tmp/openfilm-render-qa-download-retry-evidence/`; it records a local, dirty
+checkout and `workstationVerified: false`. The exact-head three-platform
+pull-request Render QA matrix remains required for merge.
+
 Date: 2026-10-30. Base: `e1255b1a8a83260149211d909cca8c1a50948c6b`.
 Branch: `codex/v1-d7a-render-qa`. Source implementation and focused local evidence
 are recorded below; three-OS hosted admission, independent final review and

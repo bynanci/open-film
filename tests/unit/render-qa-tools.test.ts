@@ -126,6 +126,99 @@ it("rejects a redirect to an unreviewed origin without fetching it", async () =>
   ).rejects.toThrow(/origin/u);
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+it("retries a temporary HTTP failure before accepting pinned bytes", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response("temporarily unavailable", { status: 503 }),
+    )
+    .mockResolvedValueOnce(new Response(bytes));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ),
+  ).resolves.toEqual(bytes);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+it("reports a permanent HTTP failure without another request", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response("not found", { status: 404 }));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ),
+  ).rejects.toThrow(/HTTP 404/u);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+it("bounds retries for a persistently unavailable pinned origin", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response("temporarily unavailable", { status: 503 }),
+    );
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ),
+  ).rejects.toThrow(/HTTP 503/u);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+it("retries a timed-out pinned download before admitting its bytes", async () => {
+  const fetch = vi
+    .fn()
+    .mockRejectedValueOnce(
+      new DOMException(
+        "The operation was aborted due to timeout",
+        "TimeoutError",
+      ),
+    )
+    .mockResolvedValueOnce(new Response(bytes));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ),
+  ).resolves.toEqual(bytes);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+it("retries a timed-out response body from the pinned URL without accepting partial bytes", async () => {
+  const timedOutBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(Buffer.from("partial"));
+      controller.error(
+        new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError",
+        ),
+      );
+    },
+  });
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(timedOutBody))
+    .mockResolvedValueOnce(new Response(bytes));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ),
+  ).resolves.toEqual(bytes);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
 it("rejects oversized streamed bodies and tampered downloads", async () => {
   vi.stubGlobal(
     "fetch",

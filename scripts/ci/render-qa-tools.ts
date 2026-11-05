@@ -46,6 +46,7 @@ const origins = new Set([
   "release-assets.githubusercontent.com",
   "archive.ubuntu.com",
 ]);
+const transientDownloadStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
 function trustedUrl(input: string): URL {
   const url = new URL(input);
   if (
@@ -73,6 +74,51 @@ export function verifyPinnedBytes(
   if (!/^[a-f0-9]{64}$/u.test(sha256) || qaSha256(bytes) !== sha256)
     throw new Error("Render QA download hash mismatch");
 }
+const maxDownloadAttempts = 2;
+function isTransientDownloadError(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    (error instanceof DOMException &&
+      (error.name === "AbortError" || error.name === "TimeoutError"))
+  );
+}
+function downloadRetryDelayMs(attempt: number, retryAfter?: string | null) {
+  if (retryAfter) {
+    const numericSeconds = /^\d+(?:\.\d+)?$/u.test(retryAfter)
+      ? Number(retryAfter)
+      : Number.NaN;
+    const dateDelay = Number.isNaN(numericSeconds)
+      ? Date.parse(retryAfter) - Date.now()
+      : numericSeconds * 1_000;
+    if (Number.isFinite(dateDelay) && dateDelay >= 0)
+      return Math.min(dateDelay, 10_000);
+  }
+  return Math.min(250 * 2 ** attempt, 1_000);
+}
+function waitForDownloadRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+async function readBoundedResponseBody(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<Buffer> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes)
+        throw new Error("Render QA download exceeds its byte limit");
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return Buffer.concat(chunks);
+}
 export async function downloadPinnedBytes(
   input: string,
   sha256: string,
@@ -80,46 +126,72 @@ export async function downloadPinnedBytes(
 ): Promise<Buffer> {
   let url = trustedUrl(input);
   for (let redirects = 0; redirects <= 3; redirects++) {
-    const response = await fetch(url, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(60_000),
-    });
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get("location");
-      await response.body?.cancel();
-      if (!location)
-        throw new Error("Render QA download redirect has no location");
-      url = trustedUrl(new URL(location, url).href);
-      continue;
-    }
-    if (!response.ok || !response.body)
-      throw new Error("Render QA download failed");
-    const advertised = response.headers.get("content-length");
-    if (
-      advertised &&
-      (!/^\d+$/u.test(advertised) || Number(advertised) > maxBytes)
-    ) {
-      await response.body.cancel();
-      throw new Error("Render QA download exceeds its byte limit");
-    }
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > maxBytes)
-          throw new Error("Render QA download exceeds its byte limit");
-        chunks.push(value);
+    let redirected = false;
+    for (let attempt = 0; attempt < maxDownloadAttempts; attempt++) {
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          redirect: "manual",
+          signal: AbortSignal.timeout(60_000),
+        });
+      } catch (error) {
+        if (!isTransientDownloadError(error)) throw error;
+        if (attempt === maxDownloadAttempts - 1)
+          throw new Error("Render QA download request timed out or failed", {
+            cause: error,
+          });
+        await waitForDownloadRetry(downloadRetryDelayMs(attempt));
+        continue;
       }
-    } finally {
-      await reader.cancel();
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        await response.body?.cancel();
+        if (!location)
+          throw new Error("Render QA download redirect has no location");
+        url = trustedUrl(new URL(location, url).href);
+        redirected = true;
+        break;
+      }
+      if (!response.ok) {
+        if (
+          transientDownloadStatuses.has(response.status) &&
+          attempt < maxDownloadAttempts - 1
+        ) {
+          await response.body?.cancel().catch(() => undefined);
+          await waitForDownloadRetry(
+            downloadRetryDelayMs(attempt, response.headers.get("retry-after")),
+          );
+          continue;
+        }
+        throw new Error(`Render QA download failed (HTTP ${response.status})`);
+      }
+      if (!response.body)
+        throw new Error(
+          `Render QA download failed (HTTP ${response.status} without a body)`,
+        );
+      const advertised = response.headers.get("content-length");
+      if (
+        advertised &&
+        (!/^\d+$/u.test(advertised) || Number(advertised) > maxBytes)
+      ) {
+        await response.body.cancel();
+        throw new Error("Render QA download exceeds its byte limit");
+      }
+      try {
+        const bytes = await readBoundedResponseBody(response.body, maxBytes);
+        verifyPinnedBytes(bytes, sha256, maxBytes);
+        return bytes;
+      } catch (error) {
+        if (!isTransientDownloadError(error)) throw error;
+        if (attempt === maxDownloadAttempts - 1)
+          throw new Error("Render QA download body timed out or failed", {
+            cause: error,
+          });
+        await waitForDownloadRetry(downloadRetryDelayMs(attempt));
+      }
     }
-    const bytes = Buffer.concat(chunks);
-    verifyPinnedBytes(bytes, sha256, maxBytes);
-    return bytes;
+    if (redirected) continue;
+    throw new Error("Render QA download retry limit exceeded");
   }
   throw new Error("Render QA download redirect limit exceeded");
 }
