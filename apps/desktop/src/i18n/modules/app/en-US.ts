@@ -146,6 +146,21 @@ export default {
       storage: "Default film location",
       storageHint:
         "New films use this location. Existing projects stay where they are.",
+      shortcutProfiles: {
+        title: "Keyboard shortcut profiles",
+        description:
+          "Choose a local profile or import a versioned JSON profile. Edit exported JSON to change bindings.",
+        active: "Active profile",
+        import: "Import profile",
+        export: "Export active profile",
+        remove: "Remove active profile",
+        imported: "Imported and activated {name}.",
+        removed: "Removed the custom profile. OpenFilm Default is active.",
+        invalid:
+          "This profile is invalid or has conflicting shortcuts. Check its version and bindings, then try again.",
+        localOnly:
+          "Profiles stay in this app's local preferences. They are never saved in a film project, and profiles cannot run code.",
+      },
       localTitle: "Your story stays with you",
       localDescription:
         "OpenFilm works on this computer. Media processing happens locally, without accounts, analytics, or cloud services.",

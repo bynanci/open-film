@@ -5,6 +5,15 @@ import {
   flatten,
   type HostNode,
 } from "./helpers/vue-sfc-host";
+import {
+  activeShortcutProfile,
+  formatShortcutBinding,
+} from "../../apps/desktop/src/shortcut-profiles";
+
+const shortcutProfileModule = {
+  activeShortcutProfile,
+  formatShortcutBinding,
+};
 
 const preferenceKey = "openfilm.preferences.v1";
 
@@ -108,6 +117,7 @@ describe("Cut Desk Phase 1C: Responsive & Accessible Workspace", () => {
 
     it("declares accessible dialog semantics with title and description bindings", () => {
       const component = loadComponent(sfcPath, {
+        "../shortcut-profiles": shortcutProfileModule,
         "vue-i18n": {
           useI18n: () => ({ t: (key: string) => key }),
         },
@@ -137,8 +147,9 @@ describe("Cut Desk Phase 1C: Responsive & Accessible Workspace", () => {
       expect(descNode).toBeDefined();
     });
 
-    it("renders all five required Cut Desk shortcut groups", () => {
+    it("renders the Source and Record shortcut groups and gestures", () => {
       const component = loadComponent(sfcPath, {
+        "../shortcut-profiles": shortcutProfileModule,
         "vue-i18n": {
           useI18n: () => ({ t: (key: string) => key }),
         },
@@ -153,6 +164,7 @@ describe("Cut Desk Phase 1C: Responsive & Accessible Workspace", () => {
       const nodes = flatten(root);
 
       const requiredGroups = [
+        "cutDesk.shortcutSheet.groups.source",
         "cutDesk.shortcutSheet.groups.transport",
         "cutDesk.shortcutSheet.groups.marks",
         "cutDesk.shortcutSheet.groups.edit",
@@ -171,6 +183,7 @@ describe("Cut Desk Phase 1C: Responsive & Accessible Workspace", () => {
 
     it("renders close button with accessible label and close icon", () => {
       const component = loadComponent(sfcPath, {
+        "../shortcut-profiles": shortcutProfileModule,
         "vue-i18n": {
           useI18n: () => ({ t: (key: string) => key }),
         },

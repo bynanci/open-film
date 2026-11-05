@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,7 +10,11 @@ import {
 } from "@playwright/test";
 import axe from "axe-core";
 import { OpenFilmApplication } from "@openfilm/application";
-import type { Composition } from "@openfilm/core";
+import {
+  formatSequenceTimecode,
+  resolveProjectTimebase,
+  type Composition,
+} from "@openfilm/core";
 import { hashFile, runProcess } from "@openfilm/media";
 import { FFmpegRenderer } from "@openfilm/render";
 import { professionalCutDeskFixture } from "../fixtures/professional-cut-desk.js";
@@ -389,6 +393,115 @@ test("split wipe compares Film Look bypass and Record preview without editing", 
   await toggle.click();
   await expect(wipe).toHaveCount(0);
   expect(await state(request)).toEqual(before);
+});
+
+test("imports a private shortcut profile and applies Source and Record bindings", async ({
+  page,
+  request,
+}) => {
+  await openCut(page, await makeProject());
+  const before = (await state(request)).composition;
+  await page.locator(".settings-toggle").click();
+  const settings = page.getByRole("dialog", {
+    name: uiText("en-US", "app.settings.title"),
+    exact: true,
+  });
+  await settings
+    .locator('[data-testid="shortcut-profile-import"]')
+    .setInputFiles({
+      name: "review-desk.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          format: "openfilm-shortcut-profile",
+          version: 1,
+          name: "Review desk",
+          bindings: {
+            "record.stepForward": { code: "KeyP", modifiers: [] },
+            "source.stepForward": { code: "KeyQ", modifiers: [] },
+          },
+        }),
+      ),
+    });
+  await expect(settings).toContainText("Review desk");
+  const exportEvent = page.waitForEvent("download", { timeout: 3000 });
+  await settings
+    .getByRole("button", {
+      name: uiText("en-US", "app.settings.shortcutProfiles.export"),
+      exact: true,
+    })
+    .click();
+  const exported = await exportEvent;
+  const exportedProfile = JSON.parse(
+    await readFile((await exported.path())!, "utf8"),
+  ) as {
+    format: string;
+    version: number;
+    name: string;
+    bindings: Record<string, unknown>;
+  };
+  expect(exportedProfile).toMatchObject({
+    format: "openfilm-shortcut-profile",
+    version: 1,
+    name: "Review desk",
+    bindings: {
+      "record.stepForward": { code: "KeyP", modifiers: [] },
+      "source.stepForward": { code: "KeyQ", modifiers: [] },
+    },
+  });
+  await settings
+    .getByRole("button", { name: uiText("en-US", "app.actions.done") })
+    .click();
+
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  await seekRecord(page, 0);
+  await page.locator("#workspace-main").focus();
+  await page.keyboard.press("p");
+  await expect(page.locator(".record-monitor")).toHaveAttribute(
+    "data-frame",
+    "1",
+  );
+  expect((await state(request)).composition).toEqual(before);
+
+  await source(page);
+  const sourceVideo = page.locator(".precision-editor video:visible").first();
+  const sourceAsset = media.assets.find(
+    (asset) => asset.id === before.tracks[0]!.clips[0]!.assetId,
+  )!;
+  const sourceTimebase = resolveProjectTimebase({
+    ...media.settings,
+    frameRate: sourceAsset.frameRate ?? media.settings.frameRate,
+    timebase: undefined,
+  });
+  const sourceElapsed = page.getByRole("textbox", {
+    name: uiText("en-US", "precision.sourceElapsed"),
+    exact: true,
+  });
+  await sourceElapsed.fill(formatSequenceTimecode(21, sourceTimebase));
+  await sourceElapsed.press("Enter");
+  await expect(sourceElapsed).toHaveAttribute("aria-invalid", "false");
+  await expect
+    .poll(() =>
+      sourceVideo.evaluate((node) => (node as HTMLVideoElement).currentTime),
+    )
+    .toBeCloseTo(
+      (21 * sourceTimebase.rateDenominator) / sourceTimebase.rateNumerator,
+      5,
+    );
+  await page.locator(".precision-waveform").press("q");
+  await expect
+    .poll(() =>
+      sourceVideo.evaluate((node) => (node as HTMLVideoElement).currentTime),
+    )
+    .toBeCloseTo(
+      (22 * sourceTimebase.rateDenominator) / sourceTimebase.rateNumerator,
+      5,
+    );
+
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  await page.locator(".cut-desk-shortcuts-btn").click();
+  await expect(page.locator(".shortcut-sheet-dialog")).toContainText("P");
+  await expect(page.locator(".shortcut-sheet-dialog")).toContainText("Q");
 });
 
 async function source(page: Page, clip = "red") {

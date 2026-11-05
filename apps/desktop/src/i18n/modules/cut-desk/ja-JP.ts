@@ -127,8 +127,7 @@ export default {
       unavailable:
         "デコード済みソースフレームを取得できません。Record の再生ヘッド位置で表示可能な動画または写真クリップを選び、プレビューの読み込みを待ってください。",
     },
-    shortcuts:
-      "Space 再生／一時停止 · J K L シャトル · ← → フレーム · Shift+← → 秒 · ↑ ↓ 編集点 · Home/End 境界 · B 分割",
+    shortcuts: "キーボードショートカットは設定で変更できます · ? で一覧を表示",
     layout: {
       label: "モニターレイアウト",
       tabbed: "タブ表示",
@@ -142,6 +141,7 @@ export default {
       toggle: "ショートカット一覧を表示 (?)",
       close: "ショートカット一覧を閉じる",
       groups: {
+        source: "ソースモニター",
         transport: "再生およびシャトル操作",
         marks: "イン点・アウト点マーク",
         edit: "編集点および分割",
@@ -149,6 +149,10 @@ export default {
         gestures: "精密操作およびジェスチャー",
       },
       items: {
+        sourceSpace: "ソースを再生／一時停止",
+        sourceJkl: "逆シャトル／停止／順シャトル",
+        sourceArrows: "ソースの前／次フレーム（Shiftで1秒移動）",
+        sourceHomeEnd: "イン点／アウト点へ移動",
         space: "アクティブモニターの再生／一時停止",
         jkl: "逆シャトル／停止／順シャトル",
         arrows: "前／次フレーム（Shiftで1秒移動）",
@@ -156,12 +160,12 @@ export default {
         applyRange: "マークした範囲をシーケンスに適用",
         upDown: "前／次の編集点へ移動",
         split: "再生ヘッド位置でクリップを分割",
-        insert: "ソース範囲をタイムラインに挿入 (,)",
-        overwrite: "ソース範囲をタイムラインに上書き (.)",
-        lift: "クリップをリフトして隙間を残す (;)",
-        slip: "クリップ範囲内でソースメディアをスリップ ([ / ])",
-        slide: "クリップをスライドして隣接カットを調整 (Alt + [ / ])",
-        rippleDelete: "クリップをリップル削除して隙間を閉じる (Delete)",
+        insert: "ソース範囲をタイムラインに挿入",
+        overwrite: "ソース範囲をタイムラインに上書き",
+        lift: "クリップをリフトして隙間を残す",
+        slip: "クリップ範囲内でソースメディアをスリップ",
+        slide: "クリップをスライドして隣接カットを調整",
+        rippleDelete: "クリップをリップル削除して隙間を閉じる",
         marker: "ソースマーカーを追加",
         homeEnd: "先頭／末尾へジャンプ",
         undoRedo: "元に戻す／やり直し",

@@ -78,6 +78,10 @@ import {
   setCutDeskMonitorLayout,
   setCutDeskSplitRatio,
 } from "../preferences";
+import {
+  activeShortcutProfile,
+  resolveShortcutAction,
+} from "../shortcut-profiles";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
 import { sameRateDropFrameChoice } from "../projectTimebase";
@@ -2887,9 +2891,21 @@ function keyboard(event: KeyboardEvent) {
   const proTrimChord =
     (event.key === "[" || event.key === "]") &&
     (event.altKey || event.ctrlKey || event.metaKey);
+  const recordAction = resolveShortcutAction(
+    activeShortcutProfile.value,
+    "record",
+    event,
+  );
+  const timelineAction = resolveShortcutAction(
+    activeShortcutProfile.value,
+    "timeline",
+    event,
+  );
   // History and slide/roll trim share the same input/modal/IME guard, with their own modifier chords.
   const guarded =
-    undo || proTrimChord
+    undo ||
+    proTrimChord ||
+    (event.altKey && (recordAction !== null || timelineAction !== null))
       ? ({
           target: event.target,
           isComposing: event.isComposing,
@@ -2925,66 +2941,100 @@ function keyboard(event: KeyboardEvent) {
     if (cutDeskBlocked.value) return;
     const monitor = recordMonitor.value;
     if (!monitor) return;
-    const key = event.key.toLowerCase();
-    if (event.code === "Space" && !element?.closest("button, summary")) {
+    if (
+      recordAction === "record.playPause" &&
+      !element?.closest("button, summary")
+    ) {
       event.preventDefault();
       if (monitor.playing) monitor.pause();
       else monitor.play();
-    } else if (key === "j" || key === "l") {
+    } else if (
+      recordAction === "record.shuttleReverse" ||
+      recordAction === "record.shuttleForward"
+    ) {
       event.preventDefault();
-      if (!event.repeat) monitor.shuttle(key === "j" ? -1 : 1);
-    } else if (key === "k") {
+      if (!event.repeat)
+        monitor.shuttle(recordAction === "record.shuttleReverse" ? -1 : 1);
+    } else if (recordAction === "record.stop") {
       event.preventDefault();
       monitor.pause();
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    } else if (
+      recordAction === "record.stepBackward" ||
+      recordAction === "record.stepForward"
+    ) {
       event.preventDefault();
-      monitor.step(event.key === "ArrowRight" ? 1 : -1, event.shiftKey);
-    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      monitor.step(
+        recordAction === "record.stepForward" ? 1 : -1,
+        event.shiftKey,
+      );
+    } else if (
+      recordAction === "record.previousEdit" ||
+      recordAction === "record.nextEdit"
+    ) {
       event.preventDefault();
-      if (event.key === "ArrowUp") monitor.previousEdit();
+      if (recordAction === "record.previousEdit") monitor.previousEdit();
       else monitor.nextEdit();
-    } else if (event.key === "Home" || event.key === "End") {
+    } else if (
+      recordAction === "record.seekStart" ||
+      recordAction === "record.seekEnd"
+    ) {
       event.preventDefault();
-      monitor.seek(event.key === "Home" ? 0 : lastRecordFrame.value);
-    } else if (key === "b") {
+      monitor.seek(
+        recordAction === "record.seekStart" ? 0 : lastRecordFrame.value,
+      );
+    } else if (recordAction === "record.split") {
       event.preventDefault();
       if (!event.repeat) void splitRecord(recordOwner.value);
-    } else if (event.key === ",") {
+    } else if (recordAction === "record.insert") {
       event.preventDefault();
       if (!event.repeat) void insertRecord(recordOwner.value);
-    } else if (event.key === ".") {
+    } else if (recordAction === "record.overwrite") {
       event.preventDefault();
       if (!event.repeat) void overwriteRecord(recordOwner.value);
-    } else if (event.key === ";") {
+    } else if (recordAction === "record.lift") {
       event.preventDefault();
       if (!event.repeat) void liftRecord(recordOwner.value);
-    } else if (key === "m") {
-      event.preventDefault();
     }
     return;
   }
   if (editMode.value !== "story") return;
-  if (event.key.toLowerCase() === "g") {
+  if (timelineAction === "timeline.toggleGuides") {
     event.preventDefault();
     toggleMonitorGuides();
   }
-  if (event.code === "Space" && !element?.closest("button")) {
+  if (timelineAction === "timeline.playPause" && !element?.closest("button")) {
     event.preventDefault();
     togglePlayback();
   }
-  if (event.key === "Delete" || event.key === "Backspace") {
+  if (
+    timelineAction === "timeline.delete" ||
+    timelineAction === "timeline.deleteBackward"
+  ) {
     event.preventDefault();
     deleteSelected();
   }
-  if (event.key === ";") {
+  if (timelineAction === "timeline.lift") {
     event.preventDefault();
     liftSelected();
   }
-  if (event.key === "[" || event.key === "]") {
+  if (
+    timelineAction === "timeline.slipBackward" ||
+    timelineAction === "timeline.slipForward" ||
+    timelineAction === "timeline.slideBackward" ||
+    timelineAction === "timeline.slideForward" ||
+    (proTrimChord && (event.ctrlKey || event.metaKey))
+  ) {
     event.preventDefault();
     const step = event.shiftKey ? 1 : 0.1;
-    const delta = event.key === "]" ? step : -step;
-    if (event.altKey) {
+    const moveForward =
+      timelineAction === "timeline.slipForward" ||
+      timelineAction === "timeline.slideForward" ||
+      event.key === "]";
+    const delta = moveForward ? step : -step;
+    if (
+      timelineAction === "timeline.slideBackward" ||
+      timelineAction === "timeline.slideForward"
+    ) {
       slideSelected(delta);
     } else if (event.ctrlKey || event.metaKey) {
       rollSelected(delta);
@@ -2992,11 +3042,15 @@ function keyboard(event: KeyboardEvent) {
       slipSelected(delta);
     }
   }
-  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+  if (
+    timelineAction === "timeline.stepBackward" ||
+    timelineAction === "timeline.stepForward"
+  ) {
     event.preventDefault();
     const clips = groups.value.flatMap((group) => group.clips);
     const index = clips.findIndex((clip) => clip.id === selectedClipId.value);
-    const next = clips[index + (event.key === "ArrowRight" ? 1 : -1)];
+    const next =
+      clips[index + (timelineAction === "timeline.stepForward" ? 1 : -1)];
     if (next) {
       chooseClip(next);
       void nextTick(() => revealClip(next.id));
