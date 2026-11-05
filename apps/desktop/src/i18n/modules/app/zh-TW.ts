@@ -135,6 +135,20 @@ export default {
       contentHint: "僅更新範本文字，保留你撰寫的名稱與說明。",
       storage: "預設影片儲存位置",
       storageHint: "新影片使用此位置，現有專案不會移動。",
+      shortcutProfiles: {
+        title: "鍵盤快速鍵設定檔",
+        description:
+          "選擇本機設定檔，或匯入有版本的 JSON 設定檔。編輯匯出的 JSON 即可變更按鍵。",
+        active: "目前設定檔",
+        import: "匯入設定檔",
+        export: "匯出目前設定檔",
+        remove: "移除目前設定檔",
+        imported: "已匯入並啟用「{name}」。",
+        removed: "自訂設定檔已移除，並切換為 OpenFilm 預設設定檔。",
+        invalid: "設定檔格式錯誤或快速鍵有衝突。請檢查版本與按鍵設定後重試。",
+        localOnly:
+          "設定檔只儲存在此應用程式的本機偏好設定，不會寫入影片專案，也不能執行程式碼。",
+      },
       localTitle: "故事由你保管",
       localDescription:
         "OpenFilm 在這台電腦上處理媒體，不使用帳號、追蹤分析或雲端服務。",

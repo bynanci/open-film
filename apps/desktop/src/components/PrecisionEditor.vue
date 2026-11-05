@@ -51,6 +51,10 @@ import {
   validSourceRange,
   type SourceMarkOwner,
 } from "../sourceMarks";
+import {
+  activeShortcutProfile,
+  resolveShortcutAction,
+} from "../shortcut-profiles";
 import type { CommitTransactionResult } from "../composables/useTimelineEditor";
 import TimecodeField from "./TimecodeField.vue";
 import AnalysisJobActions from "./AnalysisJobActions.vue";
@@ -1180,45 +1184,63 @@ function keyboard(event: KeyboardEvent) {
     cancelDrag();
     return;
   }
+  const action = resolveShortcutAction(
+    activeShortcutProfile.value,
+    "source",
+    event,
+  );
+  const guarded =
+    event.altKey && action
+      ? ({
+          target: event.target,
+          isComposing: event.isComposing,
+          defaultPrevented: event.defaultPrevented,
+          altKey: false,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+        } as KeyboardEvent)
+      : event;
   if (
     !props.active ||
     !playable.value ||
-    !ownsSourceShortcut(event) ||
+    !ownsSourceShortcut(guarded) ||
     props.busy
   )
     return;
   const element = event.target as HTMLElement | null;
-  if (event.code === "Space" && !element?.closest("button")) {
+  if (action === "source.playPause" && !element?.closest("button")) {
     event.preventDefault();
     togglePlayback();
   }
-  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+  if (action === "source.stepBackward" || action === "source.stepForward") {
     event.preventDefault();
-    step(event.key === "ArrowRight" ? 1 : -1, event.shiftKey);
+    step(action === "source.stepForward" ? 1 : -1, event.shiftKey);
   }
-  const key = event.key.toLowerCase();
-  if (key === "j" || key === "l") {
+  if (
+    action === "source.shuttleReverse" ||
+    action === "source.shuttleForward"
+  ) {
     event.preventDefault();
-    if (!event.repeat) shuttle(key === "j" ? -1 : 1);
+    if (!event.repeat) shuttle(action === "source.shuttleReverse" ? -1 : 1);
   }
-  if (key === "k") {
+  if (action === "source.stop") {
     event.preventDefault();
     stop();
   }
-  if (key === "i" || key === "o") {
+  if (action === "source.markIn" || action === "source.markOut") {
     event.preventDefault();
-    if (key === "i") stageIn();
+    if (action === "source.markIn") stageIn();
     else stageOut();
   }
-  if (event.key === "Home" || event.key === "End") {
+  if (action === "source.seekIn" || action === "source.seekOut") {
     event.preventDefault();
-    seek(event.key === "Home" ? trimIn.value : trimOut.value);
+    seek(action === "source.seekIn" ? trimIn.value : trimOut.value);
   }
-  if (event.key.toLowerCase() === "b") {
+  if (action === "source.split") {
     event.preventDefault();
     split();
   }
-  if (event.key.toLowerCase() === "m") {
+  if (action === "source.addMarker") {
     event.preventDefault();
     void addSourceMarker();
   }

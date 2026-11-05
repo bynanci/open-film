@@ -9,6 +9,7 @@ import * as core from "@openfilm/core";
 import * as solver from "@openfilm/solver";
 import * as analysis from "@openfilm/analysis";
 import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
+import * as shortcutProfiles from "../../apps/desktop/src/shortcut-profiles";
 import * as localPresets from "../../apps/desktop/src/local-presets";
 import * as sequenceWaveformCache from "../../apps/desktop/src/sequenceWaveformCache";
 import * as sequenceWaveformPreparation from "../../apps/desktop/src/sequenceWaveformPreparation";
@@ -381,6 +382,7 @@ async function mountTimeline(
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
     "../sourceMarks": sourceMarks,
+    "../shortcut-profiles": shortcutProfiles,
     "../recordAudioPlayback": recordAudioPlayback,
     "../local-presets": localPresets,
     "../sequenceWaveformCache": sequenceWaveformCache,

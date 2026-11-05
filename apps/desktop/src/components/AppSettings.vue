@@ -11,6 +11,7 @@ import {
 import type { FilmLocale } from "../appTypes";
 import Icon from "./Icon.vue";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch.vue";
+import ShortcutProfilesPanel from "./ShortcutProfilesPanel.vue";
 import LocalPresetsPanel from "./LocalPresetsPanel.vue";
 import type { OpenFilmProject } from "@openfilm/core";
 import type { PresetAcceptance } from "@openfilm/application";
@@ -198,6 +199,7 @@ onBeforeUnmount(() => previousFocus?.focus());
         >
       </div>
       <WorkspaceModeSwitch />
+      <ShortcutProfilesPanel />
       <LocalPresetsPanel
         :project="project"
         :active-composition-id="activeCompositionId"

@@ -10,6 +10,7 @@ import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
 import { waveformPath } from "../../apps/desktop/src/waveform";
 import * as monitor from "../../apps/desktop/src/monitor";
 import * as recordAudioPlayback from "../../apps/desktop/src/recordAudioPlayback";
+import * as shortcutProfiles from "../../apps/desktop/src/shortcut-profiles";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -160,6 +161,7 @@ async function mountPrecision(
       "../waveform": { waveformPath },
       "../monitor": monitor,
       "../recordAudioPlayback": recordAudioPlayback,
+      "../shortcut-profiles": shortcutProfiles,
     },
   );
   const renderer = vue.createRenderer({

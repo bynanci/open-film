@@ -3,6 +3,11 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { build, transformSync } from "esbuild";
 import { expect, test, type Page } from "@playwright/test";
+import {
+  defaultShortcutProfile,
+  resolveShortcutAction as resolveShortcutActionImpl,
+  shortcutActionIds,
+} from "../../apps/desktop/src/shortcut-profiles";
 
 const desktop = createRequire(resolve("apps/desktop/package.json"));
 const compiler = desktop("vue/compiler-sfc");
@@ -114,61 +119,81 @@ async function mount(page: Page) {
   });
   await page.addScriptTag({ content: fixture });
   await expect(page.locator("#ready-control")).toBeVisible();
-  await page.evaluate(({ timeline, precision }) => {
-    const state = window as unknown as Record<string, unknown>;
-    const counts = { deleted: 0, history: 0, marker: 0 };
-    const sourceActions: string[] = [];
-    state.sourceActions = sourceActions;
-    const mode = { value: "story" };
-    state.shortcutCounts = counts;
-    state.shortcutMode = mode;
-    const timelineContext = {
-      shortcutIsolation: { value: false },
-      recordTarget: { value: false },
-      directionBlocked: { value: false },
-      editMode: mode,
-      props: { active: true },
-      draftAction: { value: null },
-      history: () => {
-        counts.history++;
-      },
-      deleteSelected: () => {
-        counts.deleted++;
-      },
-    };
-    const precisionContext = {
-      props: { active: true },
-      playable: { value: true },
-      addMarker: () => {
-        counts.marker++;
-      },
-      addSourceMarker: () => {
-        counts.marker++;
-      },
-      shuttle: () => sourceActions.push("shuttle"),
-      stop: () => sourceActions.push("stop"),
-      togglePlayback: () => sourceActions.push("play"),
-      step: () => sourceActions.push("step"),
-      stageIn: () => sourceActions.push("in"),
-      stageOut: () => sourceActions.push("out"),
-      split: () => sourceActions.push("split"),
-      seek: () => sourceActions.push("seek"),
-      trimIn: { value: 0 },
-      trimOut: { value: 10 },
-      playhead: { value: 2 },
-      frameStep: { value: 1 / 30 },
-    };
-    for (const [code, context] of [
-      [timeline, timelineContext],
-      [precision, precisionContext],
-    ] as const) {
-      const handler = new Function(
-        "context",
-        `const {${Object.keys(context).join(",")}} = context;\n${code}\nreturn keyboard;`,
-      )(context);
-      window.addEventListener("keydown", handler);
-    }
-  }, handlers);
+  await page.evaluate(
+    ({ timeline, precision, profile, actionIds, resolverSource }) => {
+      const state = window as unknown as Record<string, unknown>;
+      const counts = { deleted: 0, history: 0, marker: 0 };
+      const sourceActions: string[] = [];
+      state.sourceActions = sourceActions;
+      const mode = { value: "story" };
+      state.shortcutCounts = counts;
+      state.shortcutMode = mode;
+      const activeShortcutProfile = { value: profile };
+      const actionScope = (action: string) =>
+        action.slice(0, action.indexOf("."));
+      const resolveShortcutAction = new Function(
+        "shortcutActionIds",
+        "actionScope",
+        `return (${resolverSource})`,
+      )(actionIds, actionScope);
+      const timelineContext = {
+        activeShortcutProfile,
+        resolveShortcutAction,
+        shortcutIsolation: { value: false },
+        recordTarget: { value: false },
+        directionBlocked: { value: false },
+        editMode: mode,
+        props: { active: true },
+        draftAction: { value: null },
+        history: () => {
+          counts.history++;
+        },
+        deleteSelected: () => {
+          counts.deleted++;
+        },
+      };
+      const precisionContext = {
+        activeShortcutProfile,
+        resolveShortcutAction,
+        props: { active: true },
+        playable: { value: true },
+        addMarker: () => {
+          counts.marker++;
+        },
+        addSourceMarker: () => {
+          counts.marker++;
+        },
+        shuttle: () => sourceActions.push("shuttle"),
+        stop: () => sourceActions.push("stop"),
+        togglePlayback: () => sourceActions.push("play"),
+        step: () => sourceActions.push("step"),
+        stageIn: () => sourceActions.push("in"),
+        stageOut: () => sourceActions.push("out"),
+        split: () => sourceActions.push("split"),
+        seek: () => sourceActions.push("seek"),
+        trimIn: { value: 0 },
+        trimOut: { value: 10 },
+        playhead: { value: 2 },
+        frameStep: { value: 1 / 30 },
+      };
+      for (const [code, context] of [
+        [timeline, timelineContext],
+        [precision, precisionContext],
+      ] as const) {
+        const handler = new Function(
+          "context",
+          `const {${Object.keys(context).join(",")}} = context;\n${code}\nreturn keyboard;`,
+        )(context);
+        window.addEventListener("keydown", handler);
+      }
+    },
+    {
+      ...handlers,
+      profile: defaultShortcutProfile,
+      actionIds: shortcutActionIds,
+      resolverSource: resolveShortcutActionImpl.toString(),
+    },
+  );
 }
 async function counts(page: Page) {
   return page.evaluate(
@@ -333,7 +358,12 @@ test("Source shortcuts preserve Chromium defaults and counters in IME, editable,
         const results = keys.map((key) => {
           const event = new KeyboardEvent("keydown", {
             key,
-            code: key === " " ? "Space" : key,
+            code:
+              key === " "
+                ? "Space"
+                : /^[a-z]$/i.test(key)
+                  ? `Key${key.toUpperCase()}`
+                  : key,
             isComposing: context === "ime",
             bubbles: true,
             cancelable: true,

@@ -120,8 +120,7 @@ export default {
       unavailable:
         "目前沒有可解碼的來源畫格。請在 Record 播放頭選取可見的影片或照片片段，並等待預覽載入。",
     },
-    shortcuts:
-      "空白鍵播放／暫停 · J K L 變速 · ← → 逐格 · Shift+← → 逐秒 · ↑ ↓ 剪接點 · Home/End 邊界 · B 分割",
+    shortcuts: "可於設定自訂鍵盤快速鍵 · 按 ? 查看快速鍵參考",
     layout: {
       label: "監看螢幕版面",
       tabbed: "分頁單螢幕",
@@ -135,6 +134,7 @@ export default {
       toggle: "鍵盤快捷鍵參考清單 (?)",
       close: "關閉快捷鍵清單",
       groups: {
+        source: "來源監看螢幕",
         transport: "播放與變速控制",
         marks: "標記與進出點",
         edit: "剪接點與分割",
@@ -142,6 +142,10 @@ export default {
         gestures: "精確手勢與操作",
       },
       items: {
+        sourceSpace: "播放／暫停來源",
+        sourceJkl: "倒放變速／停止／前進變速",
+        sourceArrows: "上一格／下一格來源影格（按住 Shift 為逐秒）",
+        sourceHomeEnd: "跳至來源進點／出點",
         space: "播放／暫停目前使用中螢幕",
         jkl: "倒放變速／停止／前進變速",
         arrows: "上一格／下一格（按住 Shift 為逐秒）",
@@ -149,12 +153,12 @@ export default {
         applyRange: "將來源進出範圍套用至時間軸",
         upDown: "上一剪接點／下一剪接點",
         split: "在播放頭位置分割片段",
-        insert: "插入來源片段至時間軸 (,)",
-        overwrite: "覆寫來源片段至時間軸 (.)",
-        lift: "提拔片段保留空隙 (;)",
-        slip: "於片段範圍內滑移來源媒體 ([ / ])",
-        slide: "滑動片段並調整相鄰剪接點 (Alt + [ / ])",
-        rippleDelete: "漣漪刪除片段閉合空隙 (Delete)",
+        insert: "插入來源片段至時間軸",
+        overwrite: "覆寫來源片段至時間軸",
+        lift: "提拔片段並保留空隙",
+        slip: "於片段範圍內滑移來源媒體",
+        slide: "滑動片段並調整相鄰剪接點",
+        rippleDelete: "漣漪刪除片段並閉合空隙",
         marker: "新增來源標記",
         homeEnd: "跳至起始／結束邊界",
         undoRedo: "復原／重做編輯交易",

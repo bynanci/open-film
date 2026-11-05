@@ -21,6 +21,7 @@ import type { TimelineCommand } from "@openfilm/solver";
 import type { CommitTransactionResult } from "../../apps/desktop/src/composables/useTimelineEditor";
 import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
 import * as monitor from "../../apps/desktop/src/monitor";
+import * as shortcutProfiles from "../../apps/desktop/src/shortcut-profiles";
 import { candidatesFromIntelligence, snapTime } from "@openfilm/analysis";
 
 const vue = createRequire(resolve("apps/desktop/package.json"))("vue");
@@ -245,6 +246,7 @@ async function precision(
       sameSourceOwner: sourceMarks.sameSourceOwner,
       validSourceRange: sourceMarks.validSourceRange,
       ...monitor,
+      ...shortcutProfiles,
       stageSourceIn: sourceMarks.stageIn,
       stageSourceOut: sourceMarks.stageOut,
       resolveProjectTimebase,
@@ -320,6 +322,7 @@ function timeline(child: Partial<Barrier>) {
     useId: () => "precision-navigation-timeline",
     resolveFilmLook,
     ownsSourceShortcut: monitor.ownsSourceShortcut,
+    ...shortcutProfiles,
     defineProps: () => ({
       projectId: "project",
       compositionId: "film",

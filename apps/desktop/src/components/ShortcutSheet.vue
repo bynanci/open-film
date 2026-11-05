@@ -1,7 +1,20 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, useId, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  useId,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
+import {
+  activeShortcutProfile,
+  formatShortcutBinding,
+  type ShortcutActionId,
+} from "../shortcut-profiles";
 
 const props = defineProps<{
   open: boolean;
@@ -18,40 +31,113 @@ const dialogRef = ref<HTMLDialogElement | null>(null);
 const closeButtonRef = ref<HTMLButtonElement | null>(null);
 let previousActiveElement: HTMLElement | null = null;
 
-const groups = [
+const bindingLabel = (action: ShortcutActionId) =>
+  formatShortcutBinding(activeShortcutProfile.value.bindings[action]);
+const groups = computed(() => [
+  {
+    key: "source",
+    shortcuts: [
+      {
+        key: bindingLabel("source.playPause"),
+        label: "cutDesk.shortcutSheet.items.sourceSpace",
+      },
+      {
+        key: [
+          bindingLabel("source.shuttleReverse"),
+          bindingLabel("source.stop"),
+          bindingLabel("source.shuttleForward"),
+        ].join(" · "),
+        label: "cutDesk.shortcutSheet.items.sourceJkl",
+      },
+      {
+        key: `${bindingLabel("source.stepBackward")} · ${bindingLabel("source.stepForward")}`,
+        label: "cutDesk.shortcutSheet.items.sourceArrows",
+      },
+      {
+        key: `${bindingLabel("source.seekIn")} · ${bindingLabel("source.seekOut")}`,
+        label: "cutDesk.shortcutSheet.items.sourceHomeEnd",
+      },
+    ],
+  },
   {
     key: "transport",
     shortcuts: [
-      { key: "Space", label: "cutDesk.shortcutSheet.items.space" },
-      { key: "J · K · L", label: "cutDesk.shortcutSheet.items.jkl" },
-      { key: "← · →", label: "cutDesk.shortcutSheet.items.arrows" },
+      {
+        key: bindingLabel("record.playPause"),
+        label: "cutDesk.shortcutSheet.items.space",
+      },
+      {
+        key: [
+          bindingLabel("record.shuttleReverse"),
+          bindingLabel("record.stop"),
+          bindingLabel("record.shuttleForward"),
+        ].join(" · "),
+        label: "cutDesk.shortcutSheet.items.jkl",
+      },
+      {
+        key: `${bindingLabel("record.stepBackward")} · ${bindingLabel("record.stepForward")}`,
+        label: "cutDesk.shortcutSheet.items.arrows",
+      },
     ],
   },
   {
     key: "marks",
     shortcuts: [
-      { key: "I · O", label: "cutDesk.shortcutSheet.items.markInOut" },
+      {
+        key: `${bindingLabel("source.markIn")} · ${bindingLabel("source.markOut")}`,
+        label: "cutDesk.shortcutSheet.items.markInOut",
+      },
       { key: "Enter (Apply)", label: "cutDesk.shortcutSheet.items.applyRange" },
     ],
   },
   {
     key: "edit",
     shortcuts: [
-      { key: "↑ · ↓", label: "cutDesk.shortcutSheet.items.upDown" },
-      { key: "B", label: "cutDesk.shortcutSheet.items.split" },
-      { key: ",", label: "cutDesk.shortcutSheet.items.insert" },
-      { key: ".", label: "cutDesk.shortcutSheet.items.overwrite" },
-      { key: ";", label: "cutDesk.shortcutSheet.items.lift" },
-      { key: "[ · ]", label: "cutDesk.shortcutSheet.items.slip" },
-      { key: "Alt + [ · ]", label: "cutDesk.shortcutSheet.items.slide" },
-      { key: "Delete", label: "cutDesk.shortcutSheet.items.rippleDelete" },
-      { key: "M", label: "cutDesk.shortcutSheet.items.marker" },
+      {
+        key: `${bindingLabel("record.previousEdit")} · ${bindingLabel("record.nextEdit")}`,
+        label: "cutDesk.shortcutSheet.items.upDown",
+      },
+      {
+        key: bindingLabel("record.split"),
+        label: "cutDesk.shortcutSheet.items.split",
+      },
+      {
+        key: bindingLabel("record.insert"),
+        label: "cutDesk.shortcutSheet.items.insert",
+      },
+      {
+        key: bindingLabel("record.overwrite"),
+        label: "cutDesk.shortcutSheet.items.overwrite",
+      },
+      {
+        key: bindingLabel("record.lift"),
+        label: "cutDesk.shortcutSheet.items.lift",
+      },
+      {
+        key: `${bindingLabel("timeline.slipBackward")} · ${bindingLabel("timeline.slipForward")}`,
+        label: "cutDesk.shortcutSheet.items.slip",
+      },
+      {
+        key: `${bindingLabel("timeline.slideBackward")} · ${bindingLabel("timeline.slideForward")}`,
+        label: "cutDesk.shortcutSheet.items.slide",
+      },
+      {
+        key: `${bindingLabel("timeline.delete")} · ${bindingLabel("timeline.deleteBackward")}`,
+        label: "cutDesk.shortcutSheet.items.rippleDelete",
+      },
+      {
+        key: bindingLabel("source.addMarker"),
+        label: "cutDesk.shortcutSheet.items.marker",
+      },
     ],
   },
   {
     key: "timeline",
     shortcuts: [
-      { key: "Home · End", label: "cutDesk.shortcutSheet.items.homeEnd" },
+      {
+        key: `${bindingLabel("record.seekStart")} · ${bindingLabel("record.seekEnd")}`,
+        label: "cutDesk.shortcutSheet.items.homeEnd",
+      },
       { key: "⌘ / Ctrl + Z", label: "cutDesk.shortcutSheet.items.undoRedo" },
     ],
   },
@@ -66,7 +152,7 @@ const groups = [
       { key: "?", label: "cutDesk.shortcutSheet.items.help" },
     ],
   },
-] as const;
+]);
 
 function handleKeydown(event: KeyboardEvent) {
   if (!props.open) return;
