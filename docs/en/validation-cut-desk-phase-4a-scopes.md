@@ -2,10 +2,10 @@
 
 Date: 2026-11-05  
 Workspace branch: `codex/cut-desk-phase-4a-scopes`  
-Base revision: `7cc0c9f10699f49ff0c046d024cabe620bc90818` (`origin/main`, fetched 2026-11-05)
+Base revision: `0485b3115c962d9b21f6884536155f4b79393a88` (`origin/main`, fetched 2026-11-05)
 
-This Phase 4A candidate is isolated from the active Silence Audition PR. The
-catalog-search PR is merged. This candidate has not been merged to `main`.
+The catalog-search and Silence Audition PRs are merged. This Phase 4A candidate
+has not been merged to `main`.
 
 ## Delivered scope
 
@@ -37,7 +37,7 @@ catalog-search PR is merged. This candidate has not been merged to `main`.
   dimensions and bounds.
 - `pnpm exec playwright test tests/e2e/professional-cut-desk.spec.ts -g 'samples bounded source-frame scopes|samples a high-resolution photo|split wipe compares Film Look' --workers=1` — 3 tests passed. They sample a synthetic video and a 640×360 photo, check the 512×288 photo sample and four canvases, verify the two Film Look preview states and slider, and confirm that the saved edit is unchanged.
 - `pnpm typecheck` — passed for the candidate branch.
-- Post-merge revalidation against `7cc0c9f10699f49ff0c046d024cabe620bc90818`
+- Post-merge revalidation against `0485b3115c962d9b21f6884536155f4b79393a88`
   passed: all 4 scope unit tests, all 3 targeted browser cases, and `pnpm
 typecheck` completed successfully.
 
