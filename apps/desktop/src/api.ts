@@ -1,5 +1,6 @@
 import type {
   AudioHandleFacts,
+  SilenceAuditionResult,
   RecordAudioPreviewDescriptor,
   PresetRegistryView,
   PresetImportReview,
@@ -811,7 +812,24 @@ async function uploadFiles(
     throw error;
   }
 }
+export type { SilenceAuditionResult } from "@openfilm/application";
+
 export const api = {
+  silenceAudition: (
+    jobId: string,
+    input: {
+      reviewId: string;
+      proposal: import("@openfilm/core").SilenceCutProposal;
+      requestId: string;
+      windowSeconds: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<SilenceAuditionResult>(
+      `/silence/jobs/${encodeURIComponent(jobId)}/audition`,
+      input,
+      signal,
+    ),
   audioHandles: (
     compositionId: string,
     clipId: string,

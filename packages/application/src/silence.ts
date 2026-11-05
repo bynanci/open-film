@@ -690,7 +690,9 @@ export class SilenceService {
     value: unknown,
     compositionId: string,
     baseRevision: string,
+    signal?: AbortSignal,
   ): Promise<() => void> {
+    signal?.throwIfAborted();
     const reviewed = envelope({ reviewId, proposal: value });
     const proposal = reviewed.proposal;
     if (proposal.timelineIntervals.length === 0)
@@ -712,7 +714,9 @@ export class SilenceService {
     const assertSource = await this.verifySource(
       proposal.assetId,
       proposal.sourceHash,
+      signal,
     );
+    signal?.throwIfAborted();
     this.assertTimeline(compositionId, baseRevision);
     const assertCurrent = () => {
       stored.assertCurrent();

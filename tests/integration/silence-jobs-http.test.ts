@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,6 +10,7 @@ import { hashFile } from "@openfilm/media";
 import {
   OpenFilmApplication,
   SilenceService,
+  SilenceJobService,
   TimelineEditor,
 } from "@openfilm/application";
 import { startServer } from "../../apps/server/src/server.js";
@@ -727,4 +728,107 @@ it("reserves one Job when two server processes receive the same create request c
         rejectExit(new Error(`Expected killed child; got ${code}/${signal}`));
     });
   });
+});
+
+it("renders immutable reviewed before/after audition over HTTP and fences request identity and stale sources", async () => {
+  const f = await fixture();
+  const created = await post(
+    f.base,
+    "/api/silence/jobs",
+    input(f.projectId, "audition-analysis"),
+  );
+  expect(created.status).toBe(202);
+  const { job } = (await created.json()) as { job: { id: string } };
+  await waitForJob(f.base, job.id, "waiting-review");
+  const reviewResponse = await fetch(
+    `${f.base}/api/silence/jobs/${job.id}/review`,
+  );
+  expect(reviewResponse.status).toBe(200);
+  const { review } = (await reviewResponse.json()) as {
+    review: { reviewId: string; proposal: unknown };
+  };
+  const route = `/api/silence/jobs/${job.id}/audition`;
+  const body = { ...review, requestId: "audition-http", windowSeconds: 0.5 };
+  const persistedBefore = await readFile(join(f.directory, "project.json"));
+  const prepared = await post(f.base, route, body);
+  expect(prepared.status).toBe(200);
+  const result = (await prepared.json()) as {
+    parity: string;
+    before: { id: string; lengthSamples: number };
+    after: { id: string; lengthSamples: number };
+    removedSamples: number;
+    seams: unknown[];
+  };
+  expect(result.parity).toBe("renderer");
+  expect(result.before.lengthSamples - result.after.lengthSamples).toBe(
+    result.removedSamples,
+  );
+  expect(result.removedSamples).toBeGreaterThan(0);
+  expect(result.seams).toHaveLength(1);
+  const duplicate = await post(f.base, route, body);
+  expect(duplicate.status).toBe(200);
+  expect(await duplicate.json()).toEqual(result);
+  expect(
+    (await post(f.base, route, { ...body, windowSeconds: 1 })).status,
+  ).toBe(409);
+  expect(
+    (
+      await post(f.base, route, {
+        ...body,
+        requestId: "bad-window",
+        windowSeconds: 20,
+      })
+    ).status,
+  ).toBe(400);
+  expect(await readFile(join(f.directory, "project.json"))).toEqual(
+    persistedBefore,
+  );
+  const pcmUrl = `${f.base}/api/record-audio-preview/${result.after.id}/pcm?startSample=0&count=100`;
+  const pcm = await fetch(pcmUrl);
+  expect(pcm.status).toBe(200);
+  expect((await pcm.arrayBuffer()).byteLength).toBe(600);
+  await writeFile(f.source, wave());
+  expect((await fetch(pcmUrl)).status).toBe(409);
+  expect(await readFile(join(f.directory, "project.json"))).toEqual(
+    persistedBefore,
+  );
+});
+
+it("rejects audition completion when another save lands before the HTTP response", async () => {
+  const f = await fixture();
+  const response = await post(
+    f.base,
+    "/api/silence/jobs",
+    input(f.projectId, "late-save"),
+  );
+  expect(response.status).toBe(202);
+  const { job } = (await response.json()) as { job: { id: string } };
+  await waitForJob(f.base, job.id, "waiting-review");
+  const reviewResponse = await fetch(
+    `${f.base}/api/silence/jobs/${job.id}/review`,
+  );
+  const { review } = (await reviewResponse.json()) as {
+    review: { reviewId: string; proposal: unknown };
+  };
+  const savedBytes = await readFile(join(f.directory, "project.json"));
+  const original = SilenceJobService.prototype.audition;
+  vi.spyOn(SilenceJobService.prototype, "audition").mockImplementationOnce(
+    async function (this: SilenceJobService, ...args) {
+      const result = await original.apply(this, args);
+      const path = join(f.directory, "project.json");
+      const saved = JSON.parse(await readFile(path, "utf8"));
+      saved.timelines[0].tracks[0].clips[0].locked = true;
+      await writeFile(path, JSON.stringify(saved));
+      return result;
+    },
+  );
+  expect(
+    (
+      await post(f.base, `/api/silence/jobs/${job.id}/audition`, {
+        ...review,
+        requestId: "late-save-preview",
+      })
+    ).status,
+  ).toBe(409);
+  await writeFile(join(f.directory, "project.json"), savedBytes);
 });

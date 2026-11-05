@@ -160,6 +160,33 @@ export default {
       cancelled: "已取消",
     },
     silence: {
+      audition: {
+        title: "渲染接縫試聽",
+        explanation:
+          "以輸出使用的相同 Record 混音路徑渲染已保存的 Review。試聽不會接受剪輯。",
+        window: "接縫前後時間（各側秒數）",
+        retry: "重試試聽",
+        prepare: "渲染原始／剪輯後聲音",
+        cancel: "取消渲染",
+        rendering: "正在渲染已驗證音訊…",
+        removed: "已審閱刪除時長：{seconds} 秒",
+        seam: "時間軸接縫",
+        ranges:
+          "原始 {beforeStart}–{beforeEnd} 秒 · 剪輯後 {afterStart}–{afterEnd} 秒",
+        before: "播放原始混音",
+        after: "播放剪輯後混音",
+        stop: "停止試聽",
+        manual:
+          "接縫爆音、對白誤刪與音樂樂句仍需人耳判讀。渲染成功不代表品質驗收通過。",
+        status: {
+          ready: "就緒",
+          preparing: "準備音訊中",
+          playing: "正在播放渲染音訊",
+          buffering: "正在緩衝渲染音訊",
+          failed: "無法試聽，請檢查錯誤後重試",
+          cancelled: "已取消試聽",
+        },
+      },
       title: "靜音審閱",
       eyebrow: "確認後再編輯",
       status: {

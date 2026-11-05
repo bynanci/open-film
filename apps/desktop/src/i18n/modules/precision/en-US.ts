@@ -168,6 +168,33 @@ export default {
       cancelled: "Cancelled",
     },
     silence: {
+      audition: {
+        title: "Rendered seam audition",
+        explanation:
+          "Render the saved Review through the same Record mix used by output. Listening does not accept the edit.",
+        window: "Seam window (seconds each side)",
+        retry: "Retry audition",
+        prepare: "Render before / after",
+        cancel: "Cancel rendering",
+        rendering: "Rendering verified audio…",
+        removed: "Reviewed removal: {seconds} s",
+        seam: "Timeline seam",
+        ranges:
+          "Before {beforeStart}–{beforeEnd} s · After {afterStart}–{afterEnd} s",
+        before: "Play original mix",
+        after: "Play edited mix",
+        stop: "Stop audition",
+        manual:
+          "Human listening is still required for clicks, speech loss and musical phrasing. Rendering success does not certify quality.",
+        status: {
+          ready: "Ready",
+          preparing: "Preparing audio",
+          playing: "Playing rendered audio",
+          buffering: "Buffering rendered audio",
+          failed: "Audition unavailable · inspect the error and retry",
+          cancelled: "Audition cancelled",
+        },
+      },
       title: "Silence review",
       eyebrow: "Review before editing",
       status: {

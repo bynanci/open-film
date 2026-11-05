@@ -139,6 +139,20 @@ function make(
   };
 }
 describe("bounded Record PCM scheduler", () => {
+  it("reads and schedules only the selected audition window and stops at its exact sample", async () => {
+    const { player, reads, times, tick } = make();
+    await player.play(24000, 72001);
+    await flush();
+    expect(reads).toHaveLength(1);
+    expect(reads[0]).toMatchObject({ start: 24000, count: 48001 });
+    await tick(2);
+    expect(times.at(-1)).toBe(72001);
+    expect(reads).toHaveLength(1);
+    await expect(player.play(72001, 24000)).rejects.toThrow(/window/);
+    await expect(player.play(0, descriptor.lengthSamples + 1)).rejects.toThrow(
+      /position/,
+    );
+  });
   it("converts signed little-endian 24-bit PCM once and schedules contiguous two-second blocks with 250ms lookahead", async () => {
     const { player, context, reads, tick } = make();
     await player.play(0);

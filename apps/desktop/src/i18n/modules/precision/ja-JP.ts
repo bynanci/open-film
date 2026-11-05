@@ -171,6 +171,33 @@ export default {
       cancelled: "キャンセル済み",
     },
     silence: {
+      audition: {
+        title: "レンダリングした接合部の試聴",
+        explanation:
+          "保存した Review を出力と同じ Record ミックスでレンダリングします。試聴では編集を承認しません。",
+        window: "接合部の前後（片側の秒数）",
+        retry: "試聴を再試行",
+        prepare: "編集前／編集後をレンダリング",
+        cancel: "レンダリングをキャンセル",
+        rendering: "検証済み音声をレンダリング中…",
+        removed: "確認済みの削除時間：{seconds} 秒",
+        seam: "タイムラインの接合部",
+        ranges:
+          "編集前 {beforeStart}–{beforeEnd} 秒 · 編集後 {afterStart}–{afterEnd} 秒",
+        before: "元のミックスを再生",
+        after: "編集後のミックスを再生",
+        stop: "試聴を停止",
+        manual:
+          "クリック音、発話の欠落、音楽のフレーズは人による試聴が必要です。レンダリング成功は品質の合格を意味しません。",
+        status: {
+          ready: "準備完了",
+          preparing: "音声を準備中",
+          playing: "レンダリング音声を再生中",
+          buffering: "音声をバッファ中",
+          failed: "試聴できません。エラーを確認して再試行してください",
+          cancelled: "試聴をキャンセルしました",
+        },
+      },
       title: "無音レビュー",
       eyebrow: "編集前に確認",
       status: {

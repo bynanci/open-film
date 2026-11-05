@@ -18,12 +18,11 @@ and the [contributing guide](CONTRIBUTING.md).
 | Native installers                                                  | In progress                     | Packaging tools exist, but distributable installers still require platform, dependency and installation verification. |
 | v1.0                                                               | Release goal                    | Published when the documented readiness criteria are met; the package version alone does not establish a release.     |
 
-The status below was reconciled against `main` at
-[`e3f94f9`](https://github.com/bynanci/open-film/commit/e3f94f9cda161a3f955275a1a77f5f13d2bf7834)
-on 2026-11-05. This branch candidate adds durable silence Jobs and HTTP routes;
-that work remains a PR candidate until reviewed and integrated. A merged
-implementation, an automated check and a physical workstation test describe
-different evidence. Feature guides and validation records identify their limits.
+The Silence scope below was checked against main
+[`272af117c90384a2f79e50df39b0fb2f3185c31e`](https://github.com/bynanci/open-film/commit/272af117c90384a2f79e50df39b0fb2f3185c31e)
+on 2026-11-05. Durable Jobs and Desktop Review are merged in PRs #107/#108.
+The rendered-audition candidate and physical workstation quality acceptance
+remain separate from those merged implementations.
 
 ## Current focus
 
@@ -34,11 +33,11 @@ add source-bound low-energy analysis, restart-safe review and explicit Apply.
 They reuse FFmpeg, existing SQLite reservation and owner recovery, the
 `SilenceService` and one TimelineEditor. Analysis never automatically edits the
 Composition. Affected clips with local audio automation fail closed before a
-Review is published until ripple remapping is proven. The candidate remains a
-PR until reviewed; the desktop Review UI and full media/workstation gates remain
-open. No Auto-Editor runtime or eleven upstream tools/models are installed.
+Review is published until ripple remapping is proven. The desktop Precision Review UI is merged. The current candidate adds
+read-only before/after audition through the existing Record mix; actual-media
+quality and workstation listening gates remain open. No Auto-Editor runtime or eleven upstream tools/models are installed.
 
-Next slices are desktop review and optional providers whose quality, clocks,
+Next slices are validated rendered audition and optional providers whose quality, clocks,
 runtime costs and artifact rights are verified.
 Existing scene/rhythm analysis, primary-color adjustment, role-based stems and
 GraphicScenes remain the foundation. See the

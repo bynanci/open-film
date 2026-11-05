@@ -20,11 +20,12 @@ on 2026-11-05. The latest published source release remains **v0.4.0**.
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 
-The branch candidate adds the durable `silence-analysis` Job and HTTP lifecycle
-to the earlier CLI/application review slice. It uses the existing
+Merged PRs [#107](https://github.com/bynanci/open-film/pull/107) and
+[#108](https://github.com/bynanci/open-film/pull/108) provide the durable
+`silence-analysis` Job, HTTP lifecycle and Precision Review/Accept UI. It uses the existing
 `SilenceService`, SQLite reservations, owner recovery and TimelineEditor; it
-does not add an editing engine, provider, model or new timeline. The desktop
-review UI, full media gate and platform workstation checks remain open. See the
+does not add an editing engine, provider, model or new timeline. Rendered before/after audition and real-media/workstation quality checks
+remain separate acceptance scopes. See the
 [dated validation record](docs/validation-silence-durable-jobs-2026-11-05.md),
 [recovery and API contract](docs/media-analysis-recovery.md),
 [integration guide](docs/en/media-intelligence-integrations.md),
@@ -61,14 +62,19 @@ review UI, full media gate and platform workstation checks remain open. See the
 - [x] Reject proposal creation before publishing a Review if a ripple would
       trim or split a clip with local audio gain automation; retain automation
       when a whole clip is shifted intact.
-- [ ] Pass the final candidate's full media gate in the configured CI environment;
-      the local broad run is not a passing release check.
+- [x] Verify the merged baseline media gate in configured CI: main `272af11`,
+      [Verify 42011116534](https://github.com/bynanci/open-film/actions/runs/42011116534).
+      New audition candidate CI is reported separately in its validation record.
 - [ ] Add exact local gain/fade/ducking curve remapping to split/trim ripple
       operations, with preview/render equivalence; until then affected clips
       remain safely blocked during silence Review creation.
-- [ ] Add the desktop Review/Apply surface over this API; until then the Job
-      review is available through the local HTTP contract and existing editor
-      workflow.
+- [x] Provide the desktop Precision Review/Apply surface over the durable API
+      ([PR #108](https://github.com/bynanci/open-film/pull/108)).
+- [x] Implement and locally validate immutable Silence rendered audition through the existing Record
+      mix, accepted-render PCM comparisons, cancellation and stale-result guards
+      ([candidate validation](docs/validation-silence-rendered-audition.md)).
+- [ ] Complete real dialogue/music listening QA and Windows/macOS workstation
+      audition checks; synthetic PCM equivalence does not satisfy this gate.
 - [ ] Admit additional scene/rhythm, mask/restoration, stabilization/interpolation,
       separation or browser-rendering providers only after quality, timing,
       runtime and code/weight rights checks. Reuse existing capabilities.

@@ -11,6 +11,8 @@ import {
   type SilenceApplyReceiptV1,
   type SilenceCutProposal,
 } from "@openfilm/core";
+import { applyTimelineCommand } from "@openfilm/solver";
+import type { RecordAudioPreviewDescriptor } from "./record-audio-preview.js";
 import type { OpenFilmApplication } from "./index.js";
 import { TimelineEditor, silenceApplyFingerprint } from "./editor.js";
 import { createReviewOwner, ownsReviewOwner } from "./review-owner.js";
@@ -138,7 +140,50 @@ function safeFailure(error: unknown): NonNullable<Job["errors"]>[number] {
 }
 
 /** Durable coordinator over the existing SilenceService and TimelineEditor. */
+function auditionInput(value: unknown) {
+  const data = object(
+    value,
+    ["reviewId", "proposal", "requestId", "windowSeconds"],
+    "silence audition",
+  );
+  const windowSeconds = data.windowSeconds ?? 0.5;
+  if (
+    typeof windowSeconds !== "number" ||
+    !Number.isFinite(windowSeconds) ||
+    windowSeconds < 0.1 ||
+    windowSeconds > 3
+  )
+    invalid("windowSeconds must be between 0.1 and 3 seconds.");
+  return {
+    reviewId: identifier(data.reviewId, "reviewId"),
+    requestId: identifier(data.requestId, "requestId"),
+    proposal: validateSilenceCutProposal(data.proposal),
+    windowSeconds,
+  };
+}
+export interface SilenceAuditionResult {
+  version: 1;
+  reviewId: string;
+  requestId: string;
+  baseRevision: string;
+  before: RecordAudioPreviewDescriptor;
+  after: RecordAudioPreviewDescriptor;
+  seams: {
+    beforeStartSample: number;
+    beforeEndSample: number;
+    afterStartSample: number;
+    afterEndSample: number;
+    removedStartSample: number;
+    removedEndSample: number;
+  }[];
+  removedSamples: number;
+  parity: "renderer";
+}
 export class SilenceJobService {
+  private readonly auditions = new Map<
+    string,
+    { fingerprint: string; result?: SilenceAuditionResult }
+  >();
   private readonly editor: TimelineEditor;
   private readonly controllers = new Map<string, AbortController>();
 
@@ -273,7 +318,11 @@ export class SilenceJobService {
     return validateJob(job);
   }
 
-  async freshness(jobOrId: Job | string): Promise<SilenceFreshness> {
+  async freshness(
+    jobOrId: Job | string,
+    signal?: AbortSignal,
+  ): Promise<SilenceFreshness> {
+    signal?.throwIfAborted();
     const job =
       typeof jobOrId === "string" ? this.get(jobOrId) : validateJob(jobOrId);
     const identity = job.silenceAnalysis;
@@ -292,6 +341,7 @@ export class SilenceJobService {
         return "stale";
       const sourceHash = await this.application.intelligence.sourceIdentity(
         job.assetId!,
+        { signal },
       );
       if (
         generation !== this.application.projectGeneration ||
@@ -302,6 +352,7 @@ export class SilenceJobService {
         return "stale";
       return sourceHash === identity.sourceHash ? "current" : "stale";
     } catch (error) {
+      signal?.throwIfAborted();
       if (
         error instanceof ApplicationError &&
         [
@@ -316,7 +367,206 @@ export class SilenceJobService {
     }
   }
 
-  async getReview(jobId: string): Promise<SilenceJobReviewResult> {
+  private readonly pendingAuditions = new Map<
+    string,
+    { fingerprint: string; task: Promise<SilenceAuditionResult> }
+  >();
+  hasPendingAudition(jobId: string, value: unknown): boolean {
+    const data = auditionInput(value);
+    const pending = this.pendingAuditions.get(data.requestId);
+    return (
+      !!pending &&
+      pending.fingerprint === canonicalPresetJson({ jobId, ...data })
+    );
+  }
+  async audition(
+    jobId: string,
+    value: unknown,
+    signal?: AbortSignal,
+  ): Promise<SilenceAuditionResult> {
+    const data = auditionInput(value);
+    signal?.throwIfAborted();
+    const requestId = identifier(data.requestId, "requestId");
+    const fingerprint = canonicalPresetJson({
+      jobId,
+      ...data,
+      windowSeconds: data.windowSeconds ?? 0.5,
+    });
+    const pending = this.pendingAuditions.get(requestId);
+    if (pending) {
+      if (pending.fingerprint !== fingerprint)
+        throw conflict("Audition requestId is bound to another request.");
+      const result = await pending.task;
+      signal?.throwIfAborted();
+      return structuredClone(result);
+    }
+    const task = this.prepareAudition(jobId, value, signal);
+    this.pendingAuditions.set(requestId, { fingerprint, task });
+    try {
+      return await task;
+    } finally {
+      this.pendingAuditions.delete(requestId);
+    }
+  }
+  private async prepareAudition(
+    jobId: string,
+    value: unknown,
+    signal?: AbortSignal,
+  ): Promise<SilenceAuditionResult> {
+    const { requestId, reviewId, proposal, windowSeconds } =
+      auditionInput(value);
+    const fingerprint = canonicalPresetJson({
+      jobId,
+      reviewId,
+      proposal,
+      windowSeconds,
+    });
+    const prior = this.auditions.get(requestId);
+    if (prior && prior.fingerprint !== fingerprint)
+      throw conflict("Audition requestId is bound to another request.");
+    if (!prior) {
+      if (this.auditions.size >= 64)
+        throw new ApplicationError(
+          "jobs.busy",
+          "Audition request budget reached; reopen the project to prepare more.",
+          409,
+        );
+      this.auditions.set(requestId, { fingerprint });
+    }
+    const review = await this.getReview(jobId, signal);
+    if (
+      review.job.status !== "waiting-review" ||
+      review.freshness !== "current" ||
+      review.review.reviewId !== reviewId
+    )
+      throw conflict("Silence audition requires the current waiting Review.");
+    const assertReviewed = await this.silence.verifyReviewedProposal(
+      reviewId,
+      proposal,
+      proposal.compositionId,
+      proposal.baseRevision,
+      signal,
+    );
+    // Hash on preparation; PCM reads use captured inode/size/mtime/ctime and
+    // immutable Review guards, matching Record's bounded source read policy.
+    const verify = async () => {
+      const job = this.get(jobId);
+      if (job.status !== "waiting-review")
+        throw conflict("Silence Review is no longer waiting for acceptance.");
+      this.assertReviewBound(job, { reviewId, proposal });
+      assertReviewed();
+    };
+    await verify();
+    if (prior?.result) {
+      try {
+        await this.application.recordAudioPreview.read(
+          prior.result.before.id,
+          0,
+          1,
+        );
+        await this.application.recordAudioPreview.read(
+          prior.result.after.id,
+          0,
+          1,
+        );
+        return structuredClone(prior.result);
+      } catch (error) {
+        if (
+          !(error instanceof ApplicationError) ||
+          error.code !== "request.notFound"
+        )
+          throw error;
+        await this.application.recordAudioPreview.discard(
+          prior.result.before.id,
+        );
+        await this.application.recordAudioPreview.discard(
+          prior.result.after.id,
+        );
+        prior.result = undefined;
+      }
+    }
+    const state = this.editor.get(proposal.compositionId);
+    const derived = applyTimelineCommand(state, state.assets, {
+      type: "silence.ripple",
+      reviewId,
+      proposal,
+    });
+    const before = await this.application.recordAudioPreview.prepare(
+      proposal.compositionId,
+      proposal.baseRevision,
+      signal,
+      {
+        composition: state.composition,
+        binding: requestId + fingerprint + "before",
+        assertCurrent: verify,
+      },
+    );
+    let after: RecordAudioPreviewDescriptor | undefined;
+    try {
+      after = await this.application.recordAudioPreview.prepare(
+        proposal.compositionId,
+        proposal.baseRevision,
+        signal,
+        {
+          composition: derived.composition,
+          binding: requestId + fingerprint + "after",
+          assertCurrent: async () => {
+            await verify();
+            await this.application.recordAudioPreview.read(before.id, 0, 1);
+          },
+        },
+      );
+      await verify();
+      signal?.throwIfAborted();
+    } catch (error) {
+      await this.application.recordAudioPreview.discard(before.id);
+      if (after) await this.application.recordAudioPreview.discard(after.id);
+      throw error;
+    }
+    let removedSeconds = 0;
+    const pad = Math.round(windowSeconds * 48000);
+    const seams = proposal.timelineIntervals.map((range) => {
+      const start = Math.round(range.start * 48000),
+        end = Math.round(range.end * 48000);
+      const seam = Math.round((range.start - removedSeconds) * 48000);
+      removedSeconds += range.end - range.start;
+      return {
+        beforeStartSample: Math.max(0, start - pad),
+        beforeEndSample: Math.min(before.lengthSamples, end + pad),
+        afterStartSample: Math.max(0, seam - pad),
+        afterEndSample: Math.min(after.lengthSamples, seam + pad),
+        removedStartSample: start,
+        removedEndSample: end,
+      };
+    });
+    const removedSamples = before.lengthSamples - after.lengthSamples;
+    if (Math.abs(removedSamples - Math.round(removedSeconds * 48000)) > 1) {
+      await this.application.recordAudioPreview.discard(before.id);
+      await this.application.recordAudioPreview.discard(after.id);
+      throw conflict(
+        "The rendered audition sample duration does not match the reviewed ripple mapping.",
+      );
+    }
+    const result: SilenceAuditionResult = {
+      version: 1,
+      reviewId,
+      requestId,
+      baseRevision: proposal.baseRevision,
+      before,
+      after,
+      seams,
+      removedSamples,
+      parity: "renderer",
+    };
+    this.auditions.set(requestId, { fingerprint, result });
+    return structuredClone(result);
+  }
+
+  async getReview(
+    jobId: string,
+    signal?: AbortSignal,
+  ): Promise<SilenceJobReviewResult> {
+    signal?.throwIfAborted();
     const job = this.get(jobId);
     const identity = job.silenceAnalysis!;
     if (
@@ -330,7 +580,7 @@ export class SilenceJobService {
       );
     const review = await this.silence.readProposal(identity.reviewId);
     this.assertReviewBound(job, review);
-    return { job, freshness: await this.freshness(job), review };
+    return { job, freshness: await this.freshness(job, signal), review };
   }
 
   /** Reserve a new Job and immutable Review for an explicit candidate selection. */

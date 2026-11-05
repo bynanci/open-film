@@ -1260,7 +1260,7 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const silenceJobRoute =
-          /^\/api\/silence\/jobs\/([^/]+)(?:\/(review|cancel|retry|recover|apply))?$/.exec(
+          /^\/api\/silence\/jobs\/([^/]+)(?:\/(review|cancel|retry|recover|apply|audition))?$/.exec(
             route,
           );
         if (silenceJobRoute) {
@@ -1281,6 +1281,47 @@ export async function startServer(options: ServerOptions = {}) {
                 ? { recovery: { ...recovery, canCancel: active.has(jobId) } }
                 : {}),
             });
+            return;
+          }
+          if (method === "POST" && action === "audition") {
+            const data = await body(request);
+            keys(data, ["reviewId", "proposal", "requestId", "windowSeconds"]);
+            if (
+              hasActiveProjectWork() &&
+              !application.silenceJobs.hasPendingAudition(jobId, data)
+            )
+              throw new HttpError(409, "Wait for the active project job.");
+            const controller = new AbortController(),
+              taskId = randomUUID();
+            const disconnected = () => {
+              if (!response.writableEnded) controller.abort();
+            };
+            response.once("close", disconnected);
+            active.set(taskId, controller);
+            releaseMutation?.();
+            releaseMutation = undefined;
+            const task = application.silenceJobs.audition(
+              jobId,
+              data,
+              controller.signal,
+            );
+            tasks.add(task);
+            try {
+              const result = await task;
+              await acquireMutation();
+              if (controller.signal.aborted || app !== application)
+                throw new HttpError(
+                  409,
+                  "Silence audition changed or was cancelled.",
+                );
+              await application.recordAudioPreview.read(result.before.id, 0, 1);
+              await application.recordAudioPreview.read(result.after.id, 0, 1);
+              json(response, 200, result);
+            } finally {
+              active.delete(taskId);
+              tasks.delete(task);
+              response.off("close", disconnected);
+            }
             return;
           }
           if (method === "GET" && action === "review") {

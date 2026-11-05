@@ -177,6 +177,7 @@ interface Entry {
   projectIdentity: Stats;
   compositionId: string;
   generation: number;
+  reviewedCurrent?: () => Promise<void>;
   readers: number;
   used: number;
 }
@@ -206,9 +207,11 @@ export class RecordAudioPreviewService {
       | "projectIdentity"
       | "compositionId"
       | "generation"
+      | "reviewedCurrent"
     >,
   ) {
     this.assertOpen();
+    await entry.reviewedCurrent?.();
     const state = new TimelineEditor(this.app).get(entry.compositionId),
       projectPath = join(this.app.directory, "project.json");
     const disk = JSON.parse(await readFile(projectPath, "utf8")) as {
@@ -313,6 +316,11 @@ export class RecordAudioPreviewService {
     compositionId: string,
     baseRevision: string,
     signal?: AbortSignal,
+    reviewed?: {
+      composition: Composition;
+      binding: string;
+      assertCurrent: () => Promise<void>;
+    },
   ): Promise<RecordAudioPreviewDescriptor> {
     this.assertOpen();
     checkAbort(signal);
@@ -333,7 +341,9 @@ export class RecordAudioPreviewService {
     try {
       const state = new TimelineEditor(this.app).get(compositionId);
       if (state.revision !== baseRevision) stale();
-      const composition = structuredClone(state.composition),
+      const composition = structuredClone(
+          reviewed?.composition ?? state.composition,
+        ),
         duration = composition.duration,
         lengthSamples = Math.round(duration * 48000);
       if (
@@ -357,6 +367,8 @@ export class RecordAudioPreviewService {
           coverage,
         }),
         sources: Source[] = [];
+      if (reviewed && ids.size === 0)
+        shape("This Composition has no audible source track.");
       for (const asset of state.assets.filter((a) => ids.has(a.id))) {
         const path = localPath(asset.uri),
           before = await lstat(path);
@@ -390,13 +402,15 @@ export class RecordAudioPreviewService {
           settings,
           baseRevision,
           sourceKeyDigest,
+          reviewedBinding: reviewed?.binding,
         });
       const current = {
         descriptor: {
           id: compositionId,
           revision: baseRevision,
         } as RecordAudioPreviewDescriptor,
-        composition: JSON.stringify(composition),
+        composition: JSON.stringify(state.composition),
+        ...(reviewed ? { reviewedCurrent: reviewed.assertCurrent } : {}),
         settings,
         projectId,
         projectIdentity,
@@ -632,6 +646,10 @@ export class RecordAudioPreviewService {
         await rm(entry.manifestPath, { force: true });
       }
     }
+  }
+  async discard(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (entry) await this.revoke(entry);
   }
   dispose(): void {
     this.closed.abort();

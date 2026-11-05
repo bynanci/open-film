@@ -58,6 +58,15 @@ jobs:
       - run: pnpm test:media
         env:
           OPENFILM_GRAPHIC_QA_OUTPUT: ${{ runner.temp }}/graphic-scene-qa
+          OPENFILM_AUDIO_EVIDENCE_DIR: ${{ runner.temp }}/silence-audition-qa
+          OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Preserve synthetic Silence audition PCM and MP4 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-silence-audition-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/silence-audition-qa/silence-audition-*
+          if-no-files-found: error
+          retention-days: 7
       - run: pnpm build
       - uses: actions/upload-artifact@v4
         with:

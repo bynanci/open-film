@@ -299,6 +299,89 @@ test("analyzes, revises an immutable Review, applies through the editor history,
     )
     .toBeGreaterThan(0.5);
 
+  const beforeAudition = await composition(request);
+  const audition = page.getByRole("region", {
+    name: "Rendered seam audition",
+    exact: true,
+  });
+  const auditionResponsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname.endsWith(
+        `/silence/jobs/${childJob.id}/audition`,
+      ) && response.request().method() === "POST",
+  );
+  const prepareAudition = audition.getByRole("button", {
+    name: "Render before / after",
+    exact: true,
+  });
+  await prepareAudition.focus();
+  await page.keyboard.press("Enter");
+  const auditionResponse = await auditionResponsePromise;
+  expect(auditionResponse.ok(), await auditionResponse.text()).toBe(true);
+  const rendered = await auditionResponse.json();
+  expect(rendered.parity).toBe("renderer");
+  expect(rendered.reviewId).toBe(revisedReview.review.reviewId);
+  expect(rendered.seams.length).toBeGreaterThan(0);
+  for (const name of ["Play original mix", "Play edited mix"]) {
+    const pcmResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.includes("/record-audio-preview/") &&
+        new URL(response.url()).pathname.endsWith("/pcm"),
+    );
+    await audition.getByRole("button", { name, exact: true }).click();
+    const pcm = await pcmResponse;
+    expect(pcm.ok(), await pcm.text()).toBe(true);
+    expect(pcm.headers()["x-openfilm-pcm-sample-rate"]).toBe("48000");
+    expect(pcm.headers()["x-openfilm-pcm-channels"]).toBe("2");
+    await expect
+      .poll(() => audio.evaluate((node) => (node as HTMLAudioElement).paused))
+      .toBe(true);
+    await audition
+      .getByRole("button", { name: "Stop audition", exact: true })
+      .click();
+  }
+  expect(await composition(request)).toEqual(beforeAudition);
+  for (const viewport of [
+    { width: 1024, height: 768 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const afterControl = audition.getByRole("button", {
+      name: "Play edited mix",
+      exact: true,
+    });
+    await audition
+      .getByText(/^Reviewed removal:/)
+      .evaluate((node) =>
+        node.scrollIntoView({ block: "start", inline: "nearest" }),
+      );
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(afterControl).toBeVisible();
+    await expect(
+      audition.getByRole("button", { name: "Play original mix", exact: true }),
+    ).toBeVisible();
+    await expect(
+      audition.getByRole("button", { name: "Stop audition", exact: true }),
+    ).toBeVisible();
+    await afterControl.evaluate((node) =>
+      (node as HTMLElement).focus({ preventScroll: true }),
+    );
+    await expect(afterControl).toBeFocused();
+    expect(
+      await audition.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.screenshot({
+      path: join(
+        process.cwd(),
+        "docs",
+        "screenshots",
+        `silence-audition-${viewport.width}x${viewport.height}.png`,
+      ),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+
   const accept = page.getByRole("button", {
     name: "Accept removal",
     exact: true,
