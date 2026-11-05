@@ -32,7 +32,7 @@ declare global {
 test.use({ viewport: { width: 1440, height: 900 }, actionTimeout: 15_000 });
 test.beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "openfilm-professional-browser-"));
-  media = await professionalCutDeskFixture(root);
+  media = await professionalCutDeskFixture(root, { includeScopePhoto: true });
 });
 test.beforeEach(async ({ page, request }) => {
   expect(

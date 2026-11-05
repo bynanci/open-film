@@ -6,7 +6,10 @@ import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { graphicNode, graphicScene } from "./graphic-scene.js";
 
 /** Only fixture construction lives here; expected frames/pixels/tones live in tests. */
-export async function professionalCutDeskFixture(root: string) {
+export async function professionalCutDeskFixture(
+  root: string,
+  options: { includeScopePhoto?: boolean } = {},
+) {
   const assets: MediaAsset[] = [];
   const paths: string[] = [];
   for (const [index, color, tone, x] of [
@@ -57,21 +60,23 @@ export async function professionalCutDeskFixture(root: string) {
     overlay,
   ]);
   paths.push(overlay);
-  const scopePhoto = join(root, "scope-photo-640x360.png");
-  await runProcess("ffmpeg", [
-    "-v",
-    "error",
-    "-nostdin",
-    "-f",
-    "lavfi",
-    "-i",
-    "color=c=0xff8040:s=640x360",
-    "-frames:v",
-    "1",
-    "-y",
-    scopePhoto,
-  ]);
-  paths.push(scopePhoto);
+  if (options.includeScopePhoto) {
+    const scopePhoto = join(root, "scope-photo-640x360.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xff8040:s=640x360",
+      "-frames:v",
+      "1",
+      "-y",
+      scopePhoto,
+    ]);
+    paths.push(scopePhoto);
+  }
   for (const path of paths)
     assets.push(
       await inspectMedia({
