@@ -12,7 +12,7 @@ function report(selected: string[], current?: number) {
   return {
     config: {
       workers: 1,
-      fullyParallel: false,
+      fullyParallel: true,
       metadata: { sourceCandidate: candidate },
       projects: [{ id: "", retries: 0, repeatEach: 1 }],
       shard: current ? { current, total: 4 } : null,
@@ -144,6 +144,9 @@ it("rejects wrong source, shard identity, missing report and global errors", () 
     },
     (actual: ReturnType<typeof reports>) => {
       actual[0]!.config.workers = 2;
+    },
+    (actual: ReturnType<typeof reports>) => {
+      actual[0]!.config.fullyParallel = false;
     },
   ]) {
     const actual = reports();
