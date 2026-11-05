@@ -456,6 +456,11 @@ test("Edit imports segment-timed captions, edits the native track, and reopens t
   await start.press("Tab");
   const end = page.getByTestId("caption-end");
   await end.fill("1700");
+  expect(
+    await end.evaluate(
+      (element) => (element as HTMLInputElement).validity.valid,
+    ),
+  ).toBe(true);
   await end.press("Tab");
   await page.getByTestId("caption-font-size").fill("34");
   await page.getByTestId("caption-font-size").press("Tab");
