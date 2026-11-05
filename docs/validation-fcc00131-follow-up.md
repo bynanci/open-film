@@ -22,12 +22,13 @@ completed successfully at 2026-11-05 03:34 UTC: Linux x64, Windows x64,
 Darwin ARM64, and the aggregate job all passed. This resolves the historical
 cancellation check for that commit.
 
-Verification on current main,
-`e3f94f9cda161a3f955275a1a77f5f13d2bf7834`, supersedes that historical state:
+The PR was rebased onto its current main base,
+`4de4ec5965f3c0bce01f074b2a354721e4fa771d`. That base's checks passed:
 
-- [Verify 41955949925](https://github.com/bynanci/open-film/actions/runs/41955949925): passed.
-- [Windows media recovery 41955950276](https://github.com/bynanci/open-film/actions/runs/41955950276): passed.
-- [Render QA 41955950019](https://github.com/bynanci/open-film/actions/runs/41955950019): Linux, Windows, Darwin ARM64 and aggregate checks passed.
+- [Verify 41996612357](https://github.com/bynanci/open-film/actions/runs/41996612357).
+- [Windows media recovery 41996612234](https://github.com/bynanci/open-film/actions/runs/41996612234).
+- [Render QA 41996612406](https://github.com/bynanci/open-film/actions/runs/41996612406): Linux, Windows, Darwin ARM64 and aggregate checks passed.
+- [Website deploy check 41996612328](https://github.com/bynanci/open-film/actions/runs/41996612328).
 
 No unrelated code change was made for the historical runner cancellation. The
 new candidate PR must still complete all GitHub checks on its exact head.
