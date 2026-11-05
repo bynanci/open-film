@@ -89,6 +89,12 @@ export interface AssetPageCursorPosition {
   id: string;
 }
 
+function isCanonicalAssetPageCapturedAt(value: unknown): value is string {
+  if (typeof value !== "string" || value.length !== 24) return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
+
 function validateAssetPageCursorPosition(
   value: unknown,
 ): AssetPageCursorPosition {
@@ -104,9 +110,7 @@ function validateAssetPageCursorPosition(
     position.version !== 1 ||
     typeof position.id !== "string" ||
     (position.capturedAt !== null &&
-      (typeof position.capturedAt !== "string" ||
-        position.capturedAt.length > 128 ||
-        !Number.isFinite(Date.parse(position.capturedAt))))
+      !isCanonicalAssetPageCapturedAt(position.capturedAt))
   )
     throw new Error("Invalid asset page cursor.");
   try {

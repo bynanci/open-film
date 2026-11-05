@@ -125,6 +125,32 @@ describe("real SQLite catalog", () => {
     catalog.close();
   });
 
+  it("rejects offset-form timestamps that can replay a dated page", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-catalog-cursor-offset-"),
+    );
+    directories.push(directory);
+    const catalog = new ProjectCatalog(directory);
+    try {
+      catalog.upsertAsset(asset("asset-a", "2024-01-01T00:00:00Z"));
+      catalog.upsertAsset(asset("asset-b", "2024-01-01T01:00:00Z"));
+      const cursor = Buffer.from(
+        JSON.stringify({
+          version: 1,
+          capturedAt: "2024-01-01T00:00:00+00:00",
+          id: "asset-a",
+        }),
+        "utf8",
+      ).toString("base64url");
+
+      expect(() => catalog.listAssetPage({ limit: 1, cursor })).toThrow(
+        /cursor/i,
+      );
+    } finally {
+      catalog.close();
+    }
+  });
+
   it("rejects future catalog schemas without resetting their version", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openfilm-future-"));
     directories.push(directory);
