@@ -3,6 +3,7 @@
 export default {
   editor: {
     soundTiming: {
+      mappedAutomation: "請先重設已映射的音量曲線，再調整獨立聲音時間。",
       title: "聲音時序",
       linked: "與畫面連動",
       independent: "獨立聲音",
@@ -26,7 +27,7 @@ export default {
       invalidRange:
         "請輸入 −60000 至 60000 的整數毫秒，且須在來源與影片範圍內。既有淡化及閃避區段也必須容納。",
       saveFailed: "聲音時序尚未儲存。請檢查來源、鎖定與效果後重試。",
-      recordAudition: "請使用 Record 試聽已儲存的獨立聲音混音。",
+      recordAudition: "請使用成片預覽試聽已儲存的混音。",
       idle: "按播放以準備已儲存的混音。",
       preparing: "正在準備已儲存的混音…",
       ready: "已儲存的混音已就緒。",
@@ -608,6 +609,9 @@ export default {
       previewNote: "此處預覽版面；請算繪影片以確認轉場與完整配樂。",
     },
     sound: {
+      mappedAutomation:
+        "此片段保留原本的音量曲線時間。重設會清除音量點、淡入淡出與閃避，讓你重新編排；可用復原還原原曲線。請透過成片預覽試聽混音。",
+      resetAutomation: "重設音量曲線以編輯",
       tab: "聲音",
       heading: "配樂與你的聲音",
       description: "將已匯入的音訊疊在畫面上，聲音不會延長影像故事。",

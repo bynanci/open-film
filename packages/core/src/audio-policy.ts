@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
   AudioAutomation,
+  AudioAutomationTimeMapV1,
   Clip,
   Composition,
   MediaAsset,
   OpenFilmProject,
   ProjectTimebaseV1,
 } from "./models.js";
+import { ApplicationError } from "./errors.js";
 import { resolveClipAudioRange } from "./sequence-waveform.js";
 import { resolveClipSourceRange, resolveClipFrameRange } from "./sequence.js";
 import { sequenceTimeAt, timebaseRate } from "./timebase.js";
-import { ProjectValidationError } from "./validation.js";
+import {
+  ProjectValidationError,
+  validateAudioAutomation,
+} from "./validation.js";
 
 export const AUDIO_PROJECT_SCHEMA_VERSION = "1.2.0" as const;
+export const AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION = "1.3.0" as const;
 export const AUDIO_SAMPLE_RATE = 48000 as const;
 export const MAX_AUDIO_BINDINGS = 1000;
 export const MAX_AUDIO_SEGMENTS = 10000;
@@ -276,10 +282,183 @@ export function validateCoverageAudioBindings(
     };
   });
 }
+
+function automationConflict(message: string): never {
+  throw new ApplicationError("timeline.audioAutomationConflict", message, 409);
+}
+
+function automationSample(seconds: number, field: string): number {
+  const samples = Math.round(seconds * AUDIO_SAMPLE_RATE);
+  if (
+    !Number.isFinite(seconds) ||
+    seconds < 0 ||
+    !Number.isSafeInteger(samples)
+  )
+    automationConflict(
+      `${field} cannot be represented on the 48 kHz audio clock.`,
+    );
+  return samples;
+}
+
+/**
+ * Preserve a clip-local envelope window while a ripple or split creates a
+ * shorter clip. Boundaries are quantized once to the renderer's canonical
+ * 48 kHz post-speed clock; the source window and speed remain the DSP anchor.
+ */
+export function mapAudioAutomationForClipWindow(
+  clip: Clip,
+  localStartSeconds: number,
+  resultDurationSeconds: number,
+): AudioAutomation | undefined {
+  if (!clip.audioAutomation) return undefined;
+  let current: AudioAutomation;
+  try {
+    current = validateAudioAutomation(
+      clip.audioAutomation,
+      clip.timelineDuration,
+    );
+  } catch (error) {
+    automationConflict(
+      error instanceof Error
+        ? `Clip-local audio automation cannot be mapped: ${error.message}`
+        : "Clip-local audio automation cannot be mapped.",
+    );
+  }
+  automationSample(localStartSeconds, "Ripple local offset");
+  const resultDurationSamples = automationSample(
+    resultDurationSeconds,
+    "Ripple clip duration",
+  );
+  if (!resultDurationSamples)
+    automationConflict("Ripple fragments require a positive audio duration.");
+
+  let timeMap: AudioAutomationTimeMapV1;
+  if (current.version === 2) {
+    timeMap = structuredClone(current.timeMap);
+    const actualSourceIn = automationSample(
+        clip.sourceIn ?? 0,
+        "Clip source in",
+      ),
+      expectedSourceIn = Math.round(
+        (timeMap.sourceInSeconds +
+          (timeMap.offsetSamples / AUDIO_SAMPLE_RATE) * timeMap.speed) *
+          AUDIO_SAMPLE_RATE,
+      ),
+      currentDurationSamples = automationSample(
+        clip.timelineDuration,
+        "Clip timeline duration",
+      ),
+      expectedSourceOut = Math.round(
+        (timeMap.sourceInSeconds +
+          ((timeMap.offsetSamples + currentDurationSamples) /
+            AUDIO_SAMPLE_RATE) *
+            timeMap.speed) *
+          AUDIO_SAMPLE_RATE,
+      ),
+      actualSourceOut = automationSample(
+        clip.sourceOut ??
+          (clip.sourceIn ?? 0) +
+            clip.timelineDuration * (clip.transform?.speed ?? 1),
+        "Clip source out",
+      );
+    if (
+      Math.abs(actualSourceIn - expectedSourceIn) > 1 ||
+      Math.abs((clip.transform?.speed ?? 1) - timeMap.speed) > 1e-12 ||
+      actualSourceOut < expectedSourceOut - 1 ||
+      actualSourceOut > timeMap.sourceOutSample + 1
+    )
+      automationConflict(
+        "The clip source trim or speed no longer matches its reviewed automation clock. Reset or review the audio automation before rippling.",
+      );
+  } else {
+    const speed = clip.transform?.speed ?? 1,
+      sourceIn = clip.sourceIn ?? 0,
+      sourceOut = clip.sourceOut ?? sourceIn + clip.timelineDuration * speed,
+      durationSamples = automationSample(
+        clip.timelineDuration,
+        "Clip timeline duration",
+      ),
+      sourceInSample = automationSample(sourceIn, "Clip source in"),
+      sourceOutSample = automationSample(sourceOut, "Clip source out");
+    if (
+      !Number.isFinite(speed) ||
+      speed <= 0 ||
+      sourceOutSample <= sourceInSample ||
+      !Number.isSafeInteger(
+        sourceInSample + Math.round(durationSamples * speed),
+      )
+    )
+      automationConflict(
+        "The clip source, speed or automation duration cannot be mapped exactly.",
+      );
+    timeMap = {
+      version: 1,
+      sampleRate: AUDIO_SAMPLE_RATE,
+      continuityId: clip.id,
+      offsetSamples: 0,
+      durationSamples,
+      sourceInSample,
+      sourceOutSample,
+      sourceInSeconds: sourceIn,
+      sourceOutSeconds: sourceOut,
+      timelineOffsetSeconds:
+        (Math.round(clip.timelineStart * 1000) - clip.timelineStart * 1000) /
+        1000,
+      speed,
+    };
+  }
+  // Derive the absolute offset from the original source anchor. Adding rounded
+  // local windows repeatedly would accumulate a sample of error at each split.
+  timeMap.offsetSamples = Math.round(
+    (((clip.sourceIn ?? 0) - timeMap.sourceInSeconds) / timeMap.speed +
+      localStartSeconds) *
+      AUDIO_SAMPLE_RATE,
+  );
+  if (
+    !Number.isSafeInteger(timeMap.offsetSamples) ||
+    timeMap.offsetSamples >= timeMap.durationSamples ||
+    timeMap.offsetSamples + resultDurationSamples > timeMap.durationSamples + 1
+  )
+    automationConflict(
+      "The ripple fragment falls outside its original audio automation clock.",
+    );
+
+  try {
+    return validateAudioAutomation(
+      { ...current, version: 2, timeMap },
+      resultDurationSeconds,
+    );
+  } catch (error) {
+    automationConflict(
+      error instanceof Error
+        ? `The mapped audio automation is invalid: ${error.message}`
+        : "The mapped audio automation is invalid.",
+    );
+  }
+}
+function schemaBefore(current: string, minimum: string): boolean {
+  const actual = current.split(".").map(Number),
+    floor = minimum.split(".").map(Number);
+  for (let index = 0; index < 3; index++) {
+    if (actual[index]! < floor[index]!) return true;
+    if (actual[index]! > floor[index]!) return false;
+  }
+  return false;
+}
 /** A capability floor; clearing or undoing sound timing never downgrades it. */
 export function promoteAudioProject(project: OpenFilmProject): OpenFilmProject {
   const next = structuredClone(project);
-  if (
+  const hasAutomationTimeMap = next.timelines.some((composition) =>
+    composition.tracks.some((track) =>
+      track.clips.some((clip) => clip.audioAutomation?.version === 2),
+    ),
+  );
+  if (hasAutomationTimeMap) {
+    if (
+      schemaBefore(next.schemaVersion, AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION)
+    )
+      next.schemaVersion = AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION;
+  } else if (
     (next.schemaVersion === "1.0.0" || next.schemaVersion === "1.1.0") &&
     next.timelines.some(
       (c) =>
@@ -347,19 +526,71 @@ export function audioSourceEndSample(asset: MediaAsset): number {
     "audioTiming.sourceDuration",
   );
 }
+/** Refuse edits whose placed span would drop or duplicate source-clock samples. */
+export function resolveMappedAutomationWindow(
+  clip: Clip,
+  effectiveDuration = clip.timelineDuration,
+): { startSample: number; endSample: number } | undefined {
+  if (clip.audioAutomation?.version !== 2) return undefined;
+  const map = clip.audioAutomation.timeMap,
+    localStart = ((clip.sourceIn ?? 0) - map.sourceInSeconds) / map.speed,
+    clockStart = sample(
+      Math.round(localStart * AUDIO_SAMPLE_RATE),
+      "audioPlan.clockStart",
+    ),
+    clockEnd = sample(
+      Math.round((localStart + effectiveDuration) * AUDIO_SAMPLE_RATE),
+      "audioPlan.clockEnd",
+    ),
+    startSample = sample(
+      Math.round(
+        (clip.timelineStart + map.timelineOffsetSeconds) * AUDIO_SAMPLE_RATE,
+      ),
+      "audioPlan.start",
+    ),
+    endSample = sample(
+      Math.round(
+        (clip.timelineStart + map.timelineOffsetSeconds + effectiveDuration) *
+          AUDIO_SAMPLE_RATE,
+      ),
+      "audioPlan.end",
+    );
+  if (
+    clockStart !== map.offsetSamples ||
+    endSample - startSample !== clockEnd - clockStart
+  )
+    automationConflict(
+      "This edit cannot retain the exact automation sample window. Keep the interval or explicitly reset its automation before reviewing another cut.",
+    );
+  return { startSample, endSample };
+}
+
 export function resolveAudioInterval(
   clip: Clip,
   asset: MediaAsset,
   compositionDuration: number,
 ): ResolvedAudioInterval {
+  if (clip.audioAutomation?.version === 2 && Object.hasOwn(clip, "audioTiming"))
+    fail(
+      "audioTiming",
+      "mapped automation cannot use independent sound timing; reset its automation first",
+    );
   if (!Object.hasOwn(clip, "audioTiming")) {
-    const range = resolveClipAudioRange(clip, asset);
+    const range = resolveClipAudioRange(clip, asset),
+      mapped = resolveMappedAutomationWindow(
+        clip,
+        range.audioEnd - range.audioStart,
+      ),
+      startSample =
+        mapped?.startSample ?? Math.round(range.audioStart * AUDIO_SAMPLE_RATE),
+      endSample =
+        mapped?.endSample ?? Math.round(range.audioEnd * AUDIO_SAMPLE_RATE);
     return {
       clipId: clip.id,
       assetId: asset.id,
       clock: "legacy",
-      startSample: Math.round(range.audioStart * AUDIO_SAMPLE_RATE),
-      endSample: Math.round(range.audioEnd * AUDIO_SAMPLE_RATE),
+      startSample,
+      endSample,
       sourceInSeconds: range.sourceIn,
       sourceOutSeconds: range.sourceOut,
       speed: range.speed,
@@ -466,6 +697,15 @@ export function buildAudioMixPlan(
   let explicit = false;
   const hasSolo = composition.tracks.some((t) => t.solo === true);
   for (const [trackIndex, track] of composition.tracks.entries()) {
+    if (track.type === "titles") {
+      for (const clip of track.clips)
+        if (clip.audioTiming || clip.audioAutomation)
+          fail(
+            "audioPlan",
+            `title tracks do not support audio timing or automation (clip ${clip.id})`,
+          );
+      continue;
+    }
     const isMuted = track.muted === true || (hasSolo && !track.solo);
     for (const [clipIndex, clip] of track.clips.entries()) {
       if (occurrences.size >= MAX_AUDIO_SEGMENTS)
@@ -475,7 +715,7 @@ export function buildAudioMixPlan(
       const asset = assetMap.get(clip.assetId);
       if (!asset) fail("audioPlan", `missing source for ${clip.id}`);
       explicit ||= Object.hasOwn(clip, "audioTiming");
-      const hasStream = track.type !== "titles" && hasAudioStream(asset);
+      const hasStream = hasAudioStream(asset);
       const playable = hasStream && !isMuted;
       if (!hasStream && Object.hasOwn(clip, "audioTiming"))
         fail("audioTiming", "source has no usable audio stream");

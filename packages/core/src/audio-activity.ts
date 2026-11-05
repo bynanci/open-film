@@ -620,25 +620,9 @@ export function createSilenceCutProposal(
   if (firstCut !== undefined) {
     for (const track of composition.tracks)
       for (const clip of track.clips) {
-        const clipStart = clip.timelineStart;
         const clipEnd = clip.timelineStart + clip.timelineDuration;
         if (clipEnd <= firstCut + RIPPLE_EPSILON) continue;
         affectedClipIds.push(clip.id);
-        const locallyTrimmed = timelineIntervals.some((interval) => {
-          const overlaps =
-            clipStart < interval.end - RIPPLE_EPSILON &&
-            clipEnd > interval.start + RIPPLE_EPSILON;
-          const fullyRemoved =
-            clipStart >= interval.start - RIPPLE_EPSILON &&
-            clipEnd <= interval.end + RIPPLE_EPSILON;
-          return overlaps && !fullyRemoved;
-        });
-        if (clip.audioAutomation && locallyTrimmed)
-          throw new ApplicationError(
-            "timeline.audioAutomationConflict",
-            `Silence ripple cannot preserve clip-local audio automation while trimming or splitting clip "${clip.id}". Adjust the clip before creating a new review.`,
-            409,
-          );
         if (
           track.locked ||
           clip.locked ||
@@ -664,6 +648,10 @@ export function createSilenceCutProposal(
             409,
           );
       }
+    // Exercise the exact detached ripple mapping before publishing a Review.
+    // Invalid or unsupported automation clocks must fail before they become
+    // an accepted proposal, while the saved Composition remains untouched.
+    applyTimelineRippleIntervals(composition, timelineIntervals);
     for (const scene of composition.graphicScenes ?? []) {
       if (scene.start + scene.duration <= firstCut + RIPPLE_EPSILON) continue;
       if (scene.userOverrides?.isUserPinned)

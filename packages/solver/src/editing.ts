@@ -66,6 +66,7 @@ import {
   applySilenceCutProposal,
   validateSilenceCutProposal,
   type SilenceCutProposal,
+  mapAudioAutomationForClipWindow,
   fnv1a64Mix,
   validateRhythmSnapProposal,
   type RhythmSnapProposal,
@@ -586,6 +587,12 @@ function filmClips(document: EditorDocument): Clip[] {
 function constrainAudioAutomation(clip: Clip, duration: number): void {
   const automation = clip.audioAutomation;
   if (!automation || clip.audioTiming) return;
+  if (automation.version === 2)
+    throw new ApplicationError(
+      "timeline.audioAutomationConflict",
+      "This clip is linked to a reviewed automation clock. Reset its automation or review a new trim before changing its source, speed or duration.",
+      409,
+    );
   const next = structuredClone(automation);
   if (next.fadeIn !== undefined) next.fadeIn = Math.min(next.fadeIn, duration);
   if (next.fadeOut !== undefined)
@@ -2336,6 +2343,12 @@ function applyTimelineCommandRaw(
     case "audio.timing":
       if (asset.state.locked)
         fail("Unlock the source before editing sound timing.");
+      if (command.timing !== null && clip.audioAutomation?.version === 2)
+        throw new ApplicationError(
+          "timeline.audioAutomationConflict",
+          "Reset the mapped automation before applying independent sound timing.",
+          409,
+        );
       if (command.timing === null) delete clip.audioTiming;
       else clip.audioTiming = validateAudioTiming(command.timing);
       break;
@@ -2354,6 +2367,12 @@ function applyTimelineCommandRaw(
       break;
     }
     case "audio.configure":
+      if (command.automation?.version === 2)
+        throw new ApplicationError(
+          "timeline.audioAutomationConflict",
+          "Version 2 automation clocks are application-managed; provide a new clip-local automation instead.",
+          409,
+        );
       if (asset.mediaType !== "audio" && asset.mediaType !== "video")
         fail("Audio automation requires an audio or video source.");
       if (!hasAudioStream(asset))
@@ -2397,16 +2416,6 @@ function applyTimelineCommandRaw(
           "Reset sound timing to relink audio before splitting this clip.",
           409,
         );
-      if (
-        clip.audioAutomation &&
-        (clip.audioAutomation.fadeIn ||
-          clip.audioAutomation.fadeOut ||
-          clip.audioAutomation.points?.length ||
-          clip.audioAutomation.ducking?.length)
-      )
-        fail(
-          "Splitting configured audio automation is not supported. Remove its fades, envelope and ducking before splitting, then configure each half explicitly.",
-        );
       if (asset.mediaType !== "video" && asset.mediaType !== "audio")
         fail(
           "Split requires a flat video or audio source. Use photo duration for still images.",
@@ -2444,6 +2453,17 @@ function applyTimelineCommandRaw(
         );
       const rightStart = clip.timelineStart + leftDuration;
       finite(rightStart, "Right split timeline start", 0);
+      const originalClip = structuredClone(clip),
+        leftAutomation = originalClip.audioAutomation
+          ? mapAudioAutomationForClipWindow(originalClip, 0, leftDuration)
+          : undefined,
+        rightAutomation = originalClip.audioAutomation
+          ? mapAudioAutomationForClipWindow(
+              originalClip,
+              leftDuration,
+              rightDuration,
+            )
+          : undefined;
       const ids = new Set(allClips(next).map((item) => item.id));
       let rightId: string;
       for (let index = 1; ; index++) {
@@ -2458,12 +2478,14 @@ function applyTimelineCommandRaw(
         sourceOut,
         timelineStart: rightStart,
         timelineDuration: rightDuration,
+        ...(rightAutomation ? { audioAutomation: rightAutomation } : {}),
       };
       // A transition belongs to the original incoming edge, not the new internal cut.
       delete right.transition;
       clip.sourceIn = sourceIn;
       clip.sourceOut = command.sourceTime;
       clip.timelineDuration = leftDuration;
+      if (leftAutomation) clip.audioAutomation = leftAutomation;
       track.clips.splice(track.clips.indexOf(clip) + 1, 0, right);
       // No ripple: the two halves retain the original end, gaps and track positions.
       break;
@@ -2600,6 +2622,12 @@ function applyTimelineCommandRaw(
     }
     case "delete":
     case "replace": {
+      if (command.type === "replace" && clip.audioAutomation?.version === 2)
+        throw new ApplicationError(
+          "timeline.audioAutomationConflict",
+          "Reset or re-review this clip's mapped automation before replacing its source.",
+          409,
+        );
       if (command.type === "replace" && clip.audioTiming)
         throw new ApplicationError(
           "timeline.audioTimingConflict",

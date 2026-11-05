@@ -342,3 +342,105 @@ English reference mirrors), and `git diff --check` passed. Full hosted checks
 were restarted for the updated PR head; this focused local result does not
 replace the hosted full-media, browser-shard, native-shell, render or Windows
 recovery gates. DCO and physical workstation gates remain open.
+
+## Reviewed ripple automation mapping — 2026-11-05
+
+Prompt 02 was implemented from latest main `92ccf361642f060466b269dc2fcf3ed4d77102b3`;
+the code candidate is `e7ede9443d66416e5e8ef8efbdd1823cfb4ffb2a`. It adds a
+versioned sample-clock map for clip-local gain/fade/ducking automation and
+applies the Silence review's source windows to that clock before a single
+compound edit is accepted. It does not add a mixer, change source media, or
+auto-accept a review.
+
+The map uses integer 48 kHz sample coordinates, retains the original source
+range, speed, continuity ID and offset, and validates source/clock freshness on
+save, reopen and render. Direct `clip.split` uses the same mapping. A mapped
+clock cannot be silently reset by direct trim, speed or source replacement;
+unknown ducking references, unsupported J/L timing and other non-equivalent
+cases keep the typed conflict path. Silence review preflights the detached
+ripple; locked clips/tracks and User Pins remain protected, and one compound
+edit keeps Undo/Redo metadata atomic.
+
+Verification on the exact code candidate:
+
+- Full Vitest: **446 files, 5,853/5,853 tests passed** in 517.10 seconds,
+  including real FFmpeg-generated 44.1 kHz and 48 kHz sources, 1.25x speed,
+  automation envelopes, Silence ripple, source-clock mapping and final render.
+- The source-clock and direct mix PCM comparisons meet the existing renderer
+  bound of `2/2^23`; the final render meets that bound outside the existing
+  global limiter's measured 5 ms lookahead plus two samples around the edit
+  boundary. That limiter window is reported explicitly because the cut changes
+  its local input context; the assertion and tolerance were not relaxed.
+- Focused regressions before the final full run: 28/28 renderer-policy and
+  presentation tests, 2/2 PCM/NLE handoff tests, and 7/7 muted-source, title
+  and NLE compatibility tests. The final full run includes these tests.
+- On the rebased candidate, `pnpm format:check`, `pnpm test:i18n` (3,141
+  semantic keys), `pnpm test:docs-i18n` (158 English reference mirrors),
+  `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:contracts`
+  (77 files, 1,498 tests) all passed. The production build reports the existing
+  500 kB chunk-size advisory.
+
+All media in these regressions is synthetic. This evidence does not establish
+human listening quality, workstation audio latency, or physical Windows/macOS
+behavior. The existing Vite chunk-size advisory remains. The candidate is not
+merged or released; hosted CI is pending PR creation.
+
+## PR #114 correction review — 2026-11-05
+
+The integration baseline is `main@1bafb5cd4532ce9f9a171499abc8631e4863d1ee`.
+The original PR candidate `4964cdf2261330adf5e2001f683c376392394d07` was reviewed
+again before merge. Eight added regressions failed against that candidate:
+repeated mapped splits, repeated ripple, and 1× transient PCM parity. Corrections
+retain exact original trim seconds and the legacy playback origin in the new,
+unpublished schema 1.3 contract. Offsets derive from one absolute source anchor;
+the original DSP chain, including legacy `atempo=1`, runs before segmentation.
+
+The final review also covers these explicit boundaries:
+
+- Placed and original-clock sample spans must match. Non-equivalent fractional
+  ripples fail with `timeline.audioAutomationConflict` during detached proposal
+  preflight and render. The Review is not published or silently rounded.
+- Mapped automation cannot acquire independent J/L timing. Both desktop sound
+  inspectors offer an explicit reset to a new version-1 envelope; it clears
+  points/fades/ducking, preserves source/role/base volume, and enters the existing
+  Undo/Redo and autosave transaction.
+- Collect retains complete originals for mapped clips even after explicit
+  unpinning, and rejects supplied derivative source-clock rewrites.
+- Record applies its existing 3600-second preparation limit to each preserved
+  original DSP history before source I/O or rendering. A valid one-second film
+  retaining a 24-hour clock is rejected without invoking FFmpeg.
+
+Fresh local evidence: 10 focused files / 171 tests passed, plus the durable
+fractional-failure regression (failed Job, no Review, source/Composition
+unchanged). Seven browser tests passed across Silence Review and production
+audio policy, including keyboard reset → Undo → Redo → saved project JSON →
+reopen. Independent correction review passed seven focused guard/actual-PCM
+tests and found no remaining technical blocker. Transient PCM checks cover
+1× at 44.1/48 kHz, repeated 1.25× splits with fractional source trims and an
+original sub-millisecond timeline start, and repeated accepted ripple windows.
+The existing `2/2^23` PCM bound and disclosed limiter window are unchanged.
+
+Compiler grouping now serializes each clip's envelope once and validates each
+distinct fragment once, while retaining every per-segment sample check. A local
+diagnostic with 1000 segments sharing a 1000-point curve, two warmups and ten
+alternating measured iterations produced the identical compiled graph hash
+`f98e6008f4621ce70ce8b0514d9fa32641a06ed3c7c54bf9f5f8c17b5c12b6b5`.
+Median compile time was 352.41 ms for `4964cdf` and 2.43 ms for the correction
+(Linux x64, Node 24.19.0, concurrent test load). This measures graph compilation
+only; it is not an FFmpeg, whole-export or workstation latency claim.
+
+The exact signed head and final hosted results belong to
+[PR #114](https://github.com/bynanci/open-film/pull/114). The older 5,853-test
+result above remains evidence only for `e7ede94`. Physical workstation,
+human listening, signing/notarization and release gates remain open.
+
+Final corrected-source local gates: **447 files / 5,878 tests passed** in
+552.62 seconds with `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python`
+(OpenTimelineIO 0.18.1; FFmpeg 7.1.5). An earlier foreground attempt ended
+without a completion report; only this completed exit-0 rerun is counted.
+`pnpm format:check`, locales (3159 keys), documentation mirrors (160), lint,
+typecheck, build, contracts (77 files / 1504 tests), official interchange (18),
+license and provenance checks (8), and browser partition (339 cases) passed.
+The production and documentation builds retain their existing large-chunk
+advisories. The two related browser specs passed all seven cases. No assertion
+or PCM tolerance was relaxed and no test was disabled.

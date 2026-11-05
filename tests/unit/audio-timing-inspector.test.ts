@@ -97,6 +97,33 @@ async function mount(independent = false) {
     respond: (value: boolean) => respond(value),
   };
 }
+it("blocks mapped independent timing and waits for explicit envelope reset acknowledgement", async () => {
+  const { root, props, commands, respond } = await mount();
+  props.clip.audioAutomation = { version: 1, role: "dialogue", fadeOut: 2 };
+  props.clip.audioAutomation = core.mapAudioAutomationForClipWindow(
+    props.clip,
+    0,
+    6,
+  );
+  await settle();
+  expect(field(root, "sound-apply").props.disabled).toBe(true);
+  expect(text(root, "sound-hint")).toContain("mappedAutomation");
+  (field(root, "sound-reset-automation").props.onClick as () => void)();
+  await settle();
+  expect(commands).toEqual([
+    {
+      type: "audio.configure",
+      clipId: "c",
+      automation: { version: 1, role: "dialogue" },
+    },
+  ]);
+  expect(field(root, "sound-reset-automation").props.disabled).toBe(true);
+  respond(false);
+  await settle();
+  expect(text(root, "sound-error")).toContain("saveFailed");
+  expect(props.clip.audioAutomation?.version).toBe(2);
+});
+
 it("shows linked sound, validates verified handles, and waits for durable Apply/Reset acknowledgement", async () => {
   const { root, props, commands, respond } = await mount();
   expect(text(root, "sound-state")).toContain("linked");

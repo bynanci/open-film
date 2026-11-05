@@ -471,6 +471,8 @@ export function remapCollectProject(
       for (const clip of track.clips) {
         if (clip.audioTiming && maps.has(clip.assetId))
           fail("An independent sound source clock cannot be rewritten.");
+        if (clip.audioAutomation?.version === 2 && maps.has(clip.assetId))
+          fail("A mapped audio automation source clock cannot be rewritten.");
         if (
           clip.userOverrides?.isUserPinned &&
           [

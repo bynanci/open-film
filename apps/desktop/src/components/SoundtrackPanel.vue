@@ -43,6 +43,7 @@ const audioClips = computed(() =>
 const selectedAudio = computed(() =>
   props.selectedClip &&
   (props.selectedClip.audioTiming ||
+    props.selectedClip.audioAutomation?.version === 2 ||
     audioClips.value.some((clip) => clip.id === props.selectedClip?.id)) &&
   hasAudioStream(
     props.assets.find((asset) => asset.id === props.selectedClip?.assetId) ??
@@ -50,6 +51,14 @@ const selectedAudio = computed(() =>
   )
     ? props.selectedClip
     : undefined,
+);
+const mapped = computed(
+  () => selectedAudio.value?.audioAutomation?.version === 2,
+);
+const selectedTrack = computed(() =>
+  props.composition.tracks.find((track) =>
+    track.clips.some((clip) => clip.id === selectedAudio.value?.id),
+  ),
 );
 const selectedOverlay = computed(() =>
   audioClips.value.some((clip) => clip.id === selectedAudio.value?.id),
@@ -197,7 +206,7 @@ function configure(
   roleOverride?: AudioAutomation["role"],
 ) {
   const clip = selectedAudio.value;
-  if (!clip) return;
+  if (!clip || mapped.value) return;
   emit("command", {
     type: "audio.configure",
     clipId: clip.id,
@@ -223,6 +232,23 @@ function configure(
           ? { ducking: [] }
           : {}),
     },
+  });
+}
+function resetAutomation() {
+  const clip = selectedAudio.value;
+  if (
+    !clip ||
+    !mapped.value ||
+    props.busy ||
+    clip.locked ||
+    selectedTrack.value?.locked ||
+    selectedAsset.value?.state.locked
+  )
+    return;
+  emit("command", {
+    type: "audio.configure",
+    clipId: clip.id,
+    automation: { version: 1, role: selectedRole.value },
   });
 }
 function updateVolume() {
@@ -391,7 +417,7 @@ function startPlayback() {
     </div>
     <template v-if="selectedAudio">
       <audio
-        v-if="selectedAsset && !selectedAudio.audioTiming"
+        v-if="selectedAsset && !selectedAudio.audioTiming && !mapped"
         :key="`${selectedAudio.id}:${sourceIdentity}`"
         ref="player"
         crossorigin="anonymous"
@@ -420,7 +446,7 @@ function startPlayback() {
       <p class="editor-note">
         {{
           t(
-            selectedAudio.audioTiming
+            selectedAudio.audioTiming || mapped
               ? "editor.soundTiming.recordAudition"
               : "editor.sound.previewHint",
           )
@@ -428,7 +454,12 @@ function startPlayback() {
       </p>
       <fieldset
         class="editor-fields"
-        :disabled="busy || selectedAudio.locked || selectedAsset?.state.locked"
+        :disabled="
+          busy ||
+          selectedAudio.locked ||
+          selectedTrack?.locked ||
+          selectedAsset?.state.locked
+        "
       >
         <p v-if="selectedAudio.locked" class="editor-note">
           {{ t("editor.clip.protected") }}
@@ -436,10 +467,24 @@ function startPlayback() {
         <p v-else-if="selectedAsset?.state.locked" class="editor-note">
           {{ t("editor.clip.sourceProtected") }}
         </p>
+        <template v-if="mapped">
+          <p class="editor-note" role="status">
+            {{ t("editor.sound.mappedAutomation") }}
+          </p>
+          <button
+            type="button"
+            class="editor-button"
+            data-testid="sound-reset-automation"
+            @click="resetAutomation"
+          >
+            {{ t("editor.sound.resetAutomation") }}
+          </button>
+        </template>
         <label class="editor-field"
           >{{ t("editor.sound.role")
           }}<select
             data-testid="selected-audio-role"
+            :disabled="mapped"
             :value="selectedRole"
             :aria-label="t('editor.sound.role')"
             @change="
@@ -487,6 +532,7 @@ function startPlayback() {
             >{{ t("editor.sound.fadeIn")
             }}<input
               v-model.number="fields.fadeIn"
+              :disabled="mapped"
               type="number"
               min="0"
               :max="selectedDuration"
@@ -497,6 +543,7 @@ function startPlayback() {
             >{{ t("editor.sound.fadeOut")
             }}<input
               v-model.number="fields.fadeOut"
+              :disabled="mapped"
               type="number"
               min="0"
               :max="selectedDuration"
@@ -507,62 +554,64 @@ function startPlayback() {
         <details class="editor-presentation-details">
           <summary>{{ t("editor.sound.ducking") }}</summary>
           <p class="editor-note">{{ t("editor.sound.duckingHint") }}</p>
-          <div class="editor-field-pair">
-            <label class="editor-field"
-              >{{ t("editor.sound.duckStart")
-              }}<input
-                v-model.number="fields.duckStart"
-                type="number"
-                min="0"
-                :max="selectedDuration"
-                step="0.1"
-            /></label>
-            <label class="editor-field"
-              >{{ t("editor.sound.duckEnd")
-              }}<input
-                v-model.number="fields.duckEnd"
-                type="number"
-                min="0"
-                :max="selectedDuration"
-                step="0.1"
-            /></label>
-            <label class="editor-field"
-              >{{ t("editor.sound.duckGain")
-              }}<input
-                v-model.number="fields.duckGain"
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-            /></label>
-            <label class="editor-field"
-              >{{ t("editor.sound.attack")
-              }}<input
-                v-model.number="fields.duckAttack"
-                type="number"
-                min="0"
-                step="0.1"
-            /></label>
-            <label class="editor-field"
-              >{{ t("editor.sound.release")
-              }}<input
-                v-model.number="fields.duckRelease"
-                type="number"
-                min="0"
-                step="0.1"
-            /></label>
-          </div>
-          <div class="editor-actions">
-            <button class="editor-button" @click="configure('add')">
-              {{ t("editor.sound.applyDuck") }}</button
-            ><button
-              v-if="selectedAudio.audioAutomation?.ducking?.length"
-              class="editor-button"
-              @click="configure('remove')"
-            >
-              {{ t("editor.sound.removeDuck") }}
-            </button>
-          </div>
+          <fieldset class="editor-fields" :disabled="mapped">
+            <div class="editor-field-pair">
+              <label class="editor-field"
+                >{{ t("editor.sound.duckStart")
+                }}<input
+                  v-model.number="fields.duckStart"
+                  type="number"
+                  min="0"
+                  :max="selectedDuration"
+                  step="0.1"
+              /></label>
+              <label class="editor-field"
+                >{{ t("editor.sound.duckEnd")
+                }}<input
+                  v-model.number="fields.duckEnd"
+                  type="number"
+                  min="0"
+                  :max="selectedDuration"
+                  step="0.1"
+              /></label>
+              <label class="editor-field"
+                >{{ t("editor.sound.duckGain")
+                }}<input
+                  v-model.number="fields.duckGain"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+              /></label>
+              <label class="editor-field"
+                >{{ t("editor.sound.attack")
+                }}<input
+                  v-model.number="fields.duckAttack"
+                  type="number"
+                  min="0"
+                  step="0.1"
+              /></label>
+              <label class="editor-field"
+                >{{ t("editor.sound.release")
+                }}<input
+                  v-model.number="fields.duckRelease"
+                  type="number"
+                  min="0"
+                  step="0.1"
+              /></label>
+            </div>
+            <div class="editor-actions">
+              <button class="editor-button" @click="configure('add')">
+                {{ t("editor.sound.applyDuck") }}</button
+              ><button
+                v-if="selectedAudio.audioAutomation?.ducking?.length"
+                class="editor-button"
+                @click="configure('remove')"
+              >
+                {{ t("editor.sound.removeDuck") }}
+              </button>
+            </div>
+          </fieldset>
         </details>
         <p class="editor-note">{{ t("editor.sound.editHint") }}</p>
       </fieldset>

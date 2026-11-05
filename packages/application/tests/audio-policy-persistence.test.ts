@@ -338,6 +338,68 @@ it("refuses defensive derivative remap for a source shared by independent and le
   expect(composition.tracks[0]!.clips[0]!.audioTiming).toEqual(timing);
 });
 
+it("retains mapped automation originals after explicit unpin and rejects derivative clock rewrites", async () => {
+  const { app, asset, source } = await fixture(false),
+    editor = new TimelineEditor(app);
+  await editor.edit("cut", {
+    baseRevision: editor.get("cut").revision,
+    commands: [{ type: "clip.split", clipId: "sound-1", sourceTime: 2 }],
+  });
+  await editor.edit("cut", {
+    baseRevision: editor.get("cut").revision,
+    commands: app.project.timelines[0]!.tracks[0]!.clips.filter(
+      (clip) => clip.audioAutomation?.version === 2,
+    ).map((clip) => ({
+      type: "user-pin.set" as const,
+      target: { kind: "clip" as const, clipId: clip.id },
+      pinned: false,
+    })),
+  });
+  const snapshot = structuredClone(app.project),
+    review = await app.collectMedia.coverage({
+      scope: "current-film",
+      compositionId: "cut",
+      projectId: app.project.id,
+      delivery: { version: 1, mode: "trimmed-originals", handlesSeconds: 0.25 },
+    });
+  expect(review.coverage.entries[0]).toMatchObject({
+    action: "copy-original",
+    reasons: ["source.evidence-bound"],
+    ranges: [{ start: 0, end: 8 }],
+  });
+  expect(() =>
+    remapCollectProject(
+      app.project,
+      [asset],
+      [
+        {
+          version: 1,
+          assetId: asset.id,
+          originalSha256: asset.contentHash!,
+          derivedSha256: "b".repeat(64),
+          sourceDuration: 8,
+          derivedDuration: 6,
+          quality: "lossless",
+          recipe: "ffv1-pcm-v1",
+          windows: [
+            {
+              sourceStart: 0.75,
+              sourceEnd: 6.75,
+              derivedStart: 0,
+              derivedEnd: 6,
+            },
+          ],
+        },
+      ],
+    ),
+  ).toThrow(/mapped audio automation source clock/);
+  expect(app.project).toEqual(snapshot);
+  const reopened = await OpenFilmApplication.open(app.directory);
+  cleanup.push(() => reopened.close());
+  expect(reopened.project.timelines).toEqual(app.project.timelines);
+  expect(await hashFile(source)).toBe(asset.contentHash);
+});
+
 it.each(["current-film", "entire-project"] as const)(
   "retains exact sample objects and source hashes in %s directory and ZIP Collect",
   async (scope) => {

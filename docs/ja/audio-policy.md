@@ -26,20 +26,37 @@ Record の通常再生は、WAV／MP4／役割別音声と同じ renderer で非
 キャンセル、停止、シーク、プロジェクト変更、Undo は古い再生を破棄します。1× 以外の shuttle は
 明示的に無音です。WebAudio 非対応や準備失敗を表示し、従来音声へ暗黙に切り替えません。
 
+Silence Review と Clip Split は同じ automation window マッピングを使用します。分割した clip は
+schema 1.3 の version 2 time map を保存し、元の clip-local 時刻、source in/out、速度を 48 kHz
+整数 sample clock で表します。元の fade、gain point、ducking 曲線は同じ意味上の時間軸を維持し、
+分割ごとに先頭から再生しません。既存 AudioMixPlan は source／tempo／automation の全履歴を処理してから
+各 fragment を切り出し、連続 clock ごとに DSP branch を一度だけ構築します。source、曲線、clock の
+整合性を証明できない場合、Review／render を拒否します。map 済み fragment の source trim、speed、
+source 置換は直接変更できません。先に automation を明示的に reset するか、新しい trim を review
+してください。独立 J/L audio timing、lock、User Pin も引き続き保護します。既存 v1 project は、
+map を作成する編集が承認されるまで変更されません。
+
+map は元の trim 秒数と再生開始位置も保持し、繰り返し分割しても同じ source anchor から計算します。
+配置時間と元 clock の sample 数が一致しない ripple は Review 作成前に拒否し、保存済み提案を丸めません。
+「音量カーブをリセットして編集」は制御点、fade、ducking を明示的に消去します。役割、素材、基本音量は
+保持し、取り消しで復元できます。独立音声 timing は reset 後に設定し、試聴には Record を使います。
+
 プレビューは一時間、PCM 一ファイル 1 GiB、完成キャッシュ 2 GiB、プロジェクトごとに一つの準備が
 上限です。サーバー読取は最大四秒、クライアント保持は最大八秒です。元ファイルを変更しません。
+一時間の準備上限には、短い fragment が保持する元の DSP 履歴も含まれます。
 素材、保存状態、PCM が変化した場合は再準備します。上限を超える場合は WAV／MP4 を出力します。
 
-役割、ゲイン、フェード、制御点、ducking は既存の設定を使用します。後続の coverage 機能は
+役割、ゲイン、フェード、制御点、ducking は既存の設定を使用します。既存の coverage 機能は
 `keep-primary`、`mix-secondary`、`replace-primary` を指定でき、追加音声のゲインは 0〜1、
-置換は指定した主クリップの区間だけです。D3B1 は B-roll coverage を保存／編集しません。
+置換は指定した主クリップの区間だけです。保存と review は既存 D3B2 workflow が管理します。
 
 既存の limiter は役割別音声と master に個別に適用されるため、過負荷の stem を加算しても
 制限後の master と一致しません。ピーク／ラウドネスは実際の復号出力を測定し、保存済みの
 ミックスを自動で正規化しません。
 
 独立音声の分割／素材置換は再リンクまで拒否します。字幕競合、短い素材、保護設定も部分保存せず
-拒否します。Collect はリンク音声との混在も含めて元ファイル全体を保持します。JSON／OTIO は正確な
+拒否します。Collect は独立音声と map 済み automation の元ファイルを、Pin を解除した場合も全体保持します。
+JSON／OTIO は正確な
 メタデータを保存します。OTIO は手動再現が必要で、FCPXML／EDL は非対応のタイミングを拒否します。
 
 合成素材と実ブラウザーの結果は[検証記録](validation-audio-policy.md)を参照してください。

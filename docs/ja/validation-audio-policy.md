@@ -41,3 +41,54 @@ Pin `c260deaa` 統合後の `a0e1f34b` では二件中一件が失敗しまし�
 完全な 5436 件の旧結果は `d5d75107` のみの証拠です。新しい開始修正の限定レビューと
 最終 hosted CI は未完了です。物理端末、聴取、Resolve、native installer の手動 gate と
 D3B2 の永続 coverage は未完了のままです。公開 stable は v0.4.0 です。
+
+## レビュー済み ripple と音量自動化の時間対応 — 2026-11-05
+
+Prompt 02 は最新 main `92ccf361642f060466b269dc2fcf3ed4d77102b3` を基点に実装し、
+コード候補は `e7ede9443d66416e5e8ef8efbdd1823cfb4ffb2a` です。Silence ripple と
+クリップ内 gain／fade／ducking automation を整数 48 kHz sample clock で対応づけます。
+元の source range、speed、continuity ID と offset を保存し、Review の Accept 前に
+detached ripple を検証して一つの compound edit として記録します。別の mixer を追加せず、
+元音声を変更せず、Review を自動適用しません。
+
+保存／再読込／render では source と clock の鮮度を検証します。`clip.split` にも同じ対応づけを
+適用します。mapped clock に対する trim、speed、source replacement、未知の ducking 参照、
+未対応 J/L timing など、等価性を証明できない操作は typed conflict として拒否します。
+locked clip／track と User Pin を保護し、Undo／Redo では automation metadata を復元します。
+
+コード候補の全 Vitest は **446 files、5,853/5,853 tests 合格**（517.10 秒）です。
+44.1 kHz／48 kHz 合成音源、1.25x speed、automation、Silence ripple、sample mapping と
+実際の FFmpeg render を含みます。source-clock と direct mix は既存の `2/2^23` PCM 誤差範囲内、
+最終 render も編集境界にある limiter の実測 5 ms lookahead と 2 samples を除き同範囲内です。
+limiter 窓は測定結果として明記し、許容誤差を広げていません。
+
+メディアは全て合成素材です。実機 Windows／macOS、物理音声遅延、人による聴取品質は未検証です。
+rebase 後、`pnpm format:check`、`pnpm test:i18n`（3,141 keys）、
+`pnpm test:docs-i18n`（英語 mirror 158 件）、`pnpm lint`、`pnpm typecheck`、
+`pnpm build`、`pnpm test:contracts`（77 files、1,498 tests）が合格しました。
+build には既存の 500 kB chunk advisory があります。PR の hosted CI は作成後に確認します。
+変更は merge／release されていません。
+
+## PR #114 修正 review — 2026-11-05
+
+統合基底は `main@1bafb5cd4532ce9f9a171499abc8631e4863d1ee` です。元の候補
+`4964cdf` で八件の新しい回帰テストが失敗し、元 trim 秒数、legacy 再生原点、tempo 処理履歴、
+絶対 source anchor を保持する修正を加えました。fractional ripple の配置 sample 数が元 clock と
+一致しない場合は、Review 公開前に typed conflict で拒否します。提案を暗黙に丸めません。
+map 済み独立音声を拒否し、UI の明示的な envelope reset は既存 Undo／Redo と保存を使用します。
+Collect は Pin 解除後も元ファイルを保持します。Record の既存一時間上限は保持 DSP 履歴にも適用します。
+
+限定十ファイル／171 tests と durable Job 失敗回帰、七件の browser tests が合格しました。
+独立 correction review でも七件の guard／実 PCM tests が合格し、技術 blocker は残っていません。
+1×44.1／48 kHz transient、fractional trim と sub-ms 原点の繰り返し分割、繰り返し ripple を確認し、
+既存 PCM 誤差 `2/2^23` と limiter 窓を緩和していません。1000 segments／1000 points のローカル
+graph compile 診断は中央値 352.41 ms → 2.43 ms、graph hash は同一でした。これは compile のみの
+測定で、FFmpeg や実機速度の保証ではありません。最終 signed head と hosted CI は
+[PR #114](https://github.com/bynanci/open-film/pull/114) に記録します。以前の5853件は旧候補の証拠のままです。
+実機、聴取、署名／公証、release の gate は未完了です。
+
+最終修正 source の全 Vitest は **447 files／5,878 tests 合格**、552.62秒、exit0 です。
+途中終了した先行実行は合格として数えていません。format、3159 locale keys、160 mirrors、lint、
+typecheck、build、77 files／1504 contracts、18 interchange checks、license、8 provenance checks、
+339 browser-case partition が合格しました。関連二 browser specs は七件とも合格です。
+既存の大きな chunk advisory は残ります。assertion、PCM 許容誤差、test を緩和／無効化していません。
