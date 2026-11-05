@@ -495,14 +495,18 @@ it.each(["preserve-editability", "preserve-visual-fidelity"] as const)(
           )
           .all() as { name: string }[];
         return JSON.stringify(
-          tables.map(({ name }) => [
-            name,
-            database
-              .prepare(
-                `SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`,
-              )
-              .all(),
-          ]),
+          tables
+            // FTS5 virtual and shadow tables are derived from catalog assets.
+            // They are rebuilt after snapshot restore and have no rowid contract.
+            .filter(({ name }) => !name.startsWith("asset_search"))
+            .map(({ name }) => [
+              name,
+              database
+                .prepare(
+                  `SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`,
+                )
+                .all(),
+            ]),
         );
       } finally {
         database.close();
