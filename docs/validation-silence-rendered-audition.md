@@ -186,17 +186,17 @@ Inspector and monitor layout remain the host for the controls.
 
 ## 本機整合驗證 / Local integrated checks
 
-| Check                                          | Actual result                                            |
-| ---------------------------------------------- | -------------------------------------------------------- |
-| `pnpm format:check`                            | Pass                                                     |
-| `pnpm test:i18n` / `pnpm test:docs-i18n`       | 3120 semantic keys / 156 English reference mirrors; pass |
-| `pnpm lint` / `pnpm typecheck` / `pnpm build`  | Pass; existing large-chunk build warning remains         |
-| `pnpm test:contracts`                          | 77 files, 1494 tests passed                              |
-| Related `pnpm test:media` selection            | 7 files, 64 tests passed                                 |
-| Audition controls + Record playback unit tests | 2 files, 11 tests passed                                 |
-| Silence Review + audio policy Playwright specs | 5 tests passed, default single worker                    |
-| Docs VitePress build                           | Pass                                                     |
-| License / provenance policy                    | Pass; 8 policy regressions                               |
+| Check                                          | Actual result                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| `pnpm format:check`                            | Pass                                                               |
+| `pnpm test:i18n` / `pnpm test:docs-i18n`       | 3120 semantic keys / 156 English reference mirrors; pass           |
+| `pnpm lint` / `pnpm typecheck` / `pnpm build`  | Pass; existing large-chunk build warning remains                   |
+| `pnpm test:contracts`                          | 77 files, 1494 tests passed                                        |
+| Related `pnpm test:media` selection            | 7 files, 64 tests passed                                           |
+| Audition controls + Record playback unit tests | 2 files, 12 tests passed                                           |
+| Silence Review + audio policy Playwright specs | Silence Review 4/4; Record audio policy 2/2; default single worker |
+| Docs VitePress build                           | Pass                                                               |
+| License / provenance policy                    | Pass; 8 policy regressions                                         |
 
 The seven media suites are Silence Review, Silence Jobs, Record PCM application,
 Silence Jobs HTTP, Record PCM HTTP, actual audition media and source-verification
@@ -219,3 +219,23 @@ filenames/hashes, before/after loudness and detailed meter/seam observations:
 repository，由 CI artifact 提供。上述 JSON 的輸出 hash 來自本機指定 FFmpeg 版本，
 不代表不同 FFmpeg／編碼器版本的 MP4 必須逐位元相同；跨環境沿用既有 PCM 精度契約。
 最終 PR head 的 CI 結果另於 PR 回報，不能將此本機 commit 的結果冒充新 head 的 CI。
+
+## 失敗與恢復 / Failure contract
+
+| Outcome                                                                                   | Behavior                                                                                                    |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 400 invalid input / unavailable PCM format or audio                                       | Correct parameters or inspect the source; no edit is accepted                                               |
+| 404 missing Job or expired in-memory descriptor                                           | Reconnect to the current project and explicitly prepare its current saved Review                            |
+| 409 stale source/revision/Review, protected edit, request identity conflict or busy owner | Keep the existing cut, inspect the typed reason and explicitly review/retry the appropriate current request |
+| HTTP disconnect / AbortSignal                                                             | Cancel the current preparation and discard incomplete output; durable Review remains available              |
+
+After Accept the old audition eligibility expires because the Job/revision has
+changed. Undo does not silently revive old playback. A cold project session
+requires explicit preparation from its still-current durable Review. Rendered
+audio is an audition aid and never acts as an acceptance receipt or quality badge.
+
+The final test-only audit additionally switches projects through the UI after
+preparing audition, with reused source/clip/Composition IDs. It verifies the new
+project has no previous result/timecodes, old PCM returns typed 404 and both saved
+timelines remain unchanged. Unit tests use fully valid late responses for both
+project and Composition changes and reject stale UI/error publication.

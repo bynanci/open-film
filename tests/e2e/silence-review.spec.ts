@@ -1,4 +1,11 @@
-import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,7 +18,7 @@ import {
 import type { Composition, MediaAsset } from "@openfilm/core";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile } from "@openfilm/media";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, openFilm } from "./ui-helpers.js";
 
 const base = "http://127.0.0.1:4310/api";
 const compositionId = "silence-review-cut";
@@ -48,7 +55,7 @@ function wave(): Buffer {
   return bytes;
 }
 
-async function createProject(request: APIRequestContext) {
+async function createProject(request: APIRequestContext, open = true) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-silence-review-ui-"));
   roots.push(root);
   const source = join(root, "synthetic-voice.wav");
@@ -110,10 +117,12 @@ async function createProject(request: APIRequestContext) {
   const projectId = app.project.id;
   const projectPath = app.directory;
   app.close();
-  const opened = await request.post(`${base}/project/open`, {
-    data: { path: projectPath },
-  });
-  expect(opened.ok(), await opened.text()).toBe(true);
+  if (open) {
+    const opened = await request.post(`${base}/project/open`, {
+      data: { path: projectPath },
+    });
+    expect(opened.ok(), await opened.text()).toBe(true);
+  }
   return { root, projectId, projectPath, source, asset };
 }
 
@@ -522,4 +531,76 @@ test("keeps Silence Review controls translated in Traditional Chinese and Japane
       page.getByLabel(locale === "ja-JP" ? "無音しきい値" : "靜音門檻"),
     ).toBeVisible();
   }
+});
+
+test("discards prepared audition when switching films with reused source and clip IDs", async ({
+  page,
+  request,
+}) => {
+  const first = await createProject(request);
+  const second = await createProject(request, false);
+  await initialLocale(page, "en-US");
+  await openSilenceReview(page);
+  const originalCut = await composition(request);
+  await page
+    .getByRole("button", { name: "Analyze silence", exact: true })
+    .click();
+  await expect(page.locator(".silence-candidate")).toHaveCount(2, {
+    timeout: 30_000,
+  });
+  const audition = page.getByRole("region", {
+    name: "Rendered seam audition",
+    exact: true,
+  });
+  const preparedResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname.endsWith("/audition") &&
+      response.request().method() === "POST",
+  );
+  await audition
+    .getByRole("button", { name: "Render before / after", exact: true })
+    .click();
+  const response = await preparedResponse;
+  expect(response.ok(), await response.text()).toBe(true);
+  const prepared = await response.json();
+  await expect(
+    audition.getByRole("button", { name: "Play edited mix", exact: true }),
+  ).toBeEnabled();
+  const oldPcmUrl = `${base}/record-audio-preview/${encodeURIComponent(prepared.after.id)}/pcm?startSample=0&count=1`;
+  expect((await request.get(oldPcmUrl)).status()).toBe(200);
+  expect(await composition(request)).toEqual(originalCut);
+  await page
+    .getByRole("button", { name: "Switch project", exact: true })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, second.projectPath);
+  await navigate(page, "edit");
+  await expect(page.locator("#clip-synthetic-voice-clip")).toBeVisible();
+  await page
+    .getByRole("group", { name: "Editing mode", exact: true })
+    .getByRole("button", { name: "Precision", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Silence review", exact: true })
+    .click();
+  await expect(page.locator(".silence-review")).toBeVisible();
+  await expect(page.locator(".silence-candidate")).toHaveCount(0);
+  await expect(page.locator(".silence-audition")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Play edited mix", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/^Reviewed removal:/)).toHaveCount(0);
+  const retiredPcm = await request.get(oldPcmUrl);
+  expect(retiredPcm.status()).toBe(404);
+  expect((await retiredPcm.json()).code).toBe("request.notFound");
+  const currentProject = await request.get(`${base}/project`);
+  expect(currentProject.ok()).toBe(true);
+  expect((await currentProject.json()).project.id).toBe(second.projectId);
+  expect(await composition(request)).toEqual(originalCut);
+  const savedFirst = JSON.parse(
+    await readFile(join(first.projectPath, "project.json"), "utf8"),
+  );
+  expect(
+    savedFirst.timelines.find((cut: Composition) => cut.id === compositionId),
+  ).toEqual(originalCut);
 });

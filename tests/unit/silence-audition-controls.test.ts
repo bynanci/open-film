@@ -43,31 +43,31 @@ function fixture(prepare?: (...args: unknown[]) => Promise<unknown>) {
     format: "pcm_s24le",
     lengthSamples: 192000,
   };
+  const response = (input: unknown) => {
+    const body = input as { requestId: string };
+    return {
+      version: 1,
+      reviewId: "review-1",
+      requestId: body.requestId,
+      baseRevision: "r1",
+      before: descriptor,
+      after: descriptor,
+      seams: [
+        {
+          beforeStartSample: 24000,
+          beforeEndSample: 120000,
+          afterStartSample: 24000,
+          afterEndSample: 72000,
+          removedStartSample: 48000,
+          removedEndSample: 96000,
+        },
+      ],
+      removedSamples: 48000,
+      parity: "renderer",
+    };
+  };
   const silenceAudition = vi.fn(
-    prepare ??
-      (async (_job: unknown, input: unknown) => {
-        const body = input as { requestId: string };
-        return {
-          version: 1,
-          reviewId: "review-1",
-          requestId: body.requestId,
-          baseRevision: "r1",
-          before: descriptor,
-          after: descriptor,
-          seams: [
-            {
-              beforeStartSample: 24000,
-              beforeEndSample: 120000,
-              afterStartSample: 24000,
-              afterEndSample: 72000,
-              removedStartSample: 48000,
-              removedEndSample: 96000,
-            },
-          ],
-          removedSamples: 48000,
-          parity: "renderer",
-        };
-      }),
+    prepare ?? (async (_job: unknown, input: unknown) => response(input)),
   );
   const component = loadComponent(
     "apps/desktop/src/components/SilenceAuditionControls.vue",
@@ -102,6 +102,7 @@ function fixture(prepare?: (...args: unknown[]) => Promise<unknown>) {
     await settle();
   };
   return {
+    response,
     props,
     mounted,
     button,
@@ -131,38 +132,43 @@ it("plays both rendered seam windows through existing PCM playback and retires p
     f.mounted.unmount();
   }
 });
-it("fences a cancelled or previous-project response and preserves request identity for explicit retry", async () => {
-  let finish: (value: unknown) => void = () => {};
-  const f = fixture(
-    async () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-  );
-  try {
-    await f.click("prepare");
-    const signal = f.silenceAudition.mock.calls[0]![2] as AbortSignal;
-    Object.assign(f.button("prepare"), { focus: vi.fn() });
-    await f.click("cancel");
-    expect(signal.aborted).toBe(true);
-    finish({ parity: "renderer" });
-    await settle();
-    expect(f.button("after")).toBeUndefined();
-    await f.click("prepare");
-    expect(f.silenceAudition.mock.calls[1]![1]).toEqual(
-      f.silenceAudition.mock.calls[0]![1],
+it.each(["projectId", "compositionId"] as const)(
+  "fences cancelled or previous %s responses and preserves retry identity",
+  async (contextKey) => {
+    let finish: (value: unknown) => void = () => {};
+    const f = fixture(
+      async () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
     );
-    const secondSignal = f.silenceAudition.mock.calls[1]![2] as AbortSignal;
-    f.props.projectId = "p2";
-    await settle();
-    expect(secondSignal.aborted).toBe(true);
-    finish({ parity: "renderer" });
-    await settle();
-    expect(f.button("after")).toBeUndefined();
-  } finally {
-    f.mounted.unmount();
-  }
-});
+    try {
+      await f.click("prepare");
+      const signal = f.silenceAudition.mock.calls[0]![2] as AbortSignal;
+      Object.assign(f.button("prepare"), { focus: vi.fn() });
+      await f.click("cancel");
+      expect(signal.aborted).toBe(true);
+      finish(f.response(f.silenceAudition.mock.calls[0]![1]));
+      await settle();
+      expect(f.button("after")).toBeUndefined();
+      expect(f.button("retry")).toBeUndefined();
+      await f.click("prepare");
+      expect(f.silenceAudition.mock.calls[1]![1]).toEqual(
+        f.silenceAudition.mock.calls[0]![1],
+      );
+      const secondSignal = f.silenceAudition.mock.calls[1]![2] as AbortSignal;
+      f.props[contextKey] = "different-context";
+      await settle();
+      expect(secondSignal.aborted).toBe(true);
+      finish(f.response(f.silenceAudition.mock.calls[1]![1]));
+      await settle();
+      expect(f.button("after")).toBeUndefined();
+      expect(f.button("retry")).toBeUndefined();
+    } finally {
+      f.mounted.unmount();
+    }
+  },
+);
 it("blocks rendering for staged candidate edits and rejects an unbound renderer response", async () => {
   const f = fixture(async () => ({ parity: "preview-only" }));
   try {
