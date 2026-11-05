@@ -291,6 +291,71 @@ it("serves real silence analysis, review and explicit idempotent Apply over HTTP
   });
 });
 
+it("serves selection-only Reviews through a new durable child Job", async () => {
+  const f = await fixture();
+  const created = (await (
+    await post(f.base, "/api/silence/jobs", input(f.projectId, "review-parent"))
+  ).json()) as { job: { id: string } };
+  const parent = await waitForJob(f.base, created.job.id, "waiting-review");
+  const parentReview = await (
+    await fetch(`${f.base}/api/silence/jobs/${created.job.id}/review`)
+  ).json();
+  const sourceReviewId = (parentReview as { review: { reviewId: string } })
+    .review.reviewId;
+  const request = {
+    requestId: "review-selection-child",
+    reviewId: sourceReviewId,
+    selectedCandidateIds: [],
+  };
+  const revised = await post(
+    f.base,
+    `/api/silence/jobs/${created.job.id}/review`,
+    request,
+  );
+  expect(revised.status).toBe(202);
+  const child = (await revised.json()) as {
+    created: boolean;
+    job: {
+      id: string;
+      status: string;
+      silenceAnalysis: Record<string, unknown>;
+    };
+  };
+  expect(child.created).toBe(true);
+  expect(child.job).toMatchObject({
+    status: "queued",
+    silenceAnalysis: {
+      parentJobId: created.job.id,
+      sourceReviewId,
+      selectedCandidateIds: [],
+    },
+  });
+  const childWaiting = await waitForJob(f.base, child.job.id, "waiting-review");
+  const derivedReview = await (
+    await fetch(`${f.base}/api/silence/jobs/${child.job.id}/review`)
+  ).json();
+  expect(
+    (derivedReview as { review: { reviewId: string } }).review.reviewId,
+  ).not.toBe(sourceReviewId);
+  expect(childWaiting.silenceAnalysis).toMatchObject({
+    sourceReviewId,
+    selectedCandidateIds: [],
+  });
+  expect(
+    await (
+      await post(f.base, `/api/silence/jobs/${created.job.id}/review`, request)
+    ).json(),
+  ).toMatchObject({ created: false, job: { id: child.job.id } });
+  expect(parent.status).toBe("waiting-review");
+  expect(
+    (
+      (await (
+        await fetch(`${f.base}/api/silence/jobs/${created.job.id}/review`)
+      ).json()) as { review: { reviewId: string } }
+    ).review.reviewId,
+  ).toBe(sourceReviewId);
+});
+
 it("cancels a running HTTP Job without allowing its late callback to publish a Review", async () => {
   const f = await fixture();
   let start: (() => void) | undefined;

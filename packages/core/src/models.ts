@@ -242,6 +242,10 @@ export interface SilenceAnalysisJobDataV1 {
     paddingSeconds: number;
   };
   sourceHash: string;
+  /** Identity for a selection-only review derived from an immutable parent. */
+  parentJobId?: string;
+  sourceReviewId?: string;
+  selectedCandidateIds?: string[];
   reviewId?: string;
   retryRequests?: { requestId: string; fingerprint: string; attempt: number }[];
   attempt: number;

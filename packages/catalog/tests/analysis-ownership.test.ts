@@ -542,7 +542,7 @@ it("reserves silence idempotently and conflicts on a changed request fingerprint
       ...silenceJob("a-new-random-job-id", "create-1", "another-owner"),
     }),
   ).toEqual({ job: queued, created: false });
-  expect(
+  expect(() =>
     f.second.intelligence.reserveSilenceAnalysisJob({
       ...silenceJob("changed-snapshot", "create-1", "another-owner"),
       silenceAnalysis: {
@@ -551,7 +551,9 @@ it("reserves silence idempotently and conflicts on a changed request fingerprint
         sourceHash: "e".repeat(64),
       },
     }),
-  ).toEqual({ job: queued, created: false });
+  ).toThrowError(
+    expect.objectContaining({ code: "request.invalid", status: 409 }),
+  );
   expect(() =>
     f.second.intelligence.reserveSilenceAnalysisJob({
       ...silenceJob("different-input", "create-1"),

@@ -2417,6 +2417,20 @@ button.editor-beat-heading:hover {
   fill: var(--of-accent-soft);
 }
 
+.precision-silence-candidate {
+  pointer-events: none;
+}
+
+.precision-silence-candidate.selected {
+  fill: var(--of-warning-soft);
+  opacity: 0.78;
+}
+
+.precision-silence-candidate.excluded {
+  fill: var(--of-surface-3);
+  opacity: 0.55;
+}
+
 .precision-marker-line {
   stroke: var(--of-warning);
   stroke-width: 1;
@@ -2547,11 +2561,12 @@ button.editor-beat-heading:hover {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .precision-editor {
     height: auto;
   }
   .precision-grid {
+    flex: 0 0 auto;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 16rem auto auto;
     grid-template-areas: "player" "waveform" "panel";

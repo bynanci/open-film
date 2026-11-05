@@ -2322,6 +2322,8 @@ function jobTitle(job: Job): string {
       job.type === "glossary-review" ? "glossaryReview" : "languageReview";
     return `${t(`transcript.jobTypes.${kind}`)} · ${t(`precision.jobStatuses.${job.status}`)}`;
   }
+  if (job.type === "silence-analysis")
+    return `${t("precision.jobTypes.silenceAnalysis")} · ${t(`precision.jobStatuses.${job.status}`)}`;
   if (["transcribe", "waveform", "scenes"].includes(job.type))
     return `${t(`precision.jobTypes.${job.type}`)} · ${t(`precision.jobStatuses.${job.status}`)}`;
   const kind = job.type === "render" ? "render" : "import";
@@ -3208,6 +3210,7 @@ onUnmounted(() => {
                         'language-review',
                         'scene-script-review',
                         'analysis-run',
+                        'silence-analysis',
                       ].includes(job.type)
                     ? 'search'
                     : 'folder'

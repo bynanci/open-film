@@ -141,6 +141,10 @@ function sameSilenceIdentity(job: Job, next: Job): boolean {
     left.options.paddingSeconds === right.options.paddingSeconds &&
     left.attempt === right.attempt &&
     left.sourceHash === right.sourceHash &&
+    left.parentJobId === right.parentJobId &&
+    left.sourceReviewId === right.sourceReviewId &&
+    JSON.stringify(left.selectedCandidateIds ?? []) ===
+      JSON.stringify(right.selectedCandidateIds ?? []) &&
     (left.reviewId === undefined || left.reviewId === right.reviewId) &&
     JSON.stringify(left.retryRequests ?? []) ===
       JSON.stringify(right.retryRequests ?? []),
@@ -159,12 +163,18 @@ function sameSilenceRequest(job: Job, next: Job): boolean {
     left.version === right.version &&
     left.projectId === right.projectId &&
     left.compositionId === right.compositionId &&
+    left.baseRevision === right.baseRevision &&
     left.requestId === right.requestId &&
     left.requestFingerprint === right.requestFingerprint &&
     left.options.thresholdDb === right.options.thresholdDb &&
     left.options.minimumSilenceSeconds ===
       right.options.minimumSilenceSeconds &&
-    left.options.paddingSeconds === right.options.paddingSeconds,
+    left.options.paddingSeconds === right.options.paddingSeconds &&
+    left.sourceHash === right.sourceHash &&
+    left.parentJobId === right.parentJobId &&
+    left.sourceReviewId === right.sourceReviewId &&
+    JSON.stringify(left.selectedCandidateIds ?? []) ===
+      JSON.stringify(right.selectedCandidateIds ?? []),
   );
 }
 

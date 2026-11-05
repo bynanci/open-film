@@ -222,6 +222,31 @@ it("persists an immutable exact review, applies after reopening, shares undo/red
   );
 });
 
+it("creates a selection-only immutable Review without reanalyzing or replacing its source Review", async () => {
+  const f = await fixture();
+  const original = await f.app.silence.createProposal("timeline", "voice", {
+    paddingSeconds: 0.1,
+  });
+  const analyze = vi.spyOn(f.app.silence, "analyzeAsset");
+  const revised = await f.app.silence.createDerivedProposal(
+    original.reviewId,
+    {
+      compositionId: "timeline",
+      baseRevision: original.proposal.baseRevision,
+      sourceHash: original.proposal.sourceHash,
+    },
+    [],
+  );
+
+  expect(analyze).not.toHaveBeenCalled();
+  expect(revised.reviewId).not.toBe(original.reviewId);
+  expect(revised.proposal.selectedCandidateIds).toEqual([]);
+  expect(revised.proposal.timelineIntervals).toEqual([]);
+  expect(await f.app.silence.readProposal(original.reviewId)).toEqual(original);
+  expect(await f.app.silence.readProposal(revised.reviewId)).toEqual(revised);
+  expect(f.editor.get("timeline").composition).toEqual(f.before.composition);
+});
+
 it("requires a durable review for generic direct and batch edits, while accepting one reviewed batch leaf", async () => {
   const f = await fixture();
   const review = await f.app.silence.createProposal("timeline", "voice", {

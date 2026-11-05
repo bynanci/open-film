@@ -925,6 +925,9 @@ function silenceAnalysisJob(
     "requestFingerprint",
     "options",
     "sourceHash",
+    "parentJobId",
+    "sourceReviewId",
+    "selectedCandidateIds",
     "reviewId",
     "retryRequests",
     "attempt",
@@ -938,6 +941,37 @@ function silenceAnalysisJob(
   for (const key of ["baseRevision", "requestFingerprint"])
     directionDigest(job[key], `${path}.${key}`);
   directionDigest(job.sourceHash, `${path}.sourceHash`);
+  if (job.parentJobId !== undefined)
+    receiptIdentifier(job.parentJobId, `${path}.parentJobId`);
+  if (job.sourceReviewId !== undefined)
+    directionDigest(job.sourceReviewId, `${path}.sourceReviewId`);
+  if (job.selectedCandidateIds !== undefined) {
+    const ids = array(job.selectedCandidateIds, `${path}.selectedCandidateIds`);
+    if (ids.length > 2000)
+      fail(
+        `${path}.selectedCandidateIds`,
+        "at most 2000 candidates are supported",
+      );
+    const unique = new Set<string>();
+    ids.forEach((id, index) => {
+      receiptIdentifier(id, `${path}.selectedCandidateIds[${index}]`);
+      if (unique.has(String(id)))
+        fail(
+          `${path}.selectedCandidateIds[${index}]`,
+          "duplicate candidate ID",
+        );
+      unique.add(String(id));
+    });
+  }
+  if (
+    (job.parentJobId === undefined) !== (job.sourceReviewId === undefined) ||
+    (job.sourceReviewId === undefined) !==
+      (job.selectedCandidateIds === undefined)
+  )
+    fail(
+      path,
+      "derived reviews require parent, source Review and selection identities together",
+    );
   if (job.reviewId !== undefined)
     directionDigest(job.reviewId, `${path}.reviewId`);
   const options = presentationObject(job.options, `${path}.options`, [

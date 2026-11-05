@@ -1186,6 +1186,7 @@ export default {
       status: {
         queued: "Queued",
         running: "Running",
+        "waiting-review": "Review required",
         completed: "Completed",
         cancelled: "Cancelled",
         failed: "Needs attention",
