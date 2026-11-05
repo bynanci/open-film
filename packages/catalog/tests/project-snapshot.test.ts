@@ -33,12 +33,12 @@ async function authenticV5Image(): Promise<Buffer> {
 }
 
 describe("consistent project catalog snapshots", () => {
-  it("migrates to schema v6 and classifies every durable table", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "openfilm-catalog-v6-"));
+  it("migrates to schema v7 and classifies every durable table", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-catalog-v7-"));
     cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const catalog = new ProjectCatalog(directory);
     cleanup.push(() => catalog.close());
-    expect(CATALOG_SCHEMA_VERSION).toBe(6);
+    expect(CATALOG_SCHEMA_VERSION).toBe(7);
 
     const check = new DatabaseSync(join(directory, "database.sqlite"));
     try {
@@ -52,7 +52,12 @@ describe("consistent project catalog snapshots", () => {
         expect.arrayContaining([...CATALOG_V6_TABLES].sort()),
       );
       expect(
-        tables.filter((table) => CATALOG_TABLE_POLICIES[table] === undefined),
+        tables.filter(
+          (table) =>
+            table !== "asset_search" &&
+            !table.startsWith("asset_search_") &&
+            CATALOG_TABLE_POLICIES[table] === undefined,
+        ),
       ).toEqual([]);
     } finally {
       check.close();
@@ -68,8 +73,8 @@ describe("consistent project catalog snapshots", () => {
 
     expect(createHash("sha256").update(legacy).digest("hex")).toBe(before);
     expect(inspectCatalogSnapshot(legacy, 5).schemaVersion).toBe(5);
-    expect(inspectCatalogSnapshot(upgraded, 6)).toMatchObject({
-      schemaVersion: 6,
+    expect(inspectCatalogSnapshot(upgraded, 7)).toMatchObject({
+      schemaVersion: 7,
       assets: [expect.objectContaining({ id: "legacy-asset" })],
     });
   });
@@ -98,7 +103,7 @@ describe("consistent project catalog snapshots", () => {
       return { bytes: image.length, schemaVersion };
     });
     expect(result.bytes).toBeGreaterThan(0);
-    expect(result.schemaVersion).toBe(6);
+    expect(result.schemaVersion).toBe(7);
 
     const check = new DatabaseSync(join(directory, "database.sqlite"));
     try {
@@ -414,6 +419,7 @@ describe("consistent project catalog snapshots", () => {
     const image = catalog.withConsistentSnapshot((value) => Buffer.from(value));
     const packaged = {
       ...asset("selected"),
+      tags: ["package-search-tag"],
       uri: "openfilm-package://sources/selected.png",
     };
     const filtered = createPortableCatalogSnapshot(
@@ -432,6 +438,16 @@ describe("consistent project catalog snapshots", () => {
     await writeFile(projectedPath, filtered, { mode: 0o600, flag: "wx" });
     const projected = new DatabaseSync(projectedPath);
     try {
+      expect(
+        projected
+          .prepare("SELECT search_tags FROM assets WHERE id='selected'")
+          .get()?.search_tags,
+      ).toBe("package-search-tag");
+      expect(
+        projected
+          .prepare("SELECT rowid FROM asset_search WHERE search_tags LIKE ?")
+          .all("%package-search-tag%"),
+      ).toHaveLength(1);
       expect(
         projected.prepare("SELECT id FROM source_selections ORDER BY id").all(),
       ).toEqual([{ id: "selection-selected" }]);
@@ -863,9 +879,14 @@ describe("consistent project catalog snapshots", () => {
     expect(target.listAssets().map((asset) => asset.id)).toEqual([
       "legacy-asset",
     ]);
+    const legacyName = target.getAsset("legacy-asset")!.name;
+    const namePrefix = [...legacyName].slice(0, 3).join("");
+    expect(
+      target.listAssets({ query: namePrefix }).map((asset) => asset.id),
+    ).toEqual(["legacy-asset"]);
     expect(
       target.withConsistentSnapshot((_, schemaVersion) => schemaVersion),
-    ).toBe(6);
+    ).toBe(7);
   });
 
   it("still rejects structurally different snapshot schemas", async () => {

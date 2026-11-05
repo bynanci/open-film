@@ -532,14 +532,14 @@ describe("v5 Story review migration", () => {
     database.close();
     const upgraded = new ProjectCatalog(f.directory);
     cleanup.push(() => upgraded.close());
-    expect(CATALOG_SCHEMA_VERSION).toBe(6);
+    expect(CATALOG_SCHEMA_VERSION).toBe(7);
     expect(upgraded.intelligence.getFullTranscript("source", "hash")).toEqual(
       original,
     );
     upgraded.knowledge.saveSceneScriptSuggestion(suggestion());
     const read = new DatabaseSync(join(f.directory, "database.sqlite"));
     try {
-      expect(read.prepare("PRAGMA user_version").get()?.user_version).toBe(6);
+      expect(read.prepare("PRAGMA user_version").get()?.user_version).toBe(7);
       expect(
         read
           .prepare(

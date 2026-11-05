@@ -23,6 +23,19 @@ export const CATALOG_V6_TABLES = [
  * older user_version. Real old catalogs never contained these tables.
  */
 export function dropCatalogV6Tables(database: DatabaseSync): void {
+  database.exec(`
+    DROP TRIGGER IF EXISTS asset_search_insert;
+    DROP TRIGGER IF EXISTS asset_search_delete;
+    DROP TRIGGER IF EXISTS asset_search_update;
+    DROP TABLE IF EXISTS asset_search;
+  `);
+  if (
+    database
+      .prepare("PRAGMA table_info(assets)")
+      .all()
+      .some((column) => column.name === "search_tags")
+  )
+    database.exec("ALTER TABLE assets DROP COLUMN search_tags");
   for (const table of CATALOG_V6_TABLES)
     database.exec(`DROP TABLE IF EXISTS "${table}"`);
 }

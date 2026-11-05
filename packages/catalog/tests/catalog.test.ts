@@ -151,6 +151,143 @@ describe("real SQLite catalog", () => {
     }
   });
 
+  it("excludes derived search cache rows from logical revisions", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-catalog-search-revision-"),
+    );
+    directories.push(directory);
+    const catalog = new ProjectCatalog(directory);
+    try {
+      const original = asset("revision", "2024-01-01T00:00:00Z");
+      original.tags = ["festival"];
+      catalog.upsertAsset(original);
+      const revision = catalog.logicalRevision();
+      const database = new DatabaseSync(join(directory, "database.sqlite"));
+      try {
+        database.exec(
+          "UPDATE assets SET search_tags='changed cache' WHERE id='revision'",
+        );
+        database.exec(
+          "INSERT INTO asset_search(asset_search) VALUES('rebuild')",
+        );
+      } finally {
+        database.close();
+      }
+      expect(catalog.logicalRevision()).toBe(revision);
+    } finally {
+      catalog.close();
+    }
+  });
+
+  it("migrates a v6 catalog into an indexed literal-search schema", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-catalog-search-migration-"),
+    );
+    directories.push(directory);
+    let catalog = new ProjectCatalog(directory);
+    const legacy = asset("legacy", "2024-01-01T00:00:00Z");
+    legacy.name = "Camera 100%_take\\final.mov";
+    legacy.tags = ["archive"];
+    catalog.upsertAsset(legacy);
+    catalog.close();
+
+    const schemaBeforeMigration = new DatabaseSync(
+      join(directory, "database.sqlite"),
+    );
+    schemaBeforeMigration.exec(`
+      DROP TRIGGER asset_search_insert;
+      DROP TRIGGER asset_search_delete;
+      DROP TRIGGER asset_search_update;
+      DROP TABLE asset_search;
+      ALTER TABLE assets DROP COLUMN search_tags;
+      PRAGMA user_version=6;
+    `);
+    expect(
+      schemaBeforeMigration.prepare("PRAGMA user_version").get()?.user_version,
+    ).toBe(6);
+    schemaBeforeMigration.close();
+
+    catalog = new ProjectCatalog(directory);
+    try {
+      const database = new DatabaseSync(join(directory, "database.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        expect(
+          Number(database.prepare("PRAGMA user_version").get()?.user_version),
+        ).toBe(7);
+        expect(
+          database
+            .prepare("PRAGMA table_info(asset_search)")
+            .all()
+            .map(({ name }) => String(name)),
+        ).toEqual(["name", "search_tags"]);
+        const plan = database
+          .prepare(
+            "EXPLAIN QUERY PLAN SELECT rowid FROM asset_search WHERE name LIKE ?",
+          )
+          .all("%camera%")
+          .map(({ detail }) => String(detail))
+          .join(" ");
+        expect(plan).toContain("VIRTUAL TABLE INDEX");
+      } finally {
+        database.close();
+      }
+      expect(
+        catalog.listAssets({ query: "camera" }).map(({ id }) => id),
+      ).toEqual(["legacy"]);
+      expect(catalog.listAssets({ query: "arch" }).map(({ id }) => id)).toEqual(
+        ["legacy"],
+      );
+      catalog.updateAsset("legacy", { tags: ["festival-night"] });
+      expect(catalog.listAssets({ query: "arch" })).toEqual([]);
+      expect(
+        catalog.listAssets({ query: "festival" }).map(({ id }) => id),
+      ).toEqual(["legacy"]);
+      catalog.upsertAsset({
+        ...catalog.getAsset("legacy")!,
+        name: "Renamed take.mov",
+      });
+      expect(catalog.listAssets({ query: "camera" })).toEqual([]);
+      expect(
+        catalog.listAssets({ query: "renamed" }).map(({ id }) => id),
+      ).toEqual(["legacy"]);
+    } finally {
+      catalog.close();
+    }
+  });
+
+  it("preserves literal searches for metacharacters, short CJK, and tag boundaries", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-catalog-search-semantics-"),
+    );
+    directories.push(directory);
+    const catalog = new ProjectCatalog(directory);
+    const special = asset("special", "2024-01-01T00:00:00Z");
+    special.name = "Camera 100%_take\\final.mov";
+    special.tags = ["travel-tag"];
+    const cjk = asset("cjk", "2024-01-02T00:00:00Z");
+    cjk.name = "旅行 clip.mov";
+    cjk.tags = ["東京", "旅行"];
+    const splitTags = asset("split-tags", "2024-01-03T00:00:00Z");
+    splitTags.name = "unrelated.mov";
+    splitTags.tags = ["part", "night"];
+    for (const item of [special, cjk, splitTags]) catalog.upsertAsset(item);
+    const ids = (query: string) =>
+      catalog
+        .listAssets({ query })
+        .map(({ id }) => id)
+        .sort();
+
+    expect(ids("camera")).toEqual(["special"]);
+    expect(ids("travel")).toEqual(["special"]);
+    expect(ids("100%_")).toEqual(["special"]);
+    expect(ids("\\final")).toEqual(["special"]);
+    expect(ids("旅行")).toEqual(["cjk"]);
+    expect(ids("t\u001fn")).toEqual([]);
+    catalog.close();
+  });
+
   it("rejects future catalog schemas without resetting their version", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openfilm-future-"));
     directories.push(directory);

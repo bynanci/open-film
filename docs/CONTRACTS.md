@@ -237,7 +237,7 @@ not remote provider authenticity or speech-quality certification.
 ## M7A named project versions
 
 `ProjectVersionRecord` v1 is an application-side record and does not change
-project schema 1.0.0 or the current catalog schema v6. It binds a stable version
+project schema 1.0.0 or the current catalog schema v7. It binds a stable version
 ID, project ID, request ID, saved project revision, manifest/catalog SHA-256,
 the catalog schema version captured by that snapshot, software version and a
 sorted source-reference manifest containing only asset IDs, hashes, sizes,

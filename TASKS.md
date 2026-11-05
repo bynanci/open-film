@@ -177,9 +177,11 @@ change. Discuss their scope before implementation.
       picker, server API and CLI. Keep legacy offset callers compatible; see the
       [Catalog scale measurements](docs/validation-catalog-scale-benchmark.md)
       and [fcc00131 check review](docs/validation-fcc00131-follow-up.md).
-- [ ] Add semantics-preserving indexing for literal substring name/tag search.
-      Current `LIKE` behavior and tag matching must remain compatible; benchmark
-      and evaluate a migration before replacing the scan.
+- [x] Add semantics-preserving indexing for literal substring name/tag search.
+      Short, escaped and NUL queries retain the current `LIKE` behavior; exact
+      tag checks preserve tag boundaries. Schema v7 migration, query plans and
+      10,000/100,000-row results are recorded in the
+      [Catalog search validation](docs/validation-catalog-search-index.md).
 - [x] Bound additional descriptor and option memory in the Story Template and
       PhotoDepth pickers with lazy keyset pages. Each selector displays one
       200-row page and keeps only selected dependencies between pages; the

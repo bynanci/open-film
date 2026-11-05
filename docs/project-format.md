@@ -49,7 +49,7 @@ Composition 也可額外包含 graphicScenes；場景可以帶有綁定至根 Im
 
 可選的 projectContentLocale（en-US、zh-TW、ja-JP）和 filmSettings（templateId、targetDuration、maxDuration）會描述新影片的預設值，不會自行建立故事；Story 仍可設定個別覆寫。範本段落可選擇包含 templateBeatKey、titleSource 和 intentSource；只有明確標為範本擁有的欄位會隨影片語言更新。沒有來源標記的既有文字會原樣保留。這些新增欄位維持 schema 1.0.0，不需要素材目錄遷移。介面語言與主題是專案以外的本機偏好。
 
-manifest 通過驗證後才會以暫存檔原子替換。目前素材目錄使用 SQLite schema PRAGMA user_version=6、WAL 模式、供清單查詢的索引欄位，以及 typed columns 與有界 JSON 描述。版本化的 v1→v6 遷移會保留既有資產與工作，並加入逐字稿／知識身分、審閱證據和多來源語意表；部分步驟會重建受影響的資料表，完整遷移仍在單一交易內執行，失敗會回復。大型逐字稿使用有界分段頁面，文字保存在各段旁。Manifest schema 維持 1.0.0。使用者偏好補丁可變更評分／狀態／標籤，同時保留來源描述。未來的素材目錄 schema 版本會被拒絕。請透過 ProjectCatalog 存取資料，以維持 schema 不變條件；避免直接執行任意 SQL 變更。
+manifest 通過驗證後才會以暫存檔原子替換。目前素材目錄使用 SQLite schema PRAGMA user_version=7、WAL 模式、供清單與搜尋使用的索引，以及 typed columns 與有界 JSON 描述。版本化的 v1→v7 遷移會保留既有資產與工作，並加入逐字稿／知識身分、審閱證據、多來源語意表，以及用於名稱／標籤逐字子字串搜尋的 FTS5 trigram 索引；短於三個字元、含 LIKE 跳脫字元或 NUL 的查詢仍走相容的 LIKE 路徑。遷移在單一交易內執行，失敗會回復。搜尋索引是由資產資料衍生的快取，還原快照時會重建，也不會改變語意資料的邏輯修訂。大型逐字稿使用有界分段頁面，文字保存在各段旁。Manifest schema 維持 1.0.0。使用者偏好補丁可變更評分／狀態／標籤，同時保留來源描述。未來的素材目錄 schema 版本會被拒絕。請透過 ProjectCatalog 存取資料，以維持 schema 不變條件；避免直接執行任意 SQL 變更。
 
 複製專案資料夾作為檔案備份前，請先關閉應用程式；若要備份正在使用的素材目錄，請使用理解 SQLite 的備份工具。來源媒體需另行備份。只有 manifest 無法保留素材目錄偏好，也無法讓遺失的原始檔重新可用。
 
@@ -85,7 +85,7 @@ sourceIn、sourceOut、timelineStart、timelineDuration 和 Story 片長都以�
 
 瀏覽器管理的副本會在 openfilm.managedSource 中記錄已驗證的來源相對路徑和原管理 URI。搬移專案後，只有仍指向受管理來源的資產會重新定位；明確重新連結至外部檔案的素材會維持外部參照。ID 和原始來源資訊不變。來源路徑必須在 sources/ 之內；專案快取或任意中繼資料路徑不會被當成受管理媒體匯入。
 
-Collect Media 套件使用相同的受管理來源邊界。可選 collect-manifest.json 會記錄所選 Story／Composition、相對路徑、內容雜湊／大小、必要字型綁定、明確權利聲明及原 URI 摘要。專案素材目錄只保留參照資產與其選定逐字稿資料；無關素材庫資產、快取、工作、供應商憑證和具名版本快照不會納入。相同來源位元組只存一份；資產 URI 仍保持不透明且唯一，openfilm.managedSource.relativePath 則指向共用檔案。字型檔和解析器綁定保存在 fonts/，開啟套件時會檢查雜湊。套件回條位於專案 schema 1.0.0 之外；經篩選的可攜式素材目錄使用目前的 schema v6。沒有這些回條的既有專案照常開啟。完整目錄／ZIP 與驗證契約請見[Collect Media](/collect-media)。
+Collect Media 套件使用相同的受管理來源邊界。可選 collect-manifest.json 會記錄所選 Story／Composition、相對路徑、內容雜湊／大小、必要字型綁定、明確權利聲明及原 URI 摘要。專案素材目錄只保留參照資產與其選定逐字稿資料；無關素材庫資產、快取、工作、供應商憑證和具名版本快照不會納入。相同來源位元組只存一份；資產 URI 仍保持不透明且唯一，openfilm.managedSource.relativePath 則指向共用檔案。字型檔和解析器綁定保存在 fonts/，開啟套件時會檢查雜湊。套件回條位於專案 schema 1.0.0 之外；經篩選的可攜式素材目錄使用目前的 schema v7。沒有這些回條的既有專案照常開啟。完整目錄／ZIP 與驗證契約請見[Collect Media](/collect-media)。
 
 ## 驗證與遷移
 
