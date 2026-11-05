@@ -88,9 +88,11 @@ describe("Phase M10B: Pipeline Workbench UI/UX Component", () => {
     const appPath = resolve("apps/desktop/src/App.vue");
     const content = readFileSync(appPath, "utf8");
 
-    // Import PipelineWorkbench
-    expect(content).toContain("PipelineWorkbench");
-    expect(content).toContain("type WorkbenchMode");
+    // Load PipelineWorkbench only when its workspace becomes visible.
+    expect(content).toContain(
+      'loader: () => import("./components/PipelineWorkbench.vue")',
+    );
+    expect(content).toContain("import type { WorkbenchMode }");
 
     // State declarations
     expect(content).toContain("pipelineWorkbenchOpen");

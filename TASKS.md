@@ -202,9 +202,11 @@ change. Discuss their scope before implementation.
       existing Editor document asset pool is unchanged. See the
       [picker scale validation](docs/validation-catalog-scale-benchmark.md).
 - [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
-      initial JavaScript bundle (current build: 1.72 MB minified / 508 KB gzip).
-      Record browser navigation and native cold-start measurements before setting
-      a size target.
+      initial JavaScript bundle. The current candidate's entry and static
+      modulepreloads total 887.29 kB minified / 290.42 kB gzip; the prior recorded
+      entry was 1.72 MB / 508 kB. Edit navigation is measured in the browser, but
+      native cold-start evidence is still required before setting a size target.
+      See the [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
 - [ ] Evaluate remote image-to-video adapters against verified APIs, consent,

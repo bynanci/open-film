@@ -1040,10 +1040,46 @@ test("retains selection and Undo history across both workspace modes", async ({
   page,
   request,
 }) => {
+  const timelineChunkLoaded = () =>
+    page.evaluate(() =>
+      performance
+        .getEntriesByType("resource")
+        .some((entry) =>
+          /(?:^|\/)TimelineEditor(?:-[^/]+)?\.(?:js|vue)(?:\?.*)?$/u.test(
+            entry.name,
+          ),
+        ),
+    );
+  expect(await timelineChunkLoaded()).toBe(false);
+  await page.evaluate(() => performance.mark("openfilm:edit-navigation-start"));
   await navigate(page, "edit", "en-US");
   const clips = page.locator(".editor-clip");
+  await expect.poll(() => clips.count()).toBeGreaterThan(1);
+  const navigation = await page.evaluate(() => {
+    const chunk = performance
+      .getEntriesByType("resource")
+      .find((entry) =>
+        /(?:^|\/)TimelineEditor(?:-[^/]+)?\.(?:js|vue)(?:\?.*)?$/u.test(
+          entry.name,
+        ),
+      );
+    performance.mark("openfilm:edit-navigation-ready");
+    performance.measure(
+      "openfilm:edit-navigation",
+      "openfilm:edit-navigation-start",
+      "openfilm:edit-navigation-ready",
+    );
+    return {
+      chunk: chunk?.name.split("/").at(-1),
+      durationMs: performance
+        .getEntriesByName("openfilm:edit-navigation")
+        .at(-1)?.duration,
+    };
+  });
+  expect(navigation.chunk).toMatch(/^TimelineEditor(?:-[^/]+)?\.(?:js|vue)$/u);
+  expect(navigation.durationMs).toBeGreaterThan(0);
+  console.info(`[workspace-lazy-load] ${JSON.stringify(navigation)}`);
   const count = await clips.count();
-  expect(count).toBeGreaterThan(1);
   const before = (await (await request.get(`${api}/project`)).json()).project;
   await clips.first().click();
   await page.keyboard.press("Delete");

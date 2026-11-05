@@ -90,8 +90,12 @@ async function moduleSource(repository, identifier) {
         `Unknown generated contributor: ${JSON.stringify(identifier)}`,
       );
     const require = createRequire(join(repository, "package.json"));
+    const ownerRequire =
+      owner === "rolldown"
+        ? createRequire(require.resolve("vite/package.json"))
+        : require;
     return {
-      absolute: await realpath(require.resolve(owner)),
+      absolute: await realpath(ownerRequire.resolve(owner)),
       path: `generated:${identifier.slice(1)}`,
       generated: true,
     };
@@ -384,6 +388,27 @@ export function buildContributionPlugin(repository) {
               path: resolve(repository, "apps/desktop/index.html"),
               bytesInOutput: 1,
             });
+          if (!inputs.length) {
+            // Rolldown emits extracted styles for async Vue components as
+            // separate CSS assets. Those assets identify their owning chunk by
+            // name, while the chunk retains the actual Vue style module IDs.
+            const cssChunkName =
+              name.endsWith(".css") && output.name?.endsWith(".css")
+                ? output.name.slice(0, -".css".length)
+                : undefined;
+            if (cssChunkName) {
+              for (const chunk of Object.values(bundle)) {
+                if (chunk.type !== "chunk" || chunk.name !== cssChunkName)
+                  continue;
+                for (const path of Object.keys(chunk.modules))
+                  if (
+                    path.includes("?vue&type=style") ||
+                    /\.(?:css|scss|sass|less|styl)(?:\?.*)?$/iu.test(path)
+                  )
+                    inputs.push({ path, bytesInOutput: 1 });
+              }
+            }
+          }
           if (!inputs.length)
             throw new Error(`Unknown emitted asset contributors: ${name}`);
           outputs.push({ path, delivery: "frontend", inputs });

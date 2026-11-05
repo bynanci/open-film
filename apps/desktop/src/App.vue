@@ -2,7 +2,15 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import {
   initializeLocale,
@@ -25,24 +33,12 @@ import type {
 import { beatTimelineDuration, durationStatus } from "./duration";
 import { hasGraphicSceneAgentReceipt } from "./graphic-scene-agent-receipt";
 import AppLauncher from "./components/AppLauncher.vue";
-import AppSettings from "./components/AppSettings.vue";
 import type { PresetAcceptance } from "@openfilm/application";
 import WorkspaceModeSwitch from "./components/WorkspaceModeSwitch.vue";
 import WorkspaceCommands from "./components/WorkspaceCommands.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
-import ImportPanel from "./components/ImportPanel.vue";
-import ExportWorkspace from "./components/ExportWorkspace.vue";
-import CollectMediaPanel from "./components/CollectMediaPanel.vue";
-import ProxyStoragePanel from "./components/ProxyStoragePanel.vue";
-import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
-import ScenePlanner from "./components/ScenePlanner.vue";
-import StoryScriptReview from "./components/StoryScriptReview.vue";
-import StoryGraphView from "./components/StoryGraphView.vue";
-import StoryboardView from "./components/StoryboardView.vue";
-import PipelineWorkbench, {
-  type WorkbenchMode,
-} from "./components/PipelineWorkbench.vue";
-import CreativeVariantComparisonModal from "./components/CreativeVariantComparisonModal.vue";
+import WorkspaceLoading from "./components/WorkspaceLoading.vue";
+import type { WorkbenchMode } from "./components/PipelineWorkbench.vue";
 import type {
   MediaAsset,
   FilmLook,
@@ -71,12 +67,7 @@ import {
 } from "./api";
 import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
-import TimelineEditor from "./components/TimelineEditor.vue";
-import RelinkMedia from "./components/RelinkMedia.vue";
 import SourceDetails from "./components/SourceDetails.vue";
-import AnalysisJobActions from "./components/AnalysisJobActions.vue";
-import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
-import { nativeBenchmark } from "./nativeBenchmark";
 import {
   preferences,
   getLastWorkspaceForProject,
@@ -91,6 +82,84 @@ import type {
   NativeLocalDraft,
   RetainedNativeDraft,
 } from "./native-draft-recovery";
+import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
+import { nativeBenchmark } from "./nativeBenchmark";
+
+const AppSettings = defineAsyncComponent({
+  loader: () => import("./components/AppSettings.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ImportPanel = defineAsyncComponent({
+  loader: () => import("./components/ImportPanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ExportWorkspace = defineAsyncComponent({
+  loader: () => import("./components/ExportWorkspace.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const CollectMediaPanel = defineAsyncComponent({
+  loader: () => import("./components/CollectMediaPanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ProxyStoragePanel = defineAsyncComponent({
+  loader: () => import("./components/ProxyStoragePanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ProjectVersionsPanel = defineAsyncComponent({
+  loader: () => import("./components/ProjectVersionsPanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ScenePlanner = defineAsyncComponent({
+  loader: () => import("./components/ScenePlanner.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const StoryScriptReview = defineAsyncComponent({
+  loader: () => import("./components/StoryScriptReview.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const StoryGraphView = defineAsyncComponent({
+  loader: () => import("./components/StoryGraphView.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const StoryboardView = defineAsyncComponent({
+  loader: () => import("./components/StoryboardView.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const PipelineWorkbench = defineAsyncComponent({
+  loader: () => import("./components/PipelineWorkbench.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const CreativeVariantComparisonModal = defineAsyncComponent({
+  loader: () => import("./components/CreativeVariantComparisonModal.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const TimelineEditor = defineAsyncComponent({
+  loader: () => import("./components/TimelineEditor.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const RelinkMedia = defineAsyncComponent({
+  loader: () => import("./components/RelinkMedia.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const AnalysisJobActions = defineAsyncComponent({
+  loader: () => import("./components/AnalysisJobActions.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
 
 const props = defineProps<{
   nativeDrafts?: RetainedNativeDraft[];
