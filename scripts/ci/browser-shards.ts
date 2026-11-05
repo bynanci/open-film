@@ -118,7 +118,7 @@ export function validateBrowserResults(
       );
     if (
       config.workers !== 1 ||
-      config.fullyParallel !== false ||
+      config.fullyParallel !== true ||
       array(config.projects).length !== 1 ||
       array(config.projects).some(
         (project) =>
@@ -126,7 +126,7 @@ export function validateBrowserResults(
       )
     )
       throw new Error(
-        "Browser report changed serial execution or retry policy.",
+        "Browser report changed single-worker execution or retry policy.",
       );
     const entries = cases(report);
     for (const { test, ok } of entries) {
