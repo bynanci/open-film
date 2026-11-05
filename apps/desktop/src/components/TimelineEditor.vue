@@ -390,6 +390,11 @@ const inspector = ref<
 >("clip");
 const selectedCaptionTrackId = ref("");
 const selectedCaptionCueId = ref("");
+const captionTimingDraft = ref<{
+  cueId: string;
+  startMs: string;
+  endMs: string;
+} | null>(null);
 const captionSourceTrackId = ref("");
 const captionImporting = ref(false);
 const captionImportError = ref("");
@@ -1154,6 +1159,19 @@ const selectedCaptionCue = computed(() =>
     (cue) => cue.id === selectedCaptionCueId.value,
   ),
 );
+watch(
+  [
+    () => props.projectId,
+    () => props.compositionId,
+    () => selectedCaptionCue.value?.id,
+    () => selectedCaptionCue.value?.startMs,
+    () => selectedCaptionCue.value?.endMs,
+  ],
+  () => {
+    captionTimingDraft.value = null;
+  },
+  { flush: "sync" },
+);
 const captionDuration = computed(() =>
   Math.max(0.001, state.value?.composition.duration ?? 0),
 );
@@ -1716,6 +1734,52 @@ function updateCaptionCue(patch: {
       cueId: cue.id,
       patch,
     });
+}
+function captionTimingValue(field: "startMs" | "endMs", value: number) {
+  const cue = selectedCaptionCue.value;
+  const draft = captionTimingDraft.value;
+  return cue && draft?.cueId === cue.id ? draft[field] : String(value);
+}
+function beginCaptionTimingDraft() {
+  const cue = selectedCaptionCue.value;
+  captionTimingDraft.value = cue
+    ? {
+        cueId: cue.id,
+        startMs: String(cue.startMs),
+        endMs: String(cue.endMs),
+      }
+    : null;
+}
+function captureCaptionTimingDraft(field: "startMs" | "endMs", event: Event) {
+  const cue = selectedCaptionCue.value;
+  const target = event.currentTarget as HTMLInputElement;
+  if (!cue) return;
+  const current = captionTimingDraft.value;
+  const draft =
+    current?.cueId === cue.id
+      ? current
+      : {
+          cueId: cue.id,
+          startMs: String(cue.startMs),
+          endMs: String(cue.endMs),
+        };
+  captionTimingDraft.value = { ...draft, [field]: target.value };
+}
+function commitCaptionTimingDraft(field: "startMs" | "endMs", event: Event) {
+  const target = event.currentTarget as HTMLInputElement;
+  const value = target.valueAsNumber;
+  if (
+    !target.value.trim() ||
+    !target.validity.valid ||
+    !Number.isSafeInteger(value)
+  ) {
+    captionTimingDraft.value = null;
+    return;
+  }
+  updateCaptionCue({ [field]: value });
+}
+function clearCaptionTimingDraft() {
+  captionTimingDraft.value = null;
 }
 function deleteCaptionCue() {
   const track = selectedCaptionTrack.value;
@@ -6288,39 +6352,40 @@ onBeforeUnmount(() => {
                   <label class="editor-field">
                     {{ t("editor.captions.startMs") }}
                     <input
-                      :value="selectedCaptionCue.startMs"
+                      :value="
+                        captionTimingValue(
+                          'startMs',
+                          selectedCaptionCue.startMs,
+                        )
+                      "
                       type="number"
                       min="0"
                       :max="selectedCaptionCue.endMs - 1"
                       step="1"
                       :disabled="historyBusy"
                       data-testid="caption-start"
-                      @change="
-                        updateCaptionCue({
-                          startMs: Number(
-                            ($event.target as HTMLInputElement).value,
-                          ),
-                        })
-                      "
+                      @focus="beginCaptionTimingDraft"
+                      @input="captureCaptionTimingDraft('startMs', $event)"
+                      @change="commitCaptionTimingDraft('startMs', $event)"
+                      @blur="clearCaptionTimingDraft"
                     />
                   </label>
                   <label class="editor-field">
                     {{ t("editor.captions.endMs") }}
                     <input
-                      :value="selectedCaptionCue.endMs"
+                      :value="
+                        captionTimingValue('endMs', selectedCaptionCue.endMs)
+                      "
                       type="number"
                       :min="selectedCaptionCue.startMs + 1"
                       :max="Math.round(captionDuration * 1000)"
                       step="1"
                       :disabled="historyBusy"
                       data-testid="caption-end"
-                      @change="
-                        updateCaptionCue({
-                          endMs: Number(
-                            ($event.target as HTMLInputElement).value,
-                          ),
-                        })
-                      "
+                      @focus="beginCaptionTimingDraft"
+                      @input="captureCaptionTimingDraft('endMs', $event)"
+                      @change="commitCaptionTimingDraft('endMs', $event)"
+                      @blur="clearCaptionTimingDraft"
                     />
                   </label>
                 </div>
