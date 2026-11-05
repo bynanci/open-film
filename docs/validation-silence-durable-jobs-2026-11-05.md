@@ -71,11 +71,26 @@ path accepted a ripple that would split a clip with automation. With the typed
 fail-closed rule, the test passes and the real HTTP Job ends `failed` without a
 fetchable Review.
 
+## GitHub CI evidence
+
+All required GitHub Actions checks passed for PR #107 head
+`e03d2fe22ddc16f8e118979ac72fcc0f77bb6d54`:
+
+- [Verify](https://github.com/bynanci/open-film/actions/runs/41977238332):
+  fast-contract-check, full heavy-media-qa, all four browser E2E shards,
+  native-shell and docs-site passed.
+- [Render QA](https://github.com/bynanci/open-film/actions/runs/41977238353):
+  darwin-arm64, linux-x64, win32-x64 and render-qa-complete passed.
+- [Windows media recovery](https://github.com/bynanci/open-film/actions/runs/41977238343):
+  windows-ffmpeg9 passed.
+- [DCO sign-off](https://github.com/bynanci/open-film/actions/runs/41977238730)
+  passed.
+
 ## Not established by this record
 
-- GitHub Actions on the pushed PR head are pending review/run.
-- Full `pnpm test`, full `pnpm test:media`, browser E2E and native-shell suites
-  were not run for this candidate.
+- The standalone `pnpm test` command was not run locally. CI's full
+  `test:ci-partition`, `test:media`, four browser shards and native-shell tests
+  all passed on the candidate head.
 - No Windows/macOS workstation, clean installer, update/rollback, Resolve,
   external-disk, GPU/4K or listening evidence is claimed.
 - Signing/notarization, installer provenance and the separate Tokio, GLib and
