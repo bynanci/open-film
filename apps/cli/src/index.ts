@@ -47,7 +47,7 @@ Usage:
   openfilm analysis-run create --project <film.openfilm> --manifest <verified-manifest-id> [--scope selected-sources|project-catalog --confirm-project-catalog] [--visual-samples] [--travel-gpx <route.gpx> --travel-assets <asset-id,...> --clock-offset-minutes <minutes> --time-zone <IANA-zone>]
   openfilm analysis-run status|retry <run-id> --project <film.openfilm> [--request-id <id>]
   openfilm analysis-review search|preview|accept <run-id> --project <film.openfilm> [--query <text> --operation <operation.json> --preview-file <preview.json> --request-id <id> --supersedes-decision <id>]
-  openfilm list --project <film.openfilm> [--offset 0 --limit 60]
+  openfilm list --project <film.openfilm> [--offset 0 --limit 60 | --cursor first|<next-cursor>]
   openfilm analyze --project <film.openfilm>
   openfilm transcribe <asset-id> --project <film.openfilm> [--language auto|zh|en|ja] [--execution auto|cpu|gpu] [--model <local-model-folder>]
   openfilm waveform <asset-id> --project <film.openfilm>
@@ -197,6 +197,7 @@ function parse(args: string[]) {
     "description",
     "offset",
     "limit",
+    "cursor",
     "issue-offset",
     "issue-limit",
     "source-offset",
@@ -1221,6 +1222,7 @@ async function main() {
     } else if (command === "list") {
       const offset = Number(value(options, "offset") ?? 0);
       const limit = Number(value(options, "limit") ?? 60);
+      const cursor = value(options, "cursor");
       if (
         !Number.isInteger(offset) ||
         offset < 0 ||
@@ -1229,10 +1231,23 @@ async function main() {
         limit > 1000
       )
         throw new Error("List requires offset >= 0 and limit 1–1000.");
-      print({
-        assets: app.catalog.listAssets({ offset, limit }),
-        total: app.catalog.countAssets(),
-      });
+      if (cursor !== undefined) {
+        if (value(options, "offset") !== undefined)
+          throw new Error("Choose either --offset or --cursor.");
+        const page = app.catalog.listAssetPage({
+          limit,
+          ...(cursor === "first" ? {} : { cursor }),
+        });
+        print({
+          assets: page.assets,
+          total: app.catalog.countAssets(),
+          nextCursor: page.nextCursor,
+        });
+      } else
+        print({
+          assets: app.catalog.listAssets({ offset, limit }),
+          total: app.catalog.countAssets(),
+        });
     } else if (command === "analyze") print(app.analyze());
     else if (command === "rate") {
       const id = positional[1];

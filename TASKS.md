@@ -8,7 +8,7 @@ work.
 
 Status reviewed against
 [`main`](https://github.com/bynanci/open-film/commit/main)
-on 2026-11-04. The latest published source release remains **v0.4.0**.
+on 2026-11-05. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -172,8 +172,21 @@ change. Discuss their scope before implementation.
 - [x] Reproducible 10,000–100,000-row Catalog benchmark for chronological paging,
       search, lookup, summary scans and seeding ([method, results and limits](docs/validation-catalog-scale-benchmark.md)).
       This is Catalog evidence, not end-to-end support at those library sizes.
-- [ ] Optimize large-catalog name/tag search and evaluate cursor pagination using
-      the [Catalog scale measurements](docs/validation-catalog-scale-benchmark.md).
+- [x] Add versioned keyset cursors for chronological Catalog pages and use them
+      in the main Desktop library, full-catalog photo pickers, Motion video
+      picker, server API and CLI. Keep legacy offset callers compatible; see the
+      [Catalog scale measurements](docs/validation-catalog-scale-benchmark.md)
+      and [fcc00131 check review](docs/validation-fcc00131-follow-up.md).
+- [ ] Add semantics-preserving indexing for literal substring name/tag search.
+      Current `LIKE` behavior and tag matching must remain compatible; benchmark
+      and evaluate a migration before replacing the scan.
+- [ ] Bound memory in the full-catalog Story Template and PhotoDepth pickers.
+      Cursor paging removes repeated offset scans, but those pickers still collect
+      all matching descriptors before display.
+- [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
+      initial JavaScript bundle (current build: 1.72 MB minified / 508 KB gzip).
+      Record browser navigation and native cold-start measurements before setting
+      a size target.
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
 - [ ] Evaluate remote image-to-video adapters against verified APIs, consent,

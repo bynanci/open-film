@@ -15,7 +15,10 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { ProjectCatalog } from "../packages/catalog/src/index.ts";
+import {
+  encodeAssetPageCursor,
+  ProjectCatalog,
+} from "../packages/catalog/src/index.ts";
 import type { MediaAsset } from "../packages/core/src/index.ts";
 
 const repository = fileURLToPath(new URL("..", import.meta.url));
@@ -152,12 +155,32 @@ async function benchmarkCatalog(assetCount: number, root: string) {
         .map((row) => (JSON.parse(String(row.data)) as MediaAsset).id);
     const expectedPageIds = (offset: number) =>
       expectedChronologicalIds.slice(offset, offset + pageSize);
+    const cursorAtOffset = (offset: number): string | undefined => {
+      if (offset <= 0) return undefined;
+      const previousId = expectedChronologicalIds[offset - 1]!;
+      const previous = generatedAsset(
+        Number(previousId.slice("asset-".length)),
+      );
+      return encodeAssetPageCursor({
+        capturedAt: previous.capturedAt ?? null,
+        id: previous.id,
+      });
+    };
+    const cursorPage = (offset: number) =>
+      catalog.listAssetPage({
+        limit: pageSize,
+        ...(cursorAtOffset(offset) ? { cursor: cursorAtOffset(offset) } : {}),
+      });
     const legacyFirstPage = measure(
       () => legacyPage(0),
       (ids) => assert.deepEqual(ids, expectedPageIds(0)),
     );
     const firstPage = measure(
       () => page(0).map((asset) => asset.id),
+      (ids) => assert.deepEqual(ids, expectedPageIds(0)),
+    );
+    const cursorFirstPage = measure(
+      () => cursorPage(0).assets.map((asset) => asset.id),
       (ids) => assert.deepEqual(ids, expectedPageIds(0)),
     );
     const middleOffset = Math.max(0, middleIndex - Math.floor(pageSize / 2));
@@ -169,6 +192,10 @@ async function benchmarkCatalog(assetCount: number, root: string) {
       () => page(middleOffset).map((asset) => asset.id),
       (ids) => assert.deepEqual(ids, expectedPageIds(middleOffset)),
     );
+    const cursorMiddlePage = measure(
+      () => cursorPage(middleOffset).assets.map((asset) => asset.id),
+      (ids) => assert.deepEqual(ids, expectedPageIds(middleOffset)),
+    );
     const lastOffset = Math.max(0, assetCount - pageSize);
     const legacyLastPage = measure(
       () => legacyPage(lastOffset),
@@ -176,6 +203,10 @@ async function benchmarkCatalog(assetCount: number, root: string) {
     );
     const lastPage = measure(
       () => page(lastOffset).map((asset) => asset.id),
+      (ids) => assert.deepEqual(ids, expectedPageIds(lastOffset)),
+    );
+    const cursorLastPage = measure(
+      () => cursorPage(lastOffset).assets.map((asset) => asset.id),
       (ids) => assert.deepEqual(ids, expectedPageIds(lastOffset)),
     );
     const exactNameSearch = measure(
@@ -231,6 +262,28 @@ async function benchmarkCatalog(assetCount: number, root: string) {
       pageSize,
       lastOffset,
     );
+    const cursorPlanOffset = middleOffset;
+    const cursorPlanPreviousId =
+      expectedChronologicalIds[cursorPlanOffset - 1]!;
+    const cursorPlanPrevious = generatedAsset(
+      Number(cursorPlanPreviousId.slice("asset-".length)),
+    );
+    const cursorPagePlan = diagnosticDatabase!
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT data FROM assets
+         WHERE captured_at IS NOT NULL AND (captured_at,id)>(?,?)
+         ORDER BY captured_at ASC,id ASC LIMIT ?`,
+      )
+      .all(cursorPlanPrevious.capturedAt, cursorPlanPrevious.id, pageSize + 1)
+      .map((row) => String(row.detail));
+    const nullCursorPagePlan = diagnosticDatabase!
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT data FROM assets
+         WHERE captured_at IS NULL AND id>?
+         ORDER BY id ASC LIMIT ?`,
+      )
+      .all("asset-000000", pageSize + 1)
+      .map((row) => String(row.detail));
     const nonNullCountPlan = explain(
       "SELECT COUNT(*) AS count FROM assets WHERE captured_at IS NOT NULL",
     );
@@ -260,6 +313,8 @@ async function benchmarkCatalog(assetCount: number, root: string) {
       databaseSizeBytes,
       queryPlans: {
         chronologicalPage: chronologicalPagePlan,
+        cursorPage: cursorPagePlan,
+        nullCursorPage: nullCursorPagePlan,
         countDatedAssets: nonNullCountPlan,
         datedPage: datedPagePlan,
         undatedPage: undatedPagePlan,
@@ -276,10 +331,13 @@ async function benchmarkCatalog(assetCount: number, root: string) {
         countAssets,
         legacyFirstPage,
         firstPage,
+        cursorFirstPage,
         legacyMiddlePage,
         middlePage,
+        cursorMiddlePage,
         legacyLastPage,
         lastPage,
+        cursorLastPage,
         exactNameSearch,
         tagSearch,
         pointLookup,

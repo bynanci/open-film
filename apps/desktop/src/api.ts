@@ -1576,6 +1576,7 @@ export const api = {
     request<{
       assets: MediaAsset[];
       total: number;
+      nextCursor?: string | null;
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
   jobs: (signal?: AbortSignal) =>

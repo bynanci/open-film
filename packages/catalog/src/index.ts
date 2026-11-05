@@ -70,6 +70,85 @@ export interface AssetListOptions {
   state?: { favorite?: boolean; rejected?: boolean; locked?: boolean };
 }
 
+export interface AssetPageOptions extends Omit<
+  AssetListOptions,
+  "offset" | "order"
+> {
+  /** Opaque keyset cursor returned by the previous chronological page. */
+  cursor?: string;
+}
+
+export interface AssetPageResult {
+  assets: MediaAsset[];
+  nextCursor: string | null;
+}
+
+export interface AssetPageCursorPosition {
+  version: 1;
+  capturedAt: string | null;
+  id: string;
+}
+
+function validateAssetPageCursorPosition(
+  value: unknown,
+): AssetPageCursorPosition {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !== "capturedAt,id,version"
+  )
+    throw new Error("Invalid asset page cursor.");
+  const position = value as Record<string, unknown>;
+  if (
+    position.version !== 1 ||
+    typeof position.id !== "string" ||
+    (position.capturedAt !== null &&
+      (typeof position.capturedAt !== "string" ||
+        position.capturedAt.length > 128 ||
+        !Number.isFinite(Date.parse(position.capturedAt))))
+  )
+    throw new Error("Invalid asset page cursor.");
+  try {
+    id(position.id);
+  } catch {
+    throw new Error("Invalid asset page cursor.");
+  }
+  return {
+    version: 1,
+    capturedAt: position.capturedAt as string | null,
+    id: position.id,
+  };
+}
+
+/** Encode a position for the next chronological catalog page. */
+export function encodeAssetPageCursor(
+  position: Omit<AssetPageCursorPosition, "version">,
+): string {
+  const validated = validateAssetPageCursorPosition({
+    version: 1,
+    ...position,
+  });
+  return Buffer.from(JSON.stringify(validated)).toString("base64url");
+}
+
+export function decodeAssetPageCursor(cursor: string): AssetPageCursorPosition {
+  if (
+    typeof cursor !== "string" ||
+    cursor.length > 1024 ||
+    !/^[A-Za-z0-9_-]+$/u.test(cursor)
+  )
+    throw new Error("Invalid asset page cursor.");
+  try {
+    const bytes = Buffer.from(cursor, "base64url");
+    if (bytes.toString("base64url") !== cursor)
+      throw new Error("Non-canonical cursor encoding.");
+    return validateAssetPageCursorPosition(JSON.parse(bytes.toString("utf8")));
+  } catch {
+    throw new Error("Invalid asset page cursor.");
+  }
+}
+
 export interface JobListOptions {
   type?: string;
   assetId?: string;
@@ -1363,6 +1442,86 @@ export class ProjectCatalog {
         .all(...filter.params, limit, offset);
     }
     return rows.map((row) => JSON.parse(String(row.data)) as MediaAsset);
+  }
+
+  /**
+   * Read a chronological page using the captured_at/id index. Unlike OFFSET,
+   * this seek remains bounded as the caller advances through a large catalog.
+   * Each call reads one SQLite snapshot; callers retain the returned cursor to
+   * continue after the final row of the previous page.
+   */
+  listAssetPage(options: AssetPageOptions = {}): AssetPageResult {
+    const limit = options.limit ?? 60;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 10000)
+      throw new Error("Asset page limit must be between 1 and 10000.");
+    const cursor =
+      options.cursor === undefined
+        ? undefined
+        : decodeAssetPageCursor(options.cursor);
+    const filter = assetFilter(options);
+    const ownsReadSnapshot = !this.database.isTransaction;
+    if (ownsReadSnapshot) this.database.exec("BEGIN");
+    try {
+      const datedRows: Record<string, unknown>[] = [];
+      if (cursor?.capturedAt !== null) {
+        const datedWhere = filter.sql
+          ? `${filter.sql} AND captured_at IS NOT NULL`
+          : "WHERE captured_at IS NOT NULL";
+        const seek = cursor ? " AND (captured_at,id)>(?,?)" : "";
+        const params = [
+          ...filter.params,
+          ...(cursor ? [cursor.capturedAt!, cursor.id] : []),
+          limit + 1,
+        ];
+        datedRows.push(
+          ...this.database
+            .prepare(
+              `SELECT data FROM assets ${datedWhere}${seek} ORDER BY captured_at ASC,id ASC LIMIT ?`,
+            )
+            .all(...params),
+        );
+      }
+
+      const rows = [...datedRows];
+      if (rows.length <= limit) {
+        const nullWhere = filter.sql
+          ? `${filter.sql} AND captured_at IS NULL`
+          : "WHERE captured_at IS NULL";
+        const seek = cursor?.capturedAt === null ? " AND id>?" : "";
+        const params = [
+          ...filter.params,
+          ...(cursor?.capturedAt === null ? [cursor.id] : []),
+          limit + 1 - rows.length,
+        ];
+        rows.push(
+          ...this.database
+            .prepare(
+              `SELECT data FROM assets ${nullWhere}${seek} ORDER BY id ASC LIMIT ?`,
+            )
+            .all(...params),
+        );
+      }
+      if (ownsReadSnapshot) this.database.exec("COMMIT");
+      const hasMore = rows.length > limit;
+      const assets = rows
+        .slice(0, limit)
+        .map((row) => JSON.parse(String(row.data)) as MediaAsset);
+      const last = assets.at(-1);
+      return {
+        assets,
+        nextCursor:
+          hasMore && last
+            ? encodeAssetPageCursor({
+                capturedAt: last.capturedAt ?? null,
+                id: last.id,
+              })
+            : null,
+      };
+    } catch (error) {
+      if (ownsReadSnapshot && this.database.isTransaction)
+        this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   countAssets(

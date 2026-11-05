@@ -270,18 +270,24 @@ describe("PhotoDepth recipe controls", () => {
       local("new-background"),
       local("unselected"),
     );
-    const reads = vi.fn(async (params: URLSearchParams) => ({
-      assets: library.slice(
-        Number(params.get("offset")),
-        Number(params.get("offset")) + Number(params.get("limit")),
-      ),
-      total: library.length,
-    }));
+    const reads = vi.fn(async (params: URLSearchParams) => {
+      const offset = Number(params.get("cursor") ?? 0);
+      const limit = Number(params.get("limit"));
+      const assets = library.slice(offset, offset + limit);
+      return {
+        assets,
+        total: library.length,
+        nextCursor:
+          offset + assets.length < library.length
+            ? String(offset + limit)
+            : null,
+      };
+    });
     const panel = await fixture(undefined, ["source"], reads);
     for (let index = 0; index < 12; index++) await vue.nextTick();
     expect(reads).toHaveBeenCalledTimes(2);
-    expect(reads.mock.calls.map(([params]) => params.get("offset"))).toEqual([
-      "0",
+    expect(reads.mock.calls.map(([params]) => params.get("cursor"))).toEqual([
+      null,
       "200",
     ]);
     expect(

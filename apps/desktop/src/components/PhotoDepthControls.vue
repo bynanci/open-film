@@ -59,19 +59,19 @@ watch(
     libraryError.value = false;
     try {
       const images: MediaAsset[] = [];
-      let offset = 0;
+      let cursor: string | undefined;
       while (!stale) {
-        const page = await api.assets(
-          new URLSearchParams({
-            mediaType: "image",
-            offset: String(offset),
-            limit: "200",
-          }),
-        );
+        const query = new URLSearchParams({
+          mediaType: "image",
+          limit: "200",
+          cursorMode: "keyset",
+        });
+        if (cursor) query.set("cursor", cursor);
+        const page = await api.assets(query);
         if (stale) return;
         images.push(...page.assets.filter(eligibleImage));
-        offset += page.assets.length;
-        if (!page.assets.length || offset >= page.total) break;
+        if (!page.assets.length || !page.nextCursor) break;
+        cursor = page.nextCursor;
       }
       if (!stale) libraryAssets.value = images;
     } catch {

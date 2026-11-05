@@ -240,20 +240,19 @@ async function loadPhotoCatalog() {
   photoCatalogBusy.value = true;
   const images: MediaAsset[] = [];
   try {
-    let offset = 0;
-    let total = 0;
-    do {
+    let cursor: string | undefined;
+    while (true) {
       const query = new URLSearchParams({
         mediaType: "image",
         limit: "200",
-        offset: String(offset),
+        cursorMode: "keyset",
       });
+      if (cursor) query.set("cursor", cursor);
       const page = await api.assets(query);
       images.push(...page.assets);
-      offset += page.assets.length;
-      total = page.total;
-      if (!page.assets.length) break;
-    } while (offset < total);
+      if (!page.nextCursor || !page.assets.length) break;
+      cursor = page.nextCursor;
+    }
     catalogImages.value = images;
     photoCatalogLoaded.value = true;
     if (

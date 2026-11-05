@@ -32,6 +32,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { decodeAssetPageCursor } from "@openfilm/catalog";
 import {
   OpenFilmApplication,
   LocalPresetRegistry,
@@ -4124,6 +4125,8 @@ export async function startServer(options: ServerOptions = {}) {
         if (method === "GET" && route === "/api/assets") {
           const offset = Number(url.searchParams.get("offset") ?? 0);
           const limit = Number(url.searchParams.get("limit") ?? 60);
+          const cursorMode = url.searchParams.get("cursorMode") ?? "";
+          const cursor = url.searchParams.get("cursor");
           if (
             !Number.isInteger(offset) ||
             offset < 0 ||
@@ -4135,9 +4138,27 @@ export async function startServer(options: ServerOptions = {}) {
               400,
               "Pagination requires offset >= 0 and limit 1–200.",
             );
+          if (
+            !["", "keyset"].includes(cursorMode) ||
+            (cursorMode === "keyset" && offset !== 0) ||
+            (cursor !== null && cursorMode !== "keyset")
+          )
+            throw new HttpError(400, "Invalid asset pagination mode.");
+          if (cursor !== null) {
+            try {
+              decodeAssetPageCursor(cursor);
+            } catch {
+              throw new HttpError(400, "Invalid asset page cursor.");
+            }
+          }
           const ids = url.searchParams.get("ids")?.split(",").filter(Boolean);
           if (ids && ids.length > 200)
             throw new HttpError(400, "Select at most 200 IDs per request.");
+          if (cursorMode === "keyset" && ids)
+            throw new HttpError(
+              400,
+              "Cursor pagination cannot be combined with an explicit ID list.",
+            );
           const mediaType = url.searchParams.get("mediaType");
           const state = url.searchParams.get("state");
           if (
@@ -4148,8 +4169,6 @@ export async function startServer(options: ServerOptions = {}) {
           if (state && !["favorite", "rejected", "locked"].includes(state))
             throw new HttpError(400, "Unknown media state.");
           const filter = {
-            offset,
-            limit,
             ...(ids ? { ids } : {}),
             ...(url.searchParams.get("search")
               ? { search: url.searchParams.get("search")! }
@@ -4159,15 +4178,25 @@ export async function startServer(options: ServerOptions = {}) {
               ? { mediaType: mediaType as MediaAsset["mediaType"] }
               : {}),
           };
+          const page =
+            cursorMode === "keyset"
+              ? application.catalog.listAssetPage({
+                  ...filter,
+                  limit,
+                  ...(cursor ? { cursor } : {}),
+                })
+              : undefined;
           const assets = ids
             ? ids.flatMap((id) => {
                 const asset = application.catalog.getAsset(id);
                 return asset ? [asset] : [];
               })
-            : application.catalog.listAssets(filter);
+            : (page?.assets ??
+              application.catalog.listAssets({ ...filter, offset, limit }));
           json(response, 200, {
             assets,
             total: application.catalog.countAssets(filter),
+            ...(page ? { nextCursor: page.nextCursor } : {}),
             summary: {
               total: application.catalog.countAssets(),
               images: application.catalog.countAssets({ mediaType: "image" }),

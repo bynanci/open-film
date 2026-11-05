@@ -61,6 +61,6 @@ OpenFilm 以單一使用者的本機工作站為設計範圍。基本匯入、�
 
 程式碼採 [Apache-2.0 授權](https://github.com/bynanci/open-film/blob/main/LICENSE)。從[架構](en/architecture.md)、[專案格式](project-format.md)與[整合契約](en/CONTRACTS.md)了解設計；開發環境、檢查命令及提交方式集中在[貢獻指南](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.zh-TW.md)。
 
-Roadmap、研究與驗證紀錄各自保存方向、假設和執行證據。側欄的「驗證紀錄」包含當時的平台、commit、測試結果及待完成的人工檢查，供查核與重現使用。
+Roadmap、研究與驗證紀錄各自保存方向、假設和執行證據。側欄的「驗證紀錄」包含當時的平台、commit、測試結果及待完成的人工檢查，供查核與重現使用。近期紀錄：[大目錄分頁效能](validation-catalog-scale-benchmark.md)、[fcc00131 checks 與後續改善](validation-fcc00131-follow-up.md)。
 
 主要使用指南提供繁體中文、英文與日文的保存版本。部分技術契約與歷史驗證紀錄目前以英文維護；翻譯規則見[文件語言政策](i18n.md)。歡迎回報錯誤、改善文件、補充翻譯或提交程式碼。回報時請使用可公開的重現素材，避免附上私人影片、原始路徑或憑證。

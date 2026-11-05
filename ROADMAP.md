@@ -111,8 +111,10 @@ release date:
 
 - Broader source and provider integrations, including additional local analysis
   implementations.
-- Archive-scale analysis, background scheduling and reproducible performance
-  measurements on larger libraries.
+- Archive-scale analysis and background scheduling, plus semantics-preserving
+  large-catalog search indexes, bounded/lazy media selectors, and measured
+  Desktop workspace code splitting. Chronological cursor paging is implemented;
+  see the [Catalog scale validation](docs/validation-catalog-scale-benchmark.md).
 - Executable extension discovery and loading beyond the current SDK and built-in
   registration. The local data-only preset registry already exists.
 - Additional interchange fidelity where the target editor and format can support

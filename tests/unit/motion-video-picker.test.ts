@@ -41,10 +41,16 @@ async function fixture() {
     const found = library.filter((item) =>
       item.name.includes(params.get("search") ?? ""),
     );
-    const offset = Number(params.get("offset") ?? 0);
+    const offset = params.has("cursor")
+      ? Number(params.get("cursor"))
+      : Number(params.get("offset") ?? 0);
+    const pageSize = Number(params.get("limit"));
+    const page = found.slice(offset, offset + pageSize);
     return {
-      assets: found.slice(offset, offset + Number(params.get("limit"))),
+      assets: page,
       total: found.length,
+      nextCursor:
+        offset + page.length < found.length ? String(offset + pageSize) : null,
     };
   });
   const previewMotion = vi.fn(
@@ -185,7 +191,8 @@ describe("external motion Library picker", () => {
       true,
     );
     expect(h.button("motion.previousVideos")?.props.disabled).toBe(true);
-    expect(h.assets.mock.calls.at(-1)![0].get("offset")).toBe("0");
+    expect(h.assets.mock.calls.at(-1)![0].get("cursorMode")).toBe("keyset");
+    expect(h.assets.mock.calls.at(-1)![0].get("cursor")).toBeNull();
     expect(h.assets.mock.calls.at(-1)![0].get("search")).toBe("Video 205");
   });
 
@@ -198,10 +205,12 @@ describe("external motion Library picker", () => {
       let resolve!: (value: {
         assets: ReturnType<typeof video>[];
         total: number;
+        nextCursor: string | null;
       }) => void;
       const pending = new Promise<{
         assets: ReturnType<typeof video>[];
         total: number;
+        nextCursor: string | null;
       }>((done) => {
         resolve = done;
       });
@@ -212,7 +221,7 @@ describe("external motion Library picker", () => {
       else if (owner === "revision") h.props.state.revision = "new-saved";
       else h.props.sourceVersion++;
       await settle();
-      resolve({ assets: [video(999)], total: 1 });
+      resolve({ assets: [video(999)], total: 1, nextCursor: null });
       await loading;
       expect(
         h.nodes().some((node) => String(node.props.value).startsWith("video-")),
