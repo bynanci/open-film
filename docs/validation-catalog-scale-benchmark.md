@@ -63,17 +63,16 @@ the total time to traverse every page sequentially.
 
 |  Assets | Page   | Indexed `OFFSET` median [min, max] | Keyset median [min, max] | Ratio |
 | ------: | ------ | ---------------------------------: | -----------------------: | ----: |
-|  10,000 | First  |               0.131 [0.087, 5.716] |     0.086 [0.081, 0.108] |  1.5× |
-|  10,000 | Middle |               0.222 [0.204, 0.280] |     0.146 [0.093, 0.207] |  1.5× |
-|  10,000 | Last   |               0.152 [0.142, 0.191] |     0.098 [0.088, 0.129] |  1.6× |
-| 100,000 | First  |               0.088 [0.082, 0.152] |     0.096 [0.085, 0.113] |  0.9× |
-| 100,000 | Middle |               1.885 [1.777, 2.498] |     0.108 [0.097, 0.147] | 17.5× |
-| 100,000 | Last   |               1.309 [1.205, 1.369] |     0.097 [0.089, 0.152] | 13.6× |
+|  10,000 | First  |               0.098 [0.084, 0.146] |     0.084 [0.079, 0.199] |  1.2× |
+|  10,000 | Middle |               0.270 [0.210, 0.311] |     0.152 [0.092, 0.292] |  1.8× |
+|  10,000 | Last   |               0.137 [0.134, 0.164] |     0.090 [0.084, 0.105] |  1.5× |
+| 100,000 | First  |               0.089 [0.077, 0.207] |     0.105 [0.085, 0.206] |  0.8× |
+| 100,000 | Middle |               1.967 [1.789, 2.261] |     0.106 [0.092, 0.157] | 18.5× |
+| 100,000 | Last   |               1.291 [1.236, 1.353] |     0.099 [0.091, 0.218] | 13.0× |
 
-First-page performance is equivalent within the overlapping observed ranges; a
-single 5.7 ms offset sample widened the 10,000-row first-page range. Deep middle
-and last pages were 17.5× and 13.6× faster than the current indexed-offset path
-in this synthetic 100,000-row workload. `EXPLAIN QUERY PLAN` reports a composite
+First-page performance is equivalent within the overlapping observed ranges.
+Deep middle and last pages were 18.5× and 13.0× faster than the current
+indexed-offset path in this synthetic 100,000-row workload. `EXPLAIN QUERY PLAN` reports a composite
 `assets_capture` range seek on `(captured_at,id)` for dated cursors, and an
 `assets_capture` seek on `(captured_at,id)` for null-date cursors. The page API
 reads each individual page in one SQLite read snapshot, preserves equal-time and
@@ -85,11 +84,11 @@ The cursor does not pin a snapshot across separate HTTP requests: catalog edits
 between pages can change what later pages contain, as with ordinary live
 pagination. The full-catalog photo pickers still materialize their descriptors
 in memory. At 100,000 rows, substring name and tag searches remain full-catalog
-scans; this run measured 62.64 ms and 62.88 ms medians respectively. Search
+scans; this run measured 61.31 ms and 59.89 ms medians respectively. Search
 indexing and bounded/lazy picker memory remain explicit follow-up work.
 
-The final pre-commit rerun was measured at `2026-11-05T03:45:49.210Z` from the
-candidate source. Its 10,000-row fixture SHA-256 is
+The exact-source run was measured at `2026-11-05T03:58:41.233Z` on clean commit
+`c64dd3f6eefc16c5d164de13bac434749de4d9bf`. Its 10,000-row fixture SHA-256 is
 `1aee6a1f4ba747be349110b9a0983b00673f547c8479cc38a269ee24876eeccb`; the
 100,000-row fixture SHA-256 is
 `84eb8bdf90026c544b2e6e339f448a421bd22a364ec71b59b70880ea48e7563e`. The
@@ -100,7 +99,7 @@ Catalog source SHA-256 is
 validator source SHA-256 is
 `1c0a5f4a868be0cf44299874a1eaec0d707f49f70559372400de7431173d3328`. The
 captured JSON output SHA-256 is
-`c2dcfc35d596ebe9df8a9dac07efa5263b7de90958382b7ecf500e6e8520ca81`.
+`a21186ab0bb1486fc97b2ba77cd7e7e379caf66f3068924e8782bbeaf62ce07f`.
 
 This is a synthetic Catalog measurement, not end-to-end Desktop evidence at
 100,000 assets or a latency guarantee. The browser regression uses 121 generated
