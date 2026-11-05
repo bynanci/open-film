@@ -261,6 +261,21 @@
   gap: var(--of-space-2);
 }
 
+.cut-desk-split-wipe-control {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: var(--of-space-2);
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+}
+
+.cut-desk-split-wipe-control input {
+  flex: 1 1 8rem;
+  min-width: 5rem;
+  accent-color: var(--editor-accent);
+}
+
 .cut-desk-compare .editor-button[aria-pressed="true"] {
   border-color: var(--editor-accent);
   color: var(--editor-accent);

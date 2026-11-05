@@ -99,7 +99,33 @@ export default {
       inactive: "フィルムルックを適用中",
       held: "押している間ルック適用前を表示中",
       latched: "ルック適用前の表示を維持中",
+      splitWipe: "スプリットワイプ",
+      splitWipeActive: "左：Film Look 適用前／右：適用後",
+      wipeBypassed: "Film Look 適用前",
+      wipeApplied: "Film Look 適用後",
+      wipePosition: "スプリットワイプの位置",
+      splitWipeBoundary:
+        "左右ともブラウザー上の Record プレビューです。左は Film Look 適用前、右は適用後を示します。校正済みディスプレイや書き出し結果の測定ではなく、保存済みの映像や出力は変更されません。",
       hint: "比較はこのプレビューだけに適用され、保存済み映像や出力は変更しません。",
+    },
+    scopes: {
+      title: "ソースフレームスコープ",
+      toggle: "スコープ",
+      capture: "現在のフレームをサンプル",
+      sampling: "ソースフレームをサンプリング中…",
+      boundary:
+        "スコープはブラウザーでデコードしたソース RGB を最大 512 × 512 でサンプルします。OpenFilm の変換、プライマリー補正、Film Look、合成、字幕、ディスプレイの色管理を適用する前の値です。校正済み出力スコープではありません。",
+      source: "選択したソース",
+      sourceSize: "ソース {width}×{height}",
+      sampleSize: "サンプル {width}×{height}",
+      sourceTime: "ソース時刻 {time} 秒",
+      sampleCount: "不透明な画素 {count} 個をサンプル",
+      histogram: "RGB／輝度ヒストグラム",
+      rgbParade: "RGB パレード",
+      lumaWaveform: "輝度波形",
+      vectorscope: "BT.709 ベクトルスコープ",
+      unavailable:
+        "デコード済みソースフレームを取得できません。Record の再生ヘッド位置で表示可能な動画または写真クリップを選び、プレビューの読み込みを待ってください。",
     },
     shortcuts:
       "Space 再生／一時停止 · J K L シャトル · ← → フレーム · Shift+← → 秒 · ↑ ↓ 編集点 · Home/End 境界 · B 分割",

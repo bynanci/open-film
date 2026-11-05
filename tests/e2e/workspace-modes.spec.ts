@@ -1193,7 +1193,7 @@ test("keeps expert tools readable with Traditional Chinese and expanded labels",
         await expect(page.getByTestId("cut-desk-target-status")).toContainText(
           locale === "en-XA" ? "" : uiText(locale, "cutDesk.record"),
         );
-        await expect(page.locator(".cut-desk-compare button")).toHaveCount(2);
+        await expect(page.locator(".cut-desk-compare button")).toHaveCount(3);
       }
       for (const width of [640, 780, 1100, 1280, 1920]) {
         await page.setViewportSize({ width, height: width < 900 ? 600 : 900 });
@@ -1227,7 +1227,7 @@ test("keeps expert tools readable with Traditional Chinese and expanded labels",
       }
       await page.setViewportSize({ width: 1440, height: 900 });
       if (workspace === "edit") {
-        const latch = page.locator(".cut-desk-compare button").last();
+        const latch = page.locator(".cut-desk-compare button").nth(1);
         await latch.click();
         await expect(latch).toHaveAttribute("aria-pressed", "true");
         for (const theme of locale === "en-US"
