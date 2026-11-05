@@ -1247,6 +1247,16 @@ onBeforeUnmount(() => {
   .silence-heading {
     flex-wrap: wrap;
   }
+  .silence-candidate-map {
+    padding-inline-start: 0;
+  }
+  .silence-candidate-map > span:first-child {
+    min-width: 0;
+  }
+  .silence-timecode {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .silence-options {
     grid-template-columns: 1fr;
   }
