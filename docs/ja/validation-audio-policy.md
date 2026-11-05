@@ -92,3 +92,15 @@ graph compile 診断は中央値 352.41 ms → 2.43 ms、graph hash は同一で
 typecheck、build、77 files／1504 contracts、18 interchange checks、license、8 provenance checks、
 339 browser-case partition が合格しました。関連二 browser specs は七件とも合格です。
 既存の大きな chunk advisory は残ります。assertion、PCM 許容誤差、test を緩和／無効化していません。
+
+### Hosted tool provisioning
+
+署名 source `f681df7` の DCO、fast-contract、native-shell、docs、四 browser shards、三 OS Render QA、
+Windows recovery は合格しました。media 準備だけが Azure Ubuntu mirror で遅延し、160 MB／107 packages
+のうち約十一分で32番目までしか取得できませんでした。旧成功候補の同 step は27秒でした。新 runner の
+再試行も準備段階に留まり、中断した実行は media QA 合格に数えていません。
+CI 修正は既存 suites／signing keys を保った公式 HTTPS archive と有界 retry を共有 installer で使用します。
+準備のみ八分上限とし、test budget／assertion／artifact は維持します。既存 CI policy50件、shell syntax、
+format、license が合格し、独立 review で blocker はありません。全5878件は application source が同一の
+`f681df7` の結果です。最終 head の hosted gate は改めて必要です。ローカル Cargo／GTK／WebKit がないため
+`pnpm test:native` は未実行です。hosted native-shell 合格を実機 installer 検証として扱っていません。

@@ -49,10 +49,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install native media tools and independent timeline parser
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
-          python -m pip install opentimelineio==0.18.1
+        timeout-minutes: 8
+        run: bash scripts/ci/install-media-tools.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:ci-partition
       - run: pnpm test:media
@@ -106,10 +104,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install native media tools and independent timeline parser
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
-          python -m pip install opentimelineio==0.18.1
+        timeout-minutes: 8
+        run: bash scripts/ci/install-media-tools.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium

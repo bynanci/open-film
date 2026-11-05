@@ -444,3 +444,28 @@ license and provenance checks (8), and browser partition (339 cases) passed.
 The production and documentation builds retain their existing large-chunk
 advisories. The two related browser specs passed all seven cases. No assertion
 or PCM tolerance was relaxed and no test was disabled.
+
+### Hosted tool provisioning
+
+On signed source commit `f681df7aa26bccf53ef85d8689c843c587829b85`, DCO,
+fast-contract, native-shell, docs, all four browser shards, three-platform
+Render QA and Windows recovery passed. Verify's media bootstrap stalled on
+`azure.archive.ubuntu.com` package downloads: a 160 MB / 107-package install
+reached only package 32 after about eleven minutes. The previous successful
+candidate's same step took 27 seconds. A controlled fresh-runner retry also
+remained in bootstrap; neither interrupted attempt counts as media QA.
+
+The CI-only follow-up shares one installer across heavy-media and browser jobs,
+uses the official Ubuntu HTTPS archive while retaining the runner's suites,
+components and signing keys, bounds network retries/lock waits, omits optional
+recommended packages, and installs the existing OTIO 0.18.1 Python 3.12 wheel.
+Only provisioning gets an eight-minute limit; test budgets, assertions, required
+jobs and evidence uploads remain mandatory. Shell syntax, 50 existing CI-policy
+tests, formatting and license policy passed; independent infrastructure review
+found no blocker. The full 5878-test result applies to the unchanged application
+source at `f681df7`; final hosted gates must pass on the follow-up head.
+
+`pnpm test:native` was not run locally because Cargo and GTK/WebKit prerequisites
+are unavailable in this workspace. The hosted native-shell job ran successfully
+on `f681df7` and is required again for the final head. This is automated evidence,
+not installer signing or physical workstation acceptance.
