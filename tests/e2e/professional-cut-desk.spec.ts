@@ -35,17 +35,27 @@ test.beforeAll(async () => {
   media = await professionalCutDeskFixture(root);
 });
 test.beforeEach(async ({ page, request }) => {
-  expect((await request.post(`${api}/project/close`, { data: {} })).ok()).toBe(
-    true,
-  );
+  expect(
+    (
+      await request.post(`${api}/project/close`, {
+        data: {},
+        headers: { connection: "close" },
+      })
+    ).ok(),
+  ).toBe(true);
   await initialLocale(page);
 });
 test.afterEach(async ({ page, request }) => {
   await page.unrouteAll({ behavior: "wait" });
   await page.close();
-  expect((await request.post(`${api}/project/close`, { data: {} })).ok()).toBe(
-    true,
-  );
+  expect(
+    (
+      await request.post(`${api}/project/close`, {
+        data: {},
+        headers: { connection: "close" },
+      })
+    ).ok(),
+  ).toBe(true);
   for (const [index, path] of media.paths.entries())
     expect(await hashFile(path)).toBe(media.hashes[index]);
 });
@@ -61,6 +71,8 @@ async function makeProject(
     long?: boolean;
     hostileName?: boolean;
     reversed?: boolean;
+    stillImage?: boolean;
+    filmLook?: boolean;
   } = {},
 ) {
   const path = join(root, `project-${projectNumber++}.openfilm`);
@@ -73,6 +85,14 @@ async function makeProject(
     app.project.settings = structuredClone(media.settings);
     const cut = structuredClone(media.composition);
     if (options.reversed) cut.tracks[0]!.clips.reverse();
+    if (options.stillImage)
+      cut.tracks[0]!.clips[0]!.assetId = media.assets[4]!.id;
+    if (options.filmLook)
+      cut.tracks[0]!.clips[0]!.look = {
+        version: 1,
+        preset: "sport",
+        strength: 1,
+      };
     cut.tracks[0]!.clips[0]!.locked = options.clipLocked ?? false;
     cut.tracks[1]!.clips[0]!.locked = options.overlayLocked ?? false;
     if (options.long) {
@@ -126,6 +146,7 @@ async function state(request: APIRequestContext): Promise<{
 }> {
   const response = await request.get(
     `${api}/compositions/professional-cut/editor`,
+    { headers: { connection: "close" } },
   );
   expect(response.ok()).toBe(true);
   return response.json();
@@ -229,6 +250,147 @@ test("reversed saved clips crossfade with the same distinct colors in the monito
   }
   expect((await state(request)).composition).toEqual(original);
 });
+test("samples bounded source-frame scopes without modifying the edit", async ({
+  page,
+  request,
+}) => {
+  await openCut(page, await makeProject());
+  const before = await state(request);
+  const clip = page.getByRole("button", { name: /^Select clip / }).first();
+  await clip.click();
+  await expect
+    .poll(
+      () =>
+        page
+          .locator('.record-monitor video[data-clip-id="red"]')
+          .evaluate((node) => (node as HTMLVideoElement).readyState),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(1);
+
+  await page.getByTestId("record-frame-scopes-toggle").click();
+  const panel = page.getByRole("region", {
+    name: "Source frame scopes",
+    exact: true,
+  });
+  await panel.getByRole("button", { name: "Sample current frame" }).click();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(panel.locator("canvas")).toHaveCount(4);
+  await expect(panel).toContainText("RGB and luma histogram");
+  await expect(panel).toContainText("RGB parade");
+  await expect(panel).toContainText("Luma waveform");
+  await expect(panel).toContainText("BT.709 vectorscope");
+  await expect(panel).toContainText("before OpenFilm transforms");
+  expect(await state(request)).toEqual(before);
+});
+
+test("samples a high-resolution photo into bounded source-frame scopes", async ({
+  page,
+  request,
+}) => {
+  await openCut(page, await makeProject({ stillImage: true }));
+  const before = await state(request);
+  await page
+    .getByRole("button", { name: /^Select clip / })
+    .first()
+    .click();
+  const photo = page.locator(
+    '.record-layer[data-record-layer="red"] .photo-presentation-preview img',
+  );
+  await expect
+    .poll(() =>
+      photo.first().evaluate((node) => {
+        const image = node as HTMLImageElement;
+        return image.complete && image.naturalWidth > 0;
+      }),
+    )
+    .toBe(true);
+
+  await page.getByTestId("record-frame-scopes-toggle").click();
+  const panel = page.getByRole("region", {
+    name: "Source frame scopes",
+    exact: true,
+  });
+  await panel.getByRole("button", { name: "Sample current frame" }).click();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(panel).toContainText("Source 640×360");
+  await expect(panel).toContainText("Sample 512×288");
+  await expect(panel.locator("canvas")).toHaveCount(4);
+  expect(await state(request)).toEqual(before);
+});
+
+test("split wipe compares Film Look bypass and Record preview without editing", async ({
+  page,
+  request,
+}) => {
+  await openCut(page, await makeProject({ filmLook: true }));
+  const before = await state(request);
+  await page
+    .getByRole("button", { name: /^Select clip / })
+    .first()
+    .click();
+  const recordVideo = page
+    .locator('.record-media-stack video[data-clip-id="red"]')
+    .first();
+  await expect
+    .poll(
+      () =>
+        recordVideo.evaluate((node) => (node as HTMLVideoElement).readyState),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(1);
+
+  const toggle = page.getByRole("button", {
+    name: "Split wipe",
+    exact: true,
+  });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  const wipe = page.getByTestId("record-compare-wipe");
+  await expect(wipe).toHaveAttribute("data-split-wipe-position", "50");
+  const comparisonVideo = wipe.locator("video");
+  await expect
+    .poll(
+      () =>
+        comparisonVideo.evaluate(
+          (node) => (node as HTMLVideoElement).readyState,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(1);
+  const [recordFilter, bypassFilter] = await Promise.all([
+    page
+      .locator('.record-media-stack video[data-clip-id="red"]')
+      .evaluate((node) => getComputedStyle(node).filter),
+    comparisonVideo.evaluate((node) => getComputedStyle(node).filter),
+  ]);
+  expect(recordFilter).not.toEqual(bypassFilter);
+  await expect(page.locator(".record-compare-wipe-labels")).toContainText(
+    "Film Look bypassed",
+  );
+  await expect(page.locator(".record-compare-wipe-labels")).toContainText(
+    "Film Look applied",
+  );
+  await expect(
+    page.getByRole("note").filter({
+      hasText: "Both sides are the browser Record preview",
+    }),
+  ).toBeVisible();
+
+  const position = page.getByRole("slider", {
+    name: "Split-wipe position",
+    exact: true,
+  });
+  await position.press("ArrowRight");
+  await expect(position).toHaveValue("51");
+  await expect(wipe).toHaveAttribute("data-split-wipe-position", "51");
+  expect(await state(request)).toEqual(before);
+
+  await toggle.click();
+  await expect(wipe).toHaveCount(0);
+  expect(await state(request)).toEqual(before);
+});
+
 async function source(page: Page, clip = "red") {
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await page

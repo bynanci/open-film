@@ -81,6 +81,7 @@ import {
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
 import { sameRateDropFrameChoice } from "../projectTimebase";
+import { analyzeDecodedFrame, type FrameScopeAnalysis } from "../frame-scopes";
 import TranscriptEditor from "./TranscriptEditor.vue";
 import GraphicSceneInspector from "./GraphicSceneInspector.vue";
 import GraphicSceneTemplateStudio from "./GraphicSceneTemplateStudio.vue";
@@ -97,6 +98,7 @@ import PrimaryColorFilter from "./PrimaryColorFilter.vue";
 import { sourceColorStyle } from "../source-color";
 import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
+import FrameScopesPanel from "./FrameScopesPanel.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import AudioTimingInspector from "./AudioTimingInspector.vue";
@@ -467,6 +469,51 @@ function onSplitterKeydown(event: KeyboardEvent) {
 
 const editMode = ref<"story" | "precision" | "transcript">("story");
 const recordMonitor = ref<InstanceType<typeof RecordMonitor> | null>(null);
+const frameScopesOpen = ref(false);
+const frameScopeAnalysis = shallowRef<FrameScopeAnalysis>();
+const frameScopeSourceName = ref("");
+const frameScopeUnavailable = ref(false);
+const frameScopeSampling = ref(false);
+let frameScopeRequest = 0;
+async function captureRecordFrameScopes() {
+  const request = ++frameScopeRequest;
+  frameScopeSampling.value = true;
+  try {
+    const sample = selectedClipId.value
+      ? await recordMonitor.value?.captureDecodedFrame(selectedClipId.value)
+      : undefined;
+    if (request !== frameScopeRequest) return;
+    if (!sample) throw new Error("Source frame unavailable.");
+    frameScopeAnalysis.value = analyzeDecodedFrame(sample);
+    frameScopeSourceName.value =
+      state.value?.assets.find((asset) => asset.id === sample.assetId)?.name ??
+      sample.assetId;
+    frameScopeUnavailable.value = false;
+  } catch {
+    if (request !== frameScopeRequest) return;
+    frameScopeAnalysis.value = undefined;
+    frameScopeSourceName.value = "";
+    frameScopeUnavailable.value = true;
+  } finally {
+    if (request === frameScopeRequest) frameScopeSampling.value = false;
+  }
+}
+watch(
+  [
+    selectedClipId,
+    () => state.value?.revision,
+    () => props.sourceVersion,
+    () => props.projectId,
+    () => props.compositionId,
+  ],
+  () => {
+    frameScopeRequest++;
+    frameScopeSampling.value = false;
+    frameScopeAnalysis.value = undefined;
+    frameScopeSourceName.value = "";
+    frameScopeUnavailable.value = false;
+  },
+);
 const recordTarget = computed(
   () =>
     !!props.expertMode &&
@@ -1414,9 +1461,12 @@ const recordLookAvailable = computed(() =>
 );
 const lookCompareHeld = ref(false);
 const lookCompareLatched = ref(false);
+const splitWipeOpen = ref(false);
+const splitWipePosition = ref(50);
 const lookCompareActive = computed(
   () =>
     recordLookAvailable.value &&
+    !splitWipeOpen.value &&
     (lookCompareHeld.value || lookCompareLatched.value),
 );
 const recordCompareContextKey = computed(() =>
@@ -1456,6 +1506,7 @@ function compareCurrent(owner: string) {
     owner === recordCompareContextKey.value &&
     recordTarget.value &&
     recordLookAvailable.value &&
+    !splitWipeOpen.value &&
     !cutDeskBlocked.value
   );
 }
@@ -1497,6 +1548,21 @@ function setCompareKey(owner: string, event: KeyboardEvent, pressed: boolean) {
     clearCompareHold();
   }
 }
+function toggleSplitWipe() {
+  if (!recordLookAvailable.value || cutDeskBlocked.value) return;
+  if (splitWipeOpen.value) {
+    splitWipeOpen.value = false;
+    return;
+  }
+  clearLookCompare();
+  splitWipePosition.value = 50;
+  splitWipeOpen.value = true;
+}
+function updateSplitWipePosition(event: Event) {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (Number.isFinite(value))
+    splitWipePosition.value = Math.max(5, Math.min(95, value));
+}
 const compareControls = computed(() => {
   const owner = recordCompareContextKey.value;
   return {
@@ -1522,9 +1588,20 @@ const compareControls = computed(() => {
     },
   };
 });
-watch(recordCompareContextKey, clearLookCompare, { flush: "sync" });
+watch(
+  recordCompareContextKey,
+  () => {
+    clearLookCompare();
+    splitWipeOpen.value = false;
+    splitWipePosition.value = 50;
+  },
+  { flush: "sync" },
+);
 watch(recordLookAvailable, (available) => {
-  if (!available) clearLookCompare();
+  if (!available) {
+    clearLookCompare();
+    splitWipeOpen.value = false;
+  }
 });
 const groups = computed(() => {
   const beats = state.value?.story.beats ?? [];
@@ -4321,6 +4398,9 @@ onBeforeUnmount(() => {
                   :source-version="sourceVersion"
                   :active="!cutDeskBlocked && activeTarget === 'record'"
                   :bypass-look="lookCompareActive"
+                  :split-wipe-percent="
+                    splitWipeOpen ? splitWipePosition : undefined
+                  "
                   :caption-track-id="captionTrackId"
                   v-bind="recordBindings"
                 />
@@ -4380,7 +4460,7 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="editor-button"
-                        :disabled="cutDeskBlocked"
+                        :disabled="cutDeskBlocked || splitWipeOpen"
                         :aria-label="t('cutDesk.compare.hold')"
                         :aria-pressed="lookCompareHeld"
                         v-bind="compareControls.hold"
@@ -4390,14 +4470,47 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="editor-button"
-                        :disabled="cutDeskBlocked"
+                        :disabled="cutDeskBlocked || splitWipeOpen"
                         :aria-label="t('cutDesk.compare.latch')"
                         :aria-pressed="lookCompareLatched"
                         v-bind="compareControls.latch"
                       >
                         {{ t("cutDesk.compare.latchShort") }}
                       </button>
+                      <button
+                        type="button"
+                        class="editor-button"
+                        :disabled="cutDeskBlocked"
+                        :aria-label="t('cutDesk.compare.splitWipe')"
+                        :aria-pressed="splitWipeOpen"
+                        @click="toggleSplitWipe"
+                      >
+                        {{ t("cutDesk.compare.splitWipe") }}
+                      </button>
                     </div>
+                    <label
+                      v-if="splitWipeOpen"
+                      class="cut-desk-split-wipe-control"
+                    >
+                      <span>{{ t("cutDesk.compare.wipeBypassed") }}</span>
+                      <input
+                        type="range"
+                        min="5"
+                        max="95"
+                        step="1"
+                        :value="splitWipePosition"
+                        :aria-label="t('cutDesk.compare.wipePosition')"
+                        @input="updateSplitWipePosition"
+                      />
+                      <span>{{ t("cutDesk.compare.wipeApplied") }}</span>
+                    </label>
+                    <p
+                      v-if="splitWipeOpen"
+                      class="cut-desk-compare-status"
+                      role="note"
+                    >
+                      {{ t("cutDesk.compare.splitWipeBoundary") }}
+                    </p>
                     <p
                       class="cut-desk-compare-status"
                       role="status"
@@ -4409,7 +4522,9 @@ onBeforeUnmount(() => {
                             ? "cutDesk.compare.held"
                             : lookCompareLatched
                               ? "cutDesk.compare.latched"
-                              : "cutDesk.compare.inactive",
+                              : splitWipeOpen
+                                ? "cutDesk.compare.splitWipeActive"
+                                : "cutDesk.compare.inactive",
                         )
                       }}
                     </p>
@@ -4421,6 +4536,26 @@ onBeforeUnmount(() => {
                     </p>
                   </div>
                 </div>
+                <div class="cut-desk-monitor-actions">
+                  <button
+                    class="editor-button"
+                    data-testid="record-frame-scopes-toggle"
+                    :disabled="cutDeskBlocked || !selectedClipId"
+                    :aria-expanded="frameScopesOpen"
+                    aria-controls="record-frame-scopes"
+                    @click="frameScopesOpen = !frameScopesOpen"
+                  >
+                    {{ t("cutDesk.scopes.toggle") }}
+                  </button>
+                </div>
+                <FrameScopesPanel
+                  v-if="frameScopesOpen"
+                  :analysis="frameScopeAnalysis"
+                  :source-name="frameScopeSourceName"
+                  :error="frameScopeUnavailable"
+                  :sampling="frameScopeSampling"
+                  @capture="captureRecordFrameScopes"
+                />
                 <SequenceWaveform
                   v-if="savedRecordState"
                   :project-id="projectId"
@@ -4471,6 +4606,9 @@ onBeforeUnmount(() => {
                 :source-version="sourceVersion"
                 :active="!cutDeskBlocked"
                 :bypass-look="lookCompareActive"
+                :split-wipe-percent="
+                  splitWipeOpen ? splitWipePosition : undefined
+                "
                 :caption-track-id="captionTrackId"
                 v-bind="recordBindings"
               />
@@ -4526,7 +4664,7 @@ onBeforeUnmount(() => {
                     <button
                       type="button"
                       class="editor-button"
-                      :disabled="cutDeskBlocked"
+                      :disabled="cutDeskBlocked || splitWipeOpen"
                       :aria-label="t('cutDesk.compare.hold')"
                       :aria-pressed="lookCompareHeld"
                       v-bind="compareControls.hold"
@@ -4536,14 +4674,47 @@ onBeforeUnmount(() => {
                     <button
                       type="button"
                       class="editor-button"
-                      :disabled="cutDeskBlocked"
+                      :disabled="cutDeskBlocked || splitWipeOpen"
                       :aria-label="t('cutDesk.compare.latch')"
                       :aria-pressed="lookCompareLatched"
                       v-bind="compareControls.latch"
                     >
                       {{ t("cutDesk.compare.latchShort") }}
                     </button>
+                    <button
+                      type="button"
+                      class="editor-button"
+                      :disabled="cutDeskBlocked"
+                      :aria-label="t('cutDesk.compare.splitWipe')"
+                      :aria-pressed="splitWipeOpen"
+                      @click="toggleSplitWipe"
+                    >
+                      {{ t("cutDesk.compare.splitWipe") }}
+                    </button>
                   </div>
+                  <label
+                    v-if="splitWipeOpen"
+                    class="cut-desk-split-wipe-control"
+                  >
+                    <span>{{ t("cutDesk.compare.wipeBypassed") }}</span>
+                    <input
+                      type="range"
+                      min="5"
+                      max="95"
+                      step="1"
+                      :value="splitWipePosition"
+                      :aria-label="t('cutDesk.compare.wipePosition')"
+                      @input="updateSplitWipePosition"
+                    />
+                    <span>{{ t("cutDesk.compare.wipeApplied") }}</span>
+                  </label>
+                  <p
+                    v-if="splitWipeOpen"
+                    class="cut-desk-compare-status"
+                    role="note"
+                  >
+                    {{ t("cutDesk.compare.splitWipeBoundary") }}
+                  </p>
                   <p
                     class="cut-desk-compare-status"
                     role="status"
@@ -4555,7 +4726,9 @@ onBeforeUnmount(() => {
                           ? "cutDesk.compare.held"
                           : lookCompareLatched
                             ? "cutDesk.compare.latched"
-                            : "cutDesk.compare.inactive",
+                            : splitWipeOpen
+                              ? "cutDesk.compare.splitWipeActive"
+                              : "cutDesk.compare.inactive",
                       )
                     }}
                   </p>
@@ -4567,6 +4740,26 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
               </div>
+              <div class="cut-desk-monitor-actions">
+                <button
+                  class="editor-button"
+                  data-testid="record-frame-scopes-toggle"
+                  :disabled="cutDeskBlocked || !selectedClipId"
+                  :aria-expanded="frameScopesOpen"
+                  aria-controls="record-frame-scopes"
+                  @click="frameScopesOpen = !frameScopesOpen"
+                >
+                  {{ t("cutDesk.scopes.toggle") }}
+                </button>
+              </div>
+              <FrameScopesPanel
+                v-if="frameScopesOpen"
+                :analysis="frameScopeAnalysis"
+                :source-name="frameScopeSourceName"
+                :error="frameScopeUnavailable"
+                :sampling="frameScopeSampling"
+                @capture="captureRecordFrameScopes"
+              />
               <SequenceWaveform
                 v-if="savedRecordState"
                 :project-id="projectId"

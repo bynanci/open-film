@@ -97,7 +97,33 @@ export default {
       inactive: "Film look applied",
       held: "Viewing before Film Look while held",
       latched: "Before Film Look view kept on",
+      splitWipe: "Split wipe",
+      splitWipeActive: "Left: Film Look bypassed; right: Film Look applied",
+      wipeBypassed: "Film Look bypassed",
+      wipeApplied: "Film Look applied",
+      wipePosition: "Split-wipe position",
+      splitWipeBoundary:
+        "Both sides are the browser Record preview: left bypasses Film Look and right applies it. This does not measure calibrated display or rendered output; the saved film and export are unchanged.",
       hint: "Comparison changes only this preview, never the saved film or output.",
+    },
+    scopes: {
+      title: "Source frame scopes",
+      toggle: "Scopes",
+      capture: "Sample current frame",
+      sampling: "Sampling source frame…",
+      boundary:
+        "Scopes sample browser-decoded source RGB at up to 512 × 512, before OpenFilm transforms, primary correction, Film Look, compositing, captions or display color management. These are not calibrated output scopes.",
+      source: "Selected source",
+      sourceSize: "Source {width}×{height}",
+      sampleSize: "Sample {width}×{height}",
+      sourceTime: "Source time {time}s",
+      sampleCount: "{count} nontransparent pixels sampled",
+      histogram: "RGB and luma histogram",
+      rgbParade: "RGB parade",
+      lumaWaveform: "Luma waveform",
+      vectorscope: "BT.709 vectorscope",
+      unavailable:
+        "No decoded source frame is available. Select a visible video or photo clip at the Record playhead and wait for its preview to load.",
     },
     shortcuts:
       "Space play/pause · J K L shuttle · ← → frame · Shift+← → second · ↑ ↓ edit · Home/End bounds · B split",

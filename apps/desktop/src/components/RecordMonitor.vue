@@ -45,6 +45,10 @@ import GraphicScenePreview from "./GraphicScenePreview.vue";
 import PrimaryColorFilter from "./PrimaryColorFilter.vue";
 import { sourceColorStyle } from "../source-color";
 import FilmLookFilter from "./FilmLookFilter.vue";
+import {
+  FRAME_SCOPE_MAX_DIMENSION,
+  type DecodedFrameSample,
+} from "../frame-scopes";
 
 const props = defineProps<{
   projectId: string;
@@ -57,6 +61,8 @@ const props = defineProps<{
   active: boolean;
   /** Diagnostic preview only. Never enters media ownership or saved state. */
   bypassLook?: boolean;
+  /** Optional Film Look bypass view clipped to the left side of the Record preview. */
+  splitWipePercent?: number;
   captionTrackId?: string | null;
 }>();
 type IssueCode =
@@ -325,6 +331,87 @@ function pause() {
   if (pcmEnabled.value) cancelPcm();
   transport.pause();
 }
+async function captureDecodedFrame(
+  clipId: string,
+): Promise<
+  (DecodedFrameSample & { assetId: string; clipId: string }) | undefined
+> {
+  const resource = [...pictures.values()].find(
+    (candidate) =>
+      candidate.entry.clip.id === clipId &&
+      layers.value.includes(candidate) &&
+      candidate.ready,
+  );
+  if (!resource) return undefined;
+  const element = resource.element;
+  let source: CanvasImageSource;
+  let sourceWidth: number;
+  let sourceHeight: number;
+  let mediaTime: number;
+  if (element instanceof HTMLVideoElement) {
+    if (
+      element.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+      !element.videoWidth ||
+      !element.videoHeight
+    )
+      return undefined;
+    source = element;
+    sourceWidth = element.videoWidth;
+    sourceHeight = element.videoHeight;
+    mediaTime = element.currentTime;
+  } else if (resource.entry.asset.mediaType === "image") {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.src = sourceUrl(resource.entry.asset.id, resource.key);
+    try {
+      await image.decode();
+    } catch {
+      return undefined;
+    }
+    if (
+      !valid(resource) ||
+      !resource.ready ||
+      !layers.value.includes(resource) ||
+      !image.naturalWidth ||
+      !image.naturalHeight
+    )
+      return undefined;
+    source = image;
+    sourceWidth = image.naturalWidth;
+    sourceHeight = image.naturalHeight;
+    mediaTime = 0;
+  } else return undefined;
+
+  const scale = Math.min(
+    1,
+    FRAME_SCOPE_MAX_DIMENSION / sourceWidth,
+    FRAME_SCOPE_MAX_DIMENSION / sourceHeight,
+  );
+  const width = Math.max(1, Math.floor(sourceWidth * scale));
+  const height = Math.max(1, Math.floor(sourceHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return undefined;
+  try {
+    context.drawImage(source, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+    return {
+      width,
+      height,
+      sourceWidth,
+      sourceHeight,
+      mediaTime,
+      pixels: new Uint8ClampedArray(pixels),
+      assetId: resource.entry.asset.id,
+      clipId: resource.entry.clip.id,
+    };
+  } catch {
+    // A decode or canvas-origin failure is surfaced by the scopes panel.
+    return undefined;
+  }
+}
 function shuttle(direction: -1 | 1) {
   transport.shuttle(direction);
 }
@@ -342,6 +429,7 @@ interface Resource {
 }
 const pictures = new Map<string, Resource>();
 const sounds = new Map<string, Resource>();
+const comparisonVideos = new Map<string, HTMLVideoElement>();
 const banks = shallowRef<Resource[]>([]);
 const layers = shallowRef<Resource[]>([]);
 const audible = shallowRef<Resource[]>([]);
@@ -378,6 +466,13 @@ function media(resource: Resource): HTMLMediaElement | undefined {
     : undefined;
 }
 function release(resource: Resource) {
+  const comparison = comparisonVideos.get(resource.key);
+  if (comparison) {
+    comparison.pause();
+    comparison.removeAttribute("src");
+    comparison.load();
+    comparisonVideos.delete(resource.key);
+  }
   const element = media(resource);
   if (element) {
     element.pause();
@@ -678,6 +773,48 @@ function run(resource: Resource, running: boolean) {
     element.pause();
   }
 }
+function bindComparisonVideo(resource: Resource, element: unknown) {
+  if (!(element instanceof HTMLVideoElement)) {
+    comparisonVideos.delete(resource.key);
+    return;
+  }
+  comparisonVideos.set(resource.key, element);
+  syncComparisonVideo(resource);
+}
+function syncComparisonVideo(resource: Resource) {
+  const comparison = comparisonVideos.get(resource.key);
+  if (!comparison) return;
+  const source = media(resource);
+  if (!source || props.splitWipePercent === undefined || !props.active) {
+    comparison.pause();
+    return;
+  }
+  if (
+    source.readyState < HTMLMediaElement.HAVE_METADATA ||
+    comparison.readyState < HTMLMediaElement.HAVE_METADATA
+  )
+    return;
+
+  if (Math.abs(source.currentTime - comparison.currentTime) > 0.08) {
+    try {
+      comparison.currentTime = source.currentTime;
+    } catch {
+      // The next Record clock update retries after the comparison decoder seeks.
+    }
+  }
+  comparison.playbackRate = source.playbackRate;
+  const shouldPlay =
+    forward.value &&
+    !source.paused &&
+    layers.value.includes(resource) &&
+    resource.ready &&
+    !resource.failed;
+  if (!shouldPlay) {
+    comparison.pause();
+    return;
+  }
+  if (comparison.paused) void comparison.play().catch(() => {});
+}
 function exhausted(entry: ResolvedSequenceClip) {
   return (
     entry.sourceTime >=
@@ -692,6 +829,7 @@ function syncMedia(force = false) {
       resource.ready &&
       resource.entry.localTime < resource.entry.clip.timelineDuration;
     run(resource, forward.value && active);
+    syncComparisonVideo(resource);
   }
   for (const resource of audible.value) {
     const element = media(resource);
@@ -830,7 +968,11 @@ function bankRole(resource: Resource) {
   const index = banks.value.indexOf(resource);
   return index < 0 ? undefined : index === 0 ? "current" : "next";
 }
-function geometry(resource: Resource) {
+function geometry(
+  resource: Resource,
+  bypassLook = props.bypassLook,
+  filterSuffix = "",
+) {
   const entry = resource.entry;
   const geometry = resolvePreviewClipGeometry(
     entry.clip.transform,
@@ -847,10 +989,10 @@ function geometry(resource: Resource) {
       resolvePrimaryColor(props.composition, entry.clip).correction,
       look,
       {
-        primary: `${primaryFilterId}-${entry.trackIndex}-${entry.clipIndex}`,
-        look: `${filterId}-${entry.trackIndex}-${entry.clipIndex}`,
+        primary: `${primaryFilterId}${filterSuffix}-${entry.trackIndex}-${entry.clipIndex}`,
+        look: `${filterId}${filterSuffix}-${entry.trackIndex}-${entry.clipIndex}`,
       },
-      props.bypassLook,
+      bypassLook,
     ),
   };
 }
@@ -1017,6 +1159,7 @@ defineExpose({
   step,
   previousEdit,
   nextEdit,
+  captureDecodedFrame,
   split,
   dispose,
 });
@@ -1034,56 +1177,146 @@ defineExpose({
       :style="{ aspectRatio: `${settings.width} / ${settings.height}` }"
     >
       <div class="record-canvas">
-        <div
-          v-for="resource in pictureResources"
-          :key="resource.key"
-          class="record-layer"
-          :data-record-layer="
-            layers.includes(resource) ? resource.entry.clip.id : undefined
-          "
-          :style="{
-            opacity: resource.entry.opacity,
-            visibility: shown(resource) ? 'visible' : 'hidden',
-            zIndex: compositeOrder.get(id(resource.entry)),
-          }"
-          @click="select(resource)"
-        >
-          <PrimaryColorFilter
-            :id="`${primaryFilterId}-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
-            :correction="
-              resolvePrimaryColor(composition, resource.entry.clip).correction
+        <div class="record-media-stack">
+          <div
+            v-for="resource in pictureResources"
+            :key="resource.key"
+            class="record-layer"
+            :data-record-layer="
+              layers.includes(resource) ? resource.entry.clip.id : undefined
             "
-          />
-          <FilmLookFilter
-            :id="`${filterId}-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
-            :look="resolveFilmLook(composition, resource.entry.clip).look"
-          />
-          <video
-            v-if="resource.entry.asset.mediaType !== 'image'"
-            :ref="(element) => bind(resource, element)"
-            :data-bank="bankRole(resource)"
-            :data-clip-id="resource.entry.clip.id"
-            crossorigin="anonymous"
-            :src="
-              availability(resource.entry)
-                ? undefined
-                : sourceUrl(resource.entry.asset.id, resource.key)
-            "
-            preload="auto"
-            muted
-            playsinline
-            :style="geometry(resource)"
-            @canplay="ready(resource, $event)"
-            @loadedmetadata="timeupdate(resource, $event)"
-            @waiting="waiting(resource, $event)"
-            @stalled="waiting(resource, $event)"
-            @timeupdate="timeupdate(resource, $event)"
-            @error="failed(resource, $event)"
-          />
-          <template v-else>
-            <PhotoPresentationPreview
+            :style="{
+              opacity: resource.entry.opacity,
+              visibility: shown(resource) ? 'visible' : 'hidden',
+              zIndex: compositeOrder.get(id(resource.entry)),
+            }"
+            @click="select(resource)"
+          >
+            <PrimaryColorFilter
+              :id="`${primaryFilterId}-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
+              :correction="
+                resolvePrimaryColor(composition, resource.entry.clip).correction
+              "
+            />
+            <FilmLookFilter
+              :id="`${filterId}-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
+              :look="resolveFilmLook(composition, resource.entry.clip).look"
+            />
+            <video
+              v-if="resource.entry.asset.mediaType !== 'image'"
+              :ref="(element) => bind(resource, element)"
               :data-bank="bankRole(resource)"
               :data-clip-id="resource.entry.clip.id"
+              crossorigin="anonymous"
+              :src="
+                availability(resource.entry)
+                  ? undefined
+                  : sourceUrl(resource.entry.asset.id, resource.key)
+              "
+              preload="auto"
+              muted
+              playsinline
+              :style="geometry(resource)"
+              @canplay="ready(resource, $event)"
+              @loadedmetadata="timeupdate(resource, $event)"
+              @waiting="waiting(resource, $event)"
+              @stalled="waiting(resource, $event)"
+              @timeupdate="timeupdate(resource, $event)"
+              @error="failed(resource, $event)"
+            />
+            <template v-else>
+              <PhotoPresentationPreview
+                :data-bank="bankRole(resource)"
+                :data-clip-id="resource.entry.clip.id"
+                :clip="resource.entry.clip"
+                :assets="assets"
+                :frame="settings"
+                :viewport="settings"
+                transport-target=""
+                :composition-id="composition.id"
+                :project-id="projectId"
+                :revision="revision"
+                :source-version="sourceVersion"
+                :active="active"
+                :primary-color="
+                  resolvePrimaryColor(composition, resource.entry.clip)
+                    .correction
+                "
+                :look="
+                  bypassLook
+                    ? undefined
+                    : resolveFilmLook(composition, resource.entry.clip).look
+                "
+                :external-time="resource.entry.localTime"
+                :external-playing="forward"
+                @readiness="photoReadiness(resource, $event)"
+              />
+            </template>
+            <NativeTitlePreview
+              v-if="
+                resource.entry.asset.mediaType !== 'image' &&
+                resource.entry.clip.title &&
+                layers.includes(resource)
+              "
+              class="record-title"
+              :clip="titleClip(resource.entry.clip)"
+              :source-time="resource.entry.localTime"
+              :src="
+                titlePreviewUrl(
+                  composition.id,
+                  resource.entry.clip.id,
+                  revision,
+                  projectId,
+                )
+              "
+            />
+          </div>
+        </div>
+        <div
+          v-if="splitWipePercent !== undefined"
+          class="record-compare-wipe"
+          data-testid="record-compare-wipe"
+          :data-split-wipe-position="splitWipePercent"
+          :style="{ clipPath: `inset(0 ${100 - splitWipePercent}% 0 0)` }"
+          aria-hidden="true"
+        >
+          <div
+            v-for="resource in layers"
+            :key="`${resource.key}:split-wipe`"
+            class="record-layer"
+            :style="{
+              opacity: resource.entry.opacity,
+              visibility: shown(resource) ? 'visible' : 'hidden',
+              zIndex: compositeOrder.get(id(resource.entry)),
+            }"
+          >
+            <PrimaryColorFilter
+              :id="`${primaryFilterId}-wipe-${resource.entry.trackIndex}-${resource.entry.clipIndex}`"
+              :correction="
+                resolvePrimaryColor(composition, resource.entry.clip).correction
+              "
+            />
+            <video
+              v-if="resource.entry.asset.mediaType !== 'image'"
+              :ref="(element) => bindComparisonVideo(resource, element)"
+              crossorigin="anonymous"
+              :src="
+                availability(resource.entry)
+                  ? undefined
+                  : sourceUrl(
+                      resource.entry.asset.id,
+                      `${resource.key}:split-wipe`,
+                    )
+              "
+              preload="auto"
+              muted
+              playsinline
+              :style="geometry(resource, true, '-wipe')"
+              @loadedmetadata="syncComparisonVideo(resource)"
+              @canplay="syncComparisonVideo(resource)"
+            />
+            <PhotoPresentationPreview
+              v-else
               :clip="resource.entry.clip"
               :assets="assets"
               :frame="settings"
@@ -1097,34 +1330,41 @@ defineExpose({
               :primary-color="
                 resolvePrimaryColor(composition, resource.entry.clip).correction
               "
-              :look="
-                bypassLook
-                  ? undefined
-                  : resolveFilmLook(composition, resource.entry.clip).look
-              "
               :external-time="resource.entry.localTime"
               :external-playing="forward"
-              @readiness="photoReadiness(resource, $event)"
             />
-          </template>
-          <NativeTitlePreview
-            v-if="
-              resource.entry.asset.mediaType !== 'image' &&
-              resource.entry.clip.title &&
-              layers.includes(resource)
-            "
-            class="record-title"
-            :clip="titleClip(resource.entry.clip)"
-            :source-time="resource.entry.localTime"
-            :src="
-              titlePreviewUrl(
-                composition.id,
-                resource.entry.clip.id,
-                revision,
-                projectId,
-              )
-            "
-          />
+            <NativeTitlePreview
+              v-if="
+                resource.entry.asset.mediaType !== 'image' &&
+                resource.entry.clip.title
+              "
+              class="record-title"
+              :clip="titleClip(resource.entry.clip)"
+              :source-time="resource.entry.localTime"
+              :src="
+                titlePreviewUrl(
+                  composition.id,
+                  resource.entry.clip.id,
+                  revision,
+                  projectId,
+                )
+              "
+            />
+          </div>
+        </div>
+        <div
+          v-if="splitWipePercent !== undefined"
+          class="record-compare-wipe-line"
+          :style="{ left: `${splitWipePercent}%` }"
+          aria-hidden="true"
+        />
+        <div
+          v-if="splitWipePercent !== undefined"
+          class="record-compare-wipe-labels"
+          aria-hidden="true"
+        >
+          <span>{{ t("cutDesk.compare.wipeBypassed") }}</span>
+          <span>{{ t("cutDesk.compare.wipeApplied") }}</span>
         </div>
         <NativeTitlePreview
           v-for="title in titles"
@@ -1229,6 +1469,42 @@ defineExpose({
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+.record-media-stack {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+}
+.record-compare-wipe {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.record-compare-wipe-line {
+  position: absolute;
+  z-index: 2;
+  inset-block: 0;
+  width: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 65%);
+  pointer-events: none;
+}
+.record-compare-wipe-labels {
+  position: absolute;
+  z-index: 3;
+  inset: 0.5rem 0.6rem auto;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.record-compare-wipe-labels span {
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.25rem;
+  color: #fff;
+  background: rgb(0 0 0 / 72%);
+  font-size: 0.75rem;
 }
 .record-dip-overlay {
   position: absolute;

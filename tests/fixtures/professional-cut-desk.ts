@@ -57,6 +57,21 @@ export async function professionalCutDeskFixture(root: string) {
     overlay,
   ]);
   paths.push(overlay);
+  const scopePhoto = join(root, "scope-photo-640x360.png");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-nostdin",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0xff8040:s=640x360",
+    "-frames:v",
+    "1",
+    "-y",
+    scopePhoto,
+  ]);
+  paths.push(scopePhoto);
   for (const path of paths)
     assets.push(
       await inspectMedia({

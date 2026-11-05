@@ -92,7 +92,33 @@ export default {
       inactive: "已套用底片風格",
       held: "按住檢視電影風格之前",
       latched: "保持電影風格之前的檢視",
+      splitWipe: "分割擦拭比較",
+      splitWipeActive: "左側未套用底片風格；右側已套用",
+      wipeBypassed: "未套用底片風格",
+      wipeApplied: "已套用底片風格",
+      wipePosition: "分割擦拭位置",
+      splitWipeBoundary:
+        "兩側都是瀏覽器內的 Record 預覽：左側未套用底片風格，右側已套用。這不代表校色螢幕或算繪輸出測量，也不會變更已儲存的影片或匯出結果。",
       hint: "比較只影響此預覽，不會變更已儲存影片或輸出。",
+    },
+    scopes: {
+      title: "來源畫格示波器",
+      toggle: "示波器",
+      capture: "取樣目前畫格",
+      sampling: "正在取樣來源畫格…",
+      boundary:
+        "示波器會取樣瀏覽器解碼的來源 RGB，大小最多為 512 × 512。取樣位於 OpenFilm 轉換、主色校正、底片風格、合成、字幕與螢幕色彩管理之前；這些不是經校色的輸出示波器。",
+      source: "所選來源",
+      sourceSize: "來源 {width}×{height}",
+      sampleSize: "取樣 {width}×{height}",
+      sourceTime: "來源時間 {time} 秒",
+      sampleCount: "已取樣 {count} 個不透明像素",
+      histogram: "RGB 與亮度直方圖",
+      rgbParade: "RGB 示波器",
+      lumaWaveform: "亮度波形",
+      vectorscope: "BT.709 向量示波器",
+      unavailable:
+        "目前沒有可解碼的來源畫格。請在 Record 播放頭選取可見的影片或照片片段，並等待預覽載入。",
     },
     shortcuts:
       "空白鍵播放／暫停 · J K L 變速 · ← → 逐格 · Shift+← → 逐秒 · ↑ ↓ 剪接點 · Home/End 邊界 · B 分割",
