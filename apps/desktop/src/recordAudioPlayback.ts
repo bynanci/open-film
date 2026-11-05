@@ -4,7 +4,7 @@ export type RecordAudioPlaybackState =
   "preparing" | "ready" | "playing" | "buffering" | "failed";
 export interface RecordAudioPlayback {
   load(descriptor: RecordAudioPreviewDescriptor): void;
-  play(startSample: number): Promise<void>;
+  play(startSample: number, endSample?: number): Promise<void>;
   pause(): void;
   seek(sample: number): Promise<void>;
   dispose(): void;
@@ -93,6 +93,7 @@ export function createRecordAudioPlayback(
     intent = false,
     state: RecordAudioPlaybackState = "ready",
     position = 0,
+    playEnd = 0,
     nextRead = 0,
     scheduledEnd = 0,
     nextWhen = 0,
@@ -201,16 +202,10 @@ export function createRecordAudioPlayback(
     nextWhen = when + block.count / RATE;
   }
   function requestMore(): Promise<void> {
-    if (
-      !descriptor ||
-      !intent ||
-      disposed ||
-      hidden() ||
-      nextRead >= descriptor.lengthSamples
-    )
+    if (!descriptor || !intent || disposed || hidden() || nextRead >= playEnd)
       return Promise.resolve();
     if (pending) return pending.promise;
-    const count = Math.min(BLOCK, descriptor.lengthSamples - nextRead);
+    const count = Math.min(BLOCK, playEnd - nextRead);
     if (buffered() + count > BUDGET) return Promise.resolve();
     const stamp = generation,
       start = nextRead,
@@ -275,8 +270,8 @@ export function createRecordAudioPlayback(
       options.onTime(position);
       if (!current(stamp)) return;
       if (context.currentTime >= nextWhen) {
-        if (scheduledEnd >= descriptor.lengthSamples) {
-          position = descriptor.lengthSamples;
+        if (scheduledEnd >= playEnd) {
+          position = playEnd;
           retire();
           options.onTime(position);
           publishState("ready");
@@ -303,20 +298,27 @@ export function createRecordAudioPlayback(
       queued[0]?.start === scheduledEnd
     )
       scheduleBlock(queued.shift()!, nextWhen);
-    if (!pending && nextRead < descriptor.lengthSamples)
+    if (!pending && nextRead < playEnd)
       void requestMore().catch(() => {
         /* Failure already retired this generation. */
       });
   }
-  async function play(sample: number) {
+  async function play(
+    sample: number,
+    endSample = descriptor?.lengthSamples ?? 0,
+  ) {
     validatePosition(sample);
+    validatePosition(endSample);
+    if (endSample < sample)
+      throw new Error("Invalid Record PCM playback window.");
+    playEnd = endSample;
     position = sample;
     retire();
     position = sample;
     nextRead = sample;
     scheduledEnd = sample;
     if (disposed || hidden()) return;
-    if (sample === descriptor!.lengthSamples) {
+    if (sample === playEnd) {
       options.onTime(sample);
       publishState("ready");
       return;
@@ -363,6 +365,7 @@ export function createRecordAudioPlayback(
       throw error;
     }
     position = 0;
+    playEnd = descriptor.lengthSamples;
     options.onTime(0);
     state = "preparing";
     publishState("ready");
@@ -370,7 +373,7 @@ export function createRecordAudioPlayback(
   async function seek(sample: number) {
     validatePosition(sample);
     const playing = intent;
-    if (playing) await play(sample);
+    if (playing) await play(sample, Math.max(sample, playEnd));
     else {
       pause();
       position = sample;

@@ -4186,6 +4186,7 @@ onBeforeUnmount(() => {
           "
           @activity="emit('activity')"
           @applied="load"
+          @audition-start="recordMonitor?.pause()"
           @recover-analysis="
             (job, input) => emit('recoverAnalysis', job, input)
           "
@@ -4277,6 +4278,7 @@ onBeforeUnmount(() => {
                 "
                 @activity="emit('activity')"
                 @applied="load"
+                @audition-start="recordMonitor?.pause()"
                 @recover-analysis="
                   (job, input) => emit('recoverAnalysis', job, input)
                 "

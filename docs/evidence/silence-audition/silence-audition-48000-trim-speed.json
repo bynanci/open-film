@@ -1,0 +1,796 @@
+{
+  "candidate": "11b3171af41bc466ed52c7bdb45548c59de7cbd6",
+  "outputs": [
+    {
+      "name": "silence-audition-48000-trim-speed-before.wav",
+      "sha256": "f3bad513c6f84cbe95e8cc15ac07a8f46559c8956d17d07fb81b13974c49656c"
+    },
+    {
+      "name": "silence-audition-48000-trim-speed-after.wav",
+      "sha256": "08548502937cc6fe6e0e259009c4f3a95009224ccbdf7f7bc68f74ce916eeb26"
+    },
+    {
+      "name": "silence-audition-48000-trim-speed-after.mp4",
+      "sha256": "51cc81ac9aaf66f164dc419f3bf24336aa5c0569271ee2209ee0a4d781f167be"
+    }
+  ],
+  "sourceSampleRate": 48000,
+  "outputSampleRate": 48000,
+  "sourceHashes": [
+    "89cdfc089c1df3e4bd8bbb70818530647a4404ce808032ca6d12ab96b7a829f3",
+    "3c2ade44a22836baaeb0640141784194163813f17fd8fdc96686aea7ec71066d",
+    "4afc32c9676778ea1a4746e2789c5ca0c631186086ffe0812cce08dff4338ae6"
+  ],
+  "originalSamples": 268800,
+  "editedSamples": 207360,
+  "removedSamples": 61440,
+  "pcmMaximumError": 0,
+  "beforePcmMaximumError": 0,
+  "peak": 0.23676514625549316,
+  "seamMeasurements": [
+    {
+      "sample": 32640,
+      "leftJump": 0.0007295608520507812,
+      "rightJump": 0.000038504600524902344
+    },
+    {
+      "sample": 136320,
+      "leftJump": 0.00021350383758544922,
+      "rightJump": 0.001055598258972168
+    }
+  ],
+  "mp4Audio": {
+    "codec_type": "audio",
+    "sample_rate": "48000",
+    "start_time": "0.000000",
+    "duration": "4.320000"
+  },
+  "measurement": {
+    "integratedLufs": -14.35,
+    "truePeakDbtp": -6.75,
+    "loudnessRangeLu": 0.3,
+    "samplePeakDbfs": -6.753804,
+    "duration": 4.32,
+    "meterBins": [
+      {
+        "at": 0,
+        "peakDbfs": -8.420067,
+        "rmsDbfs": -16.655834
+      },
+      {
+        "at": 0.1,
+        "peakDbfs": -12.478152,
+        "rmsDbfs": -16.459615
+      },
+      {
+        "at": 0.2,
+        "peakDbfs": -12.528862,
+        "rmsDbfs": -16.449758
+      },
+      {
+        "at": 0.3,
+        "peakDbfs": -12.484311,
+        "rmsDbfs": -16.458624
+      },
+      {
+        "at": 0.4,
+        "peakDbfs": -12.476171,
+        "rmsDbfs": -16.451207
+      },
+      {
+        "at": 0.5,
+        "peakDbfs": -12.402829,
+        "rmsDbfs": -16.481024
+      },
+      {
+        "at": 0.6,
+        "peakDbfs": -12.459468,
+        "rmsDbfs": -25.959113
+      },
+      {
+        "at": 0.7,
+        "peakDbfs": -12.40017,
+        "rmsDbfs": -19.291488
+      },
+      {
+        "at": 0.8,
+        "peakDbfs": -12.218025,
+        "rmsDbfs": -16.425658
+      },
+      {
+        "at": 0.9,
+        "peakDbfs": -12.288622,
+        "rmsDbfs": -16.475118
+      },
+      {
+        "at": 1,
+        "peakDbfs": -12.279566,
+        "rmsDbfs": -16.426051
+      },
+      {
+        "at": 1.1,
+        "peakDbfs": -12.245141,
+        "rmsDbfs": -16.40058
+      },
+      {
+        "at": 1.2,
+        "peakDbfs": -12.235983,
+        "rmsDbfs": -16.451803
+      },
+      {
+        "at": 1.3,
+        "peakDbfs": -12.270258,
+        "rmsDbfs": -16.423907
+      },
+      {
+        "at": 1.4,
+        "peakDbfs": -12.271164,
+        "rmsDbfs": -16.435228
+      },
+      {
+        "at": 1.5,
+        "peakDbfs": -12.33783,
+        "rmsDbfs": -16.464438
+      },
+      {
+        "at": 1.6,
+        "peakDbfs": -12.249277,
+        "rmsDbfs": -16.426631
+      },
+      {
+        "at": 1.7,
+        "peakDbfs": -12.315483,
+        "rmsDbfs": -16.464401
+      },
+      {
+        "at": 1.8,
+        "peakDbfs": -12.344103,
+        "rmsDbfs": -16.507511
+      },
+      {
+        "at": 1.9,
+        "peakDbfs": -12.312291,
+        "rmsDbfs": -16.455202
+      },
+      {
+        "at": 2,
+        "peakDbfs": -12.27567,
+        "rmsDbfs": -16.466688
+      },
+      {
+        "at": 2.1,
+        "peakDbfs": -12.055296,
+        "rmsDbfs": -16.495681
+      },
+      {
+        "at": 2.2,
+        "peakDbfs": -12.399295,
+        "rmsDbfs": -16.459398
+      },
+      {
+        "at": 2.3,
+        "peakDbfs": -12.395804,
+        "rmsDbfs": -16.46614
+      },
+      {
+        "at": 2.4,
+        "peakDbfs": -12.39424,
+        "rmsDbfs": -16.478149
+      },
+      {
+        "at": 2.5,
+        "peakDbfs": -12.347404,
+        "rmsDbfs": -16.423601
+      },
+      {
+        "at": 2.6,
+        "peakDbfs": -12.346552,
+        "rmsDbfs": -16.477875
+      },
+      {
+        "at": 2.7,
+        "peakDbfs": -12.311991,
+        "rmsDbfs": -17.98773
+      },
+      {
+        "at": 2.8,
+        "peakDbfs": -31.347013,
+        "rmsDbfs": -34.594087
+      },
+      {
+        "at": 2.9,
+        "peakDbfs": -12.289853,
+        "rmsDbfs": -16.832008
+      },
+      {
+        "at": 3,
+        "peakDbfs": -12.346956,
+        "rmsDbfs": -16.478543
+      },
+      {
+        "at": 3.1,
+        "peakDbfs": -12.300648,
+        "rmsDbfs": -16.456131
+      },
+      {
+        "at": 3.2,
+        "peakDbfs": -12.278686,
+        "rmsDbfs": -16.475808
+      },
+      {
+        "at": 3.3,
+        "peakDbfs": -12.295947,
+        "rmsDbfs": -16.488717
+      },
+      {
+        "at": 3.4,
+        "peakDbfs": -12.320752,
+        "rmsDbfs": -16.464767
+      },
+      {
+        "at": 3.5,
+        "peakDbfs": -12.275911,
+        "rmsDbfs": -16.426568
+      },
+      {
+        "at": 3.6,
+        "peakDbfs": -12.375683,
+        "rmsDbfs": -16.495038
+      },
+      {
+        "at": 3.7,
+        "peakDbfs": -12.303082,
+        "rmsDbfs": -16.441662
+      },
+      {
+        "at": 3.8,
+        "peakDbfs": -12.232023,
+        "rmsDbfs": -16.449085
+      },
+      {
+        "at": 3.9,
+        "peakDbfs": -12.386165,
+        "rmsDbfs": -16.509366
+      },
+      {
+        "at": 4,
+        "peakDbfs": -12.302515,
+        "rmsDbfs": -16.418835
+      },
+      {
+        "at": 4.1,
+        "peakDbfs": -12.356162,
+        "rmsDbfs": -16.466045
+      },
+      {
+        "at": 4.2,
+        "peakDbfs": -10.740171,
+        "rmsDbfs": -16.498728
+      },
+      {
+        "at": 4.3,
+        "peakDbfs": -6.753804,
+        "rmsDbfs": -21.01947
+      }
+    ]
+  },
+  "beforeWavMeasurement": {
+    "integratedLufs": -14.73,
+    "truePeakDbtp": -12.51,
+    "loudnessRangeLu": 0.2,
+    "samplePeakDbfs": -12.513994,
+    "duration": 5.6,
+    "meterBins": [
+      {
+        "at": 0,
+        "peakDbfs": -12.772847,
+        "rmsDbfs": -16.703173
+      },
+      {
+        "at": 0.1,
+        "peakDbfs": -12.742149,
+        "rmsDbfs": -16.483193
+      },
+      {
+        "at": 0.2,
+        "peakDbfs": -12.718731,
+        "rmsDbfs": -16.483433
+      },
+      {
+        "at": 0.3,
+        "peakDbfs": -12.690361,
+        "rmsDbfs": -16.483109
+      },
+      {
+        "at": 0.4,
+        "peakDbfs": -12.664722,
+        "rmsDbfs": -16.483024
+      },
+      {
+        "at": 0.5,
+        "peakDbfs": -12.650618,
+        "rmsDbfs": -16.483119
+      },
+      {
+        "at": 0.6,
+        "peakDbfs": -12.646106,
+        "rmsDbfs": -26.032551
+      },
+      {
+        "at": 0.7,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 0.8,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 0.9,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 1,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 1.1,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 1.2,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 1.3,
+        "peakDbfs": -12.595331,
+        "rmsDbfs": -25.024283
+      },
+      {
+        "at": 1.4,
+        "peakDbfs": -12.587009,
+        "rmsDbfs": -16.482572
+      },
+      {
+        "at": 1.5,
+        "peakDbfs": -12.57337,
+        "rmsDbfs": -16.482849
+      },
+      {
+        "at": 1.6,
+        "peakDbfs": -12.563155,
+        "rmsDbfs": -16.482544
+      },
+      {
+        "at": 1.7,
+        "peakDbfs": -12.549707,
+        "rmsDbfs": -16.482563
+      },
+      {
+        "at": 1.8,
+        "peakDbfs": -12.540349,
+        "rmsDbfs": -16.482783
+      },
+      {
+        "at": 1.9,
+        "peakDbfs": -12.531313,
+        "rmsDbfs": -16.48245
+      },
+      {
+        "at": 2,
+        "peakDbfs": -12.522719,
+        "rmsDbfs": -16.48239
+      },
+      {
+        "at": 2.1,
+        "peakDbfs": -12.51952,
+        "rmsDbfs": -16.482624
+      },
+      {
+        "at": 2.2,
+        "peakDbfs": -12.515788,
+        "rmsDbfs": -16.48236
+      },
+      {
+        "at": 2.3,
+        "peakDbfs": -12.514047,
+        "rmsDbfs": -16.482284
+      },
+      {
+        "at": 2.4,
+        "peakDbfs": -12.513994,
+        "rmsDbfs": -16.482531
+      },
+      {
+        "at": 2.5,
+        "peakDbfs": -12.515429,
+        "rmsDbfs": -16.482444
+      },
+      {
+        "at": 2.6,
+        "peakDbfs": -12.517328,
+        "rmsDbfs": -16.482281
+      },
+      {
+        "at": 2.7,
+        "peakDbfs": -12.522164,
+        "rmsDbfs": -16.48245
+      },
+      {
+        "at": 2.8,
+        "peakDbfs": -12.524834,
+        "rmsDbfs": -16.481741
+      },
+      {
+        "at": 2.9,
+        "peakDbfs": -12.742149,
+        "rmsDbfs": -16.483193
+      },
+      {
+        "at": 3,
+        "peakDbfs": -12.718731,
+        "rmsDbfs": -16.483433
+      },
+      {
+        "at": 3.1,
+        "peakDbfs": -12.690361,
+        "rmsDbfs": -16.483109
+      },
+      {
+        "at": 3.2,
+        "peakDbfs": -12.664722,
+        "rmsDbfs": -16.483024
+      },
+      {
+        "at": 3.3,
+        "peakDbfs": -12.650618,
+        "rmsDbfs": -16.483119
+      },
+      {
+        "at": 3.4,
+        "peakDbfs": -12.646106,
+        "rmsDbfs": -26.032551
+      },
+      {
+        "at": 3.5,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 3.6,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 3.7,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 3.8,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 3.9,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 4,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 4.1,
+        "peakDbfs": -12.595331,
+        "rmsDbfs": -25.024283
+      },
+      {
+        "at": 4.2,
+        "peakDbfs": -12.587009,
+        "rmsDbfs": -16.482572
+      },
+      {
+        "at": 4.3,
+        "peakDbfs": -12.57337,
+        "rmsDbfs": -16.482849
+      },
+      {
+        "at": 4.4,
+        "peakDbfs": -12.563155,
+        "rmsDbfs": -16.482544
+      },
+      {
+        "at": 4.5,
+        "peakDbfs": -12.549707,
+        "rmsDbfs": -16.482563
+      },
+      {
+        "at": 4.6,
+        "peakDbfs": -12.540349,
+        "rmsDbfs": -16.482783
+      },
+      {
+        "at": 4.7,
+        "peakDbfs": -12.531313,
+        "rmsDbfs": -16.48245
+      },
+      {
+        "at": 4.8,
+        "peakDbfs": -12.522719,
+        "rmsDbfs": -16.48239
+      },
+      {
+        "at": 4.9,
+        "peakDbfs": -12.51952,
+        "rmsDbfs": -16.482624
+      },
+      {
+        "at": 5,
+        "peakDbfs": -12.515788,
+        "rmsDbfs": -16.48236
+      },
+      {
+        "at": 5.1,
+        "peakDbfs": -12.514047,
+        "rmsDbfs": -16.482284
+      },
+      {
+        "at": 5.2,
+        "peakDbfs": -12.513994,
+        "rmsDbfs": -16.482531
+      },
+      {
+        "at": 5.3,
+        "peakDbfs": -12.515429,
+        "rmsDbfs": -16.482444
+      },
+      {
+        "at": 5.4,
+        "peakDbfs": -12.517328,
+        "rmsDbfs": -16.482281
+      },
+      {
+        "at": 5.5,
+        "peakDbfs": -12.522164,
+        "rmsDbfs": -16.48245
+      }
+    ]
+  },
+  "afterWavMeasurement": {
+    "integratedLufs": -14.41,
+    "truePeakDbtp": -12.51,
+    "loudnessRangeLu": 0.2,
+    "samplePeakDbfs": -12.513645,
+    "duration": 4.32,
+    "meterBins": [
+      {
+        "at": 0,
+        "peakDbfs": -12.772847,
+        "rmsDbfs": -16.703173
+      },
+      {
+        "at": 0.1,
+        "peakDbfs": -12.742149,
+        "rmsDbfs": -16.483193
+      },
+      {
+        "at": 0.2,
+        "peakDbfs": -12.718731,
+        "rmsDbfs": -16.483433
+      },
+      {
+        "at": 0.3,
+        "peakDbfs": -12.690361,
+        "rmsDbfs": -16.483109
+      },
+      {
+        "at": 0.4,
+        "peakDbfs": -12.664722,
+        "rmsDbfs": -16.483024
+      },
+      {
+        "at": 0.5,
+        "peakDbfs": -12.650618,
+        "rmsDbfs": -16.483119
+      },
+      {
+        "at": 0.6,
+        "peakDbfs": -12.646106,
+        "rmsDbfs": -26.032551
+      },
+      {
+        "at": 0.7,
+        "peakDbfs": -12.51682,
+        "rmsDbfs": -19.227246
+      },
+      {
+        "at": 0.8,
+        "peakDbfs": -12.517065,
+        "rmsDbfs": -16.481883
+      },
+      {
+        "at": 0.9,
+        "peakDbfs": -12.521074,
+        "rmsDbfs": -16.481991
+      },
+      {
+        "at": 1,
+        "peakDbfs": -12.522606,
+        "rmsDbfs": -16.481684
+      },
+      {
+        "at": 1.1,
+        "peakDbfs": -12.521542,
+        "rmsDbfs": -16.481759
+      },
+      {
+        "at": 1.2,
+        "peakDbfs": -12.519056,
+        "rmsDbfs": -16.482056
+      },
+      {
+        "at": 1.3,
+        "peakDbfs": -12.514843,
+        "rmsDbfs": -16.481828
+      },
+      {
+        "at": 1.4,
+        "peakDbfs": -12.513645,
+        "rmsDbfs": -16.48187
+      },
+      {
+        "at": 1.5,
+        "peakDbfs": -12.515237,
+        "rmsDbfs": -16.48221
+      },
+      {
+        "at": 1.6,
+        "peakDbfs": -12.51493,
+        "rmsDbfs": -16.482143
+      },
+      {
+        "at": 1.7,
+        "peakDbfs": -12.517879,
+        "rmsDbfs": -16.482128
+      },
+      {
+        "at": 1.8,
+        "peakDbfs": -12.523166,
+        "rmsDbfs": -16.482504
+      },
+      {
+        "at": 1.9,
+        "peakDbfs": -12.53013,
+        "rmsDbfs": -16.48257
+      },
+      {
+        "at": 2,
+        "peakDbfs": -12.537398,
+        "rmsDbfs": -16.482517
+      },
+      {
+        "at": 2.1,
+        "peakDbfs": -12.548012,
+        "rmsDbfs": -16.487178
+      },
+      {
+        "at": 2.2,
+        "peakDbfs": -12.595366,
+        "rmsDbfs": -16.48196
+      },
+      {
+        "at": 2.3,
+        "peakDbfs": -12.581454,
+        "rmsDbfs": -16.482087
+      },
+      {
+        "at": 2.4,
+        "peakDbfs": -12.568831,
+        "rmsDbfs": -16.482128
+      },
+      {
+        "at": 2.5,
+        "peakDbfs": -12.554741,
+        "rmsDbfs": -16.481844
+      },
+      {
+        "at": 2.6,
+        "peakDbfs": -12.542679,
+        "rmsDbfs": -16.481969
+      },
+      {
+        "at": 2.7,
+        "peakDbfs": -12.537003,
+        "rmsDbfs": -18.03472
+      },
+      {
+        "at": 2.8,
+        "peakDbfs": -31.604051,
+        "rmsDbfs": -34.61982
+      },
+      {
+        "at": 2.9,
+        "peakDbfs": -12.514209,
+        "rmsDbfs": -16.842292
+      },
+      {
+        "at": 3,
+        "peakDbfs": -12.516006,
+        "rmsDbfs": -16.482194
+      },
+      {
+        "at": 3.1,
+        "peakDbfs": -12.51752,
+        "rmsDbfs": -16.482086
+      },
+      {
+        "at": 3.2,
+        "peakDbfs": -12.521809,
+        "rmsDbfs": -16.481892
+      },
+      {
+        "at": 3.3,
+        "peakDbfs": -12.521932,
+        "rmsDbfs": -16.482084
+      },
+      {
+        "at": 3.4,
+        "peakDbfs": -12.519769,
+        "rmsDbfs": -16.482113
+      },
+      {
+        "at": 3.5,
+        "peakDbfs": -12.518719,
+        "rmsDbfs": -16.48193
+      },
+      {
+        "at": 3.6,
+        "peakDbfs": -12.514029,
+        "rmsDbfs": -16.482055
+      },
+      {
+        "at": 3.7,
+        "peakDbfs": -12.514104,
+        "rmsDbfs": -16.482213
+      },
+      {
+        "at": 3.8,
+        "peakDbfs": -12.513959,
+        "rmsDbfs": -16.48198
+      },
+      {
+        "at": 3.9,
+        "peakDbfs": -12.515079,
+        "rmsDbfs": -16.482051
+      },
+      {
+        "at": 4,
+        "peakDbfs": -12.515792,
+        "rmsDbfs": -16.482284
+      },
+      {
+        "at": 4.1,
+        "peakDbfs": -12.517083,
+        "rmsDbfs": -16.482068
+      },
+      {
+        "at": 4.2,
+        "peakDbfs": -12.521984,
+        "rmsDbfs": -16.48205
+      },
+      {
+        "at": 4.3,
+        "peakDbfs": -12.522334,
+        "rmsDbfs": -23.433106
+      }
+    ]
+  },
+  "perceptualReview": "manual-required; synthetic tones do not establish speech retention or listening quality"
+}

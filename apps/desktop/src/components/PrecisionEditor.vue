@@ -84,6 +84,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [clipId: string];
   applied: [];
+  auditionStart: [];
   activity: [];
   recoverAnalysis: [job: Job, input: AnalysisRecoveryInput];
 }>();
@@ -1706,6 +1707,10 @@ defineExpose({
               :waveform-ready="!!data?.waveform"
               @select-source="selectSilenceSource"
               @preview="previewSilence"
+              @audition-start="
+                stop();
+                emit('auditionStart');
+              "
               @waveform-candidates="updateSilenceCandidates"
               @applied="emit('applied')"
               @activity="emit('activity')"

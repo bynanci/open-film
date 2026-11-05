@@ -1,4 +1,11 @@
-import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,7 +18,7 @@ import {
 import type { Composition, MediaAsset } from "@openfilm/core";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile } from "@openfilm/media";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, openFilm } from "./ui-helpers.js";
 
 const base = "http://127.0.0.1:4310/api";
 const compositionId = "silence-review-cut";
@@ -48,7 +55,7 @@ function wave(): Buffer {
   return bytes;
 }
 
-async function createProject(request: APIRequestContext) {
+async function createProject(request: APIRequestContext, open = true) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-silence-review-ui-"));
   roots.push(root);
   const source = join(root, "synthetic-voice.wav");
@@ -110,10 +117,12 @@ async function createProject(request: APIRequestContext) {
   const projectId = app.project.id;
   const projectPath = app.directory;
   app.close();
-  const opened = await request.post(`${base}/project/open`, {
-    data: { path: projectPath },
-  });
-  expect(opened.ok(), await opened.text()).toBe(true);
+  if (open) {
+    const opened = await request.post(`${base}/project/open`, {
+      data: { path: projectPath },
+    });
+    expect(opened.ok(), await opened.text()).toBe(true);
+  }
   return { root, projectId, projectPath, source, asset };
 }
 
@@ -299,6 +308,89 @@ test("analyzes, revises an immutable Review, applies through the editor history,
     )
     .toBeGreaterThan(0.5);
 
+  const beforeAudition = await composition(request);
+  const audition = page.getByRole("region", {
+    name: "Rendered seam audition",
+    exact: true,
+  });
+  const auditionResponsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname.endsWith(
+        `/silence/jobs/${childJob.id}/audition`,
+      ) && response.request().method() === "POST",
+  );
+  const prepareAudition = audition.getByRole("button", {
+    name: "Render before / after",
+    exact: true,
+  });
+  await prepareAudition.focus();
+  await page.keyboard.press("Enter");
+  const auditionResponse = await auditionResponsePromise;
+  expect(auditionResponse.ok(), await auditionResponse.text()).toBe(true);
+  const rendered = await auditionResponse.json();
+  expect(rendered.parity).toBe("renderer");
+  expect(rendered.reviewId).toBe(revisedReview.review.reviewId);
+  expect(rendered.seams.length).toBeGreaterThan(0);
+  for (const name of ["Play original mix", "Play edited mix"]) {
+    const pcmResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.includes("/record-audio-preview/") &&
+        new URL(response.url()).pathname.endsWith("/pcm"),
+    );
+    await audition.getByRole("button", { name, exact: true }).click();
+    const pcm = await pcmResponse;
+    expect(pcm.ok(), await pcm.text()).toBe(true);
+    expect(pcm.headers()["x-openfilm-pcm-sample-rate"]).toBe("48000");
+    expect(pcm.headers()["x-openfilm-pcm-channels"]).toBe("2");
+    await expect
+      .poll(() => audio.evaluate((node) => (node as HTMLAudioElement).paused))
+      .toBe(true);
+    await audition
+      .getByRole("button", { name: "Stop audition", exact: true })
+      .click();
+  }
+  expect(await composition(request)).toEqual(beforeAudition);
+  for (const viewport of [
+    { width: 1024, height: 768 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const afterControl = audition.getByRole("button", {
+      name: "Play edited mix",
+      exact: true,
+    });
+    await audition
+      .getByText(/^Reviewed removal:/)
+      .evaluate((node) =>
+        node.scrollIntoView({ block: "start", inline: "nearest" }),
+      );
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(afterControl).toBeVisible();
+    await expect(
+      audition.getByRole("button", { name: "Play original mix", exact: true }),
+    ).toBeVisible();
+    await expect(
+      audition.getByRole("button", { name: "Stop audition", exact: true }),
+    ).toBeVisible();
+    await afterControl.evaluate((node) =>
+      (node as HTMLElement).focus({ preventScroll: true }),
+    );
+    await expect(afterControl).toBeFocused();
+    expect(
+      await audition.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.screenshot({
+      path: join(
+        process.cwd(),
+        "docs",
+        "screenshots",
+        `silence-audition-${viewport.width}x${viewport.height}.png`,
+      ),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+
   const accept = page.getByRole("button", {
     name: "Accept removal",
     exact: true,
@@ -439,4 +531,76 @@ test("keeps Silence Review controls translated in Traditional Chinese and Japane
       page.getByLabel(locale === "ja-JP" ? "無音しきい値" : "靜音門檻"),
     ).toBeVisible();
   }
+});
+
+test("discards prepared audition when switching films with reused source and clip IDs", async ({
+  page,
+  request,
+}) => {
+  const first = await createProject(request);
+  const second = await createProject(request, false);
+  await initialLocale(page, "en-US");
+  await openSilenceReview(page);
+  const originalCut = await composition(request);
+  await page
+    .getByRole("button", { name: "Analyze silence", exact: true })
+    .click();
+  await expect(page.locator(".silence-candidate")).toHaveCount(2, {
+    timeout: 30_000,
+  });
+  const audition = page.getByRole("region", {
+    name: "Rendered seam audition",
+    exact: true,
+  });
+  const preparedResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname.endsWith("/audition") &&
+      response.request().method() === "POST",
+  );
+  await audition
+    .getByRole("button", { name: "Render before / after", exact: true })
+    .click();
+  const response = await preparedResponse;
+  expect(response.ok(), await response.text()).toBe(true);
+  const prepared = await response.json();
+  await expect(
+    audition.getByRole("button", { name: "Play edited mix", exact: true }),
+  ).toBeEnabled();
+  const oldPcmUrl = `${base}/record-audio-preview/${encodeURIComponent(prepared.after.id)}/pcm?startSample=0&count=1`;
+  expect((await request.get(oldPcmUrl)).status()).toBe(200);
+  expect(await composition(request)).toEqual(originalCut);
+  await page
+    .getByRole("button", { name: "Switch project", exact: true })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, second.projectPath);
+  await navigate(page, "edit");
+  await expect(page.locator("#clip-synthetic-voice-clip")).toBeVisible();
+  await page
+    .getByRole("group", { name: "Editing mode", exact: true })
+    .getByRole("button", { name: "Precision", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Silence review", exact: true })
+    .click();
+  await expect(page.locator(".silence-review")).toBeVisible();
+  await expect(page.locator(".silence-candidate")).toHaveCount(0);
+  await expect(page.locator(".silence-audition")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Play edited mix", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/^Reviewed removal:/)).toHaveCount(0);
+  const retiredPcm = await request.get(oldPcmUrl);
+  expect(retiredPcm.status()).toBe(404);
+  expect((await retiredPcm.json()).code).toBe("request.notFound");
+  const currentProject = await request.get(`${base}/project`);
+  expect(currentProject.ok()).toBe(true);
+  expect((await currentProject.json()).project.id).toBe(second.projectId);
+  expect(await composition(request)).toEqual(originalCut);
+  const savedFirst = JSON.parse(
+    await readFile(join(first.projectPath, "project.json"), "utf8"),
+  );
+  expect(
+    savedFirst.timelines.find((cut: Composition) => cut.id === compositionId),
+  ).toEqual(originalCut);
 });

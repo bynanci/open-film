@@ -16,6 +16,7 @@ import {
 } from "../api";
 import { localizeError } from "../i18n";
 import AnalysisJobActions from "./AnalysisJobActions.vue";
+import SilenceAuditionControls from "./SilenceAuditionControls.vue";
 
 const props = defineProps<{
   projectId: string;
@@ -34,6 +35,7 @@ const emit = defineEmits<{
   preview: [assetId: string, start: number, end: number];
   applied: [];
   activity: [];
+  auditionStart: [];
   waveformCandidates: [
     assetId: string,
     candidates: (SilenceCutCandidate & { selected: boolean })[],
@@ -41,6 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const auditionControls = ref<InstanceType<typeof SilenceAuditionControls>>();
 const selectedAssetId = ref("");
 const thresholdDb = ref(-40);
 const minimumSilenceSeconds = ref(0.5);
@@ -880,12 +883,13 @@ onBeforeUnmount(() => {
                 type="button"
                 :disabled="!active || pending"
                 @click="
+                  auditionControls?.stop();
                   emit(
                     'preview',
                     selectedAssetId,
                     candidate.sourceInterval.start,
                     candidate.sourceInterval.end,
-                  )
+                  );
                 "
               >
                 {{ t("precision.silence.preview") }}
@@ -896,6 +900,19 @@ onBeforeUnmount(() => {
         <p v-if="hasSelectionChanges" class="silence-note" role="status">
           {{ t("precision.silence.newReviewRequired") }}
         </p>
+        <SilenceAuditionControls
+          v-if="job && proposal"
+          ref="auditionControls"
+          :project-id="projectId"
+          :composition-id="compositionId"
+          :revision="revision"
+          :job-id="job.id"
+          :review-id="reviewState!.review.reviewId"
+          :proposal="proposal"
+          :disabled="!canAccept"
+          :active="active"
+          @audition-start="emit('auditionStart')"
+        />
         <div class="silence-actions silence-review-actions">
           <button
             class="editor-button"
