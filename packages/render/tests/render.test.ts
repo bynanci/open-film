@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createExportProfile,
   resolvePreviewClipGeometry,
+  resolveClipFrameTime,
   type Composition,
   type MediaAsset,
   type ProjectSettings,
@@ -633,6 +634,12 @@ describe("real FFmpeg preview renderer", () => {
       name: "source.mp4",
     });
     const originalHash = await hashFile(source);
+    const frameTimebase = {
+      version: 1 as const,
+      rateNumerator: 20,
+      rateDenominator: 1,
+      dropFrame: false,
+    };
     const composition: Composition = {
       id: "timeline",
       storyId: "story",
@@ -676,6 +683,13 @@ describe("real FFmpeg preview renderer", () => {
         },
       ],
     };
+    const speedClip = composition.tracks[0]!.clips[0]!;
+    expect(
+      resolveClipFrameTime(speedClip, asset, 3, frameTimebase).sourceTime,
+    ).toBeCloseTo(1.3, 10);
+    expect(
+      resolveClipFrameTime(speedClip, asset, 8, frameTimebase).sourceTime,
+    ).toBeCloseTo(1.8, 10);
     const before = structuredClone(composition);
     const output = join(directory, "preview.mp4");
     await new FFmpegRenderer().render(composition, [asset], output, {
