@@ -276,8 +276,8 @@ watch(
               </span>
             </div>
 
-            <!-- 1. Which Image: Asset Thumbnail & Roles -->
-            <div class="card-section which-image-section">
+            <!-- 1. Media: asset thumbnails and roles -->
+            <div class="card-section media-section">
               <div class="section-label">
                 <Icon name="film" :size="12" />
                 {{ t("app.storyPlan.card.media") }}
@@ -555,7 +555,7 @@ watch(
   line-height: 1.4;
 }
 
-.which-image-section {
+.media-section {
   background: var(--of-surface-2);
   border-radius: var(--of-radius-md);
   padding: 0.5rem;

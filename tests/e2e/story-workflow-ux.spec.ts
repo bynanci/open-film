@@ -138,7 +138,7 @@ test("previews authored order, explains invalid fields, and keeps a dismissed dr
   ).toEqual(["先看見一封信 💌", "回到當天", "把結尾留給明天"]);
 });
 
-test("story plan image labels keep readable contrast in both themes", async ({
+test("story plan media labels keep readable contrast in both themes", async ({
   page,
 }) => {
   await page
@@ -203,9 +203,9 @@ test("story plan image labels keep readable contrast in both themes", async ({
     expect(modalViolations, `${theme} storyboard modal accessibility`).toEqual(
       [],
     );
-    await expect(dialog.locator(".which-image-section").first()).toBeVisible();
+    await expect(dialog.locator(".media-section").first()).toBeVisible();
     await expect(
-      dialog.locator(".which-image-section .asset-name").first(),
+      dialog.locator(".media-section .asset-name").first(),
     ).toBeVisible();
     await expect(dialog.locator(".depth-fallback-pill").first()).toHaveText(
       "Photo stays still",
@@ -234,9 +234,10 @@ test("story plan image labels keep readable contrast in both themes", async ({
     await dialog.locator(".close-btn").focus();
     await page.keyboard.press("Tab");
     await expect(dialog.locator(".modal-footer .secondary-btn")).toBeFocused();
-    await expect(
-      dialog.locator(".which-image-section .section-label"),
-    ).toHaveText(["Media", "Media"]);
+    await expect(dialog.locator(".media-section .section-label")).toHaveText([
+      "Media",
+      "Media",
+    ]);
     await expect(dialog.locator(".cards-scroller")).toHaveAccessibleName(
       "Storyboard scenes",
     );
