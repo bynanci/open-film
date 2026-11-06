@@ -1284,6 +1284,45 @@ const selectedCaptionCue = computed(() =>
     (cue) => cue.id === selectedCaptionCueId.value,
   ),
 );
+const captionTextDraft = ref("");
+const captionTextDraftOwner = ref("");
+const captionTextDraftDirty = ref(false);
+const captionTextOwner = computed(
+  () =>
+    `${props.projectId}:${props.compositionId}:${selectedCaptionTrack.value?.id ?? ""}:${selectedCaptionCue.value?.id ?? ""}`,
+);
+// Save acknowledgements replace the Composition snapshot. Keep in-progress
+// textarea input local so an older acknowledgement cannot erase uncommitted
+// caption text before the user leaves the field.
+watch(
+  [captionTextOwner, () => selectedCaptionCue.value?.text],
+  ([owner, text]) => {
+    if (captionTextDraftOwner.value !== owner) {
+      captionTextDraftOwner.value = owner;
+      captionTextDraft.value = text ?? "";
+      captionTextDraftDirty.value = false;
+      return;
+    }
+    if (!captionTextDraftDirty.value || text === captionTextDraft.value) {
+      captionTextDraft.value = text ?? "";
+      captionTextDraftDirty.value = false;
+    }
+  },
+  { immediate: true },
+);
+function draftCaptionText(event: Event) {
+  captionTextDraft.value = (event.target as HTMLTextAreaElement).value;
+  captionTextDraftDirty.value = true;
+}
+function commitCaptionTextDraft() {
+  const cue = selectedCaptionCue.value;
+  if (!cue) return;
+  if (captionTextDraft.value === cue.text) {
+    captionTextDraftDirty.value = false;
+    return;
+  }
+  updateCaptionCue({ text: captionTextDraft.value });
+}
 watch(
   [
     () => props.projectId,
@@ -1879,16 +1918,16 @@ function updateCaptionCue(patch: {
   textRuns?: TitleTextRuns | null;
   startMs?: number;
   endMs?: number;
-}) {
+}): boolean {
   const track = selectedCaptionTrack.value;
   const cue = selectedCaptionCue.value;
-  if (track && cue)
-    command({
-      type: "caption.cue.update",
-      trackId: track.id,
-      cueId: cue.id,
-      patch,
-    });
+  if (!track || !cue) return false;
+  return command({
+    type: "caption.cue.update",
+    trackId: track.id,
+    cueId: cue.id,
+    patch,
+  });
 }
 function captionTimingValue(field: "startMs" | "endMs", value: number) {
   const cue = selectedCaptionCue.value;
@@ -6728,17 +6767,14 @@ onBeforeUnmount(() => {
                   >
                     {{ t("editor.captions.text") }}
                     <textarea
-                      :value="selectedCaptionCue.text"
+                      :value="captionTextDraft"
                       :aria-label="t('editor.captions.text')"
                       maxlength="2000"
                       rows="3"
                       :disabled="historyBusy"
                       data-testid="caption-text"
-                      @change="
-                        updateCaptionCue({
-                          text: ($event.target as HTMLTextAreaElement).value,
-                        })
-                      "
+                      @input="draftCaptionText"
+                      @change="commitCaptionTextDraft"
                     />
                   </label>
                   <BilingualTextControls

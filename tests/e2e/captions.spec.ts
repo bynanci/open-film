@@ -344,6 +344,7 @@ test("Edit creates a manual Traditional Chinese cue and reopens its saved text",
   await expect(text).toHaveValue("新字幕");
   await text.fill("手動字幕\n第二行");
   await text.press("Tab");
+  await expect(text).not.toBeFocused();
   await expect
     .poll(async () => {
       const saved = await get<{ composition: Composition }>(
@@ -421,6 +422,72 @@ test("caption font draft survives an earlier cue save acknowledgement", async ({
         ).composition.captionTracks?.[0]?.style.fontSize,
     )
     .toBe(34);
+});
+
+test("caption text draft survives an earlier cue save acknowledgement", async ({
+  page,
+  request,
+}) => {
+  const fixture = await seed("Caption text draft acknowledgement");
+  await initialLocale(page);
+  await page.goto("/");
+  await openFilm(page, fixture.path);
+  await navigate(page, "edit");
+  await page.getByTestId("caption-add-track").click();
+  await expect(page.getByTestId("editor-save-state")).toContainText(
+    uiText("en-US", "editor.save.saved"),
+  );
+  await page.getByTestId("caption-inspector-tab").click();
+
+  let release!: () => void;
+  let editPersisted = false;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const editPath = `/api/compositions/${fixture.composition.id}/edit`;
+  await page.route(
+    `**${editPath}`,
+    async (route) => {
+      const response = await route.fetch();
+      editPersisted = true;
+      await held;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "editor.captions.addCue"),
+      exact: true,
+    })
+    .click();
+  const text = page.getByTestId("caption-text");
+  await expect(text).toHaveValue("New caption");
+  await text.fill("Draft survives the delayed save");
+  await expect(text).toHaveValue("Draft survives the delayed save");
+  await expect.poll(() => editPersisted, { timeout: 15_000 }).toBe(true);
+  release();
+
+  await expect(page.getByTestId("editor-save-state")).toContainText(
+    uiText("en-US", "editor.save.saved"),
+  );
+  await expect(text).toHaveValue("Draft survives the delayed save");
+  await text.blur();
+  await expect(text).not.toBeFocused();
+  await expect
+    .poll(async () => {
+      const saved = await get<{ composition: Composition }>(
+        request,
+        `/compositions/${fixture.composition.id}/editor`,
+      );
+      return saved.composition.captionTracks?.[0]?.cues[0];
+    })
+    .toMatchObject({
+      text: "Draft survives the delayed save",
+      source: { kind: "manual" },
+      manualRevision: 1,
+    });
 });
 
 test("Edit imports segment-timed captions, edits the native track, and reopens the saved cue", async ({

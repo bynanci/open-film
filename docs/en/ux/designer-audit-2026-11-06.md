@@ -206,3 +206,7 @@ The Layout Specialist found that Chromium/Linux overlay scrollbars still hid the
 ### Re-challenge extension: round 27
 
 The Component Designer found that the variants dialog used almost the full desktop width while two cards occupied only its left side. The normal list/create views now use a centered 980px reading width and `auto-fit` card columns. The dialog expands to 1240px only for side-by-side playback comparison. E2E checks the compact layout at 1280×720 and 1024×720, verifies the comparison expands, and repeated the touch/contrast flow three times successfully. The screenshots use generated media; hybrid-device touch still needs workstation QA.
+
+### Re-challenge extension: round 28
+
+The Accessibility Reviewer reproduced a caption draft disappearing when an earlier save acknowledgement replaced the Composition snapshot while the multiline editor still had focus. The editor now keeps a cue-scoped local draft and commits it on field change; it no longer renders the in-progress value directly from the last saved snapshot. A browser regression holds the save response while the user types, then verifies the draft remains visible, saves, and survives reopening. All 13 local caption E2E cases pass, including en-US, zh-TW, ja-JP and pseudo-localized layout checks; the hosted run is still required for exact-head confirmation.
