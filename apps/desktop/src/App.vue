@@ -206,9 +206,9 @@ type AssetState = "favorite" | "rejected" | "locked";
 const tabs: Tab[] = ["library", "story", "edit", "export", "versions"];
 const compactSidebar = ref(false);
 const compactSidebarQuery =
-  typeof window.matchMedia === "function"
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(max-width: 1100px)")
-    : undefined;
+    : null;
 function syncCompactSidebar() {
   compactSidebar.value = compactSidebarQuery?.matches ?? false;
 }
@@ -455,7 +455,7 @@ function markScenePlannerReady() {
   scenePlannerReady.value = true;
   resolveScenePlannerReady?.(true);
   resolveScenePlannerReady = undefined;
-  if (tab.value === "story")
+  if (tab.value === "story" && typeof document !== "undefined")
     void nextTick(() =>
       document.getElementById("scene-planner")?.focus({ preventScroll: true }),
     );

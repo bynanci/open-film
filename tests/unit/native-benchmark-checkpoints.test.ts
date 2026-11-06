@@ -713,8 +713,8 @@ describe("actual workspace readiness guards", () => {
       ),
       poll: undefined,
       stopGardenLighting: undefined,
-      compactSidebarQuery: { removeEventListener: vi.fn() },
-      syncCompactSidebar: vi.fn(),
+      compactSidebarQuery: null,
+      syncCompactSidebar: () => {},
       onUnmounted: (callback: () => void) => {
         unmount = callback;
       },
@@ -1281,8 +1281,12 @@ describe("actual workspace readiness guards", () => {
       const abortCaptionImport = vi.fn();
       const removeWindowListener = vi.fn();
       const removeDocumentListener = vi.fn();
+      const removeCompactSidebarListener = vi.fn();
+      const compactSidebarQuery = {
+        removeEventListener: removeCompactSidebarListener,
+      };
+      const syncCompactSidebar = vi.fn();
       const clearLookCompare = vi.fn();
-      const compactSidebarQuery = { removeEventListener: vi.fn() };
       await turn();
       expect(h.visibilityListeners.size).toBe(1);
       const cleanup = actualFunction(
@@ -1305,7 +1309,7 @@ describe("actual workspace readiness guards", () => {
           poll: undefined,
           stopGardenLighting: undefined,
           compactSidebarQuery,
-          syncCompactSidebar: vi.fn(),
+          syncCompactSidebar,
           window: { removeEventListener: removeWindowListener },
           document: { removeEventListener: removeDocumentListener },
           handleKeyboard: () => {},
@@ -1333,10 +1337,11 @@ describe("actual workspace readiness guards", () => {
       );
       cleanup();
       if (workspace === "boot")
-        expect(compactSidebarQuery.removeEventListener).toHaveBeenCalledWith(
+        expect(removeCompactSidebarListener).toHaveBeenCalledWith(
           "change",
-          expect.any(Function),
+          syncCompactSidebar,
         );
+      else expect(removeCompactSidebarListener).not.toHaveBeenCalled();
       if (workspace === "editor")
         expect(abortCaptionImport).toHaveBeenCalledTimes(1);
       if (workspace === "editor") {

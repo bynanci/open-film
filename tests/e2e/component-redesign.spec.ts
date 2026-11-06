@@ -186,6 +186,9 @@ test("variant review surfaces keep readable contrast in both themes", async ({
       .locator(".variants-modal-container")
       .boundingBox();
     expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.width).toBeLessThanOrEqual(
+      Math.min(viewport.width * 0.96, 1000) + 1,
+    );
     expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
     expect(dialogBox!.y).toBeGreaterThanOrEqual(0);
     expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(
@@ -219,6 +222,10 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   const compareBounds = await compareButton.boundingBox();
   await touchTap(compareBounds!);
   await expect(modal.locator(".player-card")).toHaveCount(2);
+  const comparisonBounds = await modal
+    .locator(".variants-modal-container")
+    .boundingBox();
+  expect(comparisonBounds!.width).toBeGreaterThan(1100);
   await assertTouchTargets(".audio-toggle-btn");
   const audioA = modal.locator(".audio-toggle-btn").first();
   const audioB = modal.locator(".audio-toggle-btn").last();
@@ -321,6 +328,7 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   const touchClose = page
     .getByTestId("creative-variant-modal")
     .locator(".close-btn");
+  await expect(touchClose).toBeVisible();
   const closeBounds = await touchClose.boundingBox();
   await touchTap(closeBounds!);
   await expect(page.getByTestId("creative-variant-modal")).toHaveCount(0);

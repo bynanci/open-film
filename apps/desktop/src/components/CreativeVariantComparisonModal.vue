@@ -302,7 +302,12 @@ onUnmounted(() => {
     aria-labelledby="creative-variant-dialog-title"
     data-testid="creative-variant-modal"
   >
-    <div ref="modalRef" class="variants-modal-container" tabindex="-1">
+    <div
+      ref="modalRef"
+      class="variants-modal-container"
+      :class="{ 'comparison-expanded': currentView === 'compare' }"
+      tabindex="-1"
+    >
       <!-- Header -->
       <header class="variants-modal-header">
         <div class="header-title-row">
@@ -868,8 +873,8 @@ onUnmounted(() => {
   --color-bg-card: var(--of-surface-2);
   --color-border: var(--of-border-subtle);
   --color-text-muted: var(--of-text-secondary);
-  width: 90vw;
-  max-width: 1240px;
+  width: min(92vw, 980px);
+  max-width: 980px;
   max-height: 90vh;
   background: var(--of-surface-1);
   color: var(--of-text-primary);
@@ -880,6 +885,11 @@ onUnmounted(() => {
   overflow: hidden;
   box-shadow: var(--of-shadow-dialog);
   font-family: var(--of-font-ui);
+}
+
+.variants-modal-container.comparison-expanded {
+  width: min(96vw, 1240px);
+  max-width: 1240px;
 }
 
 .variants-modal-header {
@@ -979,7 +989,7 @@ onUnmounted(() => {
 
 .variants-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: var(--of-space-4);
 }
 
@@ -1488,8 +1498,12 @@ onUnmounted(() => {
 
 @media (max-width: 1280px) {
   .variants-modal-container {
-    width: 96vw;
+    width: min(96vw, 980px);
     padding: 16px;
+  }
+
+  .variants-modal-container.comparison-expanded {
+    width: 96vw;
   }
 }
 

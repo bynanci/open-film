@@ -202,3 +202,7 @@ These four checkpoints came from another design/accessibility review, not a recr
 The Component Designer found that touch checks measured target height but not width. The test now checks that tabs, card actions, audio controls, and close controls are each at least 44×44px. Storyboard status badges also use the `--of-space-1` vertical spacing token while retaining their compact, non-oval corners.
 
 The Layout Specialist found that Chromium/Linux overlay scrollbars still hid the Inspector scroll cue. An 8px theme-colored track and thumb are now styled; Playwright checks the thumb width and verifies that keyboard focus scrolls the field fully into view. Dark Story now has contrast and overflow checks at both 1280×720 and 1440×900.
+
+### Re-challenge extension: round 27
+
+The Component Designer found that the variants dialog used almost the full desktop width while two cards occupied only its left side. The normal list/create views now use a centered 980px reading width and `auto-fit` card columns. The dialog expands to 1240px only for side-by-side playback comparison. E2E checks the compact layout at 1280×720 and 1024×720, verifies the comparison expands, and repeated the touch/contrast flow three times successfully. The screenshots use generated media; hybrid-device touch still needs workstation QA.

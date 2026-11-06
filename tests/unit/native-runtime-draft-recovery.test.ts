@@ -238,7 +238,6 @@ async function fixture(initialStart?: () => Promise<unknown>) {
   const browser = new EventTarget();
   Object.assign(browser, { __TAURI_INTERNALS__: { invoke } });
   vi.stubGlobal("window", browser);
-  vi.stubGlobal("document", { getElementById: vi.fn(() => null) });
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -434,6 +433,7 @@ describe("native recovery retains actual App local draft owners", () => {
     const h = await fixture();
     try {
       expect(h.browser).not.toHaveProperty("matchMedia");
+      expect(typeof document).toBe("undefined");
       expect(h.current.setupState.project?.id).toBe("project");
     } finally {
       h.unmount();
