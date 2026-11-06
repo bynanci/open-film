@@ -7,7 +7,7 @@ substantial change, and check existing issues or pull requests to avoid duplicat
 work.
 
 Status reviewed against
-[`main`](https://github.com/bynanci/open-film/commit/main)
+[`main`](https://github.com/bynanci/open-film/commit/1bafb5cd4532ce9f9a171499abc8631e4863d1ee)
 on 2026-11-05. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
@@ -59,15 +59,23 @@ remain separate acceptance scopes. See the
       source/revision fencing and duplicate Apply.
 - [x] Preserve silence ripple protections for locked clips, user-pinned clips,
       independent audio timing, and the active TimelineEditor Undo/Redo stack.
-- [x] Reject proposal creation before publishing a Review if a ripple would
-      trim or split a clip with local audio gain automation; retain automation
-      when a whole clip is shifted intact.
+- [x] Preserve local gain/fade/ducking automation through reviewed silence
+      ripples and direct Clip Split with a versioned 48 kHz source-clock map.
+      The in-flight candidate reuses AudioMixPlan, TimelineEditor and compound
+      Undo/Redo; it does not add a mixer or edit state.
+- [x] Reject J/L timing, locked/pinned owners, stale source clocks and later
+      trim/speed/source replacement operations when their mapped automation
+      cannot be proven valid. See the [automation ripple validation](docs/validation-audio-policy.md).
 - [x] Verify the merged baseline media gate in configured CI: main `272af11`,
       [Verify 42011116534](https://github.com/bynanci/open-film/actions/runs/42011116534).
       New audition candidate CI is reported separately in its validation record.
-- [ ] Add exact local gain/fade/ducking curve remapping to split/trim ripple
-      operations, with preview/render equivalence; until then affected clips
-      remain safely blocked during silence Review creation.
+- [x] Reject non-equivalent fractional sample windows before Review, retain
+      mapped sources in Collect, provide explicit desktop envelope reset, and
+      include original DSP histories in the existing Record preparation budget.
+      [PR #114](https://github.com/bynanci/open-film/pull/114) records the exact
+      candidate, independent review and required hosted checks before merge.
+      Complex-graph scaling now receives deterministic rounding flags; unchanged
+      exact-pixel Windows probes remain a final-head merge gate.
 - [x] Provide the desktop Precision Review/Apply surface over the durable API
       ([PR #108](https://github.com/bynanci/open-film/pull/108)).
 - [x] Implement and locally validate immutable Silence rendered audition through the existing Record

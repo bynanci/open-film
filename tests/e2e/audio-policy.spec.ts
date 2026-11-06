@@ -1,5 +1,5 @@
 // Actual local service PCM and production WebAudio scheduling; no ASR or hardware QA.
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -506,4 +506,131 @@ test("production Record owns sound across pause, seek, interrupted preparation, 
     ),
     contentType: "application/json",
   });
+});
+
+test("explicit mapped-envelope reset uses durable editing, Undo/Redo and reopen", async ({
+  page,
+  request,
+}, info) => {
+  const initialResponse = await request.get(`${api}/compositions/cut/editor`);
+  expect(initialResponse.ok()).toBe(true);
+  const initial = (await initialResponse.json()) as TimelineEditorState;
+  const preparedResponse = await request.post(`${api}/compositions/cut/edit`, {
+    data: {
+      baseRevision: initial.revision,
+      commands: [
+        { type: "audio.timing", clipId: "p", timing: null },
+        { type: "clip.split", clipId: "p", sourceTime: 3 },
+      ],
+    },
+  });
+  expect(preparedResponse.ok()).toBe(true);
+  const prepared = (await preparedResponse.json()) as TimelineEditorState;
+  expect(
+    prepared.composition.tracks[0]!.clips[0]!.audioAutomation?.version,
+  ).toBe(2);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.evaluate(
+    async ({ projectId, state }) => {
+      const vuePath = "/node_modules/.vite/deps/vue.js",
+        componentPath = "/src/components/AudioTimingInspector.vue",
+        localePath = "/src/i18n/index.ts";
+      const vue = await import(/* @vite-ignore */ vuePath),
+        component = await import(/* @vite-ignore */ componentPath),
+        locale = await import(/* @vite-ignore */ localePath);
+      const element = document.getElementById("app") as HTMLElement & {
+        __vue_app__?: { unmount(): void };
+      };
+      element.__vue_app__?.unmount();
+      element.replaceChildren();
+      const props = vue.reactive({
+        projectId,
+        compositionId: "cut",
+        revision: state.revision,
+        compositionDuration: state.composition.duration,
+        clip: state.composition.tracks[0]!.clips[0]!,
+        asset: state.assets.find((asset: MediaAsset) => asset.id === "primary"),
+        busy: false,
+        active: true,
+      });
+      const sync = (value: TimelineEditorState) => {
+        props.revision = value.revision;
+        props.clip = value.composition.tracks[0]!.clips.find(
+          (clip) => clip.id === "p",
+        )!;
+      };
+      const commit = async (command: unknown) => {
+        const response = await fetch(
+          "http://127.0.0.1:4310/api/compositions/cut/edit",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              baseRevision: props.revision,
+              commands: [command],
+            }),
+          },
+        );
+        if (!response.ok) return false;
+        sync(await response.json());
+        return true;
+      };
+      locale.i18n.global.locale.value = "en-US";
+      vue
+        .createApp({
+          render: () => vue.h(component.default, { ...props, commit }),
+        })
+        .use(locale.i18n)
+        .mount(element);
+      Object.assign(window, { mappedEnvelopeHarness: { sync } });
+    },
+    { projectId, state: prepared },
+  );
+  const reset = page.getByTestId("sound-reset-automation");
+  await expect(page.getByTestId("sound-apply")).toBeDisabled();
+  await expect(reset).toHaveText("Reset envelope to edit");
+  await info.attach("synthetic-mapped-envelope-1024x768.png", {
+    body: await page.locator(".editor-sound-timing").screenshot(),
+    contentType: "image/png",
+  });
+  await reset.focus();
+  await page.keyboard.press("Enter");
+  await expect(reset).toHaveCount(0);
+  const resetResponse = await request.get(`${api}/compositions/cut/editor`);
+  expect(resetResponse.ok()).toBe(true);
+  const resetState = (await resetResponse.json()) as TimelineEditorState;
+  expect(resetState.composition.tracks[0]!.clips[0]!.audioAutomation).toEqual({
+    version: 1,
+    role: "dialogue",
+  });
+  const undoResponse = await request.post(`${api}/compositions/cut/undo`, {
+    data: { baseRevision: resetState.revision },
+  });
+  expect(undoResponse.ok()).toBe(true);
+  const undone = (await undoResponse.json()) as TimelineEditorState;
+  expect(undone.composition).toEqual(prepared.composition);
+  const redoResponse = await request.post(`${api}/compositions/cut/redo`, {
+    data: { baseRevision: undone.revision },
+  });
+  expect(redoResponse.ok()).toBe(true);
+  const redone = (await redoResponse.json()) as TimelineEditorState;
+  expect(redone.composition).toEqual(resetState.composition);
+  const saved = JSON.parse(
+    await readFile(join(directory, "project.json"), "utf8"),
+  );
+  expect(
+    saved.timelines.find((film: Composition) => film.id === "cut"),
+  ).toEqual(resetState.composition);
+  expect((await request.post(`${api}/project/close`, { data: {} })).ok()).toBe(
+    true,
+  );
+  expect(
+    (
+      await request.post(`${api}/project/open`, { data: { path: directory } })
+    ).ok(),
+  ).toBe(true);
+  const reopenResponse = await request.get(`${api}/compositions/cut/editor`);
+  expect(reopenResponse.ok()).toBe(true);
+  const reopened = (await reopenResponse.json()) as TimelineEditorState;
+  expect(reopened.composition).toEqual(resetState.composition);
 });

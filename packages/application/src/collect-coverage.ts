@@ -157,6 +157,7 @@ export function planCollectCoverage(
         if (clipIds.has(clip.id)) invalid();
         clipIds.add(clip.id);
         if (clip.audioTiming) independentAudioAssets.add(clip.assetId);
+        if (clip.audioAutomation?.version === 2) evidence.add(clip.assetId);
         if (clip.userOverrides?.isUserPinned) {
           pinnedAssets.add(clip.assetId);
           if (clip.layout?.secondary)

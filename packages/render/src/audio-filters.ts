@@ -15,6 +15,10 @@ export function audioAutomationFilters(
 ): string[] {
   if (!value) return [];
   const automation = validateAudioAutomation(value, duration);
+  if (automation.version === 2)
+    throw new Error(
+      "Mapped audio automation requires the canonical AudioMixPlan renderer.",
+    );
   const filters: string[] = [];
   if (automation.fadeIn)
     filters.push(`afade=t=in:st=0:d=${n(automation.fadeIn)}`);

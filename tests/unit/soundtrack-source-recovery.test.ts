@@ -18,6 +18,7 @@ afterEach(() =>
 );
 
 async function mountSound(overlay = true) {
+  const commands: unknown[] = [];
   const component = loadComponent(
     "apps/desktop/src/components/SoundtrackPanel.vue",
     {
@@ -68,6 +69,7 @@ async function mountSound(overlay = true) {
     sourceVersion: 1,
     active: true,
     busy: false,
+    onCommand: (command: unknown) => commands.push(command),
   });
   const { root, unmount } = mountComponent(component, props);
   cleanup.push(unmount);
@@ -79,8 +81,40 @@ async function mountSound(overlay = true) {
         element.props.role === "status" &&
         element.text.includes("editor.source.error.playback"),
     );
-  return { props, root, audio, failed };
+  return { props, root, audio, failed, commands };
 }
+
+it("requires an explicit mapped-envelope reset before changing role or fades", async () => {
+  const sound = await mountSound();
+  sound.props.selectedClip.audioAutomation =
+    core.mapAudioAutomationForClipWindow(sound.props.selectedClip, 0, 2);
+  await vue.nextTick();
+  const role = flatten(sound.root).find(
+      (element) => element.props["data-testid"] === "selected-audio-role",
+    )!,
+    reset = flatten(sound.root).find(
+      (element) => element.props["data-testid"] === "sound-reset-automation",
+    )!;
+  expect(role.props.disabled).toBe(true);
+  expect(sound.audio()).toBeUndefined();
+  (role.props.onChange as (event: unknown) => void)({
+    target: { value: "dialogue" },
+  });
+  expect(sound.commands).toEqual([]);
+  (reset.props.onClick as () => void)();
+  expect(sound.commands).toEqual([
+    {
+      type: "audio.configure",
+      clipId: "sound",
+      automation: { version: 1, role: "music" },
+    },
+  ]);
+  expect(sound.props.selectedClip.audioAutomation?.version).toBe(2);
+  sound.props.assets[0]!.state.locked = true;
+  await vue.nextTick();
+  (reset.props.onClick as () => void)();
+  expect(sound.commands).toHaveLength(1);
+});
 
 it("replaces failed sound media and clears failure after a same-ID URI change", async () => {
   const sound = await mountSound();

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
-import type { MediaAsset } from "@openfilm/core";
+import type { Clip, MediaAsset } from "@openfilm/core";
 import { hashFile } from "@openfilm/media";
 import {
   OpenFilmApplication,
@@ -67,7 +67,7 @@ function wave(): Buffer {
   return bytes;
 }
 
-async function fixture() {
+async function fixture(withAutomation = false) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-silence-http-"));
   roots.push(root);
   const source = join(root, "voice.wav");
@@ -118,6 +118,37 @@ async function fixture() {
             sourceOut: 4,
             timelineStart: 0,
             timelineDuration: 4,
+            ...(withAutomation
+              ? {
+                  audioAutomation: {
+                    version: 1 as const,
+                    role: "dialogue" as const,
+                    fadeIn: 0.5,
+                    fadeOut: 1,
+                    points: [
+                      { time: 0, gain: 0.8 },
+                      { time: 2, gain: 0.5 },
+                      { time: 4, gain: 0.9 },
+                    ],
+                    ducking: [
+                      {
+                        start: 0.4,
+                        end: 2.5,
+                        gain: 0.4,
+                        attack: 0.5,
+                        release: 0.5,
+                      },
+                      {
+                        start: 1.8,
+                        end: 3.5,
+                        gain: 0.7,
+                        attack: 0.2,
+                        release: 0.5,
+                      },
+                    ],
+                  },
+                }
+              : {}),
           },
         ],
       },
@@ -180,7 +211,7 @@ async function waitForJob(base: string, jobId: string, status: string) {
 }
 
 it("serves real silence analysis, review and explicit idempotent Apply over HTTP", async () => {
-  const f = await fixture();
+  const f = await fixture(true);
   const createdResponse = await post(
     f.base,
     "/api/silence/jobs",
@@ -228,7 +259,13 @@ it("serves real silence analysis, review and explicit idempotent Apply over HTTP
   );
   expect(reviewResponse.status).toBe(200);
   const review = (await reviewResponse.json()) as {
-    review: { reviewId: string; proposal: { sourceHash: string } };
+    review: {
+      reviewId: string;
+      proposal: {
+        sourceHash: string;
+        timelineIntervals: { start: number; end: number }[];
+      };
+    };
   };
   expect(review.review.reviewId).toBe(
     (reviewed.silenceAnalysis as { reviewId: string }).reviewId,
@@ -249,12 +286,31 @@ it("serves real silence analysis, review and explicit idempotent Apply over HTTP
     job: { status: string };
     edit: {
       revision: string;
-      composition: { duration: number; tracks: { clips: unknown[] }[] };
+      composition: { duration: number; tracks: { clips: Clip[] }[] };
     };
   };
   expect(applied.job.status).toBe("completed");
   expect(applied.edit.composition.duration).toBeCloseTo(3.2);
   expect(applied.edit.composition.tracks[0]!.clips).toHaveLength(2);
+  expect(
+    applied.edit.composition.tracks[0]!.clips.map(
+      (clip) => clip.audioAutomation,
+    ),
+  ).toMatchObject([
+    {
+      version: 2,
+      timeMap: { offsetSamples: 0, durationSamples: 192_000 },
+    },
+    {
+      version: 2,
+      timeMap: {
+        offsetSamples: Math.round(
+          review.review.proposal.timelineIntervals[0]!.end * 48_000,
+        ),
+        durationSamples: 192_000,
+      },
+    },
+  ]);
   expect(await hashFile(f.source)).toBe(review.review.proposal.sourceHash);
   const undo = await post(f.base, "/api/compositions/timeline/undo", {
     baseRevision: applied.edit.revision,
@@ -446,43 +502,6 @@ it("retries a failed HTTP Job once and keeps the original request identities", a
     created: false,
     job: { status: "waiting-review", silenceAnalysis: { attempt: 2 } },
   });
-});
-
-it("fails an HTTP Job before publishing a Review when its ripple would split local audio automation", async () => {
-  const f = await fixture();
-  await f.server.close();
-  servers.splice(servers.indexOf(f.server), 1);
-  const application = await OpenFilmApplication.open(f.directory);
-  application.project.timelines[0]!.tracks[0]!.clips[0]!.audioAutomation = {
-    version: 1,
-    role: "dialogue",
-    fadeIn: 0.4,
-    fadeOut: 0.6,
-    points: [{ time: 3, gain: 0.5 }],
-    ducking: [{ start: 0.5, end: 3.5, gain: 0.7, attack: 0.1, release: 0.1 }],
-  };
-  await application.save();
-  application.close();
-
-  const server = await startServer({ port: 0, project: f.directory });
-  servers.push(server);
-  const base = `http://127.0.0.1:${server.port}`;
-  const response = await post(
-    base,
-    "/api/silence/jobs",
-    input(f.projectId, "automation-protected-create"),
-  );
-  expect(response.status).toBe(202);
-  const created = (await response.json()) as { job: { id: string } };
-  const failed = await waitForJob(base, created.job.id, "failed");
-  expect(failed.errors).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ code: "timeline.audioAutomationConflict" }),
-    ]),
-  );
-  expect(
-    (await fetch(`${base}/api/silence/jobs/${created.job.id}/review`)).status,
-  ).toBe(404);
 });
 
 it("requires stopped-owner evidence for the recover endpoint", async () => {

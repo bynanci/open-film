@@ -2,13 +2,15 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createExportProfile, type Composition } from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import * as mediaModule from "@openfilm/media";
 import { FFmpegRenderer, type RenderOptions } from "../src/index.js";
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -31,6 +33,124 @@ async function probe(path: string) {
 }
 
 describe("profiled FFmpeg exports", () => {
+  it("configures deterministic rounding on actual complex-graph scalers and pixel conversions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-profiled-rounding-"));
+    roots.push(root);
+    const source = join(root, "synthetic.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=320x180:r=12:d=1",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "synthetic.png",
+    });
+    const composition: Composition = {
+      id: "rounding-test",
+      storyId: "story",
+      duration: 1,
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "clip",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const diagnostics: string[] = [];
+    const actualRunProcess = mediaModule.runProcess;
+    // Run the production graph and encoder; change only FFmpeg's log level so
+    // the assertions observe configured scaler contexts, not argument text.
+    vi.spyOn(mediaModule, "runProcess").mockImplementation(
+      async (command, args, options) => {
+        if (command !== "ffmpeg" || !args.includes("-filter_complex"))
+          return actualRunProcess(command, args, options);
+        const verbose = [...args];
+        // These contexts log at verbose; debug can exhaust runProcess's
+        // bounded stderr capture before graph configuration on FFmpeg9.
+        verbose[verbose.indexOf("-v") + 1] = "verbose";
+        verbose.unshift("-hide_banner");
+        const result = await actualRunProcess(command, verbose, options);
+        diagnostics.push(result.stderr);
+        return result;
+      },
+    );
+    const path = join(root, "cropped.mp4");
+    await new FFmpegRenderer().render(
+      composition,
+      [asset],
+      path,
+      { width: 160, height: 90, frameRate: 12 },
+      {
+        exportProfile: createExportProfile({
+          ratio: "9:16",
+          width: 90,
+          height: 160,
+          frameRate: 12,
+          framing: "crop",
+        }),
+      },
+    );
+    // Without a profile's final explicit scale, FFmpeg inserts its own
+    // RGBA -> YUV converter. It must inherit the same graph defaults.
+    await new FFmpegRenderer().render(
+      composition,
+      [asset],
+      join(root, "unprofiled.mp4"),
+      { width: 160, height: 90, frameRate: 12 },
+    );
+    const configured = diagnostics
+      .join("\n")
+      .split("\n")
+      .filter(
+        (line) =>
+          /\bw:\d+ h:\d+ fmt:\S+.* -> w:\d+ h:\d+ fmt:/u.test(line) &&
+          /flags:0x[\da-f]+/iu.test(line),
+      );
+    // Fit, output crop and any auto-inserted RGBA/YUV conversions must all use
+    // accurate rounding and bitexact arithmetic (libswscale flags 0x40000/0x80000).
+    expect(
+      configured.length,
+      diagnostics.join("\n").slice(-6000),
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      configured.some((line) =>
+        /\bw:160 h:90 fmt:rgba\b.* -> w:160 h:90 fmt:yuv420p\b/u.test(line),
+      ),
+    ).toBe(true);
+    for (const context of configured) {
+      const flags = Number.parseInt(
+        context.match(/flags:0x([\da-f]+)/iu)![1]!,
+        16,
+      );
+      expect(flags & 0xc0000, context).toBe(0xc0000);
+    }
+    const result = await probe(path);
+    expect(result.streams[0]).toMatchObject({
+      width: 90,
+      height: 160,
+      nb_frames: "12",
+    });
+  });
+
   it("keeps the saved composition and source unchanged while contain and crop produce the requested actual frame", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-profiled-frame-"));
     roots.push(root);
@@ -152,7 +272,9 @@ describe("profiled FFmpeg exports", () => {
       0, 0, 0,
     ]);
     expect([...croppedFrame.subarray(topPixel, topPixel + 3)]).toEqual([
-      253, 0, 0,
+      // Independently reproduced YUV -> deterministic RGBA -> YUV control;
+      // accurate rounding changes the old unconfigured red value from 253.
+      252, 0, 0,
     ]);
     expect(contained.manifest.warnings).toContain(
       "Profile letterboxes the saved Composition frame with black padding.",

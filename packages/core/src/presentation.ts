@@ -482,7 +482,18 @@ export function evaluateAudioGain(
     throw new Error("Audio sample time and positive duration must be finite");
   if (!automation) return 1;
   const value = validateAudioAutomation(automation, duration);
-  const local = clamp(time, 0, duration);
+  const envelopeDuration =
+      value.version === 2 ? value.timeMap.durationSamples / 48000 : duration,
+    local =
+      value.version === 2
+        ? clamp(
+            (value.timeMap.offsetSamples +
+              Math.round(clamp(time, 0, duration) * 48000)) /
+              48000,
+            0,
+            envelopeDuration,
+          )
+        : clamp(time, 0, duration);
   const points = value.points ?? [];
   let gain = 1;
   if (points.length) {
@@ -501,7 +512,8 @@ export function evaluateAudioGain(
     }
   }
   if (value.fadeIn) gain *= clamp(local / value.fadeIn, 0, 1);
-  if (value.fadeOut) gain *= clamp((duration - local) / value.fadeOut, 0, 1);
+  if (value.fadeOut)
+    gain *= clamp((envelopeDuration - local) / value.fadeOut, 0, 1);
   for (const duck of value.ducking ?? []) {
     if (local < duck.start || local >= duck.end) continue;
     let amount = duck.gain;

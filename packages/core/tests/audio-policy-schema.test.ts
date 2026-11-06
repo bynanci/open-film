@@ -74,7 +74,7 @@ describe("independent sound capability", () => {
       createRequire(import.meta.url).resolve("eslint"),
     );
     const Ajv = requireTooling("ajv");
-    for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
+    for (const version of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
       const schema = JSON.parse(
         readFileSync(
           new URL(
@@ -85,10 +85,63 @@ describe("independent sound capability", () => {
         ),
       );
       delete schema.$schema;
-      expect(new Ajv({ allErrors: true }).compile(schema)(project())).toBe(
-        version === "1.2.0",
-      );
+      expect(
+        new Ajv({ allErrors: true }).compile(schema)(
+          project(version === "1.3.0" ? version : "1.2.0"),
+        ),
+      ).toBe(version === "1.2.0" || version === "1.3.0");
     }
+  });
+  it("requires project schema 1.3 for persisted automation clocks and promotes without mutating the caller", () => {
+    const current = validateProject(project()),
+      clip = current.timelines[0]!.tracks[0]!.clips[0]!;
+    delete clip.audioTiming;
+    clip.audioAutomation = {
+      version: 2,
+      role: "dialogue",
+      points: [
+        { time: 0, gain: 0.5 },
+        { time: 1, gain: 0.8 },
+      ],
+      timeMap: {
+        version: 1,
+        sampleRate: 48000,
+        continuityId: "c",
+        offsetSamples: 0,
+        durationSamples: 48000,
+        sourceInSample: 0,
+        sourceOutSample: 48000,
+        sourceInSeconds: 0,
+        sourceOutSeconds: 1,
+        timelineOffsetSeconds: 0,
+        speed: 1,
+      },
+    };
+    expect(() => validateProject(current)).toThrow(
+      /requires project schema 1.3.0/,
+    );
+    const candidate = { ...current, schemaVersion: "1.3.0" as const },
+      promoted = promoteAudioProject(candidate);
+    expect(validateProject(promoted)).toEqual(promoted);
+    expect(promoted.schemaVersion).toBe("1.3.0");
+    const mixed = structuredClone(promoted);
+    mixed.timelines[0]!.tracks[0]!.clips[0]!.audioTiming = {
+      ...timing,
+      version: 1,
+      sampleRate: 48000,
+    };
+    expect(() => validateProject(mixed)).toThrow(/independent sound timing/);
+    const stale = structuredClone(promoted);
+    stale.timelines[0]!.tracks[0]!.clips[0]!.sourceIn = 0.1;
+    stale.timelines[0]!.tracks[0]!.clips[0]!.sourceOut = 1.1;
+    expect(() => validateProject(stale)).toThrow(/source bounds and speed/);
+    expect(current.schemaVersion).toBe("1.2.0");
+    const future = promoteAudioProject({
+      ...promoted,
+      schemaVersion: "1.4.0",
+    } as unknown as typeof promoted);
+    expect(future.schemaVersion).toBe("1.4.0");
+    expect(supportedProjectVersions()).toContain("1.3.0");
   });
   it("pin_promotion_retains_1_2", () => {
     const candidate = validateProject(project());
@@ -113,12 +166,12 @@ describe("independent sound capability", () => {
     }
     // The promoter receives application-validated projects. This future-header
     // stand-in tests its floor independently of the intentionally closed importer.
-    const future = { ...validateProject(project()), schemaVersion: "1.3.0" };
+    const future = { ...validateProject(project()), schemaVersion: "1.4.0" };
     expect(() => validateProject(future)).toThrow(/schemaVersion/);
     const promoted = promoteAudioProject(
       future as ReturnType<typeof validateProject>,
     );
-    expect(promoted.schemaVersion).toBe("1.3.0");
+    expect(promoted.schemaVersion).toBe("1.4.0");
     expect(promoted.timelines).toEqual(future.timelines);
     expect(promoted).not.toBe(future);
   });

@@ -40,6 +40,7 @@ let generation = 0,
 const locked = computed(
   () => !!props.clip.locked || !!props.asset.state.locked,
 );
+const mapped = computed(() => props.clip.audioAutomation?.version === 2);
 const owner = computed(() =>
   JSON.stringify([
     props.projectId,
@@ -47,6 +48,7 @@ const owner = computed(() =>
     props.revision,
     props.clip.id,
     props.clip.audioTiming,
+    props.clip.audioAutomation,
     props.asset.id,
     props.asset.uri,
     props.asset.contentHash,
@@ -72,6 +74,7 @@ watch(
       disposed ||
       !props.active ||
       locked.value ||
+      mapped.value ||
       !hasAudioStream(props.asset)
     )
       return;
@@ -166,15 +169,17 @@ const remainder = computed(() => ({
 const hint = computed(() =>
   locked.value
     ? "locked"
-    : !hasAudioStream(props.asset)
-      ? "missingStream"
-      : checking.value
-        ? "checking"
-        : unavailable.value
-          ? "sourceUnavailable"
-          : !candidate.value
-            ? "invalidRange"
-            : "clockHint",
+    : mapped.value
+      ? "mappedAutomation"
+      : !hasAudioStream(props.asset)
+        ? "missingStream"
+        : checking.value
+          ? "checking"
+          : unavailable.value
+            ? "sourceUnavailable"
+            : !candidate.value
+              ? "invalidRange"
+              : "clockHint",
 );
 const disabled = computed(
   () =>
@@ -212,15 +217,34 @@ async function save(reset = false) {
     !facts.value
   )
     return;
+  await commitChange({
+    type: "audio.timing",
+    clipId: props.clip.id,
+    timing: reset ? null : candidate.value!,
+  });
+}
+async function resetAutomation() {
+  if (
+    disposed ||
+    !mapped.value ||
+    props.busy ||
+    pending.value ||
+    locked.value ||
+    !props.active
+  )
+    return;
+  await commitChange({
+    type: "audio.configure",
+    clipId: props.clip.id,
+    automation: { version: 1, role: props.clip.audioAutomation!.role },
+  });
+}
+async function commitChange(command: TimelineCommand) {
   const stamp = generation;
   pending.value = true;
   error.value = false;
   try {
-    const accepted = await props.commit({
-      type: "audio.timing",
-      clipId: props.clip.id,
-      timing: reset ? null : candidate.value!,
-    });
+    const accepted = await props.commit(command);
     if (!disposed && stamp === generation) {
       if (accepted) {
         startMs.value = 0;
@@ -329,6 +353,18 @@ defineExpose({ hasPending: pending });
     <p class="editor-note" data-testid="sound-hint">
       {{ t(`editor.soundTiming.${hint}`) }}
     </p>
+    <template v-if="mapped">
+      <p class="editor-note">{{ t("editor.sound.mappedAutomation") }}</p>
+      <button
+        type="button"
+        class="editor-button"
+        data-testid="sound-reset-automation"
+        :disabled="busy || pending || locked || !active"
+        @click="resetAutomation"
+      >
+        {{ t("editor.sound.resetAutomation") }}
+      </button>
+    </template>
     <p v-if="clip.audioTiming && resetRange" class="editor-note">
       {{ t("editor.soundTiming.resetHint") }}
       {{ formatNumber(Math.round(resetRange.audioStart * 1000)) }}–{{

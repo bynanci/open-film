@@ -39,7 +39,8 @@ export interface RecordAudioPreviewDescriptor {
 }
 const FILE_LIMIT = 1024 ** 3,
   CACHE_LIMIT = 2 * FILE_LIMIT,
-  READ_LIMIT = 192000;
+  READ_LIMIT = 192000,
+  DURATION_LIMIT = 3600;
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function stale(
@@ -349,13 +350,23 @@ export class RecordAudioPreviewService {
       if (
         !Number.isFinite(duration) ||
         duration <= 0 ||
-        duration > 3600 ||
+        duration > DURATION_LIMIT ||
         !Number.isSafeInteger(lengthSamples) ||
         lengthSamples * 6 + 65536 > FILE_LIMIT
       )
         shape(
           "Record PCM preparation supports at most one hour (3600 seconds) and 1 GiB. Export WAV or MP4 for longer films.",
         );
+      for (const track of composition.tracks)
+        for (const clip of track.clips)
+          if (
+            clip.audioAutomation?.version === 2 &&
+            clip.audioAutomation.timeMap.durationSamples >
+              DURATION_LIMIT * 48000
+          )
+            shape(
+              "The preserved automation history exceeds the one-hour (3600 seconds) Record preparation budget. Reset the envelope or use an explicit export workflow.",
+            );
       const projectId = this.app.project.id,
         projectIdentity = await lstat(join(this.app.directory, "project.json")),
         generation = this.app.projectGeneration,

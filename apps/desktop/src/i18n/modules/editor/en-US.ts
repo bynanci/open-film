@@ -3,6 +3,8 @@
 export default {
   editor: {
     soundTiming: {
+      mappedAutomation:
+        "Reset the mapped envelope before editing independent sound timing.",
       title: "Sound timing",
       linked: "Linked to picture",
       independent: "Independent sound",
@@ -29,7 +31,7 @@ export default {
         "Use integer offsets from −60000 to 60000 ms within the source and film. Existing fades and duck regions must fit.",
       saveFailed:
         "Sound timing was not saved. Review the source, locks and effects, then retry.",
-      recordAudition: "Use Record to audition the saved independent sound mix.",
+      recordAudition: "Use Record to audition the saved sound mix.",
       idle: "Play to prepare the saved sound mix.",
       preparing: "Preparing saved sound mix…",
       ready: "Saved sound mix ready.",
@@ -659,6 +661,9 @@ export default {
         "Layout preview. Render the film to review transitions and the full soundtrack.",
     },
     sound: {
+      mappedAutomation:
+        "This clip preserves its original envelope clock. Resetting clears gain points, fades and ducking so you can author a new envelope. Undo restores the preserved curve. Use Record to audition the mix.",
+      resetAutomation: "Reset envelope to edit",
       tab: "Sound",
       heading: "Music and your own voice",
       description:

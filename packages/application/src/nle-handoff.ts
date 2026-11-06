@@ -206,6 +206,14 @@ export class NleHandoffService {
       if (!asset) throw new Error(`Missing handoff source: ${id}`);
       return asset;
     });
+    const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+    for (const track of composition.tracks)
+      if (track.type === "video")
+        for (const clip of track.clips)
+          if (assetsById.get(clip.assetId)?.mediaType === "audio")
+            throw new Error(
+              `Clip ${clip.id}: audio-only source cannot be used on a visual track.`,
+            );
     if (plan.visualRanges.length || plan.bakeAudio) {
       const { width, height } = this.host.project.settings;
       if (

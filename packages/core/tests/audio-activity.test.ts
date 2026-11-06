@@ -4,6 +4,7 @@ import {
   applySilenceCutProposal,
   applyTranscriptRipple,
   createSilenceCutProposal,
+  evaluateAudioGain,
   validateAudioActivityEvidence,
   validateSilenceCutProposal,
   type AudioActivityEvidence,
@@ -339,58 +340,37 @@ describe("silence cut proposals", () => {
     ).toEqual(composition());
   });
 
-  it.each([
-    "track",
-    "clip",
-    "source",
-    "pin",
-    "independent-audio",
-    "audio-automation",
-  ] as const)("rejects affected %s protection", (protection) => {
-    const comp = composition(),
-      library = structuredClone(assets);
-    const last = comp.tracks[0]!.clips[2]!;
-    if (protection === "track") comp.tracks[0]!.locked = true;
-    if (protection === "clip") last.locked = true;
-    if (protection === "source") library[1]!.state.locked = true;
-    if (protection === "pin")
-      last.userOverrides = {
-        version: 1,
-        isUserPinned: true,
-        lockedAttributes: ["timing"],
-      };
-    if (protection === "independent-audio")
-      last.audioTiming = {
-        version: 1,
-        sampleRate: 48000,
-        timelineStartSample: 480000,
-        sourceInSample: 0,
-        sourceOutSample: 192000,
-      };
-    if (protection === "audio-automation")
-      comp.tracks[0]!.clips[0]!.audioAutomation = {
-        version: 1,
-        role: "music",
-        fadeIn: 0.5,
-        fadeOut: 1,
-        points: [{ time: 3, gain: 0.5 }],
-        ducking: [
-          {
-            start: 1,
-            end: 3.5,
-            gain: 0.6,
-            attack: 0.2,
-            release: 0.2,
-          },
-        ],
-      };
-    expect(() =>
-      createSilenceCutProposal(comp, evidence(), {
-        ...options,
-        assets: library,
-      }),
-    ).toThrow(/locked|pinned|independent sound|audio automation/i);
-  });
+  it.each(["track", "clip", "source", "pin", "independent-audio"] as const)(
+    "rejects affected %s protection",
+    (protection) => {
+      const comp = composition(),
+        library = structuredClone(assets);
+      const last = comp.tracks[0]!.clips[2]!;
+      if (protection === "track") comp.tracks[0]!.locked = true;
+      if (protection === "clip") last.locked = true;
+      if (protection === "source") library[1]!.state.locked = true;
+      if (protection === "pin")
+        last.userOverrides = {
+          version: 1,
+          isUserPinned: true,
+          lockedAttributes: ["timing"],
+        };
+      if (protection === "independent-audio")
+        last.audioTiming = {
+          version: 1,
+          sampleRate: 48000,
+          timelineStartSample: 480000,
+          sourceInSample: 0,
+          sourceOutSample: 192000,
+        };
+      expect(() =>
+        createSilenceCutProposal(comp, evidence(), {
+          ...options,
+          assets: library,
+        }),
+      ).toThrow(/locked|pinned|independent sound|audio automation/i);
+    },
+  );
 
   it("keeps clip-local audio automation intact when ripple only shifts the whole clip", () => {
     const comp = composition();
@@ -408,6 +388,156 @@ describe("silence cut proposals", () => {
     expect(applied.tracks[0]!.clips[0]!.audioAutomation).toEqual(
       untouched.audioAutomation,
     );
+  });
+
+  it("preserves fades, gain points and ducking across a speed-adjusted silence split", () => {
+    const comp = composition(),
+      originalClip = comp.tracks[0]!.clips[0]!;
+    comp.duration = 8;
+    comp.tracks[0]!.clips = [originalClip];
+    originalClip.sourceOut = 10;
+    originalClip.transform = { speed: 1.25 };
+    originalClip.audioAutomation = {
+      version: 1,
+      role: "dialogue",
+      fadeIn: 2.5,
+      fadeOut: 3,
+      points: [
+        { time: 0, gain: 0.8 },
+        { time: 4, gain: 0.3 },
+        { time: 8, gain: 0.95 },
+      ],
+      ducking: [
+        { start: 0.5, end: 4.25, gain: 0.4, attack: 1, release: 0.75 },
+        { start: 4, end: 7.5, gain: 0.7, attack: 0.25, release: 1 },
+      ],
+    };
+    const originalAutomation = structuredClone(originalClip.audioAutomation),
+      measured = {
+        ...evidence(),
+        silenceIntervals: [{ start: 2, end: 4 }],
+      },
+      proposal = createSilenceCutProposal(comp, measured, {
+        ...options,
+        paddingSeconds: 0.25,
+      });
+
+    expect(proposal.timelineIntervals).toEqual([{ start: 1.8, end: 3 }]);
+    const after = applySilenceCutProposal(comp, proposal, { assets }),
+      [left, right] = after.tracks[0]!.clips;
+    expect(after.duration).toBe(6.8);
+    expect(left).toMatchObject({
+      timelineDuration: 1.8,
+      sourceIn: 0,
+      sourceOut: 2.25,
+    });
+    expect(right).toMatchObject({
+      timelineStart: 1.8,
+      timelineDuration: 5,
+      sourceIn: 3.75,
+      sourceOut: 10,
+    });
+    expect(left!.audioAutomation).toMatchObject({
+      version: 2,
+      timeMap: {
+        version: 1,
+        sampleRate: 48000,
+        offsetSamples: 0,
+        durationSamples: 384000,
+      },
+    });
+    expect(right!.audioAutomation).toMatchObject({
+      version: 2,
+      timeMap: {
+        version: 1,
+        sampleRate: 48000,
+        offsetSamples: 144000,
+        durationSamples: 384000,
+      },
+    });
+
+    for (const [fragment, offsetSamples, durationSamples] of [
+      [left!, 0, 86400],
+      [right!, 144000, 240000],
+    ] as const) {
+      for (let localSample = 0; localSample < durationSamples; localSample++) {
+        expect(
+          evaluateAudioGain(
+            fragment.audioAutomation,
+            localSample / 48000,
+            fragment.timelineDuration,
+          ),
+        ).toBe(
+          evaluateAudioGain(
+            originalAutomation,
+            (offsetSamples + localSample) / 48000,
+            8,
+          ),
+        );
+      }
+    }
+    expect(comp.tracks[0]!.clips[0]!.audioAutomation).toEqual(
+      originalAutomation,
+    );
+    const secondProposal = createSilenceCutProposal(
+        after,
+        { ...measured, silenceIntervals: [{ start: 6, end: 7 }] },
+        {
+          ...options,
+          baseRevision: "second-reviewed-revision",
+          paddingSeconds: 0.25,
+        },
+      ),
+      twice = applySilenceCutProposal(after, secondProposal, { assets });
+    expect(secondProposal.timelineIntervals).toEqual([
+      { start: 3.8, end: 4.2 },
+    ]);
+    expect(twice.duration).toBeCloseTo(6.4, 12);
+    expect(
+      twice.tracks[0]!.clips.map((fragment) => ({
+        sourceIn: fragment.sourceIn,
+        sourceOut: fragment.sourceOut,
+        offsetSamples:
+          fragment.audioAutomation?.version === 2
+            ? fragment.audioAutomation.timeMap.offsetSamples
+            : undefined,
+      })),
+    ).toEqual([
+      { sourceIn: 0, sourceOut: 2.25, offsetSamples: 0 },
+      { sourceIn: 3.75, sourceOut: 6.25, offsetSamples: 144000 },
+      { sourceIn: 6.75, sourceOut: 10, offsetSamples: 259200 },
+    ]);
+    expect(after.duration).toBe(6.8);
+  });
+
+  it("rejects fractional ripple windows that cannot preserve the exact retained sample span", () => {
+    const comp = composition(),
+      clip = comp.tracks[0]!.clips[0]!;
+    comp.duration = 4;
+    comp.tracks[0]!.clips = [clip];
+    Object.assign(clip, {
+      timelineDuration: 4,
+      sourceOut: 5.2,
+      transform: { speed: 1.3 },
+      audioAutomation: { version: 1, role: "dialogue", fadeIn: 0.5 },
+    });
+    const snapshot = structuredClone(comp);
+    expect(() =>
+      createSilenceCutProposal(
+        comp,
+        {
+          ...evidence(),
+          silenceIntervals: Array.from({ length: 10 }, (_, index) => ({
+            start: (index * 4 + 2) / 10,
+            end: (index * 4 + 4) / 10,
+          })),
+        },
+        { ...options, paddingSeconds: 0 },
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "timeline.audioAutomationConflict" }),
+    );
+    expect(comp).toEqual(snapshot);
   });
 
   it("protects graphic scene pins and allows a protected clip before all cuts", () => {

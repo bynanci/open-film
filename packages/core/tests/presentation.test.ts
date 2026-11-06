@@ -452,4 +452,47 @@ describe("audio automation", () => {
     expect(evaluateAudioGain(automation, 10, 10)).toBe(0);
     expect(evaluateAudioGain(undefined, 5, 10)).toBe(1);
   });
+
+  it("evaluates a ripple fragment against its original canonical sample clock", () => {
+    const original: AudioAutomation = {
+        version: 1,
+        role: "dialogue",
+        fadeIn: 2.5,
+        fadeOut: 3,
+        points: [
+          { time: 0, gain: 0.8 },
+          { time: 4, gain: 0.3 },
+          { time: 8, gain: 0.95 },
+        ],
+        ducking: [
+          { start: 0.5, end: 4.25, gain: 0.4, attack: 1, release: 0.75 },
+          { start: 4, end: 7.5, gain: 0.7, attack: 0.25, release: 1 },
+        ],
+      },
+      fragment = {
+        ...original,
+        version: 2 as const,
+        timeMap: {
+          version: 1 as const,
+          sampleRate: 48000 as const,
+          continuityId: "clip",
+          offsetSamples: 144000,
+          durationSamples: 384000,
+          sourceInSample: 0,
+          sourceOutSample: 480000,
+          sourceInSeconds: 0,
+          sourceOutSeconds: 10,
+          timelineOffsetSeconds: 0,
+          speed: 1,
+        },
+      } as unknown as AudioAutomation;
+
+    for (let localSample = 0; localSample < 240000; localSample++) {
+      const localTime = localSample / 48000,
+        originalTime = (144000 + localSample) / 48000;
+      expect(evaluateAudioGain(fragment, localTime, 5)).toBe(
+        evaluateAudioGain(original, originalTime, 8),
+      );
+    }
+  });
 });

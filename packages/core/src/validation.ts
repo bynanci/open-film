@@ -1,8 +1,10 @@
 import {
+  AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION,
   AUDIO_PROJECT_SCHEMA_VERSION,
   validateAudioTiming,
   resolveAudioTimingRange,
   validateCoverageAudioBindings,
+  resolveMappedAutomationWindow,
 } from "./audio-policy.js";
 import { validateClipCoverage } from "./coverage.js";
 import { MAX_CONTINUITY_RECEIPTS } from "./continuity.js";
@@ -19,6 +21,7 @@ import {
   MAX_SCENE_DIRECTION_RECEIPTS,
   FILM_LOOK_PRESET_IDS,
   type Composition,
+  type Clip,
   type Job,
   type MediaAsset,
   type OpenFilmProject,
@@ -599,7 +602,7 @@ function captionTrack(
 function audioAutomation(
   value: unknown,
   path: string,
-  duration = Infinity,
+  clipDuration = Infinity,
 ): AudioAutomation {
   const data = presentationObject(value, path, [
     "version",
@@ -608,8 +611,115 @@ function audioAutomation(
     "fadeOut",
     "points",
     "ducking",
+    "timeMap",
   ]);
-  versionOne(data, path);
+  if (data.version !== 1 && data.version !== 2)
+    fail(`${path}.version`, "expected audio automation version 1 or 2");
+  let envelopeDuration = clipDuration;
+  if (data.version === 1) {
+    if (Object.hasOwn(data, "timeMap"))
+      fail(`${path}.timeMap`, "requires audio automation version 2");
+  } else {
+    if (!Object.hasOwn(data, "timeMap"))
+      fail(`${path}.timeMap`, "required for audio automation version 2");
+    const timeMap = presentationObject(data.timeMap, `${path}.timeMap`, [
+      "version",
+      "sampleRate",
+      "continuityId",
+      "offsetSamples",
+      "durationSamples",
+      "sourceInSample",
+      "sourceOutSample",
+      "sourceInSeconds",
+      "sourceOutSeconds",
+      "timelineOffsetSeconds",
+      "speed",
+    ]);
+    if (timeMap.version !== 1)
+      fail(`${path}.timeMap.version`, "unsupported audio clock version");
+    if (timeMap.sampleRate !== 48000)
+      fail(
+        `${path}.timeMap.sampleRate`,
+        "expected the canonical 48000 Hz clock",
+      );
+    const continuityId = string(
+        timeMap.continuityId,
+        `${path}.timeMap.continuityId`,
+      ),
+      offsetSamples = number(
+        timeMap.offsetSamples,
+        `${path}.timeMap.offsetSamples`,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
+      durationSamples = number(
+        timeMap.durationSamples,
+        `${path}.timeMap.durationSamples`,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      ),
+      sourceInSample = number(
+        timeMap.sourceInSample,
+        `${path}.timeMap.sourceInSample`,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
+      sourceOutSample = number(
+        timeMap.sourceOutSample,
+        `${path}.timeMap.sourceOutSample`,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      );
+    if (!continuityId.trim() || continuityId.length > 256)
+      fail(`${path}.timeMap.continuityId`, "expected a 1–256 character ID");
+    for (const [key, sample] of Object.entries({
+      offsetSamples,
+      durationSamples,
+      sourceInSample,
+      sourceOutSample,
+    }))
+      if (!Number.isSafeInteger(sample))
+        fail(`${path}.timeMap.${key}`, "expected a safe integer sample");
+    if (durationSamples <= 0 || offsetSamples >= durationSamples)
+      fail(`${path}.timeMap`, "the automation window must be inside its clock");
+    if (sourceOutSample <= sourceInSample)
+      fail(`${path}.timeMap.sourceOutSample`, "must follow sourceInSample");
+    const sourceInSeconds = number(
+        timeMap.sourceInSeconds,
+        `${path}.timeMap.sourceInSeconds`,
+        0,
+      ),
+      sourceOutSeconds = number(
+        timeMap.sourceOutSeconds,
+        `${path}.timeMap.sourceOutSeconds`,
+        0,
+      );
+    if (
+      sourceOutSeconds <= sourceInSeconds ||
+      Math.round(sourceInSeconds * 48000) !== sourceInSample ||
+      Math.round(sourceOutSeconds * 48000) !== sourceOutSample
+    )
+      fail(
+        `${path}.timeMap`,
+        "original source seconds must match the canonical source window",
+      );
+    number(
+      timeMap.timelineOffsetSeconds,
+      `${path}.timeMap.timelineOffsetSeconds`,
+      -0.0005,
+      0.0005,
+    );
+    number(timeMap.speed, `${path}.timeMap.speed`, Number.MIN_VALUE);
+    if (Number.isFinite(clipDuration)) {
+      const currentClipSamples = Math.round(clipDuration * 48000);
+      if (
+        !Number.isSafeInteger(currentClipSamples) ||
+        offsetSamples + currentClipSamples > durationSamples + 1
+      )
+        fail(`${path}.timeMap`, "the clip window exceeds its original clock");
+    }
+    envelopeDuration = durationSamples / 48000;
+  }
   choice(data.role, `${path}.role`, [
     "music",
     "narration",
@@ -617,7 +727,7 @@ function audioAutomation(
     "dialogue",
   ]);
   for (const key of ["fadeIn", "fadeOut"])
-    optional(data, key, path, (v, p) => number(v, p, 0, duration));
+    optional(data, key, path, (v, p) => number(v, p, 0, envelopeDuration));
   optional(data, "points", path, (v, p) => {
     const points = array(v, p);
     if (points.length > 1000) fail(p, "at most 1000 gain points are supported");
@@ -625,7 +735,7 @@ function audioAutomation(
     points.forEach((entry, index) => {
       const pointPath = `${p}[${index}]`;
       const point = presentationObject(entry, pointPath, ["time", "gain"]);
-      const time = number(point.time, `${pointPath}.time`, 0, duration);
+      const time = number(point.time, `${pointPath}.time`, 0, envelopeDuration);
       if (time <= previous)
         fail(
           `${pointPath}.time`,
@@ -648,8 +758,13 @@ function audioAutomation(
         "attack",
         "release",
       ]);
-      const start = number(region.start, `${regionPath}.start`, 0, duration);
-      const end = number(region.end, `${regionPath}.end`, 0, duration);
+      const start = number(
+          region.start,
+          `${regionPath}.start`,
+          0,
+          envelopeDuration,
+        ),
+        end = number(region.end, `${regionPath}.end`, 0, envelopeDuration);
       if (end <= start)
         fail(`${regionPath}.end`, "ducking end must follow its start");
       number(region.gain, `${regionPath}.gain`, 0, 1);
@@ -1589,6 +1704,67 @@ function composition(
         for (const key of ["x", "y", "rotation"])
           optional(transform, key, p, number);
       });
+      const automation = clip.audioAutomation as ObjectValue | undefined;
+      if (automation?.version === 2) {
+        if (Object.hasOwn(clip, "audioTiming"))
+          fail(
+            `${clipPath}.audioTiming`,
+            "mapped automation cannot use independent sound timing; reset its automation first",
+          );
+        const map = object(
+            automation.timeMap,
+            `${clipPath}.audioAutomation.timeMap`,
+          ),
+          speed = Number(
+            (clip.transform as ObjectValue | undefined)?.speed ?? 1,
+          ),
+          offsetSamples = Number(map.offsetSamples),
+          durationSamples = Number(map.durationSamples),
+          sourceOutSample = Number(map.sourceOutSample),
+          clipSamples = Math.round(length * 48000),
+          actualSourceIn = Math.round(Number(clip.sourceIn ?? 0) * 48000),
+          actualSourceOut = Math.round(
+            Number(
+              clip.sourceOut ?? Number(clip.sourceIn ?? 0) + length * speed,
+            ) * 48000,
+          ),
+          expectedSourceIn = Math.round(
+            (Number(map.sourceInSeconds) + (offsetSamples / 48000) * speed) *
+              48000,
+          ),
+          expectedSourceOut = Math.round(
+            (Number(map.sourceInSeconds) +
+              ((offsetSamples + clipSamples) / 48000) * speed) *
+              48000,
+          );
+        if (
+          !Number.isSafeInteger(clipSamples) ||
+          !Number.isSafeInteger(actualSourceIn) ||
+          !Number.isSafeInteger(actualSourceOut) ||
+          !Number.isSafeInteger(expectedSourceIn) ||
+          !Number.isSafeInteger(expectedSourceOut) ||
+          Math.abs(actualSourceIn - expectedSourceIn) > 1 ||
+          Math.abs(speed - Number(map.speed)) > 1e-12 ||
+          actualSourceOut < expectedSourceOut - 1 ||
+          actualSourceOut > sourceOutSample + 1 ||
+          offsetSamples + clipSamples > durationSamples + 1
+        )
+          fail(
+            `${clipPath}.audioAutomation.timeMap`,
+            "clip source bounds and speed must match the mapped automation clock",
+          );
+        resolveMappedAutomationWindow(
+          clip as unknown as Clip,
+          Math.min(
+            length,
+            (Number(
+              clip.sourceOut ?? Number(clip.sourceIn ?? 0) + length * speed,
+            ) -
+              Number(clip.sourceIn ?? 0)) /
+              speed,
+          ),
+        );
+      }
       optional(clip, "transition", clipPath, (v, p) => {
         const transition = object(v, p);
         choice(transition.type, `${p}.type`, [
@@ -1625,7 +1801,8 @@ export function validateProject(
   if (
     data.schemaVersion !== PROJECT_SCHEMA_VERSION &&
     data.schemaVersion !== PINNED_PROJECT_SCHEMA_VERSION &&
-    data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION
+    data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION &&
+    data.schemaVersion !== AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION
   ) {
     string(data.schemaVersion, `${path}.schemaVersion`);
     if (!/^\d+\.\d+\.\d+$/.test(String(data.schemaVersion)))
@@ -1640,6 +1817,7 @@ export function validateProject(
   }
   if (
     data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION &&
+    data.schemaVersion !== AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION &&
     Array.isArray(data.timelines)
   ) {
     data.timelines.forEach((raw, i) => {
@@ -1654,12 +1832,13 @@ export function validateProject(
           const track = object(raw, `project.timelines[${i}].tracks[${j}]`);
           if (Array.isArray(track.clips))
             track.clips.forEach((raw, k) => {
-              if (Object.hasOwn(object(raw, "clip"), "audioTiming"))
+              const clip = object(raw, "clip");
+              if (Object.hasOwn(clip, "audioTiming"))
                 fail(
                   `project.timelines[${i}].tracks[${j}].clips[${k}].audioTiming`,
                   "requires project schema 1.2.0",
                 );
-              if (Object.hasOwn(object(raw, "clip"), "coverage"))
+              if (Object.hasOwn(clip, "coverage"))
                 fail(
                   `project.timelines[${i}].tracks[${j}].clips[${k}].coverage`,
                   "requires project schema 1.2.0",
@@ -1668,6 +1847,34 @@ export function validateProject(
         });
     });
   }
+  if (
+    data.schemaVersion !== AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION &&
+    Array.isArray(data.timelines)
+  )
+    data.timelines.forEach((raw, i) => {
+      const cut = object(raw, `project.timelines[${i}]`);
+      if (Array.isArray(cut.tracks))
+        cut.tracks.forEach((rawTrack, j) => {
+          const track = object(
+            rawTrack,
+            `project.timelines[${i}].tracks[${j}]`,
+          );
+          if (Array.isArray(track.clips))
+            track.clips.forEach((rawClip, k) => {
+              const clip = object(rawClip, "clip");
+              if (
+                clip.audioAutomation &&
+                typeof clip.audioAutomation === "object" &&
+                !Array.isArray(clip.audioAutomation) &&
+                (clip.audioAutomation as Record<string, unknown>).version === 2
+              )
+                fail(
+                  `project.timelines[${i}].tracks[${j}].clips[${k}].audioAutomation`,
+                  "requires project schema 1.3.0",
+                );
+            });
+        });
+    });
   if (
     data.schemaVersion === PROJECT_SCHEMA_VERSION &&
     Array.isArray(data.timelines)

@@ -22,19 +22,34 @@ Record 正常播放會使用與 WAV／MP4／分角色音軌相同的 renderer �
 專案變更與 Undo 會淘汰舊播放。非 1× 的 shuttle 明確保持靜音。WebAudio 不支援或準備失敗
 時會顯示狀態，不會暗中改用受畫面範圍限制的音訊。
 
+Silence Review 與 Clip Split 使用相同的 automation window 映射。分割後的片段保存 schema 1.3
+版本 2 time map：以 48 kHz 整數 sample 記錄原始 clip-local 時鐘、source in/out 與速度，原始
+fade、gain points 和 ducking 曲線維持同一條語意曲線，不會複製後從零重播。既有 AudioMixPlan
+在完整 source/tempo/automation 歷程後切出各片段，且每個連續時鐘只建一次 DSP 分支。來源、
+曲線或時鐘無法證明一致時，Review／render 會拒絕。對應片段之後不可直接改 source trim、
+speed 或替換來源；先明確重設 automation 或重新審閱修剪。獨立 J/L audio timing、鎖定與
+User Pins 仍維持拒絕條件。舊 v1 專案在未產生映射前不會被改寫。
+
+映射也保留原始裁切秒數與播放起點，重複分割從同一原始來源計算偏移，避免累積樣本誤差。
+若多段剪輯的時間位置與原始曲線無法保留相同樣本數，會在建立 Review 前拒絕，不會默默改動提案。
+映射片段的聲音控制會顯示「重設音量曲線以編輯」；此明確操作清除控制點、淡入淡出與閃避，保留角色、
+來源與基本音量，可用 Undo 還原。未重設前不能加入獨立 J/L 時間，請使用成片預覽試聽原本的混音。
+
 預覽最多支援一小時、每個 PCM 檔 1 GiB、已完成快取 2 GiB，每個專案一次準備工作。
+一小時限制也包含每個映射片段保留的原始 DSP 歷史，不能透過短片段避開處理上限。
 伺服器每次讀取最多四秒，用戶端最多保留八秒。來源不會被覆寫；來源位元組、已儲存內容或
 PCM 損毀改變時需重新準備。超出預覽限制時可使用 WAV／MP4 輸出。
 
-角色、增益、淡入淡出、控制點與 ducking 沿用既有控制。後續 coverage 功能可傳入
+角色、增益、淡入淡出、控制點與 ducking 沿用既有控制。既有 coverage 功能可傳入
 `keep-primary`、`mix-secondary` 或 `replace-primary`；次要聲音增益限於 0–1，取代只影響
-指定主片段的區間。D3B1 不保存 B-roll coverage，也沒有 coverage 編寫控制。
+指定主片段的區間。Coverage 的保存與審閱使用既有 D3B2 工作流程。
 
 既有限幅器會分別作用於每個分角色音軌與主混音，因此過載音軌相加不會重建已限幅的主混音。
 峰值與響度報告量測實際解碼輸出，不會自動正規化已儲存的混音。
 
 獨立聲音在重新連動畫面前不支援分割與替換來源。字幕衝突、來源不足或保護狀態會完整拒絕
-儲存。Collect 保留完整原檔，即使同一來源也有連動片段。JSON／OTIO 保留精確中繼資料；
+儲存。Collect 為獨立聲音與映射曲線保留完整原檔，即使片段已解除 Pin、同一來源也有連動片段。
+JSON／OTIO 保留精確中繼資料；
 OTIO 需人工重建，FCPXML／EDL 會拒絕無法表示的時間。
 
 實際合成媒體與瀏覽器結果見[驗證紀錄](validation-audio-policy.md)。這些結果不代表硬體音訊

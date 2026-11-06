@@ -80,7 +80,7 @@ export default {
     },
     timeline: {
       audioAutomationConflict:
-        "靜音漣波剪輯會縮短或分割含有片段本地音量自動化的素材。請先調整該片段的音量自動化。",
+        "這項剪輯無法安全保留片段音量自動化的時間映射。請先重設自動化或重新審閱修剪後再試。",
       audioTimingConflict:
         "此編輯與獨立聲音範圍衝突。請先調整或明確重設聲音時序。",
       audioCaptionConflict:

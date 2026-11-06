@@ -4,8 +4,11 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applySilenceCutProposal,
   buildAudioMixPlan,
+  createSilenceCutProposal,
   createExportProfile,
+  mapAudioAutomationForClipWindow,
   resolveProjectTimebase,
   resolveClipFrameRange,
   type Composition,
@@ -13,6 +16,7 @@ import {
   type CoverageAudioBindingV1,
 } from "@openfilm/core";
 import { hashFile, inspectCanonicalAudio, runProcess } from "@openfilm/media";
+import { applyTimelineCommand } from "@openfilm/solver";
 import {
   FFmpegRenderer,
   audioSourceAssetIds,
@@ -593,6 +597,471 @@ it("renders actual AAC MP4 with all three coverage policies, preserving automati
     }
   }
 });
+
+it("preserves transient PCM and the original sub-ms origin through repeated fractional splits", async () => {
+  const dir = await root(),
+    source = await toneSource(
+      dir,
+      "fractional-splits",
+      0,
+      5,
+      48000,
+      2,
+      [7000, 12000, 17000, 22000, 27000, 35000, 65000, 90000, 130000, 170000],
+    ),
+    sourceIn = 0.1234567,
+    start = 0.00137,
+    original: Composition = {
+      id: "cut",
+      storyId: "s",
+      duration: 3.1,
+      tracks: [
+        {
+          id: "audio",
+          type: "audio",
+          clips: [
+            {
+              ...clip("voice", source.id, start, 3),
+              sourceIn,
+              sourceOut: sourceIn + 3.75,
+              transform: { speed: 1.25 },
+              audioAutomation: {
+                version: 1,
+                role: "dialogue",
+                fadeIn: 0.4,
+                fadeOut: 0.7,
+              },
+            },
+          ],
+        },
+      ],
+    };
+  let document: Parameters<typeof applyTimelineCommand>[0] = {
+    story: { id: "s", title: "Synthetic", beats: [] },
+    composition: original,
+  };
+  for (const local of [0.10001, 0.20002, 0.30003, 0.40004, 0.9876536]) {
+    const target = document.composition.tracks[0]!.clips.find(
+      (item) =>
+        item.timelineStart < start + local &&
+        item.timelineStart + item.timelineDuration > start + local,
+    )!;
+    document = applyTimelineCommand(
+      document,
+      [source],
+      {
+        type: "clip.split",
+        clipId: target.id,
+        sourceTime: sourceIn + local * 1.25,
+      },
+      { origin: "direct", timebase },
+    );
+  }
+  const before = await wav(join(dir, "fractional-before.wav"), original, [
+      source,
+    ]),
+    after = await wav(join(dir, "fractional-after.wav"), document.composition, [
+      source,
+    ]);
+  expect(after.samples).toHaveLength(before.samples.length);
+  let maximumError = 0;
+  for (let index = 0; index < before.samples.length; index++)
+    maximumError = Math.max(
+      maximumError,
+      Math.abs(after.samples[index]! - before.samples[index]!),
+    );
+  expect(maximumError).toBeLessThanOrEqual(2 / 2 ** 23);
+});
+
+it("rejects fractional source and placement spans before compiling a stale mix plan", async () => {
+  const dir = await root(),
+    source = await toneSource(dir, "fractional-conflict", 440, 6),
+    originalClip: Clip = {
+      ...clip("voice", source.id, 0, 4),
+      sourceOut: 5.2,
+      transform: { speed: 1.3 },
+      audioAutomation: { version: 1, role: "dialogue", fadeIn: 0.5 },
+    },
+    original = comp(originalClip),
+    plan = buildAudioMixPlan(original, [source], { timebase, coverage: [] }),
+    start = 0.2 / 1.3,
+    removedEnd = 0.4 / 1.3,
+    unsafe = comp({
+      ...originalClip,
+      timelineStart: start,
+      sourceIn: 0.4,
+      timelineDuration: 4 - removedEnd,
+      audioAutomation: mapAudioAutomationForClipWindow(
+        originalClip,
+        removedEnd,
+        4 - removedEnd,
+      ),
+    });
+  expect(() =>
+    buildAudioMixPlan(unsafe, [source], { timebase, coverage: [] }),
+  ).toThrowError(
+    expect.objectContaining({ code: "timeline.audioAutomationConflict" }),
+  );
+  expect(() =>
+    compileAudioMixPlan(plan, unsafe, new Map([["voice", 0]])),
+  ).toThrowError(
+    expect.objectContaining({ code: "timeline.audioAutomationConflict" }),
+  );
+});
+
+it("rejects independent timing added to a mapped composition or an already prepared mix plan", async () => {
+  const dir = await root(),
+    source = await toneSource(dir, "mixed-clock", 440, 2),
+    original = comp({
+      ...clip("voice", source.id, 0, 2),
+      audioAutomation: { version: 1, role: "dialogue", fadeIn: 0.2 },
+    }),
+    mapped = applyTimelineCommand(
+      {
+        story: { id: "s", title: "Synthetic", beats: [] },
+        composition: original,
+      },
+      [source],
+      { type: "clip.split", clipId: "voice", sourceTime: 1 },
+      { origin: "direct", timebase },
+    ).composition,
+    plan = buildAudioMixPlan(mapped, [source], { timebase, coverage: [] });
+  mapped.tracks[0]!.clips[0]!.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 12000,
+    sourceInSample: 12000,
+    sourceOutSample: 48000,
+  };
+  expect(() =>
+    buildAudioMixPlan(mapped, [source], { timebase, coverage: [] }),
+  ).toThrow(/independent sound timing/);
+  expect(() =>
+    compileAudioMixPlan(
+      plan,
+      mapped,
+      new Map(mapped.tracks[0]!.clips.map((item, index) => [item.id, index])),
+    ),
+  ).toThrow(/verified source and DSP clock/);
+});
+
+it.each([44100, 48000])(
+  "preserves legacy 1x transient PCM through direct split and reviewed ripple at %i Hz",
+  async (sampleRate) => {
+    const dir = await root(),
+      source = await toneSource(
+        dir,
+        "legacy-split-pulses",
+        0,
+        2,
+        sampleRate,
+        2,
+        [0.1, 0.2, 0.25, 0.3, 0.5, 0.75, 1.25, 1.5, 1.75].map((time) =>
+          Math.round(time * sampleRate),
+        ),
+      ),
+      originalClip: Clip = {
+        ...clip("voice", source.id, 0, 2),
+        audioAutomation: {
+          version: 1,
+          role: "dialogue",
+          fadeIn: 0.2,
+          fadeOut: 0.3,
+          points: [
+            { time: 0, gain: 0.8 },
+            { time: 2, gain: 0.4 },
+          ],
+        },
+      },
+      original: Composition = {
+        id: "cut",
+        storyId: "s",
+        duration: 2,
+        tracks: [{ id: "audio", type: "audio", clips: [originalClip] }],
+      },
+      split = applyTimelineCommand(
+        {
+          story: { id: "s", title: "Synthetic", beats: [] },
+          composition: original,
+        },
+        [source],
+        { type: "clip.split", clipId: "voice", sourceTime: 1 },
+        { origin: "direct", timebase },
+      ).composition,
+      proposal = createSilenceCutProposal(
+        original,
+        {
+          version: 1,
+          assetId: source.id,
+          sourceHash: source.contentHash!,
+          duration: 2,
+          sampleRate: 48000,
+          windowSeconds: 0.02,
+          audioStreamIndex: 0,
+          parameters: { thresholdDb: -40, minimumSilenceSeconds: 0.2 },
+          silenceIntervals: [{ start: 0.8, end: 1.2 }],
+          provenance: {
+            providerId: "synthetic-test",
+            version: "1",
+            sourceHash: source.contentHash!,
+            createdAt: "2026-11-05T00:00:00Z",
+          },
+        },
+        { baseRevision: "legacy-clock", paddingSeconds: 0, assets: [source] },
+      ),
+      ripple = applySilenceCutProposal(original, proposal, {
+        assets: [source],
+        timebase,
+      }),
+      before = await wav(join(dir, "legacy-original.wav"), original, [source]),
+      splitPcm = await wav(join(dir, "legacy-split.wav"), split, [source]),
+      ripplePcm = await wav(join(dir, "legacy-ripple.wav"), ripple, [source]);
+    expect(splitPcm.samples).toHaveLength(before.samples.length);
+    let splitError = 0;
+    for (let index = 0; index < before.samples.length; index++)
+      splitError = Math.max(
+        splitError,
+        Math.abs(splitPcm.samples[index]! - before.samples[index]!),
+      );
+    expect(splitError).toBeLessThanOrEqual(2 / 2 ** 23);
+    const expected = [
+      ...before.samples.slice(0, 38400 * 2),
+      ...before.samples.slice(57600 * 2),
+    ];
+    expect(ripplePcm.samples).toHaveLength(expected.length);
+    let rippleError = 0;
+    for (let index = 0; index < expected.length; index++) {
+      const sample = Math.floor(index / 2);
+      if (sample >= 38400 && sample < 38400 + 242) continue;
+      rippleError = Math.max(
+        rippleError,
+        Math.abs(ripplePcm.samples[index]! - expected[index]!),
+      );
+    }
+    expect(rippleError).toBeLessThanOrEqual(2 / 2 ** 23);
+  },
+);
+
+it.each([44100, 48000])(
+  "keeps the full render audio sample mapping through an automated silence ripple at %i Hz",
+  async (sampleRate) => {
+    const dir = await root(),
+      source = await toneSource(
+        dir,
+        `ripple-${sampleRate}`,
+        440,
+        10,
+        sampleRate,
+      ),
+      originalClip: Clip = {
+        ...clip("voice", source.id, 0, 8),
+        sourceOut: 10,
+        transform: { speed: 1.25 },
+        audioAutomation: {
+          version: 1,
+          role: "dialogue",
+          fadeIn: 2.5,
+          fadeOut: 3,
+          points: [
+            { time: 0, gain: 0.8 },
+            { time: 4, gain: 0.3 },
+            { time: 8, gain: 0.95 },
+          ],
+          ducking: [
+            {
+              start: 0.5,
+              end: 4.25,
+              gain: 0.4,
+              attack: 1,
+              release: 0.75,
+            },
+            { start: 4, end: 7.5, gain: 0.7, attack: 0.25, release: 1 },
+          ],
+        },
+      },
+      beforeComposition: Composition = {
+        id: "cut",
+        storyId: "s",
+        duration: 8,
+        tracks: [{ id: "audio", type: "audio", clips: [originalClip] }],
+      },
+      evidence = {
+        version: 1 as const,
+        assetId: source.id,
+        sourceHash: source.contentHash!,
+        duration: 10,
+        sampleRate: 48000 as const,
+        windowSeconds: 0.02 as const,
+        audioStreamIndex: 0,
+        parameters: { thresholdDb: -40, minimumSilenceSeconds: 1 },
+        silenceIntervals: [{ start: 2, end: 4 }],
+        provenance: {
+          providerId: "synthetic-test",
+          version: "1",
+          sourceHash: source.contentHash!,
+          createdAt: "2026-11-05T00:00:00Z",
+        },
+      },
+      proposal = createSilenceCutProposal(beforeComposition, evidence, {
+        baseRevision: "sample-clock-ripple",
+        paddingSeconds: 0.25,
+        assets: [source],
+      }),
+      afterComposition = applySilenceCutProposal(beforeComposition, proposal, {
+        assets: [source],
+        timebase,
+      }),
+      before = await wav(join(dir, "before.wav"), beforeComposition, [source]),
+      after = await wav(join(dir, "after.wav"), afterComposition, [source]),
+      expected: number[] = [];
+
+    const directMix = async (composition: Composition, path: string) => {
+      const plan = buildAudioMixPlan(composition, [source], {
+          timebase,
+          coverage: [],
+        }),
+        inputs = new Map<string, number>(),
+        args = ["-v", "error", "-nostdin", "-threads", "1"];
+      for (const [index, clip] of composition.tracks[0]!.clips.entries()) {
+        inputs.set(clip.id, index);
+        args.push("-i", fileURLToPath(source.uri));
+      }
+      const graph = compileAudioMixPlan(plan, composition, inputs),
+        filters = [
+          ...graph.filters,
+          `${graph.labels.map((label) => `[${label}]`).join("")}amix=inputs=${graph.labels.length}:duration=longest:normalize=0[mix]`,
+        ];
+      expect(
+        graph.filters.filter((filter) =>
+          filter.includes("]atrim=start=0:end=10,asetpts=PTS-STARTPTS"),
+        ),
+      ).toHaveLength(1);
+      args.push(
+        "-filter_complex",
+        filters.join(";"),
+        "-map",
+        "[mix]",
+        "-c:a",
+        "pcm_f32le",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        path,
+      );
+      await runProcess("ffmpeg", args);
+      return decodePolicyAudio(path);
+    };
+    const beforeDirect = await directMix(
+        beforeComposition,
+        join(dir, "before-direct.wav"),
+      ),
+      afterDirect = await directMix(
+        afterComposition,
+        join(dir, "after-direct.wav"),
+      );
+
+    expect(proposal.timelineIntervals).toEqual([{ start: 1.8, end: 3 }]);
+    for (let frame = 0; frame < 86400; frame++)
+      expected.push(before.samples[frame * 2]!, before.samples[frame * 2 + 1]!);
+    for (let frame = 144000; frame < 384000; frame++)
+      expected.push(before.samples[frame * 2]!, before.samples[frame * 2 + 1]!);
+    expect(after.samples).toHaveLength(expected.length);
+    const directExpected = [
+      ...beforeDirect.samples.slice(0, 86400 * 2),
+      ...beforeDirect.samples.slice(144000 * 2, 384000 * 2),
+    ];
+    expect(afterDirect.samples).toHaveLength(directExpected.length);
+    let directMaximumError = 0;
+    for (let index = 0; index < directExpected.length; index++)
+      directMaximumError = Math.max(
+        directMaximumError,
+        Math.abs(afterDirect.samples[index]! - directExpected[index]!),
+      );
+    const spliceSample = 86400,
+      limiterLookaheadSamples = Math.ceil(0.005 * 48000) + 2;
+    let maximumErrorOutsideLimiterLookahead = 0;
+    for (let index = 0; index < expected.length; index++) {
+      const frame = Math.floor(index / 2);
+      if (
+        frame >= spliceSample &&
+        frame < spliceSample + limiterLookaheadSamples
+      )
+        continue;
+      maximumErrorOutsideLimiterLookahead = Math.max(
+        maximumErrorOutsideLimiterLookahead,
+        Math.abs(after.samples[index]! - expected[index]!),
+      );
+    }
+    // The shared output limiter has a 5 ms lookahead. A cut changes its local
+    // input context, so only that attack window is excluded from exact PCM
+    // comparison; the source-clock mix graph above remains sample-identical.
+    expect(directMaximumError).toBeLessThanOrEqual(2 / 2 ** 23);
+    expect(maximumErrorOutsideLimiterLookahead).toBeLessThanOrEqual(
+      2 / 2 ** 23,
+    );
+    const secondProposal = createSilenceCutProposal(
+        afterComposition,
+        {
+          ...evidence,
+          silenceIntervals: [{ start: 6, end: 7 }],
+          parameters: { ...evidence.parameters, minimumSilenceSeconds: 0.2 },
+        },
+        {
+          baseRevision: "second-sample-clock-ripple",
+          paddingSeconds: 0.25,
+          assets: [source],
+        },
+      ),
+      twiceComposition = applySilenceCutProposal(
+        afterComposition,
+        secondProposal,
+        { assets: [source], timebase },
+      ),
+      twice = await wav(join(dir, "twice.wav"), twiceComposition, [source]),
+      twiceDirect = await directMix(
+        twiceComposition,
+        join(dir, "twice-direct.wav"),
+      ),
+      expectedTwice = [
+        ...before.samples.slice(0, 86400 * 2),
+        ...before.samples.slice(144000 * 2, 240000 * 2),
+        ...before.samples.slice(259200 * 2),
+      ],
+      expectedTwiceDirect = [
+        ...beforeDirect.samples.slice(0, 86400 * 2),
+        ...beforeDirect.samples.slice(144000 * 2, 240000 * 2),
+        ...beforeDirect.samples.slice(259200 * 2),
+      ];
+    expect(secondProposal.timelineIntervals).toEqual([
+      { start: 3.8, end: 4.2 },
+    ]);
+    expect(twice.samples).toHaveLength(expectedTwice.length);
+    expect(twiceDirect.samples).toHaveLength(expectedTwiceDirect.length);
+    let twiceDirectError = 0,
+      twiceFinalError = 0;
+    for (let index = 0; index < expectedTwice.length; index++) {
+      twiceDirectError = Math.max(
+        twiceDirectError,
+        Math.abs(twiceDirect.samples[index]! - expectedTwiceDirect[index]!),
+      );
+      const sample = Math.floor(index / 2);
+      if (
+        [86400, 182400].some(
+          (splice) =>
+            sample >= splice && sample < splice + limiterLookaheadSamples,
+        )
+      )
+        continue;
+      twiceFinalError = Math.max(
+        twiceFinalError,
+        Math.abs(twice.samples[index]! - expectedTwice[index]!),
+      );
+    }
+    expect(twiceDirectError).toBeLessThanOrEqual(2 / 2 ** 23);
+    expect(twiceFinalError).toBeLessThanOrEqual(2 / 2 ** 23);
+  },
+);
 
 it("preserves the existing limiter and above-unity gain against an independent identity-tempo baseline", async () => {
   const dir = await root(),

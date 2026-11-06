@@ -232,7 +232,9 @@ export function audioSourceAssetIds(
     resolveCompositionCoverageBindings(composition, timebase);
   if (
     coverage.length ||
-    composition.tracks.some((t) => t.clips.some((c) => c.audioTiming))
+    composition.tracks.some((t) =>
+      t.clips.some((c) => c.audioTiming || c.audioAutomation),
+    )
   ) {
     const plan = buildAudioMixPlan(composition, assets, { timebase, coverage });
     return new Set(
@@ -330,7 +332,9 @@ export function validateRenderClipCapabilities(
     resolveCompositionCoverageBindings(composition, timebase);
   const audioPlan =
     coverage.length ||
-    composition.tracks.some((t) => t.clips.some((c) => c.audioTiming))
+    composition.tracks.some((t) =>
+      t.clips.some((c) => c.audioTiming || c.audioAutomation),
+    )
       ? buildAudioMixPlan(
           composition,
           assets,
@@ -561,7 +565,9 @@ export class FFmpegRenderer {
     const newAudioPath =
       !videoOnly &&
       (audioContext.coverage.length > 0 ||
-        composition.tracks.some((t) => t.clips.some((c) => c.audioTiming)));
+        composition.tracks.some((t) =>
+          t.clips.some((c) => c.audioTiming || c.audioAutomation),
+        ));
     const audioPlan: AudioMixPlan | undefined = newAudioPath
       ? buildAudioMixPlan(composition, assets, audioContext)
       : undefined;
@@ -753,7 +759,11 @@ export class FFmpegRenderer {
     if (audioPlan) {
       const soundIds = new Set(
         audioPlan.segments
-          .filter((s) => !options.audioRole || s.role === options.audioRole)
+          .filter(
+            (s) =>
+              s.baseGain !== 0 &&
+              (!options.audioRole || s.role === options.audioRole),
+          )
           .map((s) => s.assetId),
       );
       const verified = [...assets];
@@ -1284,7 +1294,11 @@ export class FFmpegRenderer {
         "-sws_flags",
         "+accurate_rnd+bitexact",
         "-filter_complex",
-        filters.join(";"),
+        // Output -sws_flags does not reach complex-graph scale filters or
+        // their automatically inserted pixel-format conversions. Configure
+        // the graph's swscale defaults as well so identical owned PNG inputs
+        // use deterministic rounding throughout the composed frame.
+        `sws_flags=+accurate_rnd+bitexact;${filters.join(";")}`,
       );
       if (options.maximumOutputBytes !== undefined)
         args.push("-fs", String(options.maximumOutputBytes));
