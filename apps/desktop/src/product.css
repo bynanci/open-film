@@ -1978,6 +1978,20 @@ label.ui-language {
   font-size: var(--of-font-caption);
   line-height: 1.45;
 }
+.story-writing-tools:not([open]) {
+  margin-block: var(--of-space-1);
+}
+.story-writing-tools:not([open]) > summary {
+  min-height: 40px;
+  padding-block: var(--of-space-2);
+  flex-wrap: nowrap;
+}
+.story-writing-tools:not([open]) > summary > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .story-writing-tools > summary {
   display: flex;
   min-width: 0;

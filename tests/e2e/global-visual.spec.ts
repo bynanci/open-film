@@ -303,6 +303,33 @@ for (const locale of locales) {
             )
             .toBe(true);
         }
+        if (size.width === 1280 && workspace === "story") {
+          const collapsedScript = page.locator(
+            ".story-writing-tools:not([open])",
+          );
+          await expect(collapsedScript).toHaveCount(1);
+          const collapsedMetrics = await collapsedScript.evaluate((element) => {
+            const summary = element.querySelector("summary")!;
+            const rect = summary.getBoundingClientRect();
+            const nextGroup = element.parentElement?.nextElementSibling;
+            const nextHeading = nextGroup?.querySelector(".candidate-heading");
+            const nextRect = nextHeading?.getBoundingClientRect();
+            return {
+              summaryHeight: rect.height,
+              gap: nextRect
+                ? nextRect.top - rect.bottom
+                : Number.POSITIVE_INFINITY,
+            };
+          });
+          expect(
+            collapsedMetrics.summaryHeight,
+            JSON.stringify(collapsedMetrics),
+          ).toBeLessThanOrEqual(44);
+          expect(
+            collapsedMetrics.gap,
+            JSON.stringify(collapsedMetrics),
+          ).toBeLessThanOrEqual(48);
+        }
         if (size.width === 1440 && workspace === "edit") {
           await page
             .locator('button[aria-controls="timeline-inspector"]')
