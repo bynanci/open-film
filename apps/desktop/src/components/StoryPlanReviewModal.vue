@@ -469,6 +469,7 @@ watch(
 }
 
 .storyboard-card {
+  min-width: 0;
   background: var(--of-surface-2);
   border: 0;
   border-radius: var(--of-radius-lg);
@@ -482,7 +483,8 @@ watch(
 .card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 0.75rem;
   border-bottom: 0;
   padding-bottom: 0.5rem;
 }
@@ -491,10 +493,11 @@ watch(
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .scene-idx {
+  flex-shrink: 0;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -505,12 +508,14 @@ watch(
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .source-badge {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow-wrap: anywhere;
   font-size: 0.7rem;
   padding: 2px 8px;
   border-radius: var(--of-radius-sm);

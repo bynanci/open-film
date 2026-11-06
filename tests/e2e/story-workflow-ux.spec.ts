@@ -810,3 +810,38 @@ test("keeps story setup and storyboard readable in CJK, expanded text and both t
     }
   }
 });
+
+test("keeps long authored scene titles readable in compact review", async ({
+  page,
+}) => {
+  const title = "我們一起走過那些平凡又重要的日子・思い出をつなぐ物語・".repeat(
+    3,
+  );
+  await page.route("**/stories/*/plan/preview", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.plan.scenes[0].title = title;
+    await route.fulfill({ response, json: body });
+  });
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await navigate(page, "story");
+  await page.getByTestId("perspective-tab-graph").click();
+  await page.locator(".plan-storyboard-btn").click();
+  const heading = page.locator(".modal-backdrop .scene-title").first();
+  await expect(heading).toHaveText(title);
+  const bounds = await heading.evaluate((element) => ({
+    visible: element.clientHeight,
+    content: element.scrollHeight,
+    textWidth: element.clientWidth,
+    contentWidth: element.scrollWidth,
+    width: document.documentElement.scrollWidth,
+    viewport: window.innerWidth,
+  }));
+  expect(bounds.content).toBeLessThanOrEqual(bounds.visible + 1);
+  expect(bounds.contentWidth).toBeLessThanOrEqual(bounds.textWidth + 1);
+  expect(bounds.width).toBeLessThanOrEqual(bounds.viewport);
+  await expect(page.locator(".modal-backdrop .adopt-btn")).toBeInViewport();
+});

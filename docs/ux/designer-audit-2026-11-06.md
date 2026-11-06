@@ -99,3 +99,9 @@ P1 是阻擋任務或資料風險；P2 是明顯摩擦；P3 是細節精修。�
 `pnpm format:check`、`pnpm lint`、`pnpm typecheck`、`pnpm test:i18n` 與 `pnpm build` 通過；相關瀏覽器回歸 16 項及彈窗視覺回歸 1 項通過。真實 Windows 原生視窗、IME／讀屏、高 DPI 仍需工作站人工驗證。
 
 在遠端 head `4da316f` 上，直接操作、來源審閱、Import 取消與音訊 Inspector 共 13 項 Playwright 回歸通過。1024×720 截圖確認播放器保留可見高度；後續 `b2e44c7` CI 進一步證明照片層會擋住右下 hit area，已提升變形 overlay 疊放次序。語言切換流程改驗證 UI 文案切換時保留使用者自訂片名。舊測試對兩個同名「Add media」按鈕及 flex tabs 的預期已更新為工具列／空狀態兩個不同入口與兩欄 Inspector grid。原生字幕 cue 測試在 `b2e44c7` CI 曾失敗，本機連續重跑 3 次通過；由新 exact-head CI 繼續確認其穩定性。`pnpm format:check`、`pnpm test:i18n`、`pnpm test:docs-i18n`、`pnpm lint`、`pnpm typecheck`、`pnpm build` 通過。完整 `pnpm test` 本機執行超過 13 分鐘仍在跑 native benchmark 情境，已中止，故不列為通過。
+
+## Roundtable follow-up — long scene titles
+
+Design review and implementation review independently identified single-line scene title truncation in Story Plan review. Titles now wrap in their available space; scene numbers and source indicators retain their own space. Cards keep the existing Tobi-ishi surfaces and spacing.
+
+Verified: long CJK scene title at 1024×720 remains fully readable without horizontal page overflow; the adopt action remains in the viewport. Existing light/dark contrast and Axe WCAG checks pass. This is expert review with synthetic fixtures, not a recruited-user study.
