@@ -12,6 +12,8 @@ it is not a photograph of a named garden or evidence of a historical design rule
 | `garden-film.mp4`                                                 | Actual OpenFilm preview rendering from the same generated images                                              | Silent sample film               |
 
 Garden image derivatives are distributed as project assets under Apache-2.0.
+Navigation logos are small derivatives of the existing Desktop identity; the
+originals remain in `apps/desktop/public/`.
 Product identity and logo use remain subject to the repository's branding policy.
 No third-party garden photographs, private media, GPS, personal projects, remote
 fonts, analytics, or tracking scripts are included. Image generation is a design

@@ -27,7 +27,7 @@ uninspected external references are not used as evidence.
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm --prefix docs run build`                                    | Passed, with the existing large-chunk advisory.                                                                                                                                 |
 | `pnpm typecheck:website`                                         | Passed.                                                                                                                                                                         |
-| `pnpm test:website`                                              | 13 passed in 28.4s against the final production build, refreshed application captures and on-demand poster/error-flow implementation.                                           |
+| `pnpm test:website`                                              | 13 passed against the final production build, optimized navigation logos, refreshed application captures and on-demand poster/error-flow implementation.                        |
 | `pnpm test:docs-i18n`                                            | Passed: localized README sets and English reference mirrors, including the new guide hub.                                                                                       |
 | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | Passed across the combined candidate; the application record contains the broader regression breakdown.                                                                         |
 | Required hosted CI                                               | Not claimed. Branch publication is possible through Git, but GitHub GraphQL/REST access is blocked by 403 / invalid API authorization. The required CI merge gate remains open. |
@@ -44,6 +44,10 @@ The thirteen browser cases cover:
   with no requests to external services.
 - A failed sample request presents a localized explanation and a working route
   to the production workflow.
+
+All 48 locale-specific guide targets resolve to repository documents. The
+focused documentation/token unit suites passed all 19 cases. Navigation logos
+were reduced from about 600 KB to 10 KB while preserving their Desktop originals.
 
 Local CJK fonts are installed for screenshot QA and installed in the CI docs lane.
 Full-page capture visits lazy imagery before taking screenshots. Pixel-perfect
