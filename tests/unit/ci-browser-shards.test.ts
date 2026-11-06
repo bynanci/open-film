@@ -2,12 +2,16 @@
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import {
+  browserShardCount,
   validateBrowserPartition,
   validateBrowserResults,
 } from "../../scripts/ci/browser-shards.js";
 
 const candidate = "a".repeat(40);
-const ids = ["one", "two", "three", "four", "five"];
+const ids = Array.from(
+  { length: browserShardCount },
+  (_, i) => `test-${i + 1}`,
+);
 function report(selected: string[], current?: number) {
   return {
     config: {
@@ -15,7 +19,7 @@ function report(selected: string[], current?: number) {
       fullyParallel: true,
       metadata: { sourceCandidate: candidate },
       projects: [{ id: "", retries: 0, repeatEach: 1 }],
-      shard: current ? { current, total: 4 } : null,
+      shard: current ? { current, total: browserShardCount } : null,
     },
     errors: [],
     stats: { expected: selected.length, unexpected: 0, skipped: 0, flaky: 0 },
@@ -39,29 +43,42 @@ function report(selected: string[], current?: number) {
   };
 }
 function reports() {
-  return [
-    report(ids.slice(0, 2), 1),
-    ...ids.slice(2).map((id, i) => report([id], i + 2)),
-  ];
+  return ids.map((id, i) => report([id], i + 1));
 }
-it("requires nonempty disjoint exact discovery coverage across four shards", () => {
-  expect(
-    validateBrowserPartition(ids, [
-      ids.slice(0, 2),
-      [ids[2]!],
-      [ids[3]!],
-      [ids[4]!],
-    ]),
-  ).toEqual({ total: 5, shards: [2, 1, 1, 1] });
+function validShards() {
+  return ids.map((id) => [id]);
+}
+const invalidPartitions: string[][][] = [
+  ids.slice(0, browserShardCount - 1).map((id) => [id]),
+  (() => {
+    const shards = validShards();
+    shards[1] = [ids[0]!];
+    return shards;
+  })(),
+  (() => {
+    const shards = validShards();
+    shards[0] = [ids[0]!, ids[0]!];
+    return shards;
+  })(),
+  (() => {
+    const shards = validShards();
+    shards[browserShardCount - 1] = ["extra"];
+    return shards;
+  })(),
+  (() => {
+    const shards = validShards();
+    shards[browserShardCount - 1] = [];
+    return shards;
+  })(),
+  [],
+];
+it("requires nonempty disjoint exact discovery coverage across all shards", () => {
+  expect(validateBrowserPartition(ids, validShards())).toEqual({
+    total: browserShardCount,
+    shards: ids.map(() => 1),
+  });
 });
-it.each([
-  [["one"], ["two"], ["three"], ["four"]],
-  [["one", "two"], ["two", "three"], ["four"], ["five"]],
-  [["one", "one", "two"], ["three"], ["four"], ["five"]],
-  [["one", "two"], ["three"], ["four"], ["extra"]],
-  [ids, [], [], []],
-  [ids],
-])(
+it.each(invalidPartitions)(
   "rejects missing, duplicate, extra, empty or absent shards %#",
   (...shards) => {
     expect(() => validateBrowserPartition(ids, shards)).toThrow();
@@ -69,8 +86,8 @@ it.each([
 );
 it("verifies executed reports against fresh discovery and candidate", () => {
   expect(validateBrowserResults(report(ids), reports(), candidate)).toEqual({
-    total: 5,
-    shards: [2, 1, 1, 1],
+    total: browserShardCount,
+    shards: ids.map(() => 1),
     candidate,
   });
 });
@@ -161,11 +178,17 @@ it("rejects wrong source, shard identity, missing report and global errors", () 
 });
 it("keeps actual docs build and isolated browser VMs mandatory before the legacy gate", () => {
   const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+  const shardMatrix = `shard: [${Array.from(
+    { length: browserShardCount },
+    (_, i) => i + 1,
+  ).join(", ")}]`;
   expect(workflow).toContain("browser-e2e:");
   expect(workflow).toMatch(/push:\n\s+branches: \[main\]\n\s+pull_request:/u);
   expect(workflow).toContain("fail-fast: false");
-  expect(workflow).toContain("shard: [1, 2, 3, 4]");
-  expect(workflow).toContain("--shard=${{ matrix.shard }}/4");
+  expect(workflow).toContain(shardMatrix);
+  expect(workflow).toContain(
+    "--shard=${{ matrix.shard }}/${{ strategy.job-total }}",
+  );
   expect(workflow).toContain("pnpm test:browser-partition");
   expect(workflow).toContain("pnpm test:browser-results");
   expect(workflow).toContain("BROWSER_RESULT: ${{ needs.browser-e2e.result }}");
@@ -175,7 +198,7 @@ it("keeps actual docs build and isolated browser VMs mandatory before the legacy
     ?.split("\n  docs-site:")[0];
   expect(browser?.split("    steps:\n")[0]).not.toContain("runner.temp");
   expect(browser).toContain(
-    "      - run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --reporter=list,github,json\n        env:\n          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json",
+    "      - run: pnpm test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,github,json\n        env:\n          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json",
   );
   const docs = workflow.split("  docs-site:\n")[1]?.split("\n  #")[0];
   expect(docs).toContain("npm ci");
