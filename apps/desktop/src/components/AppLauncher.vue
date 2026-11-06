@@ -206,7 +206,12 @@ function submit() {
         <p class="project-footnote">{{ t("app.welcome.privacy") }}</p>
       </section>
     </section>
-    <section v-else class="project-start" :aria-label="t('app.create.setup')">
+    <section
+      v-else
+      class="project-start"
+      data-stone="entry"
+      :aria-label="t('app.create.setup')"
+    >
       <button
         class="text-button"
         :disabled="busy"

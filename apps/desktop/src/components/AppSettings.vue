@@ -93,6 +93,7 @@ onBeforeUnmount(() => previousFocus?.focus());
     <section
       ref="dialog"
       class="settings-dialog"
+      data-stone="entry"
       role="dialog"
       aria-modal="true"
       :aria-label="t('app.settings.title')"

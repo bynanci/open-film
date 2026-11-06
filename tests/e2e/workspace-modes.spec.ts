@@ -740,7 +740,9 @@ test("searches actions with the keyboard and restores focus without starting pro
   const jobs = (await (await request.get(`${api}/jobs`)).json()).jobs;
   await origin.click();
   await search.fill("ＥＤＩＴ");
-  await expect(dialog.getByRole("option")).toHaveCount(1);
+  await expect(dialog.getByRole("option").first().locator("strong")).toHaveText(
+    "Edit",
+  );
   await page.keyboard.press("Enter");
   await expect(page.locator(".timeline-editor")).toBeVisible();
   await expect(page.locator("#workspace-main")).toBeFocused();

@@ -2049,6 +2049,7 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="import-panel inline-form"
+    data-stone="entry"
     data-focus-target="import-panel"
     tabindex="-1"
     :class="{ 'is-expert': expert }"

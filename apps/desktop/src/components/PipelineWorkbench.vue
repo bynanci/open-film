@@ -94,11 +94,14 @@ watch(mode, async (next, previous) => {
   } else if (workbenchOrigin?.isConnected) {
     workbenchOrigin.focus();
   } else {
-    document
-      .querySelector<HTMLButtonElement>(
+    const target =
+      document.querySelector<HTMLButtonElement>(
         `.bar-stage-dot[data-stage="${activeStage.value}"]`,
-      )
-      ?.focus();
+      ) ??
+      document.querySelector<HTMLButtonElement>(
+        ".pipeline-status-bar .bar-expand-btn",
+      );
+    target?.focus();
   }
 });
 const activeStage = ref<WorkbenchStageKey>("produceClips");
@@ -108,6 +111,14 @@ const recipes = ref<PipelineRecipe[]>([]);
 const selectedRecipeId = ref<string>("guided-story-to-video");
 const currentRun = ref<PipelineRun | null>(null);
 const runsList = ref<PipelineRun[]>([]);
+const runStatusLabel = computed(() => {
+  const status = currentRun.value?.status ?? "idle";
+  if (status === "idle") return t("app.pipeline.status.idle");
+  return t(
+    `app.activity.status.${status === "succeeded" ? "completed" : status}`,
+  );
+});
+
 const actionLoading = ref(false);
 const error = ref<string | null>(null);
 
@@ -664,7 +675,7 @@ onUnmounted(() => {
         </button>
 
         <!-- 5-Stage Indicator -->
-        <div class="bar-stages-track">
+        <div v-if="expertMode" class="bar-stages-track">
           <button
             v-for="(stage, idx) in WORKBENCH_STAGES"
             :key="stage.key"
@@ -727,7 +738,7 @@ onUnmounted(() => {
           class="workbench-pill"
           :class="`pill-${currentRun?.status ?? 'idle'}`"
         >
-          {{ currentRun ? currentRun.status : t("app.pipeline.status.idle") }}
+          {{ runStatusLabel }}
         </span>
       </div>
 
@@ -827,7 +838,7 @@ onUnmounted(() => {
             class="workbench-pill"
             :class="`pill-${currentRun?.status ?? 'idle'}`"
           >
-            {{ currentRun ? currentRun.status : t("app.pipeline.status.idle") }}
+            {{ runStatusLabel }}
           </span>
         </div>
 

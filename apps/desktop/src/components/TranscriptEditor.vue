@@ -971,422 +971,373 @@ onBeforeUnmount(() => {
             t("transcript.sourceTime", { time: time(playhead) })
           }}</span>
         </div>
-        <div
-          v-if="error || localError || notice"
-          class="editor-error"
-          role="alert"
-        >
-          <p>{{ notice ? t(notice) : localizeError(error ?? localError) }}</p>
-          <details v-if="error || localError">
-            <summary>{{ t("common.technicalDetails") }}</summary>
-            <pre>{{ errorDetail(error ?? localError) }}</pre>
-          </details>
-          <div v-if="hasPending" class="editor-actions">
-            <button
-              v-if="status !== 'conflict'"
-              class="editor-button"
-              @click="flush"
-            >
-              {{ t("transcript.retrySave") }}</button
-            ><button class="editor-button" @click="downloadDraft">
-              {{ t("transcript.downloadDraft") }}</button
-            ><button class="editor-button" @click="discardConfirmation = true">
-              {{ t("transcript.discardDraft") }}
-            </button>
-          </div>
-        </div>
-        <div v-if="discardConfirmation" class="transcript-confirm" role="alert">
-          <p>{{ t("transcript.discardDraftConfirm") }}</p>
-          <button
-            class="editor-button"
-            @click="
-              discardDraft();
-              discardConfirmation = false;
-            "
+        <div class="transcript-scroll">
+          <div
+            v-if="error || localError || notice"
+            class="editor-error"
+            role="alert"
           >
-            {{ t("transcript.discardDraft") }}</button
-          ><button class="editor-button" @click="discardConfirmation = false">
-            {{ t("transcript.cancel") }}
-          </button>
-        </div>
-        <template v-if="state?.document">
-          <div class="transcript-search">
-            <label class="editor-field"
-              >{{ t("transcript.search")
-              }}<input
-                ref="searchInput"
-                v-model="query"
-                type="search"
-                :placeholder="t('transcript.searchPlaceholder')"
-                maxlength="20000" /></label
-            ><label class="editor-field"
-              >{{ t("transcript.replacement")
-              }}<input v-model="replacement" maxlength="20000"
-            /></label>
-            <div class="editor-actions">
+            <p>{{ notice ? t(notice) : localizeError(error ?? localError) }}</p>
+            <details v-if="error || localError">
+              <summary>{{ t("common.technicalDetails") }}</summary>
+              <pre>{{ errorDetail(error ?? localError) }}</pre>
+            </details>
+            <div v-if="hasPending" class="editor-actions">
               <button
+                v-if="status !== 'conflict'"
                 class="editor-button"
-                :disabled="!currentMatch || busy || searchBusy"
-                @click="replace(false)"
+                @click="flush"
               >
-                {{ t("transcript.replaceCurrent") }}</button
+                {{ t("transcript.retrySave") }}</button
+              ><button class="editor-button" @click="downloadDraft">
+                {{ t("transcript.downloadDraft") }}</button
               ><button
                 class="editor-button"
-                :disabled="
-                  !searchIsCurrent ||
-                  !search?.totalMatches ||
-                  busy ||
-                  searchBusy
-                "
-                @click="replace(true)"
+                @click="discardConfirmation = true"
               >
-                {{ t("transcript.replaceAll") }}
+                {{ t("transcript.discardDraft") }}
               </button>
             </div>
-            <label class="transcript-check"
-              ><input v-model="caseSensitive" type="checkbox" />{{
-                t("transcript.caseSensitive")
-              }}</label
-            ><label class="transcript-check"
-              ><input v-model="filter" type="checkbox" />{{
-                t("transcript.filterMatches")
-              }}</label
+          </div>
+          <div
+            v-if="discardConfirmation"
+            class="transcript-confirm"
+            role="alert"
+          >
+            <p>{{ t("transcript.discardDraftConfirm") }}</p>
+            <button
+              class="editor-button"
+              @click="
+                discardDraft();
+                discardConfirmation = false;
+              "
             >
-            <div v-if="query" class="editor-actions">
-              <span role="status" data-testid="transcript-search-status">{{
+              {{ t("transcript.discardDraft") }}</button
+            ><button class="editor-button" @click="discardConfirmation = false">
+              {{ t("transcript.cancel") }}
+            </button>
+          </div>
+          <template v-if="state?.document">
+            <div class="transcript-search">
+              <label class="editor-field"
+                >{{ t("transcript.search")
+                }}<input
+                  ref="searchInput"
+                  v-model="query"
+                  type="search"
+                  :placeholder="t('transcript.searchPlaceholder')"
+                  maxlength="20000" /></label
+              ><label class="editor-field"
+                >{{ t("transcript.replacement")
+                }}<input v-model="replacement" maxlength="20000"
+              /></label>
+              <div class="editor-actions">
+                <button
+                  class="editor-button"
+                  :disabled="!currentMatch || busy || searchBusy"
+                  @click="replace(false)"
+                >
+                  {{ t("transcript.replaceCurrent") }}</button
+                ><button
+                  class="editor-button"
+                  :disabled="
+                    !searchIsCurrent ||
+                    !search?.totalMatches ||
+                    busy ||
+                    searchBusy
+                  "
+                  @click="replace(true)"
+                >
+                  {{ t("transcript.replaceAll") }}
+                </button>
+              </div>
+              <label class="transcript-check"
+                ><input v-model="caseSensitive" type="checkbox" />{{
+                  t("transcript.caseSensitive")
+                }}</label
+              ><label class="transcript-check"
+                ><input v-model="filter" type="checkbox" />{{
+                  t("transcript.filterMatches")
+                }}</label
+              >
+              <div v-if="query" class="editor-actions">
+                <span role="status" data-testid="transcript-search-status">{{
+                  t(
+                    "transcript.searchCount",
+                    { count: formatNumber(search?.totalMatches ?? 0) },
+                    search?.totalMatches ?? 0,
+                  )
+                }}</span
+                ><button
+                  class="editor-button"
+                  :disabled="!currentMatch || searchBusy"
+                  @click="seekMatch(-1)"
+                >
+                  {{ t("transcript.previousMatch") }}</button
+                ><button
+                  class="editor-button"
+                  :disabled="!currentMatch || searchBusy"
+                  @click="seekMatch(1)"
+                >
+                  {{ t("transcript.nextMatch") }}
+                </button>
+              </div>
+            </div>
+            <p class="editor-note">{{ t("transcript.replaceAllHint") }}</p>
+            <div
+              class="transcript-segments"
+              role="list"
+              :aria-label="t('transcript.mode')"
+            >
+              <article
+                v-for="segment in visible"
+                :key="segment.id"
+                class="transcript-row"
+                :class="{
+                  selected: selectedId === segment.id,
+                  current: playhead >= segment.start && playhead < segment.end,
+                }"
+                data-testid="transcript-row"
+                :data-segment-id="segment.id"
+                role="listitem"
+              >
+                <button
+                  class="transcript-row-select"
+                  :aria-current="selectedId === segment.id ? 'true' : undefined"
+                  :aria-label="
+                    t('transcript.selectSegment', { time: time(segment.start) })
+                  "
+                  @click="select(segment)"
+                >
+                  <time>{{ time(segment.start) }}</time
+                  ><span>{{ segment.text }}</span>
+                </button>
+                <div
+                  v-if="selectedId === segment.id"
+                  class="transcript-selected"
+                >
+                  <label class="editor-field"
+                    >{{ t("transcript.text")
+                    }}<textarea
+                      :ref="(element) => setTextarea(element, segment.id)"
+                      v-model="text"
+                      data-testid="transcript-text"
+                      rows="3"
+                      maxlength="20000"
+                      :disabled="busy"
+                      @input="queueText"
+                      @focus="editing = true"
+                    />
+                  </label>
+                  <p
+                    v-if="!timed(segment)"
+                    class="transcript-alignment"
+                    role="status"
+                    data-testid="stale-alignment"
+                  >
+                    {{ t("transcript.timingStale") }}
+                  </p>
+                  <p
+                    v-if="segment.timingSource === 'estimated'"
+                    class="editor-note"
+                  >
+                    {{ t("transcript.timingEstimated") }}
+                  </p>
+                  <div class="editor-actions">
+                    <button
+                      class="editor-button"
+                      :disabled="
+                        busy ||
+                        playhead <= segment.start ||
+                        playhead >= segment.end
+                      "
+                      @click="split()"
+                    >
+                      {{ t("transcript.splitPlayhead") }}</button
+                    ><button
+                      class="editor-button"
+                      :disabled="busy || segment.text.length < 2"
+                      @click="split(true)"
+                    >
+                      {{ t("transcript.splitCursor") }}</button
+                    ><button
+                      class="editor-button"
+                      :disabled="
+                        busy ||
+                        (state?.offset === 0 &&
+                          state?.document?.segments[0]?.id === segment.id)
+                      "
+                      @click="
+                        structural({
+                          type: 'merge-segment',
+                          segmentId: segment.id,
+                          direction: 'previous',
+                        })
+                      "
+                    >
+                      {{ t("transcript.mergePrevious") }}</button
+                    ><button
+                      class="editor-button"
+                      :disabled="
+                        busy ||
+                        (state?.offset ?? 0) +
+                          (state?.document?.segments.findIndex(
+                            (item) => item.id === segment.id,
+                          ) ?? 0) >=
+                          state!.total - 1
+                      "
+                      @click="
+                        structural({
+                          type: 'merge-segment',
+                          segmentId: segment.id,
+                          direction: 'next',
+                        })
+                      "
+                    >
+                      {{ t("transcript.mergeNext") }}</button
+                    ><button
+                      class="editor-button"
+                      :disabled="busy"
+                      @click="
+                        structural({
+                          type: 'delete-segment',
+                          segmentId: segment.id,
+                        })
+                      "
+                    >
+                      {{ t("transcript.deleteSegment") }}
+                    </button>
+                  </div>
+                </div>
+              </article>
+              <p v-if="!visible.length" class="editor-note">
+                {{
+                  t(
+                    query && filter
+                      ? "transcript.searchNoMatches"
+                      : "transcript.noTranscript",
+                  )
+                }}
+              </p>
+            </div>
+            <div class="transcript-pagination">
+              <span>{{
                 t(
-                  "transcript.searchCount",
-                  { count: formatNumber(search?.totalMatches ?? 0) },
-                  search?.totalMatches ?? 0,
+                  "transcript.segmentsCount",
+                  { count: formatNumber(state.total) },
+                  state.total,
                 )
               }}</span
               ><button
                 class="editor-button"
-                :disabled="!currentMatch || searchBusy"
-                @click="seekMatch(-1)"
-              >
-                {{ t("transcript.previousMatch") }}</button
-              ><button
-                class="editor-button"
-                :disabled="!currentMatch || searchBusy"
-                @click="seekMatch(1)"
-              >
-                {{ t("transcript.nextMatch") }}
-              </button>
-            </div>
-          </div>
-          <p class="editor-note">{{ t("transcript.replaceAllHint") }}</p>
-          <div
-            class="transcript-segments"
-            role="list"
-            :aria-label="t('transcript.mode')"
-          >
-            <article
-              v-for="segment in visible"
-              :key="segment.id"
-              class="transcript-row"
-              :class="{
-                selected: selectedId === segment.id,
-                current: playhead >= segment.start && playhead < segment.end,
-              }"
-              data-testid="transcript-row"
-              :data-segment-id="segment.id"
-              role="listitem"
-            >
-              <button
-                class="transcript-row-select"
-                :aria-current="selectedId === segment.id ? 'true' : undefined"
-                :aria-label="
-                  t('transcript.selectSegment', { time: time(segment.start) })
-                "
-                @click="select(segment)"
-              >
-                <time>{{ time(segment.start) }}</time
-                ><span>{{ segment.text }}</span>
-              </button>
-              <div v-if="selectedId === segment.id" class="transcript-selected">
-                <label class="editor-field"
-                  >{{ t("transcript.text")
-                  }}<textarea
-                    :ref="(element) => setTextarea(element, segment.id)"
-                    v-model="text"
-                    data-testid="transcript-text"
-                    rows="3"
-                    maxlength="20000"
-                    :disabled="busy"
-                    @input="queueText"
-                    @focus="editing = true"
-                  />
-                </label>
-                <p
-                  v-if="!timed(segment)"
-                  class="transcript-alignment"
-                  role="status"
-                  data-testid="stale-alignment"
-                >
-                  {{ t("transcript.timingStale") }}
-                </p>
-                <p
-                  v-if="segment.timingSource === 'estimated'"
-                  class="editor-note"
-                >
-                  {{ t("transcript.timingEstimated") }}
-                </p>
-                <div class="editor-actions">
-                  <button
-                    class="editor-button"
-                    :disabled="
-                      busy ||
-                      playhead <= segment.start ||
-                      playhead >= segment.end
-                    "
-                    @click="split()"
-                  >
-                    {{ t("transcript.splitPlayhead") }}</button
-                  ><button
-                    class="editor-button"
-                    :disabled="busy || segment.text.length < 2"
-                    @click="split(true)"
-                  >
-                    {{ t("transcript.splitCursor") }}</button
-                  ><button
-                    class="editor-button"
-                    :disabled="
-                      busy ||
-                      (state?.offset === 0 &&
-                        state?.document?.segments[0]?.id === segment.id)
-                    "
-                    @click="
-                      structural({
-                        type: 'merge-segment',
-                        segmentId: segment.id,
-                        direction: 'previous',
-                      })
-                    "
-                  >
-                    {{ t("transcript.mergePrevious") }}</button
-                  ><button
-                    class="editor-button"
-                    :disabled="
-                      busy ||
-                      (state?.offset ?? 0) +
-                        (state?.document?.segments.findIndex(
-                          (item) => item.id === segment.id,
-                        ) ?? 0) >=
-                        state!.total - 1
-                    "
-                    @click="
-                      structural({
-                        type: 'merge-segment',
-                        segmentId: segment.id,
-                        direction: 'next',
-                      })
-                    "
-                  >
-                    {{ t("transcript.mergeNext") }}</button
-                  ><button
-                    class="editor-button"
-                    :disabled="busy"
-                    @click="
-                      structural({
-                        type: 'delete-segment',
-                        segmentId: segment.id,
-                      })
-                    "
-                  >
-                    {{ t("transcript.deleteSegment") }}
-                  </button>
-                </div>
-              </div>
-            </article>
-            <p v-if="!visible.length" class="editor-note">
-              {{
-                t(
-                  query && filter
-                    ? "transcript.searchNoMatches"
-                    : "transcript.noTranscript",
-                )
-              }}
-            </p>
-          </div>
-          <div class="transcript-pagination">
-            <span>{{
-              t(
-                "transcript.segmentsCount",
-                { count: formatNumber(state.total) },
-                state.total,
-              )
-            }}</span
-            ><button
-              class="editor-button"
-              :disabled="busy || state.offset === 0"
-              @click="loadPage(Math.max(0, state.offset - 100))"
-            >
-              {{ t("transcript.previousPage") }}</button
-            ><span>{{
-              t("transcript.page", {
-                page: Math.floor(state.offset / 100) + 1,
-                pages: Math.max(1, Math.ceil(state.total / 100)),
-              })
-            }}</span
-            ><button
-              class="editor-button"
-              :disabled="busy || state.offset + 100 >= state.total"
-              @click="loadPage(state.offset + 100)"
-            >
-              {{ t("transcript.nextPage") }}
-            </button>
-          </div>
-          <div v-if="rememberableCorrection" class="transcript-remember">
-            <span>{{ t("transcript.rememberCorrection") }}</span
-            ><button class="editor-button" :disabled="busy" @click="remember">
-              {{ t("transcript.remember") }}
-            </button>
-          </div>
-          <details class="transcript-history">
-            <summary>{{ t("transcript.revision") }}</summary>
-            <label class="editor-field"
-              >{{ t("transcript.revision")
-              }}<select v-model="revisionSelection" :disabled="busy">
-                <option
-                  v-for="revision in revisions"
-                  :key="revision.id"
-                  :value="revision.id"
-                >
-                  {{
-                    t(
-                      revision.source === "provider"
-                        ? "transcript.revisionProvider"
-                        : revision.source === "user"
-                          ? "transcript.revisionUser"
-                          : revision.source === "glossary"
-                            ? "transcript.revisionGlossary"
-                            : "transcript.revisionReview",
-                    )
-                  }}
-                  ·
-                  {{
-                    formatDate(revision.createdAt, {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                      fractionalSecondDigits: 3,
-                    })
-                  }}
-                </option>
-              </select></label
-            ><button
-              class="editor-button"
-              :disabled="
-                busy ||
-                !revisionSelection ||
-                revisionSelection === state.revision
-              "
-              @click="restore(revisionSelection)"
-            >
-              {{ t("transcript.restoreRevision") }}
-            </button>
-            <div v-if="revisionTotal > 100" class="editor-actions">
-              <button
-                class="editor-button"
-                :disabled="busy || revisionOffset === 0"
-                @click="
-                  revisionOffset = Math.max(0, revisionOffset - 100);
-                  updateAncillary();
-                "
+                :disabled="busy || state.offset === 0"
+                @click="loadPage(Math.max(0, state.offset - 100))"
               >
                 {{ t("transcript.previousPage") }}</button
               ><span>{{
                 t("transcript.page", {
-                  page: Math.floor(revisionOffset / 100) + 1,
-                  pages: Math.ceil(revisionTotal / 100),
+                  page: Math.floor(state.offset / 100) + 1,
+                  pages: Math.max(1, Math.ceil(state.total / 100)),
                 })
               }}</span
               ><button
                 class="editor-button"
-                :disabled="busy || revisionOffset + 100 >= revisionTotal"
-                @click="
-                  revisionOffset += 100;
-                  updateAncillary();
-                "
+                :disabled="busy || state.offset + 100 >= state.total"
+                @click="loadPage(state.offset + 100)"
               >
                 {{ t("transcript.nextPage") }}
               </button>
             </div>
-            <p class="editor-note">{{ t("transcript.revisionHint") }}</p>
-          </details>
-          <p class="editor-note">{{ t("transcript.editHint") }}</p>
-        </template>
-        <div v-else-if="status !== 'loading'" class="transcript-empty">
-          <h3>{{ t("transcript.noTranscript") }}</h3>
-          <p>{{ t("transcript.transcribeHint") }}</p>
-        </div>
-        <p v-else role="status">{{ t("transcript.loading") }}</p>
-        <details class="transcript-transcribe" :open="!state?.document">
-          <summary>
-            {{
-              t(
-                state?.document
-                  ? "transcript.retranscribe"
-                  : "transcript.transcribe",
-              )
-            }}
-          </summary>
-          <div class="editor-actions">
-            <label class="editor-field"
-              >{{ t("transcript.language")
-              }}<select v-model="language">
-                <option
-                  v-for="value in ['auto', 'zh', 'en', 'ja'] as const"
-                  :key="value"
-                  :value="value"
+            <div v-if="rememberableCorrection" class="transcript-remember">
+              <span>{{ t("transcript.rememberCorrection") }}</span
+              ><button class="editor-button" :disabled="busy" @click="remember">
+                {{ t("transcript.remember") }}
+              </button>
+            </div>
+            <details class="transcript-history">
+              <summary>{{ t("transcript.revision") }}</summary>
+              <label class="editor-field"
+                >{{ t("transcript.revision")
+                }}<select v-model="revisionSelection" :disabled="busy">
+                  <option
+                    v-for="revision in revisions"
+                    :key="revision.id"
+                    :value="revision.id"
+                  >
+                    {{
+                      t(
+                        revision.source === "provider"
+                          ? "transcript.revisionProvider"
+                          : revision.source === "user"
+                            ? "transcript.revisionUser"
+                            : revision.source === "glossary"
+                              ? "transcript.revisionGlossary"
+                              : "transcript.revisionReview",
+                      )
+                    }}
+                    ·
+                    {{
+                      formatDate(revision.createdAt, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        fractionalSecondDigits: 3,
+                      })
+                    }}
+                  </option>
+                </select></label
+              ><button
+                class="editor-button"
+                :disabled="
+                  busy ||
+                  !revisionSelection ||
+                  revisionSelection === state.revision
+                "
+                @click="restore(revisionSelection)"
+              >
+                {{ t("transcript.restoreRevision") }}
+              </button>
+              <div v-if="revisionTotal > 100" class="editor-actions">
+                <button
+                  class="editor-button"
+                  :disabled="busy || revisionOffset === 0"
+                  @click="
+                    revisionOffset = Math.max(0, revisionOffset - 100);
+                    updateAncillary();
+                  "
                 >
-                  {{
-                    t(
-                      value === "auto"
-                        ? "precision.languageAuto"
-                        : value === "zh"
-                          ? "precision.languageZh"
-                          : value === "en"
-                            ? "precision.languageEn"
-                            : "precision.languageJa",
-                    )
-                  }}
-                </option>
-              </select></label
-            ><label class="editor-field"
-              >{{ t("transcript.execution")
-              }}<select v-model="execution">
-                <option
-                  v-for="value in ['auto', 'cpu', 'gpu'] as const"
-                  :key="value"
-                  :value="value"
+                  {{ t("transcript.previousPage") }}</button
+                ><span>{{
+                  t("transcript.page", {
+                    page: Math.floor(revisionOffset / 100) + 1,
+                    pages: Math.ceil(revisionTotal / 100),
+                  })
+                }}</span
+                ><button
+                  class="editor-button"
+                  :disabled="busy || revisionOffset + 100 >= revisionTotal"
+                  @click="
+                    revisionOffset += 100;
+                    updateAncillary();
+                  "
                 >
-                  {{
-                    t(
-                      value === "auto"
-                        ? "precision.executionAuto"
-                        : value === "cpu"
-                          ? "precision.executionCpu"
-                          : "precision.executionGpu",
-                    )
-                  }}
-                </option>
-              </select></label
-            ><button
-              class="editor-button primary"
-              :disabled="
-                busy ||
-                taskBusy ||
-                !transcriptionReady ||
-                unavailable ||
-                !(asset.duration && asset.duration > 0)
-              "
-              @click="transcription"
-            >
+                  {{ t("transcript.nextPage") }}
+                </button>
+              </div>
+              <p class="editor-note">{{ t("transcript.revisionHint") }}</p>
+            </details>
+            <p class="editor-note">{{ t("transcript.editHint") }}</p>
+          </template>
+          <div v-else-if="status !== 'loading'" class="transcript-empty">
+            <h3>{{ t("transcript.noTranscript") }}</h3>
+            <p>{{ t("transcript.transcribeHint") }}</p>
+          </div>
+          <p v-else role="status">{{ t("transcript.loading") }}</p>
+          <details class="transcript-transcribe" :open="!state?.document">
+            <summary>
               {{
                 t(
                   state?.document
@@ -1394,52 +1345,117 @@ onBeforeUnmount(() => {
                     : "transcript.transcribe",
                 )
               }}
-            </button>
-          </div>
-          <div v-if="transcribeWarning" class="transcript-confirm" role="alert">
-            <p>{{ t("transcript.retranscribeWarning") }}</p>
-            <button class="editor-button" @click="transcription">
-              {{ t("transcript.continueTranscription") }}</button
-            ><button class="editor-button" @click="transcribeWarning = false">
-              {{ t("transcript.keepCurrent") }}
-            </button>
-          </div>
-          <p v-if="taskBusy" class="editor-note">
-            {{ t("transcript.jobsBusy") }}
-          </p>
-          <p
-            v-if="providers && !providers.transcription.available"
-            class="editor-note"
-          >
-            {{ t("errors.model.unavailable") }}
-          </p>
-          <div
-            v-for="job in transcriptionJobs"
-            :key="job.id"
-            class="precision-job"
-            role="status"
-          >
-            <span>{{ t("transcript.transcribe") }}</span
-            ><progress
-              :value="job.progress"
-              max="1"
-              :aria-label="t('transcript.transcribe')"
-            /><span>{{
-              formatNumber(job.progress ?? 0, {
-                style: "percent",
-                maximumFractionDigits: 0,
-              })
-            }}</span>
-            <AnalysisJobActions
-              :project-id="projectId"
-              :job="job"
-              :recovery="analysisRecovery?.[job.id]"
-              :pending="recoveringAnalysisJobs?.[job.id]"
-              @cancel="cancel(job)"
-              @recover="emit('recoverAnalysis', job, $event)"
-            />
-          </div>
-        </details>
+            </summary>
+            <div class="editor-actions">
+              <label class="editor-field"
+                >{{ t("transcript.language")
+                }}<select v-model="language">
+                  <option
+                    v-for="value in ['auto', 'zh', 'en', 'ja'] as const"
+                    :key="value"
+                    :value="value"
+                  >
+                    {{
+                      t(
+                        value === "auto"
+                          ? "precision.languageAuto"
+                          : value === "zh"
+                            ? "precision.languageZh"
+                            : value === "en"
+                              ? "precision.languageEn"
+                              : "precision.languageJa",
+                      )
+                    }}
+                  </option>
+                </select></label
+              ><label class="editor-field"
+                >{{ t("transcript.execution")
+                }}<select v-model="execution">
+                  <option
+                    v-for="value in ['auto', 'cpu', 'gpu'] as const"
+                    :key="value"
+                    :value="value"
+                  >
+                    {{
+                      t(
+                        value === "auto"
+                          ? "precision.executionAuto"
+                          : value === "cpu"
+                            ? "precision.executionCpu"
+                            : "precision.executionGpu",
+                      )
+                    }}
+                  </option>
+                </select></label
+              ><button
+                class="editor-button primary"
+                :disabled="
+                  busy ||
+                  taskBusy ||
+                  !transcriptionReady ||
+                  unavailable ||
+                  !(asset.duration && asset.duration > 0)
+                "
+                @click="transcription"
+              >
+                {{
+                  t(
+                    state?.document
+                      ? "transcript.retranscribe"
+                      : "transcript.transcribe",
+                  )
+                }}
+              </button>
+            </div>
+            <div
+              v-if="transcribeWarning"
+              class="transcript-confirm"
+              role="alert"
+            >
+              <p>{{ t("transcript.retranscribeWarning") }}</p>
+              <button class="editor-button" @click="transcription">
+                {{ t("transcript.continueTranscription") }}</button
+              ><button class="editor-button" @click="transcribeWarning = false">
+                {{ t("transcript.keepCurrent") }}
+              </button>
+            </div>
+            <p v-if="taskBusy" class="editor-note">
+              {{ t("transcript.jobsBusy") }}
+            </p>
+            <p
+              v-if="providers && !providers.transcription.available"
+              class="editor-note"
+            >
+              {{ t("errors.model.unavailable") }}
+            </p>
+            <div
+              v-for="job in transcriptionJobs"
+              :key="job.id"
+              class="precision-job"
+              role="status"
+            >
+              <span>{{ t("transcript.transcribe") }}</span
+              ><progress
+                :value="job.progress"
+                max="1"
+                :aria-label="t('transcript.transcribe')"
+              /><span>{{
+                formatNumber(job.progress ?? 0, {
+                  style: "percent",
+                  maximumFractionDigits: 0,
+                })
+              }}</span>
+              <AnalysisJobActions
+                :project-id="projectId"
+                :job="job"
+                :recovery="analysisRecovery?.[job.id]"
+                :pending="recoveringAnalysisJobs?.[job.id]"
+                @cancel="cancel(job)"
+                @recover="emit('recoverAnalysis', job, $event)"
+              />
+            </div>
+          </details>
+        </div>
       </main>
       <aside v-if="toolsOpen" class="transcript-tools">
         <div
@@ -1497,7 +1513,11 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .transcript-workspace {
-  --transcript-preview-height: 220px;
+  --transcript-preview-height: clamp(
+    128px,
+    calc(var(--transcript-height, 650px) * 0.28),
+    220px
+  );
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1547,7 +1567,17 @@ onBeforeUnmount(() => {
   padding-right: 6px;
 }
 .transcript-main {
-  scroll-padding-top: calc(var(--transcript-preview-height) + 48px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.transcript-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 12px;
 }
 .transcript-tools {
   border-left: 1px solid var(--of-border-subtle);
@@ -1557,9 +1587,7 @@ onBeforeUnmount(() => {
   background: var(--of-surface-1);
   border-radius: var(--of-radius-lg);
   overflow: hidden;
-  position: sticky;
-  top: 0;
-  z-index: var(--of-z-media);
+  flex-shrink: 0;
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -1648,6 +1676,10 @@ onBeforeUnmount(() => {
   color: var(--of-text-secondary);
 }
 .transcript-row-select > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
   overflow-wrap: anywhere;
   line-height: 1.7;
   min-width: 0;

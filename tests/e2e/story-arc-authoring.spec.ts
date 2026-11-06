@@ -148,9 +148,9 @@ test("authors a freeform beat order, opens the mind map, then presents the exist
     .toBe(imeTitle);
 
   await page
-    .getByTestId("story-workflow")
     .getByRole("button", {
-      name: new RegExp(uiText("en-US", "app.story.workflow.pipeline")),
+      name: uiText("en-US", "app.pipeline.title"),
+      exact: true,
     })
     .click();
   await expect(

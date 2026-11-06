@@ -360,7 +360,11 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <section class="export-options" :aria-label="t('app.export.label')">
+  <section
+    class="export-options"
+    data-stone="anchor"
+    :aria-label="t('app.export.label')"
+  >
     <p v-if="offlineMedia" class="collect-delivery-disclosure" role="status">
       {{ t("collectDelivery.offlineOutput") }}
     </p>

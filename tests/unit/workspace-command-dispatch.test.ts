@@ -85,6 +85,8 @@ describe("actual App workspace command dispatch", () => {
         storyReviewBusy: ref(reviewState === "storyReviewBusy"),
         storyReviewPending: ref(reviewState === "storyReviewPending"),
         activeStory: ref({ id: "story", title: "Story", beats: [] }),
+        activeComposition: ref({ id: "composition" }),
+        librarySummary: ref({ total: 1 }),
         storyPerspectives: ["outline", "graph", "storyboard"],
         tabs: ["library", "story", "edit", "export", "versions"],
         workspaceIcons: {

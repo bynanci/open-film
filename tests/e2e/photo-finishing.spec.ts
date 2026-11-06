@@ -546,9 +546,15 @@ for (const combined of [false, true]) {
   }, info) => {
     const files = await fixture(request, true, combined);
     await openEditor(page);
+    // A task backing creates a stacking context. Capture the actual picture
+    // below the sticky header, so toolbar pixels cannot contaminate the probe.
+    const captureTop = await page
+      .locator(".app-header")
+      .evaluate(
+        (header) => Math.ceil(header.getBoundingClientRect().bottom) + 16,
+      );
     await page.addStyleTag({
-      content:
-        ".editor-source-screen .photo-presentation-frame{position:fixed!important;left:16px!important;top:16px!important;width:320px!important;height:180px!important;margin:0!important;border:0!important;box-sizing:content-box!important;z-index:10000!important}",
+      content: `.editor-source-screen .photo-presentation-frame{position:fixed!important;left:16px!important;top:${captureTop}px!important;width:320px!important;height:180px!important;margin:0!important;border:0!important;box-sizing:content-box!important;z-index:10000!important}`,
     });
     const frame = page.locator(
       ".editor-source-screen .photo-presentation-frame",

@@ -2533,6 +2533,46 @@ const workspaceCommands = computed<WorkspaceCommand[]>(() => {
       keywords: ["story", view],
     })),
     {
+      id: "import-media",
+      label: t("app.library.add"),
+      icon: "plus",
+      description: blocked ? unavailable : t("app.import.title"),
+      disabled: blocked,
+      keywords: ["add import media photos videos folder"],
+    },
+    {
+      id: "fit-duration",
+      label: t("editor.fit.title"),
+      icon: "film",
+      description: blocked
+        ? unavailable
+        : !activeComposition.value
+          ? t("app.workspaceMode.noComposition")
+          : t("app.workspaceMode.fitHint"),
+      disabled: blocked || !activeComposition.value,
+      keywords: ["fit duration shorten length time"],
+    },
+    {
+      id: "render-preview",
+      label: t("app.composition.render"),
+      icon: "play",
+      description: blocked
+        ? unavailable
+        : !activeComposition.value
+          ? t("app.workspaceMode.noComposition")
+          : t("app.composition.previewHint"),
+      disabled: blocked || !activeComposition.value,
+      keywords: ["render preview watch"],
+    },
+    {
+      id: "find-missing-media",
+      label: t("app.library.relink"),
+      icon: "refresh",
+      description: blocked ? unavailable : t("app.library.offlineHint"),
+      disabled: blocked || !librarySummary.value.total,
+      keywords: ["find missing offline relink reconnect media"],
+    },
+    {
       id: "new-story",
       label: t("app.story.new"),
       icon: "plus",
@@ -2571,6 +2611,22 @@ async function runWorkspaceCommand(id: WorkspaceCommandId) {
   if (id === "pipeline") {
     pipelineWorkbenchOpen.value = true;
     pipelineWorkbenchMode.value = "drawer";
+    return;
+  }
+  if (id === "import-media" || id === "find-missing-media") {
+    await changeTab("library");
+    if (!current() || tab.value !== "library") return;
+    if (id === "import-media") {
+      importOpen.value = true;
+      await focusWorkspaceMain(true);
+    } else await openRelink();
+    return;
+  }
+  if (id === "fit-duration" || id === "render-preview") {
+    await changeTab("edit");
+    if (!current() || tab.value !== "edit") return;
+    if (id === "render-preview") await renderPreview();
+    else await timelineEditor.value?.openFitReview();
     return;
   }
   const destination = id.startsWith("workspace:")
@@ -3562,6 +3618,17 @@ onUnmounted(() => {
                     {{ t("app.library.rejected") }}
                   </option>
                 </select>
+                <button
+                  v-if="search || stateFilter || mediaFilter"
+                  type="button"
+                  class="text-button library-filter-reset"
+                  :disabled="!!busy || relinkBusy"
+                  @click="clearLibraryFilters"
+                >
+                  <Icon name="refresh" :size="14" />{{
+                    t("app.library.clearFilters")
+                  }}
+                </button>
               </form>
               <div
                 class="library-layout"
@@ -3639,6 +3706,7 @@ onUnmounted(() => {
                 <aside
                   v-if="selectedAsset"
                   class="asset-inspector"
+                  data-stone="anchor"
                   :aria-label="t('app.inspector.label')"
                 >
                   <div class="inspector-title">
@@ -4290,7 +4358,7 @@ onUnmounted(() => {
               </select></label
             >
             <div
-              v-show="!expertMode"
+              v-if="expertMode"
               class="story-workflow"
               data-testid="story-workflow"
               role="group"
@@ -4389,6 +4457,7 @@ onUnmounted(() => {
               })
             }}</span
             ><button
+              v-if="expertMode"
               class="secondary pipeline-action"
               :disabled="
                 !!busy || beatDirty || storyReviewBusy || storyReviewPending
@@ -4558,6 +4627,7 @@ onUnmounted(() => {
               <section
                 v-if="activeBeat"
                 class="beat-editor"
+                data-stone="anchor"
                 :aria-label="t('app.story.editBeat')"
               >
                 <div class="beat-editor-heading">
@@ -4578,195 +4648,222 @@ onUnmounted(() => {
                     }}<Icon name="check" :size="15" />
                   </button>
                 </div>
-                <div class="beat-fields">
-                  <label class="field"
-                    >{{ t("app.story.beatTitle")
-                    }}<input
-                      v-model="beatDraft.title"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
+                <div class="beat-editor-workspace">
+                  <div class="beat-editor-tools">
+                    <div class="beat-fields">
+                      <label class="field"
+                        >{{ t("app.story.beatTitle")
+                        }}<input
+                          v-model="beatDraft.title"
+                          :disabled="
+                            (!!busy && busy !== 'savingBeat') ||
+                            relinkBusy ||
+                            ((storyReviewBusy || storyReviewPending) &&
+                              busy !== 'savingBeat')
+                          "
+                          :aria-label="t('app.story.beatTitle')"
+                          @input="beatDirty = true" /></label
+                      ><label class="field compact-field"
+                        >{{ t("app.story.beatDurationLabel")
+                        }}<input
+                          v-model.number="beatDraft.targetDuration"
+                          :disabled="
+                            (!!busy && busy !== 'savingBeat') ||
+                            relinkBusy ||
+                            ((storyReviewBusy || storyReviewPending) &&
+                              busy !== 'savingBeat')
+                          "
+                          :aria-label="t('app.story.beatDuration')"
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          @input="beatDirty = true" /></label
+                      ><label class="field intent-field"
+                        >{{ t("app.story.intent")
+                        }}<textarea
+                          v-model="beatDraft.intent"
+                          :disabled="
+                            (!!busy && busy !== 'savingBeat') ||
+                            relinkBusy ||
+                            ((storyReviewBusy || storyReviewPending) &&
+                              busy !== 'savingBeat')
+                          "
+                          :aria-label="t('app.story.beatIntent')"
+                          rows="2"
+                          @input="beatDirty = true"
+                        />
+                      </label>
+                    </div>
+                    <details
+                      class="story-writing-tools"
+                      :open="
+                        expertMode ||
+                        !!beatDraft.narration ||
+                        !!beatDraft.visualDirection ||
+                        storyReviewPending ||
+                        storyReviewBusy
                       "
-                      :aria-label="t('app.story.beatTitle')"
-                      @input="beatDirty = true" /></label
-                  ><label class="field compact-field"
-                    >{{ t("app.story.beatDurationLabel")
-                    }}<input
-                      v-model.number="beatDraft.targetDuration"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      :aria-label="t('app.story.beatDuration')"
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      @input="beatDirty = true" /></label
-                  ><label class="field intent-field"
-                    >{{ t("app.story.intent")
-                    }}<textarea
-                      v-model="beatDraft.intent"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      :aria-label="t('app.story.beatIntent')"
-                      rows="2"
-                      @input="beatDirty = true"
-                    />
-                  </label>
-                </div>
-                <div class="beat-script-fields">
-                  <label class="field"
-                    >{{ t("scenePlan.narration")
-                    }}<textarea
-                      v-model="beatDraft.narration"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      data-testid="beat-script-narration"
-                      rows="3"
-                      maxlength="8000"
-                      @input="beatDirty = true"
-                    />
-                  </label>
-                  <label class="field"
-                    >{{ t("scenePlan.visualDirection")
-                    }}<textarea
-                      v-model="beatDraft.visualDirection"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      data-testid="beat-script-visual-direction"
-                      rows="3"
-                      maxlength="8000"
-                      @input="beatDirty = true"
-                    />
-                  </label>
-                </div>
-                <StoryScriptReview
-                  :key="
-                    JSON.stringify([project.id, activeStory.id, activeBeat.id])
-                  "
-                  ref="storyScriptReview"
-                  :project-id="project.id"
-                  :story-id="activeStory.id"
-                  :beat-id="activeBeat.id"
-                  :jobs="jobs"
-                  :disabled="!!busy || relinkBusy"
-                  :prepare="() => flushPending(true)"
-                  @accepted="scriptReviewAccepted"
-                  @activity="refreshJobs"
-                  @busy="storyReviewBusy = $event"
-                  @pending="storyReviewPending = $event"
-                />
-                <div class="candidate-heading">
-                  <h3>{{ t("app.story.choose") }}</h3>
-                  <span>{{
-                    t("app.story.candidates", {
-                      selected: beatDraft.selectedAssetIds.length,
-                      count: candidateIds.length,
-                    })
-                  }}</span>
-                </div>
-                <div class="story-suggestion-actions">
-                  <button
-                    class="secondary"
-                    :disabled="!!busy"
-                    @click="refreshSuggestions"
-                  >
-                    <Icon name="refresh" :size="15" />{{
-                      t("app.story.refreshSuggestions")
-                    }}</button
-                  ><small>{{ t("app.story.refreshHint") }}</small>
-                </div>
-                <p class="candidate-guidance">
-                  {{ t("app.story.mustIncludeHint") }}
-                </p>
-                <p v-if="beatDirty" class="edit-note" role="status">
-                  {{ t("app.story.dirty") }}
-                </p>
-                <section
-                  v-if="selectedBeatAssets.length"
-                  class="selected-memories"
-                  :aria-label="t('app.story.mustInclude')"
-                >
-                  <h3>{{ t("app.story.mustInclude") }}</h3>
-                  <div class="candidate-sheet">
-                    <AssetCard
-                      v-for="asset in selectedBeatAssets"
-                      :key="asset.id"
-                      :asset="asset"
-                      :source-status="sourceStatuses[asset.id]"
-                      choice
-                      :mutation-disabled="!!busy || relinkBusy"
-                      chosen
-                      @select="chooseCandidate"
-                    />
+                    >
+                      <summary>
+                        {{ t("app.workspaceMode.scriptTools") }}
+                      </summary>
+                      <div class="beat-script-fields">
+                        <label class="field"
+                          >{{ t("scenePlan.narration")
+                          }}<textarea
+                            v-model="beatDraft.narration"
+                            :disabled="
+                              (!!busy && busy !== 'savingBeat') ||
+                              relinkBusy ||
+                              ((storyReviewBusy || storyReviewPending) &&
+                                busy !== 'savingBeat')
+                            "
+                            data-testid="beat-script-narration"
+                            rows="3"
+                            maxlength="8000"
+                            @input="beatDirty = true"
+                          />
+                        </label>
+                        <label class="field"
+                          >{{ t("scenePlan.visualDirection")
+                          }}<textarea
+                            v-model="beatDraft.visualDirection"
+                            :disabled="
+                              (!!busy && busy !== 'savingBeat') ||
+                              relinkBusy ||
+                              ((storyReviewBusy || storyReviewPending) &&
+                                busy !== 'savingBeat')
+                            "
+                            data-testid="beat-script-visual-direction"
+                            rows="3"
+                            maxlength="8000"
+                            @input="beatDirty = true"
+                          />
+                        </label>
+                      </div>
+                      <StoryScriptReview
+                        :key="
+                          JSON.stringify([
+                            project.id,
+                            activeStory.id,
+                            activeBeat.id,
+                          ])
+                        "
+                        ref="storyScriptReview"
+                        :project-id="project.id"
+                        :story-id="activeStory.id"
+                        :beat-id="activeBeat.id"
+                        :jobs="jobs"
+                        :disabled="!!busy || relinkBusy"
+                        :prepare="() => flushPending(true)"
+                        @accepted="scriptReviewAccepted"
+                        @activity="refreshJobs"
+                        @busy="storyReviewBusy = $event"
+                        @pending="storyReviewPending = $event"
+                      />
+                    </details>
                   </div>
-                </section>
-                <h3 v-if="candidateAssets.length">
-                  {{ t("app.story.suggestions") }}
-                </h3>
-                <div v-if="candidateAssets.length" class="candidate-sheet">
-                  <AssetCard
-                    v-for="asset in candidateAssets.filter(
-                      (item) => !beatDraft.selectedAssetIds.includes(item.id),
-                    )"
-                    :key="asset.id"
-                    :asset="asset"
-                    :source-status="sourceStatuses[asset.id]"
-                    choice
-                    :mutation-disabled="!!busy || relinkBusy"
-                    :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
-                    @select="chooseCandidate"
-                  />
-                </div>
-                <div v-else class="small-empty">
-                  {{ t("app.story.noCandidates") }}
-                </div>
-                <div v-if="candidateIds.length > 24" class="pagination">
-                  <span>{{
-                    t("app.story.candidatePage", {
-                      from: formatNumber(candidateOffset + 1),
-                      to: formatNumber(
-                        Math.min(candidateOffset + 24, candidateIds.length),
-                      ),
-                      count: formatNumber(candidateIds.length),
-                    })
-                  }}</span>
-                  <div>
-                    <button
-                      class="secondary"
-                      :disabled="candidateOffset === 0"
-                      @click="
-                        candidateOffset -= 24;
-                        run('loadingCandidates', loadCandidates);
-                      "
+                  <div class="beat-editor-memories">
+                    <div class="candidate-heading">
+                      <h3>{{ t("app.story.choose") }}</h3>
+                      <span>{{
+                        t("app.story.candidates", {
+                          selected: beatDraft.selectedAssetIds.length,
+                          count: candidateIds.length,
+                        })
+                      }}</span>
+                    </div>
+                    <div class="story-suggestion-actions">
+                      <button
+                        class="secondary"
+                        :disabled="!!busy"
+                        @click="refreshSuggestions"
+                      >
+                        <Icon name="refresh" :size="15" />{{
+                          t("app.story.refreshSuggestions")
+                        }}</button
+                      ><small>{{ t("app.story.refreshHint") }}</small>
+                    </div>
+                    <p class="candidate-guidance">
+                      {{ t("app.story.mustIncludeHint") }}
+                    </p>
+                    <p v-if="beatDirty" class="edit-note" role="status">
+                      {{ t("app.story.dirty") }}
+                    </p>
+                    <section
+                      v-if="selectedBeatAssets.length"
+                      class="selected-memories"
+                      :aria-label="t('app.story.mustInclude')"
                     >
-                      {{ t("app.actions.previous") }}</button
-                    ><button
-                      class="secondary"
-                      :disabled="candidateOffset + 24 >= candidateIds.length"
-                      @click="
-                        candidateOffset += 24;
-                        run('loadingCandidates', loadCandidates);
-                      "
-                    >
-                      {{ t("app.actions.next") }}
-                    </button>
+                      <h3>{{ t("app.story.mustInclude") }}</h3>
+                      <div class="candidate-sheet">
+                        <AssetCard
+                          v-for="asset in selectedBeatAssets"
+                          :key="asset.id"
+                          :asset="asset"
+                          :source-status="sourceStatuses[asset.id]"
+                          choice
+                          :mutation-disabled="!!busy || relinkBusy"
+                          chosen
+                          @select="chooseCandidate"
+                        />
+                      </div>
+                    </section>
+                    <h3 v-if="candidateAssets.length">
+                      {{ t("app.story.suggestions") }}
+                    </h3>
+                    <div v-if="candidateAssets.length" class="candidate-sheet">
+                      <AssetCard
+                        v-for="asset in candidateAssets.filter(
+                          (item) =>
+                            !beatDraft.selectedAssetIds.includes(item.id),
+                        )"
+                        :key="asset.id"
+                        :asset="asset"
+                        :source-status="sourceStatuses[asset.id]"
+                        choice
+                        :mutation-disabled="!!busy || relinkBusy"
+                        :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
+                        @select="chooseCandidate"
+                      />
+                    </div>
+                    <div v-else class="small-empty">
+                      {{ t("app.story.noCandidates") }}
+                    </div>
+                    <div v-if="candidateIds.length > 24" class="pagination">
+                      <span>{{
+                        t("app.story.candidatePage", {
+                          from: formatNumber(candidateOffset + 1),
+                          to: formatNumber(
+                            Math.min(candidateOffset + 24, candidateIds.length),
+                          ),
+                          count: formatNumber(candidateIds.length),
+                        })
+                      }}</span>
+                      <div>
+                        <button
+                          class="secondary"
+                          :disabled="candidateOffset === 0"
+                          @click="
+                            candidateOffset -= 24;
+                            run('loadingCandidates', loadCandidates);
+                          "
+                        >
+                          {{ t("app.actions.previous") }}</button
+                        ><button
+                          class="secondary"
+                          :disabled="
+                            candidateOffset + 24 >= candidateIds.length
+                          "
+                          @click="
+                            candidateOffset += 24;
+                            run('loadingCandidates', loadCandidates);
+                          "
+                        >
+                          {{ t("app.actions.next") }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>

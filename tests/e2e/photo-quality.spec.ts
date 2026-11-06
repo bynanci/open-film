@@ -388,7 +388,7 @@ test("visual overlay clips stay selectable with source controls, keyboard naviga
   );
   await page.locator("#clip-ordinary-audio").click();
   await expect(page.getByLabel("Source in", { exact: true })).toHaveValue("0");
-  await page.getByRole("button", { name: "Sound", exact: true }).click();
+  await page.getByRole("tab", { name: "Sound", exact: true }).click();
   await expect(page.locator(".editor-soundtrack-list button")).toHaveCount(1);
 });
 
@@ -695,7 +695,7 @@ test("sound preview reloads restored trim and speed on Undo and Redo", async ({
   );
   expect(edited.ok()).toBe(true);
   await openEditor(page);
-  await page.getByRole("button", { name: "Sound", exact: true }).click();
+  await page.getByRole("tab", { name: "Sound", exact: true }).click();
   const soundtrackItem = page.locator(".editor-soundtrack-list button").first();
   await soundtrackItem.click();
   const player = page.locator(".editor-soundtrack-panel audio");
@@ -877,7 +877,7 @@ test("source-locked overlay sound protects timing, envelopes, ducking and volume
       "release",
     ].map(soundField);
   const openSound = async () => {
-    await page.getByRole("button", { name: "Sound", exact: true }).click();
+    await page.getByRole("tab", { name: "Sound", exact: true }).click();
     await panel.locator(".editor-soundtrack-list button").first().click();
     await selected
       .getByText(uiText("en-US", "editor.sound.ducking"), {
@@ -899,7 +899,7 @@ test("source-locked overlay sound protects timing, envelopes, ducking and volume
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Clip", exact: true }).click();
+  await page.getByRole("tab", { name: "Clip", exact: true }).click();
   const volume = page.getByLabel("Clip volume", { exact: true });
   await expect(volume).toBeDisabled();
   expect(await editor(request)).toEqual(before);
@@ -917,7 +917,7 @@ test("source-locked overlay sound protects timing, envelopes, ducking and volume
   await navigate(page, "edit");
   await openSound();
   for (const input of soundFields()) await expect(input).toBeEnabled();
-  await page.getByRole("button", { name: "Clip", exact: true }).click();
+  await page.getByRole("tab", { name: "Clip", exact: true }).click();
   await expect(volume).toBeEnabled();
   await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await expect
@@ -929,7 +929,7 @@ test("source-locked overlay sound protects timing, envelopes, ducking and volume
   await expect(
     panel.getByText(uiText("en-US", "editor.clip.protected"), { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Clip", exact: true }).click();
+  await page.getByRole("tab", { name: "Clip", exact: true }).click();
   await page.getByRole("button", { name: "Unlock clip", exact: true }).click();
   await expect
     .poll(async () => (await clip(request, "seeded-sound")).locked)
@@ -987,7 +987,7 @@ test("unsupported sound speed stays paused when native playback is requested", a
 }) => {
   await createFilm(request, "audio-unsupported");
   await openEditor(page);
-  await page.getByRole("button", { name: "Sound", exact: true }).click();
+  await page.getByRole("tab", { name: "Sound", exact: true }).click();
   await page.locator(".editor-soundtrack-list button").first().click();
   const panel = page.locator(".editor-soundtrack-panel");
   await expect(
@@ -1090,7 +1090,7 @@ test("photo direction, CJK titles and overlay sound survive history and reopen",
   await expect
     .poll(async () => (await clip(request)).titleStyle?.role)
     .toBe("film-title");
-  await page.getByRole("button", { name: "Sound", exact: true }).click();
+  await page.getByRole("tab", { name: "Sound", exact: true }).click();
   await page
     .getByLabel("Audio source", { exact: true })
     .selectOption(fixture.audioId);

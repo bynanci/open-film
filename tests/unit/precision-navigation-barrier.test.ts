@@ -320,6 +320,8 @@ function timeline(child: Partial<Barrier>) {
   const instance = timelineFactory({
     ...reactivity,
     useId: () => "precision-navigation-timeline",
+    preferences: { editorInspectorOpen: undefined },
+    setEditorInspectorOpen: vi.fn(),
     resolveFilmLook,
     ownsSourceShortcut: monitor.ownsSourceShortcut,
     ...shortcutProfiles,

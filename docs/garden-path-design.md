@@ -1,24 +1,35 @@
-# 飛石與 OpenFilm 的配置規則
+# Tobi-ishi placement rules for OpenFilm
 
-飛石（tobi-ishi）在露地等庭園空間中引導人的行進。OpenFilm 借用的是路徑、步幅、停留與留白的關係，將其轉譯為可理解的操作順序。
+Tobi-ishi (stepping stones) guide movement through garden space. OpenFilm uses
+path, stride, pause and negative space as an interface analogy. It is an original
+design interpretation, not a garden reconstruction or a historical sizing claim.
 
-## 設計轉譯
+- **Irregular faces, continuous route:** original angular planes have flat edges,
+  unequal corners and small softened cuts. Avoid oval pebbles and random scatter.
+- **Spacing expresses stride:** related controls use 8–12px; task groups use
+  24–32px. These are interface dimensions, not garden construction standards.
+- **Pauses carry weight:** Welcome, the player and the current story beat have
+  stronger visual weight. Repeated actions do not all compete for attention.
+- **Asymmetry stays ordered:** surface shapes may vary; text baselines, input
+  placement, focus rings and rectangular hit areas remain predictable.
+- **Space supports movement:** use open space for grouping and finding the next
+  step. Raked gravel is not a required decorative symbol.
+- **Media keeps its own geometry:** photos, video frames and thumbnails retain
+  their rectangular presentation; timeline widths retain timing semantics.
 
-- **石面不規則，路徑連續：** SVG 採不同大小的多邊石面與少量柔化轉角，依一條路徑前進，避免橢圓卵石與隨機散點。
-- **間距形成步幅：** 同一任務內使用 8–12px 間距；任務組之間使用 24–32px，讓下一步容易辨識。這些數值是介面尺度，並非庭園施工標準。
-- **停留點有份量：** 歡迎頁、預覽與目前工作區形成主要視覺節點，次要操作退到旁側；不讓每個按鈕都搶占同等注意力。
-- **非對稱但有秩序：** 石形可不規則，文字基線、欄位與可點擊區域保持穩定；不以隨機位移製造不規則感。
-- **留白服務行進：** 空間用來分組與引導，不用裝飾填滿所有空白。耙紋不作為飛石的必要符號。
-- **保留媒體本身：** 照片與影片卡片沿用規則的媒體圓角及清楚裁切，原始媒體與輸出畫面不受裝飾石形影響。
+The golden ratio is a modern layout choice for selected OpenFilm compositions,
+not a universal historical rule of Japanese gardens. The three shared stone
+planes are entry, task and anchor. Only their backing layers are shaped.
 
-黃金比例是 OpenFilm 現代版面配置的選項，不能宣稱是日本庭園的普遍傳統法則。介面也不是庭園復原或建築施工圖。
+## References and verification status
 
-## 參考來源與查核狀態
+On 2026-11-05 and 2026-11-06 the environment proxy returned HTTP 403 for the
+following sources. Their contents were not inspected or quoted. They are listed
+for later cultural and architectural research, not as evidence for measurements.
 
-以下為後續可查核的庭園／建築詞彙及實例來源。2026-11-05 此執行環境的網路代理對三個網址均回傳 403，因此本輪未能讀取並逐頁核實內容；上述規則明確作為設計轉譯，沒有引用未讀取的原文或聲稱取得歷史尺寸標準。
+- [JAANUS — tobi-ishi](https://www.aisf.or.jp/~jaanus/deta/t/tobiishi.htm)
+- [Portland Japanese Garden — Tea Garden](https://japanesegarden.org/garden-spaces/tea-garden/)
+- [Japan Guide — garden elements](https://www.japan-guide.com/e/e2099_elements.html)
 
-- [JAANUS — tobi-ishi](https://www.aisf.or.jp/~jaanus/deta/t/tobiishi.htm)：日本建築與藝術詞彙參考。
-- [Portland Japanese Garden — Tea Garden](https://japanesegarden.org/garden-spaces/tea-garden/)：茶庭與露地實例。
-- [Japan Guide — Japanese garden elements](https://www.japan-guide.com/e/e2099_elements.html)：庭園構成元素導覽。
-
-本輪所有 SVG 為 OpenFilm 本機向量素材，未複製參考網站圖片。
+All vector planes are original local assets. Public garden images are original
+generated artwork of fictional scenes; see [asset origins](website-assets.md).

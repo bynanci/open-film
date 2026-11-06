@@ -168,6 +168,7 @@ watch(
         :key="beat.id"
         role="listitem"
         class="storyboard-card"
+        data-stone="task"
         :class="{
           active: activeBeatId === beat.id,
           mapped: getBeatClips(beat.id).length > 0,
@@ -178,6 +179,7 @@ watch(
         @click="selectBeat(beat.id)"
         @keydown="handleKeySelect($event, beat.id)"
       >
+        <span class="storyboard-route-marker" aria-hidden="true" />
         <header class="card-header">
           <div class="card-number-title">
             <span class="beat-index">{{
@@ -496,7 +498,7 @@ watch(
   background: var(--of-surface-1);
   transition: border-color var(--of-motion-fast) var(--of-motion-ease);
 }
-.storyboard-card::before {
+.storyboard-route-marker {
   content: "";
   position: absolute;
   left: -24px;
@@ -504,7 +506,7 @@ watch(
   width: 7px;
   height: 7px;
   border: 1px solid var(--of-border-strong);
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--of-bg);
 }
 .storyboard-card:hover {
@@ -513,13 +515,38 @@ watch(
 .storyboard-card.active {
   border-color: var(--of-accent);
 }
-.storyboard-card.active::before {
+.storyboard-card.active .storyboard-route-marker {
   border-color: var(--of-accent);
   background: var(--of-accent);
 }
 .storyboard-card:focus-visible {
   outline: 2px solid var(--of-focus);
   outline-offset: 3px;
+}
+@media (min-width: 1000px) {
+  .storyboard-card {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1fr);
+    gap: var(--of-space-4) var(--of-space-6);
+  }
+  .card-header {
+    grid-column: 1;
+    grid-row: 1;
+    margin-bottom: 0;
+  }
+  .card-body {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .card-assets {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+  .card-footer {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: end;
+  }
 }
 .card-header {
   display: flex;
@@ -741,7 +768,6 @@ watch(
   gap: var(--of-space-3);
   margin-top: var(--of-space-4);
   padding-top: var(--of-space-3);
-  border-top: 1px solid var(--of-border-subtle);
 }
 .card-timing {
   display: flex;

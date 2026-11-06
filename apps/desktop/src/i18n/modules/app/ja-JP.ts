@@ -166,6 +166,9 @@ export default {
         "タイムラインの編集は操作が途切れると自動保存されます。保存に失敗しても未保存の変更は復元できます。",
     },
     workspaceMode: {
+      scriptTools: "脚本とシーンの演出",
+      noComposition: "先にストーリーから編集を作成してください。",
+      fitHint: "短縮案を確認してから、フィルムへの反映を選べます。",
       label: "操作モード",
       standard: "一般モード",
       expert: "エキスパートモード",

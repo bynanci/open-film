@@ -3,6 +3,10 @@ import type { WorkspaceId } from "./appTypes";
 export type WorkspaceCommandId =
   | `workspace:${WorkspaceId}`
   | `story:${"outline" | "graph" | "storyboard"}`
+  | "import-media"
+  | "fit-duration"
+  | "render-preview"
+  | "find-missing-media"
   | "new-story"
   | "pipeline"
   | "settings";

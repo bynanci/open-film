@@ -4074,36 +4074,6 @@ textarea {
   background: var(--of-accent-soft);
 }
 
-.storyboard-card {
-  border: 0;
-  border-radius: var(--of-radius-dialog);
-  background: transparent;
-  padding-inline: 0;
-}
-
-.storyboard-card::before {
-  border: 0;
-  background: var(--of-stone);
-}
-
-.storyboard-card.active {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--of-accent-soft) 45%, transparent);
-  padding-inline: var(--of-space-4);
-}
-
-.storyboard-card.active::before {
-  background: var(--of-accent);
-}
-
-.storyboard-card:hover {
-  border-color: transparent;
-}
-
-.storyboard-card .card-footer {
-  border-top: 0;
-}
-
 :is(.project-heading, .beat-editor-heading, .storyboard-header, .card-header) {
   text-wrap: pretty;
 }

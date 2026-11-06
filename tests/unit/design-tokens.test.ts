@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(resolve("apps/desktop/src/tokens.css"), "utf8");
+const css = readFileSync(resolve("design/tokens.css"), "utf8");
 const productCss = readFileSync(
   resolve("apps/desktop/src/product.css"),
   "utf8",
@@ -15,7 +15,7 @@ const declarations = (block: string): Record<string, string> =>
   );
 const light = declarations(css.match(/:root\s*\{([^}]+)\}/u)![1]!);
 const dark = declarations(
-  css.match(/:root\[data-theme="dark"\]\s*\{([^}]+)\}/u)![1]!,
+  css.match(/:root\[data-theme="dark"\][^{]*\{([^}]+)\}/u)![1]!,
 );
 const systemDark = declarations(
   css.match(/:root\[data-theme="system"\]\s*\{([^}]+)\}/u)![1]!,

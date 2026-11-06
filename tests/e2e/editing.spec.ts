@@ -802,11 +802,17 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   await page.setViewportSize({ width: 1024, height: 768 });
   await openTimeline(page);
   await expect(
-    page.getByLabel("Timeline inspector", { exact: true }),
+    page.getByRole("complementary", {
+      name: "Timeline inspector",
+      exact: true,
+    }),
   ).not.toBeVisible();
   await page.locator("#clip-opening-photo").click();
   await expect(
-    page.getByLabel("Timeline inspector", { exact: true }),
+    page.getByRole("complementary", {
+      name: "Timeline inspector",
+      exact: true,
+    }),
   ).toBeVisible();
   const mountedEditor = await page.locator(".timeline-editor").elementHandle();
   await page.getByRole("button", { name: "Settings", exact: true }).click();

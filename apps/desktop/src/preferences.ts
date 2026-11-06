@@ -8,6 +8,7 @@ export type WorkspaceMode = "standard" | "expert";
 export type MonitorLayoutPreference = "tabbed" | "dual";
 export const preferenceStorageKey = "openfilm.preferences.v1";
 interface StoredPreferences {
+  editorInspectorOpen?: boolean;
   theme?: ThemePreference;
   workspaceMode?: WorkspaceMode;
   defaultFilmLocale?: SupportedLocale;
@@ -78,6 +79,10 @@ const cutDeskSplitRatio = ref<number>(
 );
 let lastWorkspaceByProject = validWorkspaceMap(stored.lastWorkspaceByProject);
 export const preferences = reactive({
+  editorInspectorOpen:
+    typeof stored.editorInspectorOpen === "boolean"
+      ? stored.editorInspectorOpen
+      : undefined,
   workspaceMode: (stored.workspaceMode === "expert"
     ? "expert"
     : "standard") as WorkspaceMode,
@@ -103,6 +108,7 @@ function persist(): void {
     globalThis.localStorage?.setItem(
       preferenceStorageKey,
       JSON.stringify({
+        editorInspectorOpen: preferences.editorInspectorOpen,
         theme: preferences.theme,
         workspaceMode: preferences.workspaceMode,
         defaultFilmLocale: defaultFilmLocale.value,
@@ -175,3 +181,8 @@ export function setCutDeskSplitRatio(value: number): void {
 }
 
 applyTheme();
+
+export function setEditorInspectorOpen(value: boolean): void {
+  preferences.editorInspectorOpen = value;
+  persist();
+}

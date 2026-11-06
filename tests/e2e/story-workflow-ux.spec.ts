@@ -443,9 +443,10 @@ test("opens pipeline stages with the keyboard and returns focus without starting
   page,
   request,
 }) => {
-  const stage = page
-    .locator(".pipeline-status-bar")
-    .getByRole("button", { name: /^2\. / });
+  const stage = page.locator(".pipeline-status-bar .bar-expand-btn");
+  await expect(page.locator(".pipeline-status-bar .bar-stage-dot")).toHaveCount(
+    0,
+  );
   await stage.focus();
   await page.keyboard.press("Enter");
   const drawer = page.getByRole("dialog");
@@ -466,12 +467,13 @@ test("keeps one focused pipeline gate in standard mode and exposes canonical tas
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const storyPlanStage = page
-    .locator(".pipeline-status-bar")
-    .getByRole("button", { name: /^2\. / });
+  const storyPlanStage = page.locator(".pipeline-status-bar .bar-expand-btn");
   await storyPlanStage.click();
   const drawer = page.locator(".pipeline-workbench-container.is-drawer");
   await expect(drawer).toBeVisible();
+  await drawer
+    .getByRole("button", { name: "Previous gate", exact: true })
+    .click();
   await expect(drawer.locator(".gate-summary")).toContainText("Gate 2 of 5");
   await expect(drawer.locator(".workbench-pane-nav")).toHaveCount(0);
   await expect(drawer.locator(".workbench-pane-inspector")).toHaveCount(0);

@@ -168,6 +168,9 @@ export default {
         "Timeline edits save automatically after a short pause. Unsaved changes remain recoverable if saving fails.",
     },
     workspaceMode: {
+      scriptTools: "Script & scene direction",
+      noComposition: "Create a cut from your story first.",
+      fitHint: "Review shortening suggestions before changing your film.",
       label: "Workspace mode",
       standard: "General mode",
       expert: "Expert mode",

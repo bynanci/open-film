@@ -1864,6 +1864,11 @@ test("long multiline glossary replacements and remembered corrections retain the
     .click();
   await saved(page);
   await expect(field(page)).toHaveValue(longReplacement);
+  const rowPreview = await rows(page)
+    .first()
+    .locator(".transcript-row-select")
+    .boundingBox();
+  expect(rowPreview!.height).toBeLessThan(180);
   await selectRow(page, 1);
   await typeText(page, rememberedReplacement);
   await expect(button(page, "remember")).toBeVisible();

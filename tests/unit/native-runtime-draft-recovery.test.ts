@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isWorkspaceCommandShortcut } from "../../apps/desktop/src/workspace-commands";
+import * as activityJobs from "../../apps/desktop/src/activity-jobs";
 import {
   flatten,
   mountComponent,
@@ -293,6 +294,8 @@ async function fixture(initialStart?: () => Promise<unknown>) {
       "./nativeBenchmark": {
         nativeBenchmark: { afterFrames: () => noop, record: noop },
       },
+      "./garden-lighting": { startGardenLighting: () => noop },
+      "./activity-jobs": activityJobs,
       "./preferences": {
         preferences: vue.reactive({ workspaceMode: "standard" }),
         getLastWorkspaceForProject: () => undefined,

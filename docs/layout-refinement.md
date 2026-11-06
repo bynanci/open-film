@@ -1,27 +1,41 @@
-# 剪輯工作區排版精進
+# Editing workspace layout refinement
 
-## 目的
+The layout keeps the preview, edit order and current controls visible together.
+Stepping stones express independent but related task surfaces, an ordered route
+and purposeful spacing. Rectangular media geometry and tool behavior remain clear.
 
-讓使用者持續看見預覽、剪輯順序和目前選項。飛石的角色是形成有次序的操作路徑、獨立但連貫的面板和適當留白；不把所有工具套進同一固定黃金比例，也不增加橢圓或膠囊容器。
+- Navigation uses a 168px labelled desktop rail, with its existing compact form
+  for narrower desktop windows. Progress and attention states stay accessible.
+- Library gives most width to thumbnails and bounds its Inspector near 256–320px.
+  Active filters can be reset without first reaching an empty result.
+- Story bounds its index at 224–288px. Title, intention, timing and chosen memories
+  stay primary; script, direction and review tools disclose on demand and remain
+  open for authored content or pending work.
+- Story's active task surface fits its content. At 1600px and wider, narrative
+  controls and chosen/suggested memories sit side by side at 1:1.618; smaller
+  windows retain the stacked reading order.
+- Edit places preview and Inspector above the full-width story rail. The Inspector
+  has independent scrolling and six labelled keyboard tabs. Duration, trim, speed
+  and volume precede color and styling tools, according to the media type.
+- Workspace height uses the visible Pipeline dock boundary and the existing 2px
+  stability threshold. The source screen retains a 128px minimum; a short window
+  scrolls its preview region instead of collapsing media into a narrow strip.
+- Export gives preview the larger desktop column, with settings alongside it.
+  Existing MP4, handoff, compatibility and crop-confirmation behavior is retained.
+  Flat inner field groups avoid a second card shadow. Narrow desktop goal choices
+  stack without dropping their explanatory text or hiding the export action.
+- General mode keeps the global progress path and a compact Pipeline status/action
+  bar. Expert mode retains the detailed five-stage dock; the drawer remains
+  available in both modes and closing it returns keyboard focus.
 
-## 工作區配置
+The Inspector collapse preference is device-local. Quick actions reuse the
+existing save, review, project-ownership and command barriers. No project schema,
+processing provider or renderer geometry changes are part of this layout work.
 
-- **導覽：** 桌面側欄 168px，較窄桌面沿用圖示導覽；目前工作區和流程進度仍有文字／狀態提示。
-- **Library：** 素材縮圖取得主要寬度，Inspector 約 256–320px；標題保留清楚層級，避免重複文案佔據主要瀏覽空間。
-- **Story：** 段落索引 224–288px，剩餘空間供故事編寫與選材；長段落名稱自然換行。
-- **Edit：** 上方預覽與右側 Inspector，下方為橫跨全寬的 Story Timeline。Inspector 有寬度上限與獨立捲動，六個區段選擇以兩欄排列。工具列保持可換行。
-- **視窗高度：** 沿用既有量測與 2px 穩定門檻，將實際可見的製作工具列上緣納入高度計算，避免編輯區藏在底部工具列後方。來源畫面保留 128px 最小高度；短視窗或長字串擠壓上方面板時，改由預覽面板內部捲動，不把來源縮成細線。
-- **Export：** 桌面預覽位於主要欄，設定在次要欄，選擇觀看用途後先呈現 MP4 匯出操作，再列出說明與選項；沿用同一個已掛載的播放器和原有匯出流程。
+## Reference limits
 
-媒體卡片保留規則圓角和素材辨識。飛石的不規則感由工作區形狀、單列流程、層次和留白表現；文字與控制項仍維持穩定基線。
-
-## 參考與證據限制
-
-以下網址於 2026-11-05 嘗試讀取時均被執行環境的網路代理以 403 阻擋。本輪未能檢視 Dribbble 作品或逐頁核對官方文件，因此不宣稱複製、評析或採用了特定作品。配置採用常見剪輯介面的預覽／Inspector／底部時間軸模式，實際修改與驗證以 OpenFilm 現有元件為準。
-
-- [Dribbble — video editor](https://dribbble.com/search/video-editor)
-- [Dribbble — video editing dashboard](https://dribbble.com/search/video-editing-dashboard)
-- [DaVinci Resolve Edit](https://www.blackmagicdesign.com/products/davinciresolve/edit)
-- [Premiere workspaces](https://helpx.adobe.com/premiere-pro/using/workspaces.html)
-
-沒有加入遠端圖片、字型、追蹤或新的剪輯引擎。
+On 2026-11-05 and 2026-11-06 the network proxy blocked the Dribbble video-editor
+and architecture searches, the DaVinci Resolve product page, and the Premiere
+workspace guide. No particular work from those unread pages is claimed as an
+adopted design. The familiar preview/Inspector/lower-rail arrangement is adapted
+through OpenFilm's existing components and measured browser behavior.

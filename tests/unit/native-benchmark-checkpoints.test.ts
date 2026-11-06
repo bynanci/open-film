@@ -712,6 +712,7 @@ describe("actual workspace readiness guards", () => {
         },
       ),
       poll: undefined,
+      stopGardenLighting: undefined,
       onUnmounted: (callback: () => void) => {
         unmount = callback;
       },
@@ -1299,6 +1300,7 @@ describe("actual workspace readiness guards", () => {
           nativeBootGeneration: 1,
           nativeEditGeneration: 1,
           poll: undefined,
+          stopGardenLighting: undefined,
           window: { removeEventListener: removeWindowListener },
           document: { removeEventListener: removeDocumentListener },
           handleKeyboard: () => {},

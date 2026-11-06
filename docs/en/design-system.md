@@ -9,7 +9,7 @@ film workspace rather than a decorative garden illustration.
 
 ## Tokens
 
-`apps/desktop/src/tokens.css` is the source of truth. New users start with the
+`design/tokens.css` is the shared source of truth; the desktop token entry point imports it. New users start with the
 warm-stone light theme. Existing explicit dark, light and system preferences are
 preserved. System follows the OS theme; both palettes use the same semantic roles.
 Existing component variable names are aliases so incremental changes share one
@@ -46,8 +46,9 @@ disables the remaining transitions.
 
 ## Type and spacing
 
-Use a local Mincho-capable system stack, including Traditional Chinese and
-Japanese fallbacks. No downloadable web fonts are required. Body line height is
+Use a local Mincho-capable stack for editorial headings and a system sans-serif
+stack for body text, controls and dense media information, with Traditional Chinese
+and Japanese fallbacks. No downloadable web fonts are required. Body line height is
 1.65; headings use 1.35 to preserve CJK legibility. The fixed rem scale renders
 captions at 13px, small labels at 14px, body at 15px, workspace headings at 28px
 and the Welcome heading at 36px with the default root size. Product headings do not grow with
@@ -176,8 +177,8 @@ See [workspace modes](workspace-modes.md) for behavior and acceptance evidence.
   vertically and clip lanes scroll horizontally. Its inspector scrolls separately;
   arrow selection reveals a clip inside those regions without moving the page.
 - **Inspector:** contextual controls for photo, video or audio, collapsible at
-  smaller desktop widths. Its six sections use two columns of borderless selector cards, keeping CJK
-  labels readable within the bounded Inspector width. Soundtrack choices read as rows, and
+  smaller desktop widths. Its six sections use a keyboard-accessible tablist with two columns of labelled
+  controls, keeping CJK labels readable within the bounded Inspector width. Soundtrack choices read as rows, and
   mute/solo/lock controls use the same semantic status colors as the rest of the
   workspace. Unsupported controls are omitted.
 - **Empty state:** states the next meaningful action, with one direct action to
@@ -262,8 +263,47 @@ claim that every assistive technology or native platform has been certified.
 
 ### Tobi-ishi layout interpretation
 
-See [stepping-stone rationale](../garden-path-design.md) for movement, spacing,
-stopping points and the distinction between traditional principles and
-OpenFilm layout choices.
+See [stepping-stone rationale](garden-path-design.md) for movement,
+spacing, stopping points and the distinction between traditional principles
+and OpenFilm layout choices.
 
-See [editing layout rationale](../layout-refinement.md) for pane allocation and reference access limitations.
+See [editing layout rationale](layout-refinement.md) for pane allocation and reference access limitations.
+
+### Whitespace and editorial rhythm
+
+Space expresses the relationship between tasks. Keep a 8–12px interval within a
+control group, 24–32px between groups, and stronger pauses at workspace or article
+boundaries. Align titles, labels, time values and actions to shared edges. Avoid
+stretching a surface to match an unrelated sibling or adding an empty minimum
+height to make a card look substantial.
+
+Story's authoring surface fits its content. At 1600px and wider, the narrative
+controls and memories share a 1:1.618 composition with media receiving more room;
+smaller windows preserve the stacked reading order. Healthy Library status and
+closed preview-storage controls share a compact desktop band. Offline warnings
+and expanded storage tools retain their own space. Export uses one task backing
+with flat inner sections, so fields do not acquire a second container shadow.
+
+The website pairs large section claims with supporting context across a reading
+grid. Mobile reading remains sequential. Remove the default homepage's redundant
+footer margin rather than stacking multiple section-sized gaps. These choices
+keep task relationships clear while retaining editing and recovery behavior.
+
+## Tobi-ishi application and website adapters
+
+`design/stone-surfaces.css` defines original entry, task and anchor planes. Only
+the backing layers are clipped; media, text, hit areas and keyboard focus remain
+rectangular. `design/garden-lighting.ts` supplies the same local light direction
+to the desktop workspace and VitePress site, with no network or location request.
+
+General mode keeps one workflow-progress route. The bottom Pipeline control keeps
+its real status, review and recovery actions; its duplicate five-stage navigation
+is expanded in Expert mode or in the workbench drawer. Script and scene-direction
+fields are disclosed on demand and stay open for authored content or pending
+review. Inspector arrow/Home/End navigation, device-local collapse preferences,
+and searchable Import/Fit/Preview/Relink actions use the existing application
+commands and save barriers. None changes the project format or processing engine.
+
+Website adapters should reuse these planes and palette with a larger, ordered
+path. Public sample-media screenshots and original artwork must be identified
+separately from released-product claims.

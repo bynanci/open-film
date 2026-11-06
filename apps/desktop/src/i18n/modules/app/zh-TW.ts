@@ -156,6 +156,9 @@ export default {
         "暫停操作片刻後，時間軸會自動儲存。儲存失敗時，未儲存的變更仍可復原。",
     },
     workspaceMode: {
+      scriptTools: "腳本與場景方向",
+      noComposition: "請先從故事建立剪輯。",
+      fitHint: "先檢視縮短建議，再決定如何調整影片。",
       label: "操作模式",
       standard: "一般模式",
       expert: "專家模式",
