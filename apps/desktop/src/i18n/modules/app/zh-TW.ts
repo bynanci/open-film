@@ -948,6 +948,7 @@ export default {
       },
       card: {
         scene: "第 {number} 幕",
+        scenesRegion: "分鏡場景",
         media: "使用素材",
         whatExpressed: "表達什麼",
         howPresented: "如何呈現",

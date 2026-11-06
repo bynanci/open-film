@@ -1003,6 +1003,7 @@ export default {
       },
       card: {
         scene: "シーン {number}",
+        scenesRegion: "ストーリーボードのシーン",
         media: "使用する素材",
         whatExpressed: "表現する内容",
         howPresented: "演出方法",

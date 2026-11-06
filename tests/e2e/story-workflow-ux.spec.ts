@@ -174,6 +174,7 @@ test("story plan image labels keep readable contrast in both themes", async ({
     });
     return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
   };
+  await page.addScriptTag({ content: axe.source });
   for (const theme of ["light", "dark"] as const) {
     await page.locator(".settings-toggle").click();
     const settings = page.getByRole("dialog", {
@@ -191,6 +192,17 @@ test("story plan image labels keep readable contrast in both themes", async ({
     await page.locator(".plan-storyboard-btn").click();
     const dialog = page.locator('.modal-backdrop[role="dialog"]');
     await expect(dialog).toBeVisible();
+    const modalViolations = await dialog.evaluate(async (root) => {
+      const audit = (window as unknown as { axe: typeof axe }).axe;
+      return (
+        await audit.run(root, {
+          runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
+        })
+      ).violations.map((item) => item.id);
+    });
+    expect(modalViolations, `${theme} storyboard modal accessibility`).toEqual(
+      [],
+    );
     await expect(dialog.locator(".which-image-section").first()).toBeVisible();
     await expect(
       dialog.locator(".which-image-section .asset-name").first(),
@@ -212,9 +224,22 @@ test("story plan image labels keep readable contrast in both themes", async ({
       );
     expect(fallbackAssetNames).toEqual(["01-photo.png"]);
     await expect(dialog.locator(".storyboard-card")).toHaveCount(2);
+    const sceneCards = dialog.locator(".storyboard-card");
+    await expect(dialog.getByRole("article")).toHaveCount(2);
+    expect(
+      await sceneCards.evaluateAll((cards) =>
+        cards.every((card) => !card.hasAttribute("tabindex")),
+      ),
+    ).toBe(true);
+    await dialog.locator(".close-btn").focus();
+    await page.keyboard.press("Tab");
+    await expect(dialog.locator(".modal-footer .secondary-btn")).toBeFocused();
     await expect(
       dialog.locator(".which-image-section .section-label"),
     ).toHaveText(["Media", "Media"]);
+    await expect(dialog.locator(".cards-scroller")).toHaveAccessibleName(
+      "Storyboard scenes",
+    );
     const gridFill = await dialog
       .locator(".cards-scroller")
       .evaluate((grid) => {
@@ -238,7 +263,7 @@ test("story plan image labels keep readable contrast in both themes", async ({
           .first()
           .evaluate((element) => getComputedStyle(element).backgroundColor),
       )
-      .toBe(theme === "light" ? "rgb(225, 233, 223)" : "rgb(41, 55, 43)");
+      .toBe(theme === "light" ? "rgb(233, 229, 218)" : "rgb(37, 43, 38)");
     const samples = await dialog.evaluate(
       (root, targets) =>
         targets.flatMap((selector) =>
@@ -324,6 +349,11 @@ test("story plan image labels keep readable contrast in both themes", async ({
     await dialog.locator(".close-btn").click();
     await page.setViewportSize({ width: 1280, height: 900 });
   }
+  await page.locator(".ui-language select").selectOption("ja-JP");
+  await page.locator(".plan-storyboard-btn").click();
+  await expect(
+    page.locator('.modal-backdrop[role="dialog"] .cards-scroller'),
+  ).toHaveAccessibleName(uiText("ja-JP", "app.storyPlan.card.scenesRegion"));
 });
 
 test("uses keyboard tabs and previews full-size photos and playable video without losing focus", async ({

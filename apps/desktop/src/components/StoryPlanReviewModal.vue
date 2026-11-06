@@ -51,7 +51,6 @@ const error = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 const plan = ref<StoryPlan | null>(null);
 const compositionPreview = ref<Composition | null>(null);
-const selectedSceneId = ref<string | null>(null);
 
 const canAdopt = computed(() => {
   if (!plan.value) return false;
@@ -83,9 +82,6 @@ async function loadPreview() {
       props.presetPreview ?? (await api.storyPlanPreview(props.storyId, opts));
     plan.value = res.plan;
     compositionPreview.value = res.compositionPreview;
-    if (res.plan.scenes.length > 0) {
-      selectedSceneId.value = res.plan.scenes[0]!.sceneId;
-    }
   } catch (err: unknown) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -256,16 +252,12 @@ watch(
         <div
           class="cards-scroller"
           role="region"
-          aria-label="Storyboard Scenes"
+          :aria-label="t('app.storyPlan.card.scenesRegion')"
         >
-          <div
+          <article
             v-for="(scene, idx) in plan.scenes"
             :key="scene.sceneId"
             class="storyboard-card"
-            :class="{ selected: selectedSceneId === scene.sceneId }"
-            tabindex="0"
-            @click="selectedSceneId = scene.sceneId"
-            @keydown.enter="selectedSceneId = scene.sceneId"
           >
             <!-- Card Header: Scene Number, Title & Source Nature -->
             <div class="card-header">
@@ -273,7 +265,7 @@ watch(
                 <span class="scene-idx">
                   {{ t("app.storyPlan.card.scene", { number: idx + 1 }) }}
                 </span>
-                <span class="scene-title">{{ scene.title }}</span>
+                <h3 class="scene-title">{{ scene.title }}</h3>
               </div>
               <span
                 class="source-badge"
@@ -390,7 +382,7 @@ watch(
                 }}
               </span>
             </div>
-          </div>
+          </article>
         </div>
       </div>
 
@@ -485,21 +477,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  transition:
-    background-color var(--of-motion-normal) var(--of-motion-ease),
-    box-shadow var(--of-motion-normal) var(--of-motion-ease);
-  cursor: pointer;
-}
-
-.storyboard-card:hover,
-.storyboard-card:focus {
-  background: var(--of-surface-3);
-  box-shadow: var(--of-shadow-hover);
-}
-
-.storyboard-card.selected {
-  background: var(--of-accent-soft);
-  box-shadow: var(--of-shadow-hover);
 }
 
 .card-header {
@@ -525,6 +502,7 @@ watch(
 }
 
 .scene-title {
+  margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
   white-space: nowrap;

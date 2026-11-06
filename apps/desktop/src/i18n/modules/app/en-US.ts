@@ -1006,6 +1006,7 @@ export default {
       },
       card: {
         scene: "Scene {number}",
+        scenesRegion: "Storyboard scenes",
         media: "Media",
         whatExpressed: "Expressed Intent",
         howPresented: "Visual Direction",
