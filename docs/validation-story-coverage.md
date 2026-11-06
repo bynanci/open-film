@@ -60,6 +60,17 @@ pools, locked source placement, selected/locked media maxima, user-pinned clips,
 paired-photo counts, regeneration modes, protected clips, and StoryPlan
 preview/acceptance.
 
+## Follow-up schema hardening
+
+The draft PR adds two fail-closed guarantees for the new versioned constraints:
+coverage-group IDs must be unique within a beat, and `coverage-group` v1 and
+`media-balance` v1 reject unrecognized fields. The existing unversioned
+constraint formats remain unchanged. Local follow-up evidence: core content
+validation 32 passed; contract suite 78 files / 1,528 tests passed; related
+solver/application/integration tests 5 files / 114 passed; Story Graph browser
+test 1 passed; typecheck, lint, format check and build passed. Hosted checks for
+this follow-up commit are pending.
+
 ## Limits and remaining verification
 
 - Event and person groups require explicit user curation. There is no automatic

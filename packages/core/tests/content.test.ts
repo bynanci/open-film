@@ -222,6 +222,61 @@ describe("additive film content fields", () => {
       ),
     ).toThrow("unknown asset ID");
   });
+
+  it("rejects duplicate coverage group IDs within a beat", () => {
+    const group = {
+      type: "coverage-group",
+      version: 1,
+      kind: "event",
+      groupId: "event:ceremony",
+      label: "Ceremony",
+      assetIds: ["asset-1"],
+      minimumCount: 1,
+    };
+    expect(() =>
+      validateStory({
+        id: "story",
+        title: "Story",
+        beats: [
+          {
+            id: "beat",
+            title: "Scene",
+            constraints: [group, { ...group, label: "Reception" }],
+          },
+        ],
+      }),
+    ).toThrow("duplicate coverage group ID");
+  });
+
+  it.each([
+    {
+      type: "coverage-group",
+      version: 1,
+      kind: "event",
+      groupId: "event:ceremony",
+      label: "Ceremony",
+      assetIds: ["asset-1"],
+      minimumCount: 1,
+      unexpected: true,
+    },
+    {
+      type: "media-balance",
+      version: 1,
+      minImages: 1,
+      unexpected: true,
+    },
+  ])(
+    "rejects unsupported fields in versioned constraint $type",
+    (constraint) => {
+      expect(() =>
+        validateStory({
+          id: "story",
+          title: "Story",
+          beats: [{ id: "beat", title: "Scene", constraints: [constraint] }],
+        }),
+      ).toThrow("unsupported constraint field");
+    },
+  );
 });
 
 describe("semantic job errors", () => {

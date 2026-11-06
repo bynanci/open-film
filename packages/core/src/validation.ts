@@ -1439,6 +1439,7 @@ function story(
         checkAssetIds(strings(v, p, true), p, knownAssets),
       );
     optional(beat, "constraints", beatPath, (v, p) => {
+      const coverageGroupIds = new Set<string>();
       array(v, p).forEach((constraintEntry, j) => {
         const constraintPath = `${p}[${j}]`;
         const constraint = object(constraintEntry, constraintPath);
@@ -1453,13 +1454,33 @@ function story(
         if (type === "chronological") {
           optional(constraint, "enabled", constraintPath, boolean);
         } else if (type === "coverage-group") {
+          for (const key of Object.keys(constraint))
+            if (
+              ![
+                "type",
+                "version",
+                "kind",
+                "groupId",
+                "label",
+                "assetIds",
+                "minimumCount",
+              ].includes(key)
+            )
+              fail(`${constraintPath}.${key}`, "unsupported constraint field");
           if (constraint.version !== 1)
             fail(`${constraintPath}.version`, "expected version 1");
           choice(constraint.kind, `${constraintPath}.kind`, [
             "event",
             "person",
           ]);
-          receiptIdentifier(constraint.groupId, `${constraintPath}.groupId`);
+          const groupId = string(
+            constraint.groupId,
+            `${constraintPath}.groupId`,
+          );
+          receiptIdentifier(groupId, `${constraintPath}.groupId`);
+          if (coverageGroupIds.has(groupId))
+            fail(`${constraintPath}.groupId`, "duplicate coverage group ID");
+          coverageGroupIds.add(groupId);
           const label = string(constraint.label, `${constraintPath}.label`);
           if (!label.trim())
             fail(`${constraintPath}.label`, "expected a non-empty label");
@@ -1483,6 +1504,18 @@ function story(
               "minimum count exceeds the explicit group size",
             );
         } else if (type === "media-balance") {
+          for (const key of Object.keys(constraint))
+            if (
+              ![
+                "type",
+                "version",
+                "minImages",
+                "maxImages",
+                "minVideos",
+                "maxVideos",
+              ].includes(key)
+            )
+              fail(`${constraintPath}.${key}`, "unsupported constraint field");
           if (constraint.version !== 1)
             fail(`${constraintPath}.version`, "expected version 1");
           const bounds = [
