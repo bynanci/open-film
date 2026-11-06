@@ -91,6 +91,8 @@ P1 是阻擋任務或資料風險；P2 是明顯摩擦；P3 是細節精修。�
 | Story Plan 審閱素材區使用不存在的深色舊 token，淺色主題文字對比約 1.14:1                      | 素材區改用 Garden Stone 主題 surface token，沿用主題文字色                                                                                          | Story Graph Playwright 對比量測；淺／深主題皆至少 4.5:1                                                                                |
 | Story Plan 視窗其他區塊仍混用舊色盤，副標、來源、角色、理由與操作區層級不一致                 | 將殘留表面與語意狀態色改接 Garden Stone tokens，按鈕與標籤改用非橢圓的飛石圓角                                                                      | Story Graph E2E 檢查 13 種文字區域及淺／深主題截圖；實際樣本對比皆 ≥ 4.5:1                                                             |
 | 兩個 Story Plan 場景只佔三欄中的兩欄，右側留下非預期空白；影片素材也錯誤顯示照片景深 fallback | 改用 auto-fit 填滿現有場景欄寬；Planner 只為圖片產生景深資訊，並以一般使用者可理解的靜態照片文案完整翻譯                                            | Planner 單元測試 8 項與 Story Graph E2E 通過；確認影片不顯示照片說明，且 1024×720／1280×900 無溢出與按鈕裁切，淺／深主題對比皆 ≥ 4.5:1 |
+| Story Plan 將照片與影片都標為「Image / Clip」，靜態照片提示又與所屬素材脫離                                          | 欄位標籤改成中性的在地化「Media」；提示移至個別照片素材列，影片不顯示照片專屬說明                                                                 | 混合媒體 E2E 確認照片／影片標籤、提示歸屬與 1024×720 淺／深主題畫面；Story workflow 8 項通過                                               |
+| 場景卡片可點選但沒有實際操作結果，鍵盤與讀屏會把整張內容誤認成按鈕；場景區名稱固定英文                          | 場景內容使用 article 與標題層級，移除無效選取與 Tab 停靠；區域名稱使用 en-US／zh-TW／ja-JP 翻譯                                                   | Modal axe WCAG 2.1 AA 淺／深主題零違規；Tab 直接到實際操作按鈕；日文區域名稱及 Story workflow 8 項通過                                    |
 
 本次另修正 Windows 復原測試中，在故意中斷回應後讀取冪等結果時，對有限次 `ECONNRESET` 的容錯；不重試 HTTP 或其他錯誤。隔離重跑變體 UI 與 native benchmark runner 共 33 項通過。全量 Vitest 曾與 Playwright 同時執行，原生量測測例因此撞到被 E2E 服務占用的 4310 埠；不把該次並行結果記為綠燈，隔離重跑通過。
 
