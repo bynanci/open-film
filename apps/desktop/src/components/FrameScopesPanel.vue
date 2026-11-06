@@ -310,7 +310,7 @@ watch(
   box-shadow: var(--of-shadow-soft);
 }
 .frame-scopes-grid figcaption {
-  color: var(--editor-text);
+  color: var(--of-on-media);
   font-size: var(--of-font-caption);
 }
 .frame-scopes-grid canvas {
