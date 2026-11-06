@@ -2,6 +2,11 @@ import { compileAudioMixPlan } from "./audio-plan.js";
 export { compileAudioMixPlan } from "./audio-plan.js";
 import { renderPresetSnapshots } from "./preset-integrity.js";
 import { getFilterGraphFileOption } from "./filter-graph-cli.js";
+import {
+  compileClipOpacityFilters,
+  MAX_CLIP_OPACITY_COMMAND_BYTES_PER_RENDER,
+  MAX_CLIP_OPACITY_SAMPLES_PER_RENDER,
+} from "./clip-opacity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -932,6 +937,8 @@ export class FFmpegRenderer {
     let videoLabel = "base";
     let inputIndex = 0;
     let sequence = 0;
+    let opacitySampleCount = 0;
+    let opacityCommandBytes = 0;
     let retainWork = false;
     const pendingTitles: Array<() => Promise<void>> = [];
     try {
@@ -1342,10 +1349,17 @@ export class FFmpegRenderer {
             }
             if (fade > 0 && clip.transition?.type === "crossfade")
               transform.push(`fade=t=in:st=0:d=${number(fade)}:alpha=1`);
-            if (animationHasTrack(clip.animation, "opacity"))
-              transform.push(
-                `geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*${animationExpression(clip, "opacity", 1, `round(T*${resolveProjectTimebase(settings).rateNumerator}/${resolveProjectTimebase(settings).rateDenominator})`)}'`,
-              );
+            const opacityPlan = compileClipOpacityFilters(
+              clip.animation,
+              resolveProjectTimebase(settings),
+              `openfilmOpacity${suffix}`,
+              MAX_CLIP_OPACITY_SAMPLES_PER_RENDER - opacitySampleCount,
+              MAX_CLIP_OPACITY_COMMAND_BYTES_PER_RENDER - opacityCommandBytes,
+            );
+            opacitySampleCount += opacityPlan.sampleCount;
+            opacityCommandBytes += opacityPlan.byteCount;
+            if (opacityPlan.filters.length)
+              transform.push("format=rgba", ...opacityPlan.filters);
             const trim = sharedVisual
               ? `trim=start=${number(sourceIn - sharedVisual.sourceIn)}:end=${number(sourceOut - sharedVisual.sourceIn)}`
               : asset.mediaType === "image"

@@ -3,10 +3,11 @@
 Date: 2026-11-06
 Base: main at [`7add4762fe8174d76f43b863375ea39b73121e76`](https://github.com/bynanci/open-film/commit/7add4762fe8174d76f43b863375ea39b73121e76), which includes the merged Phase 4B.1 contract from PR #125.
 Implementation: [draft PR #126](https://github.com/bynanci/open-film/pull/126).
-Pre-sync candidate head: `e6eed6360b1a94c03e1becdd90f1c6bcd02edd48`; the code
-was last changed at `e7fb5ec4d9e5ff97454038f853ac04163eb94540`.
-The synchronized code passed focused local validation; full hosted checks must
-pass on the submitted PR head before merge.
+The feature branch contains initial implementation `e7fb5ec4d9e5ff97454038f853ac04163eb94540`,
+was synchronized with main at `7555b312a224fbbbedeaf14a639f354a266c1849`, and
+was last refreshed before this optimization at `34a425cbb4b8ab1b239cfb2b43833bc953961e5c`.
+The opacity optimization and its regression evidence are included in the
+current PR candidate; use the PR for the final exact head and hosted checks.
 
 ## Shared state flow
 
@@ -21,12 +22,30 @@ pass on the submitted PR head before merge.
   Composition or media identity.
 - FFmpeg consumes only validated numeric tracks. The per-frame path is bounded
   to the composition frame; animated scale uses fixed-size `zoompan`, rotation
-  uses a fixed composition canvas, and position/opacity stay on frame-evaluated
-  filters. Source files remain read-only.
+  uses a fixed composition canvas, and position stays on a frame-evaluated
+  filter. Source files remain read-only.
+- Opacity is compiled from the shared frame evaluator into bounded `sendcmd`
+  updates for one `colorchannelmixer` instance per clip. The mixer multiplies
+  the alpha already produced by existing transitions. A render is rejected if
+  all opacity tracks together need more than 300,000 evaluated output frames or
+  8 MiB of serialized opacity filters. Core key lookup uses binary search, and
+  cubic-Bezier evaluation runs once per animated frame rather than once per
+  pixel.
 - Split and trim operate on integer project frames, preserve seam values and
   rebase the right side. Audio timing and automation are not changed.
 
 ## Local evidence
+
+Latest local checks on the opacity-optimized worktree:
+
+- Focused core/render/solver animation regressions — 4 files, 36 tests passed.
+- `pnpm test:contracts` — 81 files, 1,547 tests passed.
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` and
+  `pnpm test:docs-i18n` — passed. The build reports the existing large
+  `TimelineEditor` chunk advisory.
+- The real synthetic MP4 regression decodes first, middle and last opacity
+  samples and compares them against the shared composition-frame evaluator;
+  source SHA-256, geometry and dimensions remain asserted.
 
 After syncing with main at `7555b312a224fbbbedeaf14a639f354a266c1849`, the
 following checks passed before a documentation-only refresh:
@@ -67,19 +86,30 @@ those checks; the following broader results are from the earlier code candidate:
 - Local `pnpm test:render-qa` could not fetch the pinned Noto fixture
   (`ENETUNREACH`); no system-font fallback was used.
 
-## Hosted evidence before base synchronization
+## Opacity filter performance evidence
 
-On the previous exact head `e6eed6360b1a94c03e1becdd90f1c6bcd02edd48`,
-Verify run [42295543183](https://github.com/bynanci/open-film/actions/runs/42295543183)
-passed fast-contract, all four browser shards, heavy-media, native-shell and
-docs-site. Three-platform Render QA passed in
-[run 42295543273](https://github.com/bynanci/open-film/actions/runs/42295543273),
-Windows FFmpeg 9 passed in
-[run 42295543169](https://github.com/bynanci/open-film/actions/runs/42295543169),
-and DCO passed in
-[run 42295539680](https://github.com/bynanci/open-film/actions/runs/42295539680).
-These results predate the current main synchronization and do not validate the
-new head. Fresh full exact-head CI is required.
+On FFmpeg 7.1.5 Linux x64, the old per-pixel `geq` opacity graph and the new
+frame-command graph were run against the same synthetic `testsrc2` input at
+320×180, 30 fps, 90 frames, one filter-complex thread, with output sent to the
+null muxer. FFmpeg reported 24.642 s for `geq` and 0.050 s for `sendcmd` plus
+`colorchannelmixer` (about 493× faster for this filter-only workload; process
+maximum RSS was 43,888 KiB in both runs). This isolates the opacity filter cost;
+it is not a full export or encoder-throughput benchmark. The actual-render
+regression separately decodes the synthetic MP4 and checks opacity samples,
+geometry, dimensions and the unchanged source hash. A 300,000-frame cubic
+compiler stress request was rejected at the 8 MiB serialized-filter cap in
+134 ms; the Node process RSS grew by about 37 MiB during that bounded compile.
+
+## Hosted evidence before opacity optimization
+
+Before the opacity optimization, synchronized head
+`34a425cbb4b8ab1b239cfb2b43833bc953961e5c` passed [Verify](https://github.com/bynanci/open-film/actions/runs/42311325261)
+(fast-contract, six browser shards, heavy-media, native-shell and docs-site),
+[three-platform Render QA](https://github.com/bynanci/open-film/actions/runs/42311325302),
+[Windows FFmpeg 9 recovery](https://github.com/bynanci/open-film/actions/runs/42311325419)
+and [DCO](https://github.com/bynanci/open-film/actions/runs/42311322996).
+These checks do not cover the opacity optimization; all hosted checks must
+complete successfully on the final pushed PR head before merge.
 
 ## Known limits and remaining gates
 

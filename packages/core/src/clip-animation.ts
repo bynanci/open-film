@@ -244,18 +244,47 @@ function evaluateKeys(
   frame: number,
 ): number {
   if (frame <= keys[0]!.frame) return keys[0]!.value;
-  for (let index = 0; index + 1 < keys.length; index++) {
-    const from = keys[index]!;
-    const to = keys[index + 1]!;
-    if (frame >= to.frame) continue;
-    const easing = from.interpolation ?? "linear";
-    if (easing === "hold") return from.value;
-    const progress = (frame - from.frame) / (to.frame - from.frame);
-    const eased =
-      typeof easing === "string" ? progress : solveCubicX(easing, progress);
-    return from.value + (to.value - from.value) * eased;
+  let low = 1;
+  let high = keys.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (frame < keys[middle]!.frame) high = middle;
+    else low = middle + 1;
   }
-  return keys.at(-1)!.value;
+  if (frame >= keys[low]!.frame) return keys[low]!.value;
+
+  const from = keys[low - 1]!;
+  const to = keys[low]!;
+  const easing = from.interpolation ?? "linear";
+  if (easing === "hold") return from.value;
+  const progress = (frame - from.frame) / (to.frame - from.frame);
+  const eased =
+    typeof easing === "string" ? progress : solveCubicX(easing, progress);
+  return from.value + (to.value - from.value) * eased;
+}
+
+/**
+ * Capture a validated, immutable track evaluator for renderer frame sampling.
+ * The returned function reads only the requested local frame, like the normal
+ * sequence resolver, without revalidating the whole project for every sample.
+ */
+export function createClipAnimationPropertyEvaluator(
+  animation: ClipAnimationV1 | undefined,
+  property: ClipAnimationProperty,
+): ((localFrame: number) => number) | undefined {
+  if (!animation) return undefined;
+  const validated = validateAnimation(animation);
+  const track = validated.visualTracks!.find(
+    (candidate) => candidate.property === property,
+  );
+  if (!track) return undefined;
+  return (localFrame: number) => {
+    if (!Number.isSafeInteger(localFrame) || localFrame < 0)
+      throw new Error(
+        "clip-local animation frame must be a nonnegative safe integer",
+      );
+    return evaluateKeys(track.keys, localFrame);
+  };
 }
 
 function decimal(value: number): string {

@@ -150,7 +150,17 @@ describe("real FFmpeg preview renderer", () => {
                   {
                     property: "opacity",
                     keys: [
-                      { frame: 0, value: 1 },
+                      {
+                        frame: 0,
+                        value: 1,
+                        interpolation: {
+                          kind: "cubic-bezier",
+                          x1: 0.42,
+                          y1: 0,
+                          x2: 0.58,
+                          y2: 1,
+                        },
+                      },
                       { frame: 9, value: 0.5 },
                     ],
                   },
@@ -232,13 +242,41 @@ describe("real FFmpeg preview renderer", () => {
     const output = join(directory, "animated.mp4");
     await new FFmpegRenderer().render(animation, [asset], output, settings);
     const decoded = await decodedGrayFrames(output);
+    const sourceDecoded = await decodedGrayFrames(source);
     const frameSize = settings.width * settings.height;
     expect(decoded).toHaveLength(frameSize * 20);
     const pixel = (frameNumber: number, x: number, y: number) =>
       decoded[frameNumber * frameSize + y * settings.width + x]!;
-    expect(pixel(0, 16, 18)).toBeGreaterThan(220);
-    expect(pixel(9, 48, 18)).toBeGreaterThan(80);
-    expect(pixel(9, 48, 18)).toBeLessThan(190);
+    const firstOpacitySample = pixel(0, 16, 18);
+    const middleOpacitySample = pixel(4, 32, 18);
+    const finalOpacitySample = pixel(9, 48, 18);
+    const sourcePixel = (frameNumber: number, x: number, y: number) =>
+      sourceDecoded[frameNumber * frameSize + y * settings.width + x]!;
+    const expectedOpacitySample = (frameNumber: number, x: number) => {
+      const resolvedFrame = resolveCompositionFrame(
+        animation,
+        [asset],
+        frameNumber,
+        resolveProjectTimebase(settings),
+      );
+      const clip = resolvedFrame.primary!;
+      const sourceX = x - Math.round(clip.visualTransform.x ?? 0);
+      return sourcePixel(frameNumber, sourceX, 18) * (clip.opacity ?? 1);
+    };
+    expect(firstOpacitySample).toBeGreaterThan(220);
+    expect(middleOpacitySample).toBeLessThan(firstOpacitySample);
+    expect(middleOpacitySample).toBeGreaterThan(finalOpacitySample);
+    expect(finalOpacitySample).toBeGreaterThan(80);
+    expect(finalOpacitySample).toBeLessThan(190);
+    expect(
+      Math.abs(firstOpacitySample - expectedOpacitySample(0, 16)),
+    ).toBeLessThan(20);
+    expect(
+      Math.abs(middleOpacitySample - expectedOpacitySample(4, 32)),
+    ).toBeLessThan(20);
+    expect(
+      Math.abs(finalOpacitySample - expectedOpacitySample(9, 48)),
+    ).toBeLessThan(20);
     const beforeTurn = grayBounds(
       decoded.subarray(10 * frameSize, 11 * frameSize),
       64,
