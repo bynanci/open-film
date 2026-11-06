@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import {
   expect,
+  request as playwrightRequest,
   test,
   type Page,
   type APIRequestContext,
@@ -30,6 +31,34 @@ async function savedProject(
   const response = await request.get(`${api}/project`);
   expect(response.ok()).toBe(true);
   return (await response.json()).project;
+}
+
+async function readJsonAfterTransientReset(
+  request: APIRequestContext,
+  url: string,
+) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await request.get(url);
+      expect(
+        response.ok(),
+        `${response.status()} ${response.statusText()}`,
+      ).toBe(true);
+      return await response.json();
+    } catch (error) {
+      // The lost-response recovery test intentionally resets a browser socket.
+      // On Windows the local server may also reset this idempotent verification
+      // GET while the reloaded page is reconnecting. Retry only that transport
+      // failure; HTTP errors and all other failures remain visible.
+      if (
+        attempt >= 2 ||
+        !(error instanceof Error) ||
+        !error.message.includes("ECONNRESET")
+      )
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
 }
 
 async function prepareReview(page: Page, locale: ProjectContentLocale) {
@@ -86,10 +115,31 @@ async function prepareReview(page: Page, locale: ProjectContentLocale) {
     name: uiText(locale, "app.import.label"),
     exact: true,
   });
+  // The saved source draft loads asynchronously when the panel is mounted.
+  // Wait for the user-facing picker to be enabled before setting its hidden
+  // input; doing this while the draft is loading is rejected by the component
+  // and is noticeably more likely on Windows runners.
+  await expect(
+    panel.getByRole("button", {
+      name: uiText(locale, "app.import.addFiles"),
+      exact: true,
+    }),
+  ).toBeEnabled();
+  const sourcesAdded = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/import-draft/sources") &&
+      response.request().method() === "POST",
+  );
   await panel
     .getByLabel(uiText(locale, "app.import.addFiles"), { exact: true })
     .setInputFiles(files);
-  await expect(panel.locator(".import-source-card")).toHaveCount(2);
+  const sourceResponse = await sourcesAdded;
+  expect(sourceResponse.ok(), await sourceResponse.text()).toBe(true);
+  const { draft } = await sourceResponse.json();
+  expect(draft.selections).toHaveLength(2);
+  await expect(panel.locator(".import-source-card")).toHaveCount(2, {
+    timeout: 15_000,
+  });
   await panel
     .getByRole("button", {
       name: uiText(locale, "app.import.scan.action"),
@@ -319,11 +369,10 @@ test("split review derives both ranges from the real video duration", async ({
       exact: true,
     }),
   ).toHaveCount(0);
-  const review = await (
-    await request.get(
-      `${api}/analysis-runs/${encodeURIComponent(record.run.id)}/review`,
-    )
-  ).json();
+  const review = await readJsonAfterTransientReset(
+    request,
+    `${api}/analysis-runs/${encodeURIComponent(record.run.id)}/review`,
+  );
   expect(
     review.result.items.find((item: { id: string }) => item.id === result.id)
       .review.sourceRanges,
@@ -334,7 +383,6 @@ test("split review derives both ranges from the real video duration", async ({
 
 test("a committed review with a lost response recovers after reload using one receipt", async ({
   page,
-  request,
 }) => {
   const locale = "zh-TW";
   const { panel, record, fixture } = await prepareReview(page, locale);
@@ -406,11 +454,17 @@ test("a committed review with a lost response recovers after reload using one re
   await retry.press("Enter");
   expect((await requestRetried).postDataJSON()).toEqual(originalPayload);
   await expect(retry).toHaveCount(0);
-  const review = await (
-    await request.get(
+  const verification = await playwrightRequest.newContext();
+  let review: { decisions: { id: string; outcome: string }[] };
+  try {
+    const response = await verification.get(
       `${api}/analysis-runs/${encodeURIComponent(record.run.id)}/review`,
-    )
-  ).json();
+    );
+    expect(response.ok()).toBe(true);
+    review = await response.json();
+  } finally {
+    await verification.dispose();
+  }
   expect(review.decisions).toHaveLength(1);
   expect(review.decisions[0]).toMatchObject({
     id: acceptedId,

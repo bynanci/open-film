@@ -82,6 +82,20 @@ export function estimateNarrationDuration(text?: string): number {
   return Math.max(3.0, Math.round(seconds * 10) / 10);
 }
 
+function photoDepthPresentation(
+  asset: MediaAsset,
+): Pick<StoryPlanAssetReference, "photoDepthSupported" | "photoDepthFallback"> {
+  if (asset.mediaType !== "image") return {};
+
+  const supported = Boolean(asset.metadata?.["openfilm.depth"]);
+  return supported
+    ? { photoDepthSupported: true }
+    : {
+        photoDepthSupported: false,
+        photoDepthFallback: "standard-hold",
+      };
+}
+
 /**
  * Generates a reviewable Storyboard proposal (StoryPlan) from Story and StoryGraph.
  * StoryPlan is a proposal, NOT a second Timeline.
@@ -404,7 +418,6 @@ export function generateStoryPlanFromGraph(
           const isEcho =
             (assetOccurrenceCount.get(aid) ?? 0) > 1 ||
             echoNodeIds.has(node.id);
-          const hasDepth = Boolean(asset.metadata?.["openfilm.depth"]);
           sceneAssets.push({
             assetId: asset.id,
             name: asset.name,
@@ -414,8 +427,7 @@ export function generateStoryPlanFromGraph(
                 ? "hero"
                 : "supporting",
             isEcho: isEcho || undefined,
-            photoDepthSupported: hasDepth,
-            photoDepthFallback: hasDepth ? undefined : "standard-hold",
+            ...photoDepthPresentation(asset),
           });
         }
       }
@@ -437,7 +449,6 @@ export function generateStoryPlanFromGraph(
           continue;
         }
         const isEcho = (assetOccurrenceCount.get(aid) ?? 0) > 1;
-        const hasDepth = Boolean(asset.metadata?.["openfilm.depth"]);
         sceneAssets.push({
           assetId: asset.id,
           name: asset.name,
@@ -447,8 +458,7 @@ export function generateStoryPlanFromGraph(
               ? "hero"
               : "supporting",
           isEcho: isEcho || undefined,
-          photoDepthSupported: hasDepth,
-          photoDepthFallback: hasDepth ? undefined : "standard-hold",
+          ...photoDepthPresentation(asset),
         });
       }
     } else if (node.type === "asset") {
@@ -458,13 +468,11 @@ export function generateStoryPlanFromGraph(
         title = asset.name;
         intent = `Highlight key imagery from ${asset.name}`;
         sourceNature = "user-memory";
-        const hasDepth = Boolean(asset.metadata?.["openfilm.depth"]);
         sceneAssets.push({
           assetId: asset.id,
           name: asset.name,
           role: "hero",
-          photoDepthSupported: hasDepth,
-          photoDepthFallback: hasDepth ? undefined : "standard-hold",
+          ...photoDepthPresentation(asset),
         });
       } else {
         missingAssets.push(node.assetId);

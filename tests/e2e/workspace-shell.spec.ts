@@ -55,23 +55,60 @@ test("shows fixed workspace navigation and adapts it at supported desktop widths
   await openFilm(page, firstProject);
 
   const workspaceLabel = uiText("en-US", "app.navigation.label");
-  const sidebar = page.getByRole("complementary", { name: workspaceLabel });
+  const sidebar = page.getByTestId("workspace-sidebar");
   const navigation = sidebar.getByRole("navigation", {
     name: workspaceLabel,
   });
   await expect(sidebar).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: workspaceLabel }),
+  ).toHaveCount(1);
   await expect(navigation.getByRole("button")).toHaveCount(5);
   await expect(
     navigation.getByRole("button", { name: "Library" }),
   ).toHaveAttribute("aria-current", "page");
+  const activeNavigationItem = navigation.getByRole("button", {
+    name: "Library",
+  });
+  await expect(activeNavigationItem).toHaveCSS("min-height", "46px");
+  const activeNavigationStyle = await activeNavigationItem.evaluate(
+    (element) => {
+      const style = getComputedStyle(element);
+      const marker = getComputedStyle(element, "::before");
+      return {
+        background: style.backgroundColor,
+        borderWidth: style.borderLeftWidth,
+        markerHeight: marker.height,
+      };
+    },
+  );
+  expect(activeNavigationStyle.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(activeNavigationStyle.borderWidth).toBe("0px");
+  expect(activeNavigationStyle.markerHeight).toBe("13px");
   await expect(page.getByRole("button", { name: "Switch Project" })).toHaveCSS(
     "min-height",
     "36px",
   );
+  await expect(page.locator(".app-header .ui-language select")).toHaveCSS(
+    "border-top-width",
+    "0px",
+  );
+  await expect(
+    page.locator(".app-header .workspace-mode-control select"),
+  ).toHaveCSS("border-top-width", "0px");
   const workspaceContent = page.locator(
     ".film-workspace.workspace-layout > .workspace-content",
   );
-  await expect(workspaceContent).toHaveCSS("width", "1177px");
+  const railWidth = await sidebar.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  const contentWidth = await workspaceContent.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  const shellWidth = await page
+    .locator(".film-workspace.workspace-layout")
+    .evaluate((element) => element.getBoundingClientRect().width);
+  expect(contentWidth + railWidth).toBeCloseTo(shellWidth, 0);
   expect(
     await page
       .locator(".pipeline-status-bar")
@@ -98,6 +135,25 @@ test("shows fixed workspace navigation and adapts it at supported desktop widths
     await expect(
       navigation.getByRole("button", { name: "Story" }),
     ).toBeVisible();
+    const navigationWithinRail = await sidebar.evaluate((element) => {
+      const rail = element.getBoundingClientRect();
+      const buttons = Array.from(
+        element.querySelectorAll<HTMLElement>(".main-nav button"),
+      );
+      return buttons.every((button, index) => {
+        const rect = button.getBoundingClientRect();
+        const previous = buttons[index - 1]?.getBoundingClientRect();
+        return (
+          rect.left >= rail.left &&
+          rect.right <= rail.right + 1 &&
+          (!previous || rect.top >= previous.bottom - 1)
+        );
+      });
+    });
+    expect(
+      navigationWithinRail,
+      "navigation stays on a single vertical path",
+    ).toBe(true);
     const workspaceWidth = await workspaceContent.evaluate(
       (element) => element.getBoundingClientRect().width,
     );

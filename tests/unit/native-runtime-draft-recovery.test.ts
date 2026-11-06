@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isWorkspaceCommandShortcut } from "../../apps/desktop/src/workspace-commands";
+import * as activityJobs from "../../apps/desktop/src/activity-jobs";
 import {
   flatten,
   mountComponent,
@@ -294,6 +295,8 @@ async function fixture(initialStart?: () => Promise<unknown>) {
       "./nativeBenchmark": {
         nativeBenchmark: { afterFrames: () => noop, record: noop },
       },
+      "./garden-lighting": { startGardenLighting: () => noop },
+      "./activity-jobs": activityJobs,
       "./preferences": {
         preferences: vue.reactive({ workspaceMode: "standard" }),
         getLastWorkspaceForProject: () => undefined,
@@ -426,6 +429,16 @@ async function fixture(initialStart?: () => Promise<unknown>) {
 }
 
 describe("native recovery retains actual App local draft owners", () => {
+  it("mounts when the host has no matchMedia implementation", async () => {
+    const h = await fixture();
+    try {
+      expect(h.browser).not.toHaveProperty("matchMedia");
+      expect(typeof document).toBe("undefined");
+      expect(h.current.setupState.project?.id).toBe("project");
+    } finally {
+      h.unmount();
+    }
+  });
   it("handles an initial close request while native startup is still pending", async () => {
     let finish!: (value: unknown) => void;
     const pending = new Promise((resolve) => {

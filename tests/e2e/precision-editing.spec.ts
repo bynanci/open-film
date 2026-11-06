@@ -1858,6 +1858,9 @@ test("invalidates source evidence after rejected reads, marker writes and failed
       await expect(
         page.getByLabel(text(locale, "precision.snap"), { exact: true }),
       ).toBeDisabled();
+      await expect(page.locator("#precision-snap-guidance")).toContainText(
+        text(locale, "precision.snapCheckFailed"),
+      );
       await page.locator(".precision-waveform").press("m");
       await page.locator(".precision-waveform").press("b");
     }

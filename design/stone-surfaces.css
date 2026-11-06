@@ -1,0 +1,68 @@
+/* Original Tobi-ishi planes. Only the backing layers are shaped; content and
+   keyboard focus stay rectangular and unobstructed. */
+:root {
+  --of-stone-entry: polygon(
+    0 22px,
+    24px 0,
+    calc(100% - 42px) 0,
+    100% 30px,
+    calc(100% - 12px) calc(100% - 18px),
+    calc(100% - 34px) 100%,
+    14px calc(100% - 4px),
+    0 calc(100% - 28px)
+  );
+  --of-stone-task: polygon(
+    0 12px,
+    14px 0,
+    calc(100% - 22px) 3px,
+    100% 18px,
+    calc(100% - 4px) calc(100% - 12px),
+    calc(100% - 18px) 100%,
+    10px calc(100% - 3px),
+    0 calc(100% - 15px)
+  );
+  --of-stone-anchor: polygon(
+    0 9px,
+    12px 0,
+    calc(100% - 18px) 0,
+    100% 14px,
+    100% calc(100% - 8px),
+    calc(100% - 12px) 100%,
+    7px calc(100% - 2px),
+    0 calc(100% - 13px)
+  );
+}
+
+[data-stone] {
+  position: relative;
+  isolation: isolate;
+  --stone-plane: var(--of-stone-task);
+  --stone-fill: var(--of-surface-1);
+}
+[data-stone="entry"] {
+  --stone-plane: var(--of-stone-entry);
+}
+[data-stone="anchor"] {
+  --stone-plane: var(--of-stone-anchor);
+}
+[data-stone]::before,
+[data-stone]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  clip-path: var(--stone-plane);
+}
+[data-stone]::before {
+  z-index: -1;
+  background: var(--stone-fill);
+}
+[data-stone]::after {
+  z-index: -2;
+  background: color-mix(in srgb, var(--of-shadow-tint) 12%, transparent);
+  transform: translate(
+    calc(var(--of-shadow-vector-x, 0.42) * 4px),
+    calc(var(--of-shadow-vector-y, 0.91) * 4px)
+  );
+  filter: blur(4px);
+}

@@ -264,7 +264,7 @@ for (const layout of [
           .evaluateAll((nodes) => nodes.map((node) => node.id)),
       ).toEqual(selection);
       await expect(page.getByTestId("graphic-inspector-tab")).toHaveAttribute(
-        "aria-pressed",
+        "aria-selected",
         "true",
       );
       const pixels = await preview.evaluate(async (image: HTMLImageElement) => {

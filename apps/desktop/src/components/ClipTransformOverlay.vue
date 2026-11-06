@@ -269,6 +269,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .clip-transform-overlay {
   position: absolute;
+  z-index: 3;
   inset: 0;
   pointer-events: none;
   touch-action: none;

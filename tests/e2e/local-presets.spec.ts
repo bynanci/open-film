@@ -305,9 +305,37 @@ for (const locale of ["zh-TW", "ja-JP"] as const)
         exact: true,
       }),
     ).toBeDisabled();
+    const identityDisclosure = panel.locator("details > summary").first();
+    await expect(identityDisclosure).toBeVisible();
+    const disclosureStyle = await identityDisclosure.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      display: getComputedStyle(element).display,
+      marker: getComputedStyle(element, "::marker").content,
+    }));
+    expect(disclosureStyle.display).toBe("list-item");
+    expect(disclosureStyle.marker).not.toBe("none");
+    expect(disclosureStyle.height).toBeGreaterThanOrEqual(44);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(360);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 1,
+    });
+    expect(
+      await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches),
+    ).toBe(true);
+    const undersizedButtons = await panel
+      .locator("button")
+      .evaluateAll((buttons) =>
+        buttons
+          .filter((button) => button.getBoundingClientRect().height < 44)
+          .map((button) => button.outerHTML),
+      );
+    expect(undersizedButtons).toEqual([]);
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await cdp.detach();
     await panel.getByRole("checkbox").focus();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();

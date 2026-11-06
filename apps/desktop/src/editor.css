@@ -90,7 +90,7 @@
 }
 
 .editing-room .project-heading {
-  margin-bottom: 26px;
+  margin-bottom: var(--of-space-5);
 }
 
 .editing-room .project-heading h1 {
@@ -124,7 +124,7 @@
 }
 
 .editing-room .workspace-footer {
-  margin-top: 27px;
+  margin-top: var(--of-section-gap);
   color: var(--faded-ink);
 }
 
@@ -310,7 +310,7 @@
   justify-content: space-between;
   gap: var(--of-space-5);
   padding: var(--of-space-5) var(--of-space-6);
-  border-bottom: 1px solid var(--editor-border-soft);
+  border-bottom: 0;
 }
 
 .editor-heading {
@@ -364,13 +364,13 @@
 }
 
 .timeline-editor .editor-button {
-  min-height: 32px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 7px 10px;
-  border: 1px solid var(--editor-border);
+  border: 0;
   border-radius: var(--of-radius-md);
   color: var(--editor-text);
   background: var(--of-surface-2);
@@ -378,21 +378,24 @@
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
+  transition:
+    color var(--of-motion-fast) var(--of-motion-ease),
+    background-color var(--of-motion-fast) var(--of-motion-ease),
+    box-shadow var(--of-motion-normal) var(--of-motion-ease);
 }
 
 .timeline-editor .editor-button:hover:not(:disabled) {
   background: var(--of-surface-3);
-  border-color: var(--of-border-subtle);
+  box-shadow: var(--of-shadow-soft);
 }
 
 .timeline-editor .editor-button.primary {
-  border-color: var(--editor-accent);
+  border: 0;
   color: var(--of-accent-ink);
   background: var(--editor-accent);
 }
 
 .timeline-editor .editor-button.primary:hover:not(:disabled) {
-  border-color: var(--of-accent);
   background: var(--of-accent);
 }
 
@@ -401,9 +404,26 @@
 }
 
 .timeline-editor .editor-button.selected {
-  border-color: var(--editor-accent);
+  border: 0;
   color: var(--of-accent);
   background: var(--editor-accent-soft);
+}
+
+.timeline-editor .cut-desk-transport {
+  column-gap: var(--of-space-2);
+  row-gap: var(--of-space-1);
+  padding: var(--of-space-1) var(--of-space-3);
+}
+
+.timeline-editor .cut-desk-transport .editor-button {
+  min-height: 36px;
+  padding: 6px 9px;
+}
+
+.timeline-editor .cut-desk-transport .timecode-field > input {
+  flex: 0 0 auto;
+  width: 14ch;
+  min-height: 36px;
 }
 
 .editor-duration {
@@ -412,7 +432,7 @@
   align-items: center;
   gap: var(--of-space-2) var(--of-space-5);
   padding: var(--of-space-3) var(--of-space-6);
-  border-bottom: 1px solid var(--editor-border-soft);
+  border-bottom: 0;
   color: var(--editor-muted);
   background: var(--of-bg);
   font-size: var(--of-font-caption);
@@ -494,46 +514,52 @@
 }
 
 .editor-monitor-tools {
-  position: absolute;
-  z-index: 3;
-  top: var(--of-space-2);
-  left: var(--of-space-2);
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--of-space-1);
-  max-width: calc(100% - 2 * var(--of-space-2));
-  padding: var(--of-space-1);
-  border-radius: var(--of-radius-sm);
-  color: var(--of-on-media);
-  background: var(--of-media-scrim);
+  gap: var(--of-space-2);
+  max-width: 100%;
+  margin-bottom: var(--of-space-2);
+  color: var(--of-text-primary);
 }
 
 .editor-monitor-tools select {
-  min-height: 1.8rem;
-  max-width: 8rem;
-  padding: 0 var(--of-space-1);
-  border: 1px solid var(--of-border-subtle);
+  min-height: 32px;
+  max-width: 10rem;
+  padding-block: 0;
+  padding-inline: var(--of-space-2) var(--of-space-6);
+  border: 0;
   border-radius: var(--of-radius-sm);
-  color: var(--of-on-media);
-  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  background-color: var(--of-surface-2);
   font-size: var(--of-font-caption);
 }
 
 .editor-monitor-tools .editor-button {
-  min-height: 1.8rem;
-  padding: var(--of-space-1);
+  min-height: 32px;
+  padding: var(--of-space-1) var(--of-space-2);
   font-size: var(--of-font-caption);
 }
 
-.editor-monitor-tools kbd,
-.editor-monitor-guide-note {
+.editor-monitor-tools kbd {
+  display: inline-flex;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--of-space-1);
+  border-radius: var(--of-radius-sm);
+  background: var(--of-surface-2);
   color: var(--of-text-secondary);
   font-size: var(--of-font-caption);
 }
 
 .editor-monitor-guide-note {
-  padding-inline: var(--of-space-1);
+  max-width: 12rem;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  line-height: 1.35;
 }
 
 .editor-monitor-guide-layer {
@@ -690,14 +716,18 @@
 
 .editor-beat {
   min-width: 0;
-  border: 1px solid var(--editor-border);
-  border-radius: var(--of-radius-md);
-  background: var(--of-surface-1);
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-2);
+  box-shadow: var(--of-shadow-raised);
+  transition:
+    background-color var(--of-motion-normal) var(--of-motion-ease),
+    box-shadow var(--of-motion-normal) var(--of-motion-ease);
 }
 
 .editor-beat.selected {
-  border-color: var(--of-accent);
-  background: var(--of-surface-2);
+  border: 0;
+  background: var(--of-accent-soft);
 }
 
 .editor-beat-heading {
@@ -720,16 +750,17 @@ button.editor-beat-heading:hover {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--of-border-subtle);
-  border-radius: 50%;
-  color: var(--of-text-primary);
+  border: 0;
+  border-radius: 5px 8px 4px 7px;
+  background: var(--of-surface-3);
+  color: var(--of-text-secondary);
   font-size: var(--of-font-caption);
   font-variant-numeric: tabular-nums;
 }
 
 .selected > .editor-beat-heading .editor-beat-number {
-  border-color: var(--editor-accent);
-  color: var(--editor-accent);
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .editor-beat-copy {
@@ -792,12 +823,16 @@ button.editor-beat-heading:hover {
   min-height: 106px;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-sm);
+  border: 0;
+  border-radius: var(--of-radius-media);
   color: var(--of-on-media);
   background: var(--of-surface-3);
   text-align: left;
   isolation: isolate;
+  box-shadow: var(--of-shadow-soft);
+  transition:
+    box-shadow var(--of-motion-normal) var(--of-motion-ease),
+    transform var(--of-motion-fast) var(--of-motion-ease);
 }
 
 .timeline-editor .editor-clip[draggable="true"] {
@@ -809,22 +844,22 @@ button.editor-beat-heading:hover {
 }
 
 .timeline-editor .editor-clip:hover {
-  border-color: var(--of-text-secondary);
+  box-shadow: var(--of-shadow-raised);
+  transform: translateY(-1px);
 }
 
 .timeline-editor .editor-clip.selected {
-  border-color: var(--editor-accent);
   outline: 2px solid var(--editor-accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
+  box-shadow: var(--of-shadow-hover);
 }
 
 .timeline-editor .editor-clip.locked {
-  border-style: dashed;
-  border-color: var(--of-warning);
+  border: 0;
 }
 
 .timeline-editor .editor-clip.locked.selected {
-  border-color: var(--editor-accent);
+  outline-color: var(--editor-accent);
 }
 
 .timeline-editor .editor-clip:focus-visible {
@@ -887,10 +922,11 @@ button.editor-beat-heading:hover {
   gap: var(--of-space-1);
   max-width: calc(100% - 12px);
   padding: 3px 5px;
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-sm);
+  border: 0;
+  border-radius: var(--of-radius-round);
   color: var(--of-warning);
   background: var(--of-media-scrim);
+  box-shadow: var(--of-shadow-contact);
   font-size: var(--of-font-caption);
   font-weight: 600;
   line-height: 1.3;
@@ -901,6 +937,13 @@ button.editor-beat-heading:hover {
   padding: var(--of-space-5) 18px var(--of-space-6);
   border-left: 1px solid var(--editor-border);
   background: var(--editor-panel);
+}
+
+.editor-inspector .editor-button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .editor-inspector-title {
@@ -918,10 +961,14 @@ button.editor-beat-heading:hover {
 
 .editor-inspector-title > .editor-button {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   align-self: start;
   padding-inline: var(--of-space-2);
   font-size: var(--of-font-caption);
+}
+
+.editor-inspector-title:has(> .editor-kicker) > .editor-button {
+  grid-row: 2;
 }
 
 .editor-inspector-title > .editor-button[aria-pressed="true"] {
@@ -944,13 +991,17 @@ button.editor-beat-heading:hover {
 }
 
 .editor-inspector-tabs {
-  display: flex;
-  gap: 3px;
-  margin-bottom: 19px;
-  padding: 3px;
-  border: 1px solid var(--editor-border);
-  border-radius: var(--of-radius-md);
-  background: var(--editor-inset);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: var(--of-space-1);
+  margin-bottom: var(--of-space-4);
+  padding: var(--of-space-1) 2px var(--of-space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .editor-presentation-inspector,
@@ -963,8 +1014,14 @@ button.editor-beat-heading:hover {
 .editor-presentation-inspector h3,
 .editor-soundtrack-panel h3 {
   margin: 0;
-  font-size: var(--of-font-body);
+  font-size: var(--of-font-base);
   font-weight: 600;
+  line-height: var(--of-line-heading);
+}
+
+.editor-soundtrack-panel > .editor-note {
+  max-width: 34ch;
+  margin: 0;
 }
 
 .editor-presentation-inspector h4 {
@@ -1004,25 +1061,40 @@ button.editor-beat-heading:hover {
 .editor-soundtrack-list {
   display: grid;
   gap: var(--of-space-2);
+  margin-block-start: var(--of-space-3);
 }
 
-.editor-soundtrack-list > button {
+.timeline-editor .editor-soundtrack-list > button {
+  position: relative;
   display: grid;
   justify-items: stretch;
   gap: var(--of-space-1);
   text-align: start;
   min-width: 0;
-  min-height: 58px;
+  min-height: 64px;
   padding: var(--of-space-3);
-  border-radius: var(--of-radius-sm);
-  background: var(--editor-surface-1, var(--of-surface-1));
-  border: 1px solid var(--editor-border-soft, var(--of-border));
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-2);
+  color: var(--editor-text);
   box-sizing: border-box;
+  text-align: start;
+  box-shadow: var(--of-shadow-raised);
+  transition:
+    background-color var(--of-motion-fast) var(--of-motion-ease),
+    color var(--of-motion-fast) var(--of-motion-ease),
+    box-shadow var(--of-motion-normal) var(--of-motion-ease);
 }
 
-.editor-soundtrack-list > button[aria-pressed="true"] {
-  border-color: var(--of-accent);
-  background: var(--of-surface-2, rgba(236, 172, 124, 0.08));
+.timeline-editor .editor-soundtrack-list > button:hover:not(:disabled) {
+  background: var(--of-surface-3);
+  box-shadow: var(--of-shadow-hover);
+}
+
+.timeline-editor .editor-soundtrack-list > button[aria-pressed="true"] {
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
+  box-shadow: var(--of-shadow-hover);
 }
 
 .soundtrack-item-header {
@@ -1042,13 +1114,11 @@ button.editor-beat-heading:hover {
 }
 
 .soundtrack-item-role {
-  font-size: 11px;
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--of-surface-2);
-  color: var(--of-text-secondary);
+  letter-spacing: 0.07em;
+  padding: 0;
   flex-shrink: 0;
 }
 
@@ -1085,6 +1155,14 @@ button.editor-beat-heading:hover {
 .editor-soundtrack-panel audio {
   width: 100%;
   min-width: 0;
+  min-height: 42px;
+  margin-block: var(--of-space-1);
+}
+
+.editor-soundtrack-panel > .editor-divider {
+  height: 0;
+  margin: 0;
+  background: transparent;
 }
 
 .photo-presentation-preview {
@@ -1179,23 +1257,35 @@ button.editor-beat-heading:hover {
 }
 
 .editor-inspector-tabs button {
-  flex: 1;
-  padding: 7px var(--of-space-2);
+  display: inline-flex;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: var(--of-space-1) var(--of-space-2);
   border-radius: var(--of-radius-sm);
   color: var(--editor-muted);
   font-size: var(--of-font-caption);
+  line-height: 1.3;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  transition:
+    color var(--of-motion-fast) var(--of-motion-ease),
+    background-color var(--of-motion-fast) var(--of-motion-ease);
 }
 
 .editor-inspector-tabs button:is(.selected, .active, [aria-selected="true"]) {
-  color: var(--editor-text);
-  background: var(--of-surface-3);
+  color: var(--of-accent);
+  background: var(--of-accent-soft);
+  font-weight: 650;
 }
 
 .editor-fields {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--of-space-4);
   margin: 0;
   padding: 0;
   border: 0;
@@ -1206,7 +1296,7 @@ button.editor-beat-heading:hover {
   font-weight: 550;
 }
 
-.editor-inspector > .editor-note + .editor-fields {
+.editor-inspector-content > .editor-note + .editor-fields {
   margin-top: 15px;
 }
 
@@ -1214,24 +1304,62 @@ button.editor-beat-heading:hover {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 6px;
-  color: var(--of-text-primary);
+  gap: var(--of-space-2);
+  color: var(--of-text-secondary);
   font-size: var(--of-font-caption);
-  font-weight: 500;
+  font-weight: 550;
+  line-height: 1.45;
 }
 
-.editor-field :is(input, select, textarea) {
+.editor-field
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea
+  ) {
   width: 100%;
   min-width: 0;
-  min-height: 34px;
-  padding: var(--of-space-2) 9px;
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-sm);
+  min-height: 42px;
+  padding: var(--of-space-2) var(--of-space-3);
+  border: 0;
+  border-radius: var(--of-radius-md);
   color: var(--editor-text);
-  background: var(--editor-inset);
+  background: var(--of-surface-2);
   font-size: var(--of-font-caption);
   font-weight: 400;
   line-height: 1.45;
+}
+
+.editor-field
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea
+  ):hover:not(:disabled) {
+  background: var(--of-surface-2);
+}
+
+.editor-field
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea
+  ):focus-visible {
+  outline: 2px solid var(--of-focus);
+  outline-offset: 2px;
+  background: var(--of-surface-3);
+}
+
+.timeline-editor .editor-field input[type="number"] {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-field input[type="text"],
+.editor-field input:not([type]),
+.editor-field textarea {
+  text-align: start;
+  font-variant-numeric: normal;
 }
 
 .editor-field textarea {
@@ -1240,13 +1368,29 @@ button.editor-beat-heading:hover {
 }
 
 .editor-field input[type="checkbox"] {
-  width: 15px;
+  width: 16px;
   min-height: 15px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  accent-color: var(--editor-accent);
+}
+
+.editor-field input[type="radio"] {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   accent-color: var(--editor-accent);
 }
 
 .editor-field input[type="range"] {
-  padding-inline: 0;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   accent-color: var(--editor-accent);
 }
 
@@ -1271,7 +1415,7 @@ button.editor-beat-heading:hover {
 .editor-field-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--of-space-3);
 }
 
 .editor-stat-grid,
@@ -1357,6 +1501,13 @@ button.editor-beat-heading:hover {
   border-color: var(--of-accent);
   color: var(--of-danger);
   background: var(--of-accent-soft);
+}
+
+.editor-message .editor-recovery-safety {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--of-text-primary);
+  font-weight: 500;
 }
 
 .editor-empty {
@@ -1456,7 +1607,7 @@ button.editor-beat-heading:hover {
   align-items: center;
   gap: 7px 18px;
   padding: var(--of-space-3) var(--of-space-6);
-  border-top: 1px solid var(--editor-border-soft);
+  border-top: 0;
   color: var(--editor-muted);
   background: var(--of-bg);
   font-size: var(--of-font-caption);
@@ -1769,6 +1920,110 @@ button.editor-beat-heading:hover {
   letter-spacing: normal;
 }
 
+/* Keep the edit controls on a single, legible stone path at desktop widths.
+   The project heading already names the film, so a second editor heading only
+   steals room from the mode, save state and actions. */
+@media (min-width: 1101px) {
+  .timeline-editor-contained .editor-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    grid-template-areas: "mode save actions";
+    align-items: center;
+    column-gap: var(--of-space-4);
+  }
+
+  .timeline-editor-contained .editor-heading {
+    display: none;
+  }
+
+  .timeline-editor-contained .editor-mode-context {
+    grid-area: mode;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: var(--of-space-3);
+  }
+
+  .timeline-editor-contained .editor-mode-switch {
+    flex-wrap: nowrap;
+  }
+
+  .timeline-editor-contained .editor-mode-hint {
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timeline-editor-contained .editor-save-state {
+    grid-area: save;
+    justify-self: end;
+  }
+
+  .timeline-editor-contained .editor-toolbar > .editor-actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: var(--of-space-2);
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1100px) {
+  .timeline-editor-contained .editor-toolbar {
+    display: grid;
+    grid-template-areas: "mode save actions";
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    align-items: center;
+    column-gap: var(--of-space-3);
+    padding: var(--of-space-2) var(--of-space-4);
+  }
+
+  .timeline-editor-contained .editor-heading {
+    display: none;
+  }
+
+  .timeline-editor-contained .editor-mode-context {
+    display: grid;
+    grid-area: mode;
+    grid-template-columns: max-content;
+    align-items: center;
+    gap: var(--of-space-2);
+    min-width: 0;
+  }
+
+  .timeline-editor-contained .editor-mode-switch {
+    flex-wrap: nowrap;
+  }
+
+  .timeline-editor-contained .editor-mode-hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+    border: 0;
+  }
+
+  .timeline-editor-contained .editor-save-state {
+    grid-area: save;
+    margin: 0;
+  }
+
+  .timeline-editor-contained .editor-toolbar > .editor-actions {
+    display: flex;
+    grid-area: actions;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: var(--of-space-1);
+  }
+}
+
 .timeline-editor-contained .editor-duration {
   gap: var(--of-space-2) var(--of-space-4);
   padding: var(--of-space-2) var(--of-space-4);
@@ -1776,6 +2031,20 @@ button.editor-beat-heading:hover {
 
 .timeline-editor-contained .editor-duration-track {
   max-width: 12rem;
+}
+
+@media (max-width: 1100px) {
+  .timeline-editor-contained .editor-toolbar {
+    align-items: flex-start;
+  }
+
+  .timeline-editor-contained .editor-mode-context {
+    flex-basis: min(100%, 24rem);
+  }
+
+  .timeline-editor-contained .editor-mode-hint {
+    max-width: 52ch;
+  }
 }
 
 .timeline-editor-contained .editor-inspector-title {
@@ -1821,26 +2090,36 @@ button.editor-beat-heading:hover {
 }
 
 .timeline-editor-contained .editor-beats {
-  gap: 0;
+  gap: var(--of-space-2);
 }
 
 .timeline-editor-contained .editor-beat {
   border: 0;
-  border-bottom: 1px solid var(--of-border-subtle);
-  border-radius: 0;
-  background: transparent;
+  margin-block-end: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-2);
+  box-shadow: var(--of-shadow-raised);
 }
 
 .timeline-editor-contained .editor-beat.selected {
-  background: var(--of-surface-2);
+  background: var(--of-accent-soft);
 }
 
 .timeline-editor-contained .editor-beat-number {
-  width: auto;
-  height: auto;
+  width: 24px;
+  height: 24px;
   border: 0;
-  border-radius: 0;
+  border-radius: 5px 8px 4px 7px;
+  background: var(--of-surface-3);
   color: var(--of-text-secondary);
+}
+
+.timeline-editor-contained
+  .editor-beat.selected
+  > .editor-beat-heading
+  .editor-beat-number {
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .timeline-editor-contained .editor-beat-copy :is(strong, small) {
@@ -1997,11 +2276,14 @@ button.editor-beat-heading:hover {
 
 @media (min-width: 901px) {
   .timeline-editor.timeline-editor-contained .editor-workspace {
-    height: var(--editor-workspace-height, max(17rem, calc(100dvh - 18rem)));
-    min-height: 17rem;
+    height: max(
+      var(--editor-workspace-height, max(17rem, calc(100dvh - 18rem))),
+      22.5rem
+    );
+    min-height: 22.5rem;
     grid-template-columns: minmax(0, 1fr) 17rem;
-    grid-template-rows: minmax(9.5rem, 1.2fr) minmax(7rem, 1fr);
-    grid-template-areas: "player inspector" "beats inspector";
+    grid-template-rows: minmax(11rem, 1.6fr) minmax(7rem, 1fr);
+    grid-template-areas: "player inspector" "beats beats";
     align-items: stretch;
   }
 
@@ -2018,12 +2300,16 @@ button.editor-beat-heading:hover {
     display: flex;
     min-height: 0;
     flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
     padding: var(--of-space-3) var(--of-space-4) var(--of-space-2);
+    border-radius: var(--of-radius-dialog);
+    background: var(--of-surface-1);
   }
 
   .timeline-editor-contained .editor-source-screen {
-    min-height: 0;
-    flex: 1 1 0;
+    min-height: 8rem;
+    flex: 1 1 8rem;
     border: 0;
     border-radius: var(--of-radius-sm);
   }
@@ -2135,6 +2421,16 @@ button.editor-beat-heading:hover {
   .timeline-editor.timeline-editor-contained
     .editor-workspace:not(.editor-inspector-collapsed) {
     grid-template-columns: minmax(0, 1fr) 19rem;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 760px) {
+  .timeline-editor.timeline-editor-contained .editor-workspace {
+    grid-template-rows: minmax(15.5rem, 2.2fr) minmax(7rem, 1fr);
+  }
+
+  .timeline-editor-contained .editor-source-screen {
+    min-height: 6rem;
   }
 }
 
@@ -2405,6 +2701,13 @@ button.editor-beat-heading:hover {
   accent-color: var(--of-accent);
 }
 
+.precision-snap-guidance {
+  margin: calc(var(--of-space-2) * -1) 0 var(--of-space-2) var(--of-space-8);
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  line-height: 1.4;
+}
+
 .precision-waveform {
   position: relative;
   height: 5rem;
@@ -2602,7 +2905,7 @@ button.editor-beat-heading:hover {
   padding-block: var(--of-space-3);
   color: var(--editor-text);
   cursor: pointer;
-  font-size: var(--of-font-body);
+  font-size: var(--of-font-base);
   font-weight: 600;
 }
 
@@ -2668,7 +2971,7 @@ button.editor-beat-heading:hover {
 .editor-direction-action blockquote {
   padding-inline-start: var(--of-space-3);
   border-inline-start: 2px solid var(--editor-border);
-  font-size: var(--of-font-body);
+  font-size: var(--of-font-base);
   white-space: pre-wrap;
 }
 
@@ -2680,7 +2983,7 @@ button.editor-beat-heading:hover {
 
 .editor-direction-comparison dd {
   margin: var(--of-space-1) 0 0;
-  font-size: var(--of-font-body);
+  font-size: var(--of-font-base);
 }
 
 .editor-direction-notes {
@@ -2920,10 +3223,6 @@ button.editor-beat-heading:hover {
   padding: 4px 8px;
   z-index: 4;
 }
-.editor-inspector-tabs {
-  flex-wrap: wrap;
-}
-
 .visual-qa-popover {
   position: fixed;
   z-index: var(--of-z-dialog);
@@ -2940,8 +3239,8 @@ button.editor-beat-heading:hover {
   gap: var(--of-space-3);
   margin: 0;
   padding: var(--of-space-4);
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-md);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
 }
 .visual-qa-heading {
@@ -3098,10 +3397,10 @@ button.editor-beat-heading:hover {
   max-width: 48rem;
   width: 100%;
   max-height: calc(100vh - 4rem);
-  background: var(--editor-surface, #1e1e24);
-  border: 1px solid var(--editor-border, #33333d);
-  border-radius: var(--of-radius-md, 8px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  background: var(--of-surface-1);
+  border: 0;
+  border-radius: var(--of-radius-dialog);
+  box-shadow: var(--of-shadow-dialog);
   overflow: hidden;
 }
 
@@ -3110,8 +3409,8 @@ button.editor-beat-heading:hover {
   align-items: flex-start;
   justify-content: space-between;
   padding: var(--of-space-4) var(--of-space-5);
-  border-bottom: 1px solid var(--editor-border, #33333d);
-  background: var(--editor-inset, #16161a);
+  border-bottom: 0;
+  background: var(--of-surface-2);
 }
 
 .shortcut-sheet-title {
@@ -3193,7 +3492,7 @@ button.editor-beat-heading:hover {
   background: var(--editor-inset, #16161a);
   border: 1px solid var(--editor-border, #33333d);
   border-radius: 4px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  box-shadow: var(--of-shadow-contact);
   color: var(--editor-foreground, #f0f0f4);
 }
 
@@ -3295,26 +3594,28 @@ button.editor-beat-heading:hover {
 .cut-desk-track-controls {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 8px;
-  background: var(--editor-surface, #1e1e24);
-  border-bottom: 1px solid var(--editor-border, #33333d);
+  gap: 3px;
+  padding: var(--of-space-2) var(--of-space-3);
+  background: var(--of-surface-1);
+  border-bottom: 1px solid var(--of-border-subtle);
 }
 
 .cut-desk-track-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--editor-inset, #16161a);
-  border: 1px solid transparent;
-  font-size: 0.75rem;
-  color: var(--editor-foreground, #f0f0f4);
+  gap: var(--of-space-2);
+  min-height: 38px;
+  padding: var(--of-space-1) var(--of-space-2);
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  font-size: var(--of-font-caption);
+  transition: background-color var(--of-motion-fast) var(--of-motion-ease);
 }
 
 .cut-desk-track-header.is-target {
-  border-color: var(--editor-accent, #60a5fa);
+  background: var(--of-accent-soft);
 }
 
 .cut-desk-track-header.is-locked {
@@ -3326,19 +3627,19 @@ button.editor-beat-heading:hover {
 }
 
 .cut-desk-track-header .track-badge {
-  font-size: 0.65rem;
+  flex: 0 0 auto;
+  color: var(--of-text-muted);
+  font-size: 0.7rem;
   font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--editor-border, #33333d);
-  color: var(--editor-muted, #9999a4);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
 }
 
 .cut-desk-track-header .track-title {
   flex: 1 1 0;
   min-width: 60px;
   overflow: hidden;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: ui-monospace, monospace;
@@ -3347,53 +3648,53 @@ button.editor-beat-heading:hover {
 .cut-desk-track-header .track-btn-group {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--of-space-1);
 }
 
 .cut-desk-track-header .track-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 22px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
   padding: 0;
-  font-size: 0.7rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--of-surface-1);
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
   font-weight: 600;
-  border-radius: 3px;
-  border: 1px solid var(--editor-border, #33333d);
-  background: transparent;
-  color: var(--editor-muted, #9999a4);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    color var(--of-motion-fast) var(--of-motion-ease),
+    background-color var(--of-motion-fast) var(--of-motion-ease);
 }
 
 .cut-desk-track-header .track-btn:hover:not(:disabled) {
-  border-color: var(--editor-accent, #60a5fa);
-  color: var(--editor-foreground, #f0f0f4);
+  background: var(--of-surface-3);
+  color: var(--of-text-primary);
 }
 
 .cut-desk-track-header .track-btn.active {
-  background: var(--editor-accent, #60a5fa);
-  border-color: var(--editor-accent, #60a5fa);
-  color: #0f172a;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .cut-desk-track-header .track-btn.track-mute-btn.active {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: #ffffff;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .cut-desk-track-header .track-btn.track-solo-btn.active {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #0f172a;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .cut-desk-track-header .track-btn.track-lock-btn.active {
-  background: #eab308;
-  border-color: #eab308;
-  color: #0f172a;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 @media (pointer: coarse) {

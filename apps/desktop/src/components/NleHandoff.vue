@@ -186,10 +186,12 @@ function cancel() {
 </template>
 <style scoped>
 .handoff {
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-lg);
   padding: 20px;
   margin-block: 20px;
+  background: var(--of-surface-1);
+  box-shadow: var(--of-shadow-soft);
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
@@ -200,7 +202,13 @@ label {
 select {
   display: block;
   max-width: 100%;
+  min-height: 40px;
+  padding: var(--of-space-2) var(--of-space-3);
   margin-block: 8px;
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background-color: var(--of-surface-2);
+  color: var(--of-text-primary);
 }
 input {
   margin-inline-end: 8px;
@@ -210,10 +218,18 @@ a {
   margin-inline-end: 12px;
   margin-block: 8px;
   padding: 10px 14px;
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-sm);
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  box-shadow: var(--of-shadow-contact);
   min-height: 44px;
   display: inline-block;
+}
+button:hover:not(:disabled),
+a:hover {
+  background: var(--of-surface-3);
+  box-shadow: var(--of-shadow-soft);
 }
 li {
   margin-block: 12px;

@@ -155,6 +155,17 @@ async function screenshot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
+async function gridRatio(page: Page, selector: string, majorIndex: number) {
+  const columns = await page.locator(selector).evaluate((element) =>
+    getComputedStyle(element)
+      .gridTemplateColumns.split(" ")
+      .map((value) => Number.parseFloat(value)),
+  );
+  const ratio = columns[majorIndex]! / columns[1 - majorIndex]!;
+  expect(ratio, `${selector} editorial split`).toBeGreaterThan(1.55);
+  expect(ratio, `${selector} editorial split`).toBeLessThan(1.68);
+}
+
 for (const locale of locales) {
   test(`${locale} core screens remain readable at desktop sizes`, async ({
     page,
@@ -167,10 +178,7 @@ for (const locale of locales) {
     await page.addInitScript(
       ({ locale }) => {
         localStorage.setItem("openfilm.uiLocale", locale);
-        localStorage.setItem(
-          "openfilm.preferences.v1",
-          JSON.stringify({ theme: "dark" }),
-        );
+        localStorage.removeItem("openfilm.preferences.v1");
       },
       { locale },
     );
@@ -235,6 +243,14 @@ for (const locale of locales) {
     ).toBe(true);
     await page.reload();
     await expect(page.locator(".asset-card").first()).toBeVisible();
+    await expect(page.locator(".activity-strip .job-status")).toHaveCount(0);
+    await expect
+      .poll(() => page.locator(".activity-strip .job-summary strong").count())
+      .toBeGreaterThan(0);
+    if (locale === "en-US")
+      await expect(
+        page.locator(".activity-strip .job-summary strong"),
+      ).toHaveText("Import complete");
     const modes = ["library", "story", "edit", "export"] as const;
     for (const [index, workspace] of modes.entries()) {
       await page.locator(".main-nav button").nth(index).click();
@@ -246,11 +262,165 @@ for (const locale of locales) {
         await expect(page.locator(".beat-list")).toContainText(authoredTitle);
       for (const size of sizes) {
         await page.setViewportSize(size);
+        if (size.width === 1440 && workspace === "story") {
+          const indexWidth = await page
+            .locator(".beat-list")
+            .evaluate((element) => element.getBoundingClientRect().width);
+          expect(indexWidth).toBeGreaterThanOrEqual(224);
+          expect(indexWidth).toBeLessThanOrEqual(288);
+        }
+        if (size.width >= 1280 && workspace === "edit") {
+          await expect
+            .poll(() =>
+              page.locator(".editor-toolbar").evaluate((toolbar) => {
+                const bounds = (selector: string) => {
+                  const element = toolbar.querySelector(selector);
+                  if (!element) return null;
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    height: rect.height,
+                  };
+                };
+                const mode = bounds(".editor-mode-context");
+                const saved = bounds(".editor-save-state");
+                const actions = bounds(":scope > .editor-actions");
+                if (!mode || !saved || !actions) return false;
+                const noOverlap =
+                  mode.right <= saved.left + 1 &&
+                  saved.right <= actions.left + 1;
+                const hint = toolbar.querySelector(".editor-mode-hint");
+                return (
+                  noOverlap &&
+                  mode.height <= 48 &&
+                  !!hint &&
+                  getComputedStyle(hint).whiteSpace === "nowrap" &&
+                  hint.getBoundingClientRect().width > 2
+                );
+              }),
+            )
+            .toBe(true);
+        }
+        if (size.width === 1024 && workspace === "edit") {
+          const modeDescription = await page
+            .locator(".editor-mode-context")
+            .evaluate((context) => {
+              const hint =
+                context.querySelector<HTMLElement>(".editor-mode-hint");
+              const activeMode = context.querySelector<HTMLButtonElement>(
+                'button[aria-pressed="true"]',
+              );
+              if (!hint || !activeMode) return null;
+              return {
+                hintWidth: hint.getBoundingClientRect().width,
+                hintText: hint.textContent?.trim(),
+                hintId: hint.id,
+                describedBy: activeMode.getAttribute("aria-describedby"),
+              };
+            });
+          expect(modeDescription).not.toBeNull();
+          expect(modeDescription!.hintWidth).toBeLessThanOrEqual(1);
+          expect(modeDescription!.hintText).toBeTruthy();
+          expect(modeDescription!.describedBy).toBe(modeDescription!.hintId);
+        }
+        if (size.width === 1280 && workspace === "story") {
+          const collapsedScript = page.locator(
+            ".story-writing-tools:not([open])",
+          );
+          await expect(collapsedScript).toHaveCount(1);
+          const collapsedMetrics = await collapsedScript.evaluate((element) => {
+            const summary = element.querySelector("summary")!;
+            const rect = summary.getBoundingClientRect();
+            const nextGroup = element.parentElement?.nextElementSibling;
+            const nextHeading = nextGroup?.querySelector(".candidate-heading");
+            const nextRect = nextHeading?.getBoundingClientRect();
+            return {
+              summaryHeight: rect.height,
+              gap: nextRect
+                ? nextRect.top - rect.bottom
+                : Number.POSITIVE_INFINITY,
+            };
+          });
+          expect(
+            collapsedMetrics.summaryHeight,
+            JSON.stringify(collapsedMetrics),
+          ).toBeLessThanOrEqual(44);
+          expect(
+            collapsedMetrics.gap,
+            JSON.stringify(collapsedMetrics),
+          ).toBeLessThanOrEqual(48);
+        }
+        if (size.width === 1440 && workspace === "edit") {
+          await page
+            .locator('button[aria-controls="timeline-inspector"]')
+            .click();
+          await expect
+            .poll(() =>
+              page
+                .locator(".editor-workspace")
+                .evaluate((element) =>
+                  element.classList.contains("editor-inspector-collapsed"),
+                ),
+            )
+            .toBe(false);
+          await expect
+            .poll(() =>
+              page.locator(".editor-workspace").evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                const player = element
+                  .querySelector(".editor-player-region")!
+                  .getBoundingClientRect();
+                const inspector = element
+                  .querySelector(".editor-inspector")!
+                  .getBoundingClientRect();
+                const rail = element
+                  .querySelector(".editor-story-rail")!
+                  .getBoundingClientRect();
+                return (
+                  rail.width >= bounds.width - 2 &&
+                  rail.top >= player.bottom - 1 &&
+                  rail.top >= inspector.bottom - 1 &&
+                  inspector.width >= 256 &&
+                  inspector.width <= 336 &&
+                  player.width > inspector.width
+                );
+              }),
+            )
+            .toBe(true);
+          await screenshot(page, info, `${locale}-edit-inspector`);
+          await page
+            .locator('button[aria-controls="timeline-inspector"]')
+            .click();
+        }
+        if (size.width === 1440 && workspace === "export")
+          await gridRatio(
+            page,
+            ".workspace-export .output-workspace-export",
+            0,
+          );
         if (workspace === "export") {
           await page.evaluate(() => window.scrollTo(0, 0));
           await expect(
-            page.locator(".export-destination > .primary"),
+            page.locator(".export-options > .primary"),
           ).toBeInViewport({ ratio: 1 });
+        }
+        if (workspace === "edit" && locale === "en-US") {
+          await expect
+            .poll(() =>
+              page.evaluate(() => {
+                const shortcuts = document
+                  .querySelector(".editor-shortcuts")!
+                  .getBoundingClientRect();
+                const dock = document
+                  .querySelector(".pipeline-status-bar")!
+                  .getBoundingClientRect();
+                return shortcuts.bottom <= dock.top + 1;
+              }),
+            )
+            .toBe(true);
         }
         await screenshot(page, info, `${locale}-${workspace}`);
       }

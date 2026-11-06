@@ -57,6 +57,12 @@ async function fixture(
       "vue-i18n": { useI18n: () => ({ t, locale: vue.ref(locale) }) },
       "@openfilm/core": { createExportProfile },
       "@openfilm/exporters": { resolveCompatibility },
+      "../i18n/format": {
+        formatDuration: (value: number) => {
+          const seconds = Math.max(0, Math.round(value));
+          return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+        },
+      },
       "../api": {
         exportDownloadUrl: (name: string) => `/export/${name}`,
         ...api,
@@ -459,19 +465,17 @@ describe("MP4 output quality controls", () => {
   it("keeps the direct MP4 action before optional output settings and keeps look controls addressable", async () => {
     const panel = await fixture();
     expect(panel.quality()).toBeDefined();
-    const destination = panel
+    const options = panel
       .nodes()
-      .find((node) => node.props.class === "export-destination")!;
-    const button = destination.children.find(
+      .find((node) => node.props.class === "export-options")!;
+    const button = options.children.find(
       (node) =>
         node.tag === "button" &&
         node.props["data-testid"] === "export-profile-mp4",
     )!;
     expect(button).toBeDefined();
-    expect(destination.children.indexOf(button)).toBeLessThan(
-      destination.children.findIndex(
-        (node) => node.props.class === "export-quality-options",
-      ),
+    expect(options.children.indexOf(button)).toBeLessThan(
+      options.children.findIndex((node) => node.props.class === "export-goals"),
     );
     const looks = panel
       .nodes()

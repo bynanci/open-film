@@ -5,6 +5,7 @@ export default {
     card: {
       lockedState: "Locked",
       favoriteState: "Favorite",
+      rejectedState: "Rejected",
       inspect: "Inspect {name}",
       select: "Select {name}",
       remove: "Remove {name}",
@@ -193,6 +194,19 @@ export default {
       warningSummary:
         "No additional checks | One item needs review. | {count} items need review.",
       technical: "Technical export details",
+      technicalDetails: "View original compatibility detail",
+      warningUserPins:
+        "The target editor will not enforce OpenFilm’s user pins. Review the pinned choices after import.",
+      warningGraphicScenes:
+        "Animated graphics need to be recreated in the target editor. MP4 export preserves their rendered appearance.",
+      warningTrack:
+        "OTIO preserves OpenFilm metadata for title and overlay tracks. The target editor may not display or recreate their appearance and timing; rebuild them manually.",
+      warningSpeed:
+        "Speed changes need to be set manually in the target editor.",
+      warningDiptych:
+        "The exported cut includes the primary photo only. Add the second photo as a separate layer in the target editor.",
+      warningClipEdits:
+        "This clip has edits saved as OpenFilm information. Recreate them in the target editor.",
     },
     compatibility: {
       parserChecked: "File format checked",

@@ -16,6 +16,7 @@ import NleHandoff from "./NleHandoff.vue";
 import LocalDownload from "./LocalDownload.vue";
 import CaptionExport from "./CaptionExport.vue";
 import { useI18n } from "vue-i18n";
+import { formatDuration } from "../i18n/format";
 import { resolveCompatibility } from "@openfilm/exporters";
 import {
   exportDownloadUrl,
@@ -140,6 +141,66 @@ const mp4Profile = computed(() =>
     format: "mp4",
     quality: props.quality ?? "standard",
   }),
+);
+const outputAspectRatio = computed(() => {
+  if (goal.value === "watch") return ratio.value;
+  let width = Math.round(props.projectSettings.width);
+  let height = Math.round(props.projectSettings.height);
+  if (width < 1 || height < 1) return "—";
+  let a = width;
+  let b = height;
+  while (b !== 0) [a, b] = [b, a % b];
+  width /= a;
+  height /= a;
+  return `${width}:${height}`;
+});
+const outputFrameSummary = computed(() => {
+  const width =
+    goal.value === "watch"
+      ? mp4Profile.value.width
+      : props.projectSettings.width;
+  const height =
+    goal.value === "watch"
+      ? mp4Profile.value.height
+      : props.projectSettings.height;
+  const frameRate =
+    goal.value === "watch"
+      ? displayDeliveryFrameRate.value
+      : displayFrameRate.value;
+  return `${width} × ${height} · ${t("exportProfiles.outputFrameRate", { frameRate })}`;
+});
+const reviewCaptionSummary = computed(() => {
+  const tracks = props.composition.captionTracks ?? [];
+  if (goal.value === "edit")
+    return tracks[0]
+      ? t("app.export.reviewSummary.firstCaptionHandoff", {
+          name: tracks[0].name,
+        })
+      : t("app.export.reviewSummary.noCaptionTracks");
+  if (props.captionTrackId === null) return t("exportQuality.captionTrackNone");
+  const track = props.captionTrackId
+    ? tracks.find((candidate) => candidate.id === props.captionTrackId)
+    : tracks[0];
+  if (track)
+    return `${track.name}${track.language ? ` · ${track.language}` : ""}`;
+  return props.captionTrackId
+    ? t("app.export.reviewSummary.captionTrackUnavailable")
+    : t("exportQuality.captionTrackNone");
+});
+const reviewLookSummary = computed(() => {
+  if (!props.lookOverride) return t("looks.preserve");
+  if (props.lookOverride.preset === "none") return t("looks.presets.none");
+  const preset = t(`looks.presets.${props.lookOverride.preset}`);
+  const strength = new Intl.NumberFormat(locale.value, {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(props.lookOverride.strength);
+  return t("app.export.reviewSummary.uniformLook", { preset, strength });
+});
+const reviewDestinationSummary = computed(() =>
+  goal.value === "watch"
+    ? t("app.export.reviewSummary.projectFolder")
+    : `${t(`app.export.reviewSummary.destinations.${destination.value}`)} · .${destinationFormat.value}`,
 );
 const canExportCropped = computed(
   () => framing.value !== "crop" || (cropReviewed.value && cropConfirmed.value),
@@ -360,7 +421,11 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <section class="export-options" :aria-label="t('app.export.label')">
+  <section
+    class="export-options"
+    data-stone="anchor"
+    :aria-label="t('app.export.label')"
+  >
     <p v-if="offlineMedia" class="collect-delivery-disclosure" role="status">
       {{ t("collectDelivery.offlineOutput") }}
     </p>
@@ -368,6 +433,17 @@ onUnmounted(() => {
       <h2>{{ t("app.export.title") }}</h2>
       <p>{{ t("app.export.description") }}</p>
     </header>
+    <button
+      v-if="goal === 'watch'"
+      class="primary export-primary-action"
+      data-testid="export-profile-mp4"
+      :disabled="busy || !canExportCropped"
+      @click="
+        emit('export', 'mp4', mp4Profile, cropConfirmed, framePreview?.token)
+      "
+    >
+      <Icon name="download" />{{ t("app.export.saveMp4") }}
+    </button>
     <div class="export-goals" role="group" :aria-label="t('app.export.goal')">
       <button
         class="export-goal"
@@ -395,16 +471,57 @@ onUnmounted(() => {
     <section v-if="goal === 'watch'" class="export-destination">
       <h3>{{ t("app.export.mp4Title") }}</h3>
       <p>{{ t("app.export.mp4Hint") }}</p>
-      <button
-        class="primary export-primary-action"
-        data-testid="export-profile-mp4"
-        :disabled="busy || !canExportCropped"
-        @click="
-          emit('export', 'mp4', mp4Profile, cropConfirmed, framePreview?.token)
-        "
+      <section
+        class="export-review-summary"
+        data-testid="export-review-summary"
+        :aria-label="t('app.export.reviewSummary.title')"
       >
-        <Icon name="download" />{{ t("app.export.saveMp4") }}
-      </button>
+        <h4>{{ t("app.export.reviewSummary.title") }}</h4>
+        <dl>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.filmLength") }}</dt>
+            <dd>
+              {{ formatDuration(composition.duration, { fractional: false }) }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.outputFrame") }}</dt>
+            <dd>{{ outputFrameSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.aspectRatio") }}</dt>
+            <dd>{{ outputAspectRatio }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.framing") }}</dt>
+            <dd>{{ t(`exportProfiles.${framing}`) }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.quality") }}</dt>
+            <dd>
+              {{
+                t(
+                  quality === "high-detail"
+                    ? "exportQuality.highDetail"
+                    : "exportQuality.standard",
+                )
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.burnedCaptions") }}</dt>
+            <dd>{{ reviewCaptionSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.look") }}</dt>
+            <dd>{{ reviewLookSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.destination") }}</dt>
+            <dd>{{ reviewDestinationSummary }}</dd>
+          </div>
+        </dl>
+      </section>
       <section
         class="export-quality-options"
         :aria-label="t('exportQuality.heading')"
@@ -811,6 +928,41 @@ onUnmounted(() => {
           </li>
         </ul>
       </details>
+      <section
+        class="export-review-summary"
+        data-testid="export-review-summary"
+        :aria-label="t('app.export.reviewSummary.title')"
+      >
+        <h4>{{ t("app.export.reviewSummary.title") }}</h4>
+        <dl>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.filmLength") }}</dt>
+            <dd>
+              {{ formatDuration(composition.duration, { fractional: false }) }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.outputFrame") }}</dt>
+            <dd>{{ outputFrameSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.aspectRatio") }}</dt>
+            <dd>{{ outputAspectRatio }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.destination") }}</dt>
+            <dd>{{ reviewDestinationSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.handoffCaptions") }}</dt>
+            <dd>{{ reviewCaptionSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.look") }}</dt>
+            <dd>{{ t("looks.interchange") }}</dd>
+          </div>
+        </dl>
+      </section>
       <button
         class="primary"
         :disabled="

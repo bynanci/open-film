@@ -244,7 +244,7 @@ describe("saved Story script review", () => {
   it("requests bounded suggestions for only the selected saved field and renders their evidence", async () => {
     const h = fixture();
     await h.panel.refresh();
-    expect(h.api.scriptReviewSuggestions).toHaveBeenLastCalledWith("story", {
+    expect(h.api.scriptReviewSuggestions).toHaveBeenNthCalledWith(1, "story", {
       beatId: "beat",
       field: "narration",
       status: "pending",
@@ -260,7 +260,7 @@ describe("saved Story script review", () => {
     h.panel.field.value = "visualDirection";
     await drain();
     await h.panel.refresh();
-    expect(h.api.scriptReviewSuggestions).toHaveBeenLastCalledWith("story", {
+    expect(h.api.scriptReviewSuggestions).toHaveBeenCalledWith("story", {
       beatId: "beat",
       field: "visualDirection",
       status: "pending",

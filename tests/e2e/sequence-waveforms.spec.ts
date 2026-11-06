@@ -312,7 +312,11 @@ test("literal source pulses share one read across tracks, seek locked clips, and
     '[data-track-id="picture"] .sequence-waveform-graph',
   );
   const rect = (await graph.boundingBox())!;
-  await graph.click({ position: { x: rect.width / 2, y: rect.height / 2 } });
+  // Click inside frame 60 of this 120-frame sequence, clear of its boundary:
+  // the exact midpoint can round down when CSS geometry has fractional pixels.
+  await graph.click({
+    position: { x: (60.5 / 120) * rect.width, y: rect.height / 2 },
+  });
   await expect(page.locator(".record-monitor")).toHaveAttribute(
     "data-frame",
     "60",

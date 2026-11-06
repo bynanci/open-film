@@ -72,9 +72,10 @@
   width: 100%;
   min-width: 0;
   min-height: 40px;
-  padding: var(--of-space-2) var(--of-space-3);
+  padding-block: var(--of-space-2);
+  padding-inline: var(--of-space-3) var(--of-space-8);
   color: var(--of-text-primary);
-  background: var(--of-bg);
+  background-color: var(--of-bg);
   border: 1px solid var(--of-border-control);
   border-radius: var(--of-radius-md);
   font: inherit;
@@ -253,8 +254,8 @@
   padding: var(--of-space-6);
   color: var(--of-text-primary);
   background: var(--of-surface-1);
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-lg);
+  border: 0;
+  border-radius: var(--of-radius-dialog);
   box-shadow: var(--of-shadow-dialog);
 }
 .versions-confirm-dialog > p:not(.eyebrow) {

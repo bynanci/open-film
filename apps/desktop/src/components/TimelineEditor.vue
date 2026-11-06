@@ -76,6 +76,7 @@ import ShortcutSheet from "./ShortcutSheet.vue";
 import {
   preferences,
   setCutDeskMonitorLayout,
+  setEditorInspectorOpen,
   setCutDeskSplitRatio,
 } from "../preferences";
 import {
@@ -392,9 +393,52 @@ async function reloadDirectionState() {
 }
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
-const inspector = ref<
-  "clip" | "beat" | "sound" | "captions" | "graphics" | "templates"
->("clip");
+const inspectorSections = [
+  { id: "clip", label: "editor.clip.title" },
+  { id: "beat", label: "editor.beats.title" },
+  { id: "sound", label: "editor.sound.tab" },
+  {
+    id: "captions",
+    label: "editor.captions.tab",
+    testId: "caption-inspector-tab",
+  },
+  {
+    id: "graphics",
+    label: "editor.graphics.tab",
+    testId: "graphic-inspector-tab",
+  },
+  {
+    id: "templates",
+    label: "editor.templates.tab",
+    testId: "graphic-template-tab",
+  },
+] as const;
+type InspectorSection = (typeof inspectorSections)[number]["id"];
+const inspector = ref<InspectorSection>("clip");
+async function inspectorKeyboard(event: KeyboardEvent) {
+  if (directionBlocked.value || event.isComposing) return;
+  const index = inspectorSections.findIndex(
+    (section) => section.id === inspector.value,
+  );
+  const next =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? inspectorSections.length - 1
+        : event.key === "ArrowRight"
+          ? (index + 1) % inspectorSections.length
+          : event.key === "ArrowLeft"
+            ? (index + inspectorSections.length - 1) % inspectorSections.length
+            : -1;
+  if (next < 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  inspector.value = inspectorSections[next]!.id;
+  await nextTick();
+  editorElement.value
+    ?.querySelector<HTMLElement>(`#inspector-tab-${inspector.value}`)
+    ?.focus();
+}
 const selectedCaptionTrackId = ref("");
 const selectedCaptionCueId = ref("");
 const captionTimingDraft = ref<{
@@ -473,6 +517,31 @@ function onSplitterKeydown(event: KeyboardEvent) {
 }
 
 const editMode = ref<"story" | "precision" | "transcript">("story");
+const activeEditMode = computed<"story" | "precision" | "transcript">(() =>
+  editMode.value === "transcript"
+    ? "transcript"
+    : cutDeskDualMode.value
+      ? activeTarget.value === "record"
+        ? "story"
+        : "precision"
+      : editMode.value,
+);
+function editModeLabel(mode: "story" | "precision" | "transcript") {
+  return t(
+    mode === "story"
+      ? props.expertMode
+        ? "cutDesk.record"
+        : "precision.storyMode"
+      : mode === "precision"
+        ? props.expertMode
+          ? "cutDesk.source"
+          : "precision.precisionMode"
+        : "transcript.mode",
+  );
+}
+const activeEditModeHint = computed(() =>
+  t(`precision.${activeEditMode.value}ModeDescription`),
+);
 const recordMonitor = ref<InstanceType<typeof RecordMonitor> | null>(null);
 const frameScopesOpen = ref(false);
 const frameScopeAnalysis = shallowRef<FrameScopeAnalysis>();
@@ -849,7 +918,11 @@ let nativeEditDisposed = false;
 let nativeEditReadyForVisit = false;
 let cancelNativeEditReady: (() => void) | undefined;
 const showFit = ref(false);
-const inspectorOpen = ref(true);
+const inspectorOpen = ref(preferences.editorInspectorOpen ?? true);
+function toggleInspector() {
+  inspectorOpen.value = !inspectorOpen.value;
+  setEditorInspectorOpen(inspectorOpen.value);
+}
 const advancedToolsOpen = ref(!!props.expertMode);
 watch(
   () => props.expertMode,
@@ -1211,6 +1284,45 @@ const selectedCaptionCue = computed(() =>
     (cue) => cue.id === selectedCaptionCueId.value,
   ),
 );
+const captionTextDraft = ref("");
+const captionTextDraftOwner = ref("");
+const captionTextDraftDirty = ref(false);
+const captionTextOwner = computed(
+  () =>
+    `${props.projectId}:${props.compositionId}:${selectedCaptionTrack.value?.id ?? ""}:${selectedCaptionCue.value?.id ?? ""}`,
+);
+// Save acknowledgements replace the Composition snapshot. Keep in-progress
+// textarea input local so an older acknowledgement cannot erase uncommitted
+// caption text before the user leaves the field.
+watch(
+  [captionTextOwner, () => selectedCaptionCue.value?.text],
+  ([owner, text]) => {
+    if (captionTextDraftOwner.value !== owner) {
+      captionTextDraftOwner.value = owner;
+      captionTextDraft.value = text ?? "";
+      captionTextDraftDirty.value = false;
+      return;
+    }
+    if (!captionTextDraftDirty.value || text === captionTextDraft.value) {
+      captionTextDraft.value = text ?? "";
+      captionTextDraftDirty.value = false;
+    }
+  },
+  { immediate: true },
+);
+function draftCaptionText(event: Event) {
+  captionTextDraft.value = (event.target as HTMLTextAreaElement).value;
+  captionTextDraftDirty.value = true;
+}
+function commitCaptionTextDraft() {
+  const cue = selectedCaptionCue.value;
+  if (!cue) return;
+  if (captionTextDraft.value === cue.text) {
+    captionTextDraftDirty.value = false;
+    return;
+  }
+  updateCaptionCue({ text: captionTextDraft.value });
+}
 watch(
   [
     () => props.projectId,
@@ -1806,16 +1918,16 @@ function updateCaptionCue(patch: {
   textRuns?: TitleTextRuns | null;
   startMs?: number;
   endMs?: number;
-}) {
+}): boolean {
   const track = selectedCaptionTrack.value;
   const cue = selectedCaptionCue.value;
-  if (track && cue)
-    command({
-      type: "caption.cue.update",
-      trackId: track.id,
-      cueId: cue.id,
-      patch,
-    });
+  if (!track || !cue) return false;
+  return command({
+    type: "caption.cue.update",
+    trackId: track.id,
+    cueId: cue.id,
+    patch,
+  });
 }
 function captionTimingValue(field: "startMs" | "endMs", value: number) {
   const cue = selectedCaptionCue.value;
@@ -2134,9 +2246,20 @@ function resetPicture(centerOnly = false) {
   previewPicture(value);
   void commitPicture(value);
 }
-function togglePictureAdjustment() {
+async function togglePictureAdjustment() {
   clipTransformOverlay.value?.cancel();
   pictureAdjusting.value = !pictureAdjusting.value;
+  if (!pictureAdjusting.value) return;
+
+  // The transform toolbar changes the monitor's available layout. Measure
+  // after Vue applies that toolbar so the first overlay frame uses the actual
+  // source viewport rather than the pre-adjustment size.
+  await nextTick();
+  const screen = sourceScreenElement.value;
+  if (!screen) return;
+  const { clientWidth: width, clientHeight: height } = screen;
+  if (width > 0 && height > 0)
+    sourceViewport.value = roundFrameDimensions({ width, height });
 }
 const previewGeometry = computed(() => {
   const graphics = graphicPreviewTime.value !== undefined;
@@ -3101,10 +3224,17 @@ function measureWorkspace() {
     if (!props.active || !workspace) return;
     const footer = editorElement.value?.querySelector(".editor-shortcuts");
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
+    const dock = document
+      .querySelector(".pipeline-status-bar")
+      ?.getBoundingClientRect();
+    const bottomEdge =
+      dock && dock.height > 0 && dock.top >= 0
+        ? Math.min(window.innerHeight, dock.top)
+        : window.innerHeight;
     const measuredHeight = Math.max(
       editMode.value !== "story" ? 416 : 272,
       Math.floor(
-        window.innerHeight -
+        bottomEdge -
           Math.max(0, workspace.getBoundingClientRect().top) -
           footerHeight -
           16,
@@ -3350,6 +3480,18 @@ watch(focalBlocked, (blocked) => {
     cancelFocal();
 });
 onBeforeUnmount(cancelFocal);
+async function openFitReview() {
+  if (!state.value) await load();
+  if (!state.value || directionBlocked.value || !(await flush())) return false;
+  await setEditMode("story");
+  if (editMode.value !== "story") return false;
+  if (!showFit.value) toggleFit();
+  await nextTick();
+  editorElement.value
+    ?.querySelector<HTMLElement>("#editor-fit-review")
+    ?.focus();
+  return true;
+}
 function toggleFit() {
   showFit.value = !showFit.value;
   skippedClipIds.value = [];
@@ -3509,6 +3651,7 @@ watch(selectedBeat, (beat, previous) => {
   }
 });
 defineExpose({
+  openFitReview,
   flush,
   hasPending,
   loading: computed(() => status.value === "loading"),
@@ -3625,7 +3768,9 @@ watch(
   { immediate: true, flush: "sync" },
 );
 onMounted(() => {
-  inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
+  inspectorOpen.value =
+    preferences.editorInspectorOpen ??
+    !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
   window.addEventListener("resize", measureWorkspace);
   window.addEventListener("blur", compareWindowBlur);
@@ -3682,50 +3827,31 @@ onBeforeUnmount(() => {
       <div class="editor-heading">
         <h2>{{ t("editor.heading") }}</h2>
       </div>
-      <div
-        class="editor-mode-switch"
-        role="group"
-        :aria-label="t('precision.modeLabel')"
-      >
-        <button
-          v-for="mode in ['story', 'precision', 'transcript'] as const"
-          :key="mode"
-          class="editor-button"
-          :disabled="directionBlocked"
-          :aria-pressed="
-            cutDeskDualMode
-              ? mode === 'story'
-                ? activeTarget === 'record'
-                : mode === 'precision'
-                  ? activeTarget === 'source'
-                  : editMode === 'transcript'
-              : editMode === mode
-          "
-          :class="{
-            selected: cutDeskDualMode
-              ? mode === 'story'
-                ? activeTarget === 'record'
-                : mode === 'precision'
-                  ? activeTarget === 'source'
-                  : editMode === 'transcript'
-              : editMode === mode,
-          }"
-          @click="setEditMode(mode)"
+      <div class="editor-mode-context">
+        <div
+          class="editor-mode-switch"
+          role="group"
+          :aria-label="t('precision.modeLabel')"
         >
-          {{
-            t(
-              mode === "story"
-                ? expertMode
-                  ? "cutDesk.record"
-                  : "precision.storyMode"
-                : mode === "precision"
-                  ? expertMode
-                    ? "cutDesk.source"
-                    : "precision.precisionMode"
-                  : "transcript.mode",
-            )
-          }}
-        </button>
+          <button
+            v-for="mode in ['story', 'precision', 'transcript'] as const"
+            :key="mode"
+            class="editor-button"
+            :disabled="directionBlocked"
+            :aria-pressed="activeEditMode === mode"
+            :aria-describedby="
+              activeEditMode === mode ? 'editor-mode-hint' : undefined
+            "
+            :title="t(`precision.${mode}ModeDescription`)"
+            :class="{ selected: activeEditMode === mode }"
+            @click="setEditMode(mode)"
+          >
+            {{ editModeLabel(mode) }}
+          </button>
+        </div>
+        <p id="editor-mode-hint" class="editor-mode-hint" aria-live="polite">
+          {{ activeEditModeHint }}
+        </p>
       </div>
       <div
         v-if="expertMode && editMode !== 'transcript'"
@@ -3851,7 +3977,7 @@ onBeforeUnmount(() => {
           :aria-expanded="inspectorOpen"
           aria-controls="timeline-inspector"
           :disabled="directionBlocked"
-          @click="inspectorOpen = !inspectorOpen"
+          @click="toggleInspector"
         >
           {{
             t(inspectorOpen ? "editor.hideInspector" : "editor.showInspector")
@@ -4057,21 +4183,54 @@ onBeforeUnmount(() => {
       class="editor-message error"
       role="alert"
     >
-      <span>{{ message || t("editor.draft.kept") }}</span>
+      <span>
+        {{
+          message ||
+          t(
+            status === "conflict"
+              ? "editor.save.conflict"
+              : "editor.save.failed",
+          )
+        }}
+      </span>
+      <p
+        v-if="status === 'conflict' && !hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.conflictNoDraft") }}
+      </p>
+      <p
+        v-else-if="status === 'conflict' && hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.conflictWithDraft") }}
+      </p>
+      <p
+        v-else-if="status === 'failed' && hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.kept") }}
+      </p>
+      <p
+        v-else-if="status === 'failed' && !hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.failedNoDraft") }}
+      </p>
       <details v-if="messageDetail" class="editor-technical-details">
         <summary>{{ t("editor.technicalDetails") }}</summary>
         <pre>{{ messageDetail }}</pre>
       </details>
       <button
         v-if="status === 'failed'"
-        class="editor-button"
+        class="editor-button primary"
         @click="state && hasPending ? flush() : load()"
       >
-        {{ t("editor.draft.retry") }}
+        {{ t(hasPending ? "editor.draft.retry" : "editor.draft.reload") }}
       </button>
       <button
         v-if="status === 'conflict' && !hasPending"
-        class="editor-button"
+        class="editor-button primary"
         @click="load"
       >
         {{ t("editor.draft.reload") }}
@@ -4079,7 +4238,7 @@ onBeforeUnmount(() => {
       <template v-if="status === 'conflict' && hasPending"
         ><button class="editor-button" @click="flush">
           {{ t("editor.draft.retry") }}</button
-        ><button class="editor-button" @click="draftAction = 'reapply'">
+        ><button class="editor-button primary" @click="draftAction = 'reapply'">
           {{ t("editor.draft.reapply") }}
         </button></template
       >
@@ -4152,6 +4311,8 @@ onBeforeUnmount(() => {
       </div>
       <section
         v-if="showFit && editMode === 'story'"
+        id="editor-fit-review"
+        tabindex="-1"
         class="editor-fit-panel"
         :aria-label="t('editor.fit.suggestions')"
       >
@@ -4658,7 +4819,11 @@ onBeforeUnmount(() => {
               </section>
             </div>
           </div>
-          <div v-else-if="recordTarget" class="editor-player-region">
+          <div
+            v-else-if="recordTarget"
+            class="editor-player-region"
+            data-stone="entry"
+          >
             <section
               v-if="recordActive"
               class="cut-desk-record"
@@ -4859,7 +5024,95 @@ onBeforeUnmount(() => {
               </p>
             </section>
           </div>
-          <div v-else-if="!expertMode" class="editor-player-region">
+          <div
+            v-else-if="!expertMode"
+            class="editor-player-region"
+            data-stone="entry"
+          >
+            <div
+              v-if="
+                playbackAsset &&
+                !playbackUnavailable &&
+                playbackSourceInfo?.previewSupported !== false &&
+                playbackAsset.mediaType !== 'audio'
+              "
+              class="editor-monitor-tools"
+              role="group"
+              :aria-label="t('editor.monitor.controls')"
+            >
+              <label class="sr-only" for="monitor-aspect-guide">{{
+                t("editor.monitor.aspect")
+              }}</label>
+              <select id="monitor-aspect-guide" v-model="monitorAspect">
+                <option
+                  v-for="choice in monitorAspects"
+                  :key="choice.value"
+                  :value="choice.value"
+                >
+                  {{ choice.ratio }} · {{ t(choice.label) }}
+                </option>
+              </select>
+              <button
+                class="editor-button"
+                :aria-pressed="showRuleOfThirds"
+                :class="{ selected: showRuleOfThirds }"
+                aria-describedby="editor-monitor-guide-note"
+                :title="`${t('editor.monitor.thirds')} · ${t('editor.monitor.previewOnly')}`"
+                @click="showRuleOfThirds = !showRuleOfThirds"
+              >
+                <Icon name="thirds" :size="16" />
+                <span class="sr-only">{{ t("editor.monitor.thirds") }}</span>
+              </button>
+              <button
+                class="editor-button"
+                :aria-pressed="showSafeFrame"
+                :class="{ selected: showSafeFrame }"
+                aria-describedby="editor-monitor-guide-note"
+                :title="`${t('editor.monitor.safe')} · ${t('editor.monitor.previewOnly')}`"
+                @click="showSafeFrame = !showSafeFrame"
+              >
+                <Icon name="safe-frame" :size="16" />
+                <span class="sr-only">{{ t("editor.monitor.safe") }}</span>
+              </button>
+              <kbd aria-label="G">G</kbd>
+              <span
+                id="editor-monitor-guide-note"
+                class="sr-only editor-monitor-guide-note"
+                >{{ t("editor.monitor.previewOnly") }}</span
+              >
+              <button
+                class="editor-button"
+                :class="{ selected: pictureAdjusting }"
+                :aria-pressed="pictureAdjusting"
+                :title="
+                  t(
+                    photoPresentationActive
+                      ? 'editor.picture.presentationHint'
+                      : 'editor.picture.hint',
+                  )
+                "
+                :disabled="!pictureCapable || pictureBlocked"
+                @click="togglePictureAdjustment"
+              >
+                {{ t("editor.picture.toggle") }}
+              </button>
+              <template v-if="pictureAdjusting">
+                <button
+                  class="editor-button"
+                  :disabled="!pictureCapable || pictureBlocked"
+                  @click="resetPicture(true)"
+                >
+                  {{ t("editor.picture.center") }}
+                </button>
+                <button
+                  class="editor-button"
+                  :disabled="!pictureCapable || pictureBlocked"
+                  @click="resetPicture()"
+                >
+                  {{ t("editor.picture.reset") }}
+                </button>
+              </template>
+            </div>
             <div ref="sourceScreenElement" class="editor-source-screen">
               <PrimaryColorFilter
                 :id="primaryColorFilterId"
@@ -5275,74 +5528,6 @@ onBeforeUnmount(() => {
                 "
               >
                 <div
-                  class="editor-monitor-tools"
-                  role="group"
-                  :aria-label="t('editor.monitor.controls')"
-                >
-                  <label class="sr-only" for="monitor-aspect-guide">{{
-                    t("editor.monitor.aspect")
-                  }}</label>
-                  <select id="monitor-aspect-guide" v-model="monitorAspect">
-                    <option
-                      v-for="choice in monitorAspects"
-                      :key="choice.value"
-                      :value="choice.value"
-                    >
-                      {{ choice.ratio }} · {{ t(choice.label) }}
-                    </option>
-                  </select>
-                  <button
-                    class="editor-button"
-                    :aria-pressed="showRuleOfThirds"
-                    @click="showRuleOfThirds = !showRuleOfThirds"
-                  >
-                    {{ t("editor.monitor.thirds") }}
-                  </button>
-                  <button
-                    class="editor-button"
-                    :aria-pressed="showSafeFrame"
-                    @click="showSafeFrame = !showSafeFrame"
-                  >
-                    {{ t("editor.monitor.safe") }}
-                  </button>
-                  <kbd aria-label="G">G</kbd>
-                  <span class="editor-monitor-guide-note">{{
-                    t("editor.monitor.previewOnly")
-                  }}</span>
-                  <button
-                    class="editor-button"
-                    :class="{ selected: pictureAdjusting }"
-                    :aria-pressed="pictureAdjusting"
-                    :title="
-                      t(
-                        photoPresentationActive
-                          ? 'editor.picture.presentationHint'
-                          : 'editor.picture.hint',
-                      )
-                    "
-                    :disabled="!pictureCapable || pictureBlocked"
-                    @click="togglePictureAdjustment"
-                  >
-                    {{ t("editor.picture.toggle") }}
-                  </button>
-                  <template v-if="pictureAdjusting">
-                    <button
-                      class="editor-button"
-                      :disabled="!pictureCapable || pictureBlocked"
-                      @click="resetPicture(true)"
-                    >
-                      {{ t("editor.picture.center") }}
-                    </button>
-                    <button
-                      class="editor-button"
-                      :disabled="!pictureCapable || pictureBlocked"
-                      @click="resetPicture()"
-                    >
-                      {{ t("editor.picture.reset") }}
-                    </button>
-                  </template>
-                </div>
-                <div
                   v-if="showRuleOfThirds || showSafeFrame"
                   class="editor-monitor-guide-layer"
                   aria-hidden="true"
@@ -5713,1121 +5898,1127 @@ onBeforeUnmount(() => {
           v-show="inspectorOpen"
           id="timeline-inspector"
           class="editor-inspector"
+          data-stone="anchor"
           :aria-label="t('editor.inspector')"
         >
-          <div class="editor-inspector-tabs">
+          <div
+            class="editor-inspector-tabs"
+            role="tablist"
+            aria-orientation="horizontal"
+            :aria-label="t('editor.inspector')"
+            @keydown="inspectorKeyboard"
+          >
             <button
-              :class="{ selected: inspector === 'clip' }"
-              :aria-pressed="inspector === 'clip'"
+              v-for="section in inspectorSections"
+              :id="`inspector-tab-${section.id}`"
+              :key="section.id"
+              type="button"
+              role="tab"
+              aria-controls="editor-inspector-panel"
+              :tabindex="inspector === section.id ? 0 : -1"
+              :aria-selected="inspector === section.id"
+              :class="{ selected: inspector === section.id }"
               :disabled="directionBlocked"
-              @click="inspector = 'clip'"
+              :data-testid="'testId' in section ? section.testId : undefined"
+              @click="inspector = section.id"
             >
-              {{ t("editor.clip.title") }}</button
-            ><button
-              :class="{ selected: inspector === 'beat' }"
-              :aria-pressed="inspector === 'beat'"
-              :disabled="directionBlocked"
-              @click="inspector = 'beat'"
-            >
-              {{ t("editor.beats.title") }}
-            </button>
-            <button
-              :class="{ selected: inspector === 'sound' }"
-              :aria-pressed="inspector === 'sound'"
-              :disabled="directionBlocked"
-              @click="inspector = 'sound'"
-            >
-              {{ t("editor.sound.tab") }}
-            </button>
-            <button
-              :class="{ selected: inspector === 'captions' }"
-              :aria-pressed="inspector === 'captions'"
-              :disabled="directionBlocked"
-              data-testid="caption-inspector-tab"
-              @click="inspector = 'captions'"
-            >
-              {{ t("editor.captions.tab") }}
-            </button>
-            <button
-              :class="{ selected: inspector === 'graphics' }"
-              :aria-pressed="inspector === 'graphics'"
-              :disabled="directionBlocked"
-              data-testid="graphic-inspector-tab"
-              @click="inspector = 'graphics'"
-            >
-              {{ t("editor.graphics.tab") }}
-            </button>
-            <button
-              :class="{ selected: inspector === 'templates' }"
-              :aria-pressed="inspector === 'templates'"
-              :disabled="directionBlocked"
-              data-testid="graphic-template-tab"
-              @click="inspector = 'templates'"
-            >
-              {{ t("editor.templates.tab") }}
+              {{ t(section.label) }}
             </button>
           </div>
-          <GraphicSceneInspector
-            v-if="inspector === 'graphics'"
-            :project-id="projectId"
-            :composition-id="compositionId"
-            :revision="state.revision"
-            :scenes="state.composition.graphicScenes ?? []"
-            :duration="state.composition.duration"
-            :frame-rate="projectSettings.frameRate"
-            :assets="state.assets"
-            :dependency-version="
-              (jobs ?? [])
-                .filter(
-                  (job) =>
-                    job.type === 'import' &&
-                    ['completed', 'failed', 'cancelled'].includes(job.status),
-                )
-                .map((job) => `${job.id}:${job.status}`)
-                .join('|')
-            "
-            :selected-scene-id="graphicSceneSelection.sceneId"
-            :selected-node-id="graphicSceneSelection.nodeId"
-            :snapping="graphicSnapping"
-            :guides="graphicGuides"
-            :agent-disabled="
-              directionBlocked ||
-              compositionHistoryBusy ||
-              compositionHasPending ||
-              status !== 'saved'
-            "
-            :disabled="
-              directionBlocked ||
-              historyBusy ||
-              status === 'conflict' ||
-              status === 'failed'
-            "
-            @command="command"
-            @pin="changeUserPin"
-            @selection="selectGraphicLayer"
-            @preview-time="previewGraphicAtTime"
-            @import-assets="emit('importAssets')"
-            @update:snapping="setGraphicSnapping"
-            @update:guides="setGraphicGuides"
-            @agent-busy="setGraphicAgentBusy"
-            @agent-pending="setGraphicAgentPending"
-            @agent-accepted="reloadAfterGraphicAgent"
-            @agent-reload="reloadAfterGraphicAgent"
-          />
-          <GraphicSceneTemplateStudio
-            v-if="inspector === 'templates' && state"
-            :scenes="state.composition.graphicScenes ?? []"
-            :records="state.composition.graphicSceneTemplates ?? []"
-            :duration="state.composition.duration"
-            :width="projectSettings.width"
-            :height="projectSettings.height"
-            :locale="projectContentLocale ?? 'en-US'"
-            :assets="state.assets"
-            :disabled="
-              directionBlocked ||
-              historyBusy ||
-              status === 'conflict' ||
-              status === 'failed'
-            "
-            @command="templateCommand"
-          />
-          <template
-            v-if="inspector === 'clip' && selectedClip && selectedAsset"
+          <div
+            id="editor-inspector-panel"
+            class="editor-inspector-content"
+            role="tabpanel"
+            :aria-labelledby="`inspector-tab-${inspector}`"
           >
-            <div class="editor-inspector-title">
-              <h3>{{ selectedAsset.name }}</h3>
-              <button
-                class="editor-button"
-                :aria-label="
-                  t(
-                    selectedClip.locked
-                      ? 'editor.clip.unlock'
-                      : 'editor.clip.lock',
-                  )
-                "
-                :aria-pressed="!!selectedClip.locked"
-                @click="
-                  command({
-                    type: 'lock',
-                    clipId: selectedClip.id,
-                    locked: !selectedClip.locked,
-                  })
-                "
-              >
-                <Icon name="lock" :size="14" />{{
-                  t(
-                    selectedClip.locked
-                      ? "editor.clip.locked"
-                      : "editor.clip.lock",
-                  )
-                }}
-              </button>
-            </div>
-            <div
-              class="editor-presets editor-user-pins"
-              :title="t('editor.pins.hint')"
-            >
-              <button
-                type="button"
-                class="editor-button"
-                data-testid="clip-user-pin"
-                :disabled="
-                  historyBusy ||
-                  !!selectedClip.locked ||
-                  !!selectedAsset.state.locked
-                "
-                :aria-pressed="!!selectedClip.userOverrides?.isUserPinned"
-                @click="
-                  changeUserPin(
-                    { kind: 'clip', clipId: selectedClip.id },
-                    !selectedClip.userOverrides?.isUserPinned,
-                  )
-                "
-              >
-                <Icon name="pin" :size="14" />{{
-                  t(
-                    selectedClip.userOverrides?.isUserPinned
-                      ? "editor.pins.unpin"
-                      : "editor.pins.pin",
-                  )
-                }}
-              </button>
-              <button
-                v-if="selectedClip.userOverrides?.isUserPinned"
-                type="button"
-                class="editor-button"
-                data-testid="clip-user-pin-resolve"
-                :disabled="
-                  historyBusy ||
-                  !!selectedClip.locked ||
-                  !!selectedAsset.state.locked
-                "
-                :title="t('editor.pins.releaseHint')"
-                @click="
-                  changeUserPin(
-                    { kind: 'clip', clipId: selectedClip.id },
-                    false,
-                    true,
-                  )
-                "
-              >
-                {{ t("editor.pins.releaseResolve") }}
-              </button>
-            </div>
-            <div
-              v-if="selectedAsset.mediaType !== 'image'"
-              class="editor-stat-grid"
-            >
-              <div class="editor-stat">
-                <small>{{ t("editor.clip.source") }}</small
-                ><strong>{{ duration(selectedAsset.duration) }}</strong>
-              </div>
-              <div class="editor-stat">
-                <small>{{ t("editor.clip.selected") }}</small
-                ><strong>{{
-                  duration(
-                    (selectedClip.sourceOut ?? 0) -
-                      (selectedClip.sourceIn ?? 0),
-                  )
-                }}</strong>
-              </div>
-              <div class="editor-stat">
-                <small>{{ t("editor.clip.timeline") }}</small
-                ><strong>{{ duration(selectedClip.timelineDuration) }}</strong>
-              </div>
-            </div>
-            <p v-if="selectedClip.locked" class="editor-note">
-              {{ t("editor.clip.protected") }}
-            </p>
-            <AudioTimingInspector
-              v-if="
-                selectedAsset.mediaType === 'audio' ||
-                selectedAsset.mediaType === 'video'
-              "
+            <GraphicSceneInspector
+              v-if="inspector === 'graphics'"
               :project-id="projectId"
               :composition-id="compositionId"
               :revision="state.revision"
-              :composition-duration="state.composition.duration"
-              :clip="selectedClip"
-              :asset="selectedAsset"
-              :busy="
-                historyBusy ||
-                directionBlocked ||
-                graphicAgentBusy ||
-                graphicAgentPending
-              "
-              :active="active"
-              :source-version="sourceVersion"
-              :commit="commitSoundTiming"
-            />
-            <PrimaryColorInspector
-              :composition="state.composition"
-              :clip="selectedClip"
+              :scenes="state.composition.graphicScenes ?? []"
+              :duration="state.composition.duration"
+              :frame-rate="projectSettings.frameRate"
               :assets="state.assets"
-              :project-id="projectId"
-              :revision="state.revision"
-              :clip-eligible="lookEligible"
-              :clip-protected="!!selectedClip.locked || clipSourceLocked"
-              :disabled="historyBusy || directionBlocked"
-              @command="command"
-            />
-            <FilmLookInspector
-              :composition="state.composition"
-              :clip="selectedClip"
-              :clip-eligible="lookEligible"
-              :clip-protected="!!selectedClip.locked || clipSourceLocked"
-              :disabled="historyBusy || directionBlocked"
-              @command="command"
-            />
-            <fieldset
-              class="editor-fields"
-              :disabled="
-                !!selectedClip.locked || lockedOverlaySource || historyBusy
+              :dependency-version="
+                (jobs ?? [])
+                  .filter(
+                    (job) =>
+                      job.type === 'import' &&
+                      ['completed', 'failed', 'cancelled'].includes(job.status),
+                  )
+                  .map((job) => `${job.id}:${job.status}`)
+                  .join('|')
               "
+              :selected-scene-id="graphicSceneSelection.sceneId"
+              :selected-node-id="graphicSceneSelection.nodeId"
+              :snapping="graphicSnapping"
+              :guides="graphicGuides"
+              :agent-disabled="
+                directionBlocked ||
+                compositionHistoryBusy ||
+                compositionHasPending ||
+                status !== 'saved'
+              "
+              :disabled="
+                directionBlocked ||
+                historyBusy ||
+                status === 'conflict' ||
+                status === 'failed'
+              "
+              @command="command"
+              @pin="changeUserPin"
+              @selection="selectGraphicLayer"
+              @preview-time="previewGraphicAtTime"
+              @import-assets="emit('importAssets')"
+              @update:snapping="setGraphicSnapping"
+              @update:guides="setGraphicGuides"
+              @agent-busy="setGraphicAgentBusy"
+              @agent-pending="setGraphicAgentPending"
+              @agent-accepted="reloadAfterGraphicAgent"
+              @agent-reload="reloadAfterGraphicAgent"
+            />
+            <GraphicSceneTemplateStudio
+              v-if="inspector === 'templates' && state"
+              :scenes="state.composition.graphicScenes ?? []"
+              :records="state.composition.graphicSceneTemplates ?? []"
+              :duration="state.composition.duration"
+              :width="projectSettings.width"
+              :height="projectSettings.height"
+              :locale="projectContentLocale ?? 'en-US'"
+              :assets="state.assets"
+              :disabled="
+                directionBlocked ||
+                historyBusy ||
+                status === 'conflict' ||
+                status === 'failed'
+              "
+              @command="templateCommand"
+            />
+            <template
+              v-if="inspector === 'clip' && selectedClip && selectedAsset"
             >
-              <template v-if="controls.duration"
-                ><label class="editor-field"
-                  >{{ t("editor.clip.photoDuration")
-                  }}<input
-                    v-model.number="clipFields.duration"
-                    :aria-label="t('editor.clip.photoDurationLabel')"
-                    type="number"
-                    min="0.01"
-                    step="0.1"
-                    @change="
-                      editClip({
-                        type: 'duration',
-                        duration: Number(clipFields.duration),
-                      })
-                    "
-                /></label>
-                <div class="editor-presets">
-                  <button
-                    v-for="seconds in [1.5, 2, 2.5, 3, 4, 5]"
-                    :key="seconds"
-                    class="editor-button"
-                    :class="{
-                      selected: selectedClip.timelineDuration === seconds,
-                    }"
-                    :aria-label="
-                      t('editor.clip.photoPreset', {
-                        seconds: formatNumber(seconds),
-                      })
-                    "
-                    @click="editClip({ type: 'duration', duration: seconds })"
-                  >
-                    {{ t("editor.seconds", { value: formatNumber(seconds) }) }}
-                  </button>
-                </div></template
-              >
-              <template v-if="controls.trim"
-                ><div class="editor-field-pair">
-                  <label class="editor-field"
-                    >{{ t("editor.clip.sourceIn")
-                    }}<input
-                      v-model.number="clipFields.sourceIn"
-                      :aria-label="t('editor.clip.sourceInLabel')"
-                      type="number"
-                      min="0"
-                      :max="selectedAsset.duration"
-                      step="0.01"
-                      @change="trim" /></label
-                  ><label class="editor-field"
-                    >{{ t("editor.clip.sourceOut")
-                    }}<input
-                      v-model.number="clipFields.sourceOut"
-                      :aria-label="t('editor.clip.sourceOutLabel')"
-                      type="number"
-                      min="0"
-                      :max="selectedAsset.duration"
-                      step="0.01"
-                      @change="trim"
-                  /></label></div
-              ></template>
-              <template v-if="controls.speed"
-                ><label class="editor-field"
-                  >{{ t("editor.clip.speed")
-                  }}<input
-                    v-model.number="clipFields.speed"
-                    :aria-label="t('editor.clip.speed')"
-                    type="number"
-                    min="0.01"
-                    step="0.1"
-                    @change="
-                      editClip({
-                        type: 'speed',
-                        speed: Number(clipFields.speed),
-                      })
-                    "
-                /></label>
-                <div class="editor-presets">
-                  <button
-                    v-for="speed in [0.5, 0.75, 1, 1.25, 1.5, 2]"
-                    :key="speed"
-                    class="editor-button"
-                    :class="{ selected: clipFields.speed === speed }"
-                    :aria-label="
-                      t('editor.clip.speedPreset', {
-                        speed: formatNumber(speed),
-                      })
-                    "
-                    @click="editClip({ type: 'speed', speed })"
-                  >
-                    {{ formatNumber(speed) }}×
-                  </button>
-                </div></template
-              >
-              <template v-if="controls.volume"
-                ><label class="editor-field"
-                  >{{ t("editor.clip.volume") }} ·
+              <div class="editor-inspector-title">
+                <h3>{{ selectedAsset.name }}</h3>
+                <p>
                   {{
-                    formatNumber(clipFields.volume, {
-                      style: "percent",
-                      maximumFractionDigits: 0,
+                    t("precision.inspectorObject", {
+                      kind: t(
+                        `app.import.mediaKind.${selectedAsset.mediaType}`,
+                      ),
                     })
-                  }}<input
-                    v-model.number="clipFields.volume"
-                    :aria-label="t('editor.clip.volumeLabel')"
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    @input="
-                      editClip({
-                        type: 'volume',
-                        volume: Number(clipFields.volume),
-                      })
-                    " /></label
-                ><button
+                  }}
+                </p>
+                <button
                   class="editor-button"
-                  :aria-pressed="clipFields.volume === 0"
+                  :aria-label="
+                    t(
+                      selectedClip.locked
+                        ? 'editor.clip.unlock'
+                        : 'editor.clip.lock',
+                    )
+                  "
+                  :aria-pressed="!!selectedClip.locked"
                   @click="
-                    editClip({
-                      type: 'volume',
-                      volume: clipFields.volume === 0 ? 1 : 0,
+                    command({
+                      type: 'lock',
+                      clipId: selectedClip.id,
+                      locked: !selectedClip.locked,
                     })
                   "
                 >
-                  {{
+                  <Icon name="lock" :size="14" />{{
                     t(
-                      clipFields.volume === 0
-                        ? "editor.clip.unmute"
-                        : "editor.clip.mute",
+                      selectedClip.locked
+                        ? "editor.clip.locked"
+                        : "editor.clip.lock",
                     )
                   }}
-                </button></template
+                </button>
+              </div>
+              <div
+                class="editor-presets editor-user-pins"
+                :title="t('editor.pins.hint')"
               >
-              <template v-if="controls.visual"
-                ><div class="editor-divider" />
-                <div class="editor-field-pair">
-                  <label class="editor-field"
-                    >{{ t("editor.clip.transition")
-                    }}<select
-                      :aria-label="t('editor.clip.transitionLabel')"
-                      :value="selectedClip.transition?.type ?? 'cut'"
-                      @change="transition"
-                    >
-                      <option value="cut">{{ t("editor.clip.cut") }}</option>
-                      <option value="crossfade">
-                        {{ t("editor.clip.crossfade") }}
-                      </option>
-                      <option value="dip-to-black">
-                        {{ t("editor.clip.dipToBlack") }}
-                      </option>
-                      <option value="dip-to-white">
-                        {{ t("editor.clip.dipToWhite") }}
-                      </option>
-                    </select></label
-                  ><label v-if="selectedClip.transition" class="editor-field"
-                    >{{ t("editor.clip.fadeDuration")
+                <button
+                  type="button"
+                  class="editor-button"
+                  data-testid="clip-user-pin"
+                  :disabled="
+                    historyBusy ||
+                    !!selectedClip.locked ||
+                    !!selectedAsset.state.locked
+                  "
+                  :aria-pressed="!!selectedClip.userOverrides?.isUserPinned"
+                  @click="
+                    changeUserPin(
+                      { kind: 'clip', clipId: selectedClip.id },
+                      !selectedClip.userOverrides?.isUserPinned,
+                    )
+                  "
+                >
+                  <Icon name="pin" :size="14" />{{
+                    t(
+                      selectedClip.userOverrides?.isUserPinned
+                        ? "editor.pins.unpin"
+                        : "editor.pins.pin",
+                    )
+                  }}
+                </button>
+                <button
+                  v-if="selectedClip.userOverrides?.isUserPinned"
+                  type="button"
+                  class="editor-button"
+                  data-testid="clip-user-pin-resolve"
+                  :disabled="
+                    historyBusy ||
+                    !!selectedClip.locked ||
+                    !!selectedAsset.state.locked
+                  "
+                  :title="t('editor.pins.releaseHint')"
+                  @click="
+                    changeUserPin(
+                      { kind: 'clip', clipId: selectedClip.id },
+                      false,
+                      true,
+                    )
+                  "
+                >
+                  {{ t("editor.pins.releaseResolve") }}
+                </button>
+              </div>
+              <div
+                v-if="selectedAsset.mediaType !== 'image'"
+                class="editor-stat-grid"
+              >
+                <div class="editor-stat">
+                  <small>{{ t("editor.clip.source") }}</small
+                  ><strong>{{ duration(selectedAsset.duration) }}</strong>
+                </div>
+                <div class="editor-stat">
+                  <small>{{ t("editor.clip.selected") }}</small
+                  ><strong>{{
+                    duration(
+                      (selectedClip.sourceOut ?? 0) -
+                        (selectedClip.sourceIn ?? 0),
+                    )
+                  }}</strong>
+                </div>
+                <div class="editor-stat">
+                  <small>{{ t("editor.clip.timeline") }}</small
+                  ><strong>{{
+                    duration(selectedClip.timelineDuration)
+                  }}</strong>
+                </div>
+              </div>
+              <p v-if="selectedClip.locked" class="editor-note">
+                {{ t("editor.clip.protected") }}
+              </p>
+              <fieldset
+                class="editor-fields"
+                :disabled="
+                  !!selectedClip.locked || lockedOverlaySource || historyBusy
+                "
+              >
+                <template v-if="controls.duration"
+                  ><label class="editor-field"
+                    >{{ t("editor.clip.photoDuration")
                     }}<input
-                      v-model.number="clipFields.transitionDuration"
-                      :aria-label="t('editor.clip.fadeDurationLabel')"
+                      v-model.number="clipFields.duration"
+                      :aria-label="t('editor.clip.photoDurationLabel')"
                       type="number"
                       min="0.01"
-                      :max="selectedClip.timelineDuration"
                       step="0.1"
                       @change="
                         editClip({
-                          type: 'transition',
-                          transition:
-                            selectedClip.transition?.type ?? 'crossfade',
-                          duration: Number(clipFields.transitionDuration),
+                          type: 'duration',
+                          duration: Number(clipFields.duration),
                         })
                       "
                   /></label>
-                </div>
-                <div v-if="selectedClip.transition" class="editor-actions">
-                  <button
-                    class="editor-button"
-                    :aria-label="t('editor.clip.microPreview')"
-                    :disabled="microPreviewBusy || historyBusy"
-                    @click="startMicroPreview"
-                  >
-                    {{ t("editor.clip.microPreview") }}
-                  </button>
-                  <button
-                    v-if="activeMicroPreview"
-                    class="editor-button secondary"
-                    :disabled="microPreviewBusy"
-                    @click="applyMicroPreview"
-                  >
-                    ✓ Apply
-                  </button>
-                  <button
-                    v-if="activeMicroPreview"
-                    class="editor-button danger"
-                    :disabled="microPreviewBusy"
-                    @click="cancelMicroPreview"
-                  >
-                    ✕ Cancel
-                  </button>
-                </div>
-                <div v-if="activeMicroPreview" class="editor-field">
-                  <input
-                    type="range"
-                    min="0"
-                    :max="activeMicroPreview.previewDuration"
-                    step="0.01"
-                    :value="microPreviewOffset"
-                    @input="
-                      seekMicroPreview(
-                        Number(($event.target as HTMLInputElement).value),
-                      )
-                    "
-                  />
-                </div>
-                <div class="editor-field-pair">
-                  <label class="editor-field"
-                    >{{ t("editor.clip.scale")
+                  <div class="editor-presets">
+                    <button
+                      v-for="seconds in [1.5, 2, 2.5, 3, 4, 5]"
+                      :key="seconds"
+                      class="editor-button"
+                      :class="{
+                        selected: selectedClip.timelineDuration === seconds,
+                      }"
+                      :aria-label="
+                        t('editor.clip.photoPreset', {
+                          seconds: formatNumber(seconds),
+                        })
+                      "
+                      @click="editClip({ type: 'duration', duration: seconds })"
+                    >
+                      {{
+                        t("editor.seconds", { value: formatNumber(seconds) })
+                      }}
+                    </button>
+                  </div></template
+                >
+                <template v-if="controls.trim"
+                  ><div class="editor-field-pair">
+                    <label class="editor-field"
+                      >{{ t("editor.clip.sourceIn")
+                      }}<input
+                        v-model.number="clipFields.sourceIn"
+                        :aria-label="t('editor.clip.sourceInLabel')"
+                        type="number"
+                        min="0"
+                        :max="selectedAsset.duration"
+                        step="0.01"
+                        @change="trim" /></label
+                    ><label class="editor-field"
+                      >{{ t("editor.clip.sourceOut")
+                      }}<input
+                        v-model.number="clipFields.sourceOut"
+                        :aria-label="t('editor.clip.sourceOutLabel')"
+                        type="number"
+                        min="0"
+                        :max="selectedAsset.duration"
+                        step="0.01"
+                        @change="trim"
+                    /></label></div
+                ></template>
+                <template v-if="controls.speed"
+                  ><label class="editor-field"
+                    >{{ t("editor.clip.speed")
                     }}<input
-                      v-model.number="clipFields.scale"
-                      :aria-label="t('editor.clip.scaleLabel')"
+                      v-model.number="clipFields.speed"
+                      :aria-label="t('editor.clip.speed')"
                       type="number"
                       min="0.01"
                       step="0.1"
-                      @change="transform" /></label
-                  ><label class="editor-field"
-                    >{{ t("editor.clip.rotation")
-                    }}<input
-                      v-model.number="clipFields.rotation"
-                      :aria-label="t('editor.clip.rotationLabel')"
-                      type="number"
-                      step="1"
-                      @change="transform"
-                  /></label>
-                </div>
-                <div class="editor-field-pair">
-                  <label class="editor-field"
-                    >{{ t("editor.clip.x")
-                    }}<input
-                      v-model.number="clipFields.x"
-                      :aria-label="t('editor.clip.xLabel')"
-                      type="number"
-                      step="1"
-                      @change="transform" /></label
-                  ><label class="editor-field"
-                    >{{ t("editor.clip.y")
-                    }}<input
-                      v-model.number="clipFields.y"
-                      :aria-label="t('editor.clip.yLabel')"
-                      type="number"
-                      step="1"
-                      @change="transform"
-                  /></label>
-                </div>
-                <div class="editor-actions editor-geometry-actions">
-                  <button class="editor-button" @click="rotateSelected(-90)">
-                    ↺ −90°
-                  </button>
-                  <button class="editor-button" @click="rotateSelected(90)">
-                    ↻ +90°
-                  </button>
-                  <button class="editor-button" @click="resetSelectedTransform">
-                    {{ t("editor.monitor.resetTransform") }}
-                  </button>
-                </div>
-              </template>
-              <fieldset
-                v-if="controls.visual"
-                class="editor-fields"
-                :disabled="clipSourceLocked"
-              >
-                <p v-if="clipSourceLocked" class="editor-note">
-                  {{ t("editor.clip.sourceProtected") }}
-                </p>
-                <PhotoPresentationInspector
-                  :clip="selectedClip"
-                  :asset="selectedAsset"
-                  :assets="state.assets"
-                  :frame="projectSettings"
-                  :allow-photo-presentation="photoPresentationAllowed"
-                  :focal-editing="focalEditing"
-                  :focal-disabled="focalBlocked"
-                  @command="command"
-                  @focus="toggleFocal"
-                />
-                <NativeTextFontStatus
-                  v-if="selectedClip.title"
-                  :project-id="projectId"
-                  :composition-id="compositionId"
-                  :revision="state.revision"
-                  :reference="{ kind: 'title', clipId: selectedClip.id }"
-                  :active="active && status === 'saved'"
-                />
-                <div class="editor-divider" />
-                <div class="editor-field-pair">
-                  <label class="editor-field">
-                    {{ t("editor.clip.coverageRole") }}
-                    <select
-                      :value="selectedClip.coverage?.role ?? 'standalone'"
                       @change="
-                        setCoverageRole(
-                          ($event.target as HTMLSelectElement).value as any,
+                        editClip({
+                          type: 'speed',
+                          speed: Number(clipFields.speed),
+                        })
+                      "
+                  /></label>
+                  <div class="editor-presets">
+                    <button
+                      v-for="speed in [0.5, 0.75, 1, 1.25, 1.5, 2]"
+                      :key="speed"
+                      class="editor-button"
+                      :class="{ selected: clipFields.speed === speed }"
+                      :aria-label="
+                        t('editor.clip.speedPreset', {
+                          speed: formatNumber(speed),
+                        })
+                      "
+                      @click="editClip({ type: 'speed', speed })"
+                    >
+                      {{ formatNumber(speed) }}×
+                    </button>
+                  </div></template
+                >
+                <template v-if="controls.volume"
+                  ><label class="editor-field"
+                    >{{ t("editor.clip.volume") }} ·
+                    {{
+                      formatNumber(clipFields.volume, {
+                        style: "percent",
+                        maximumFractionDigits: 0,
+                      })
+                    }}<input
+                      v-model.number="clipFields.volume"
+                      :aria-label="t('editor.clip.volumeLabel')"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      @input="
+                        editClip({
+                          type: 'volume',
+                          volume: Number(clipFields.volume),
+                        })
+                      " /></label
+                  ><button
+                    class="editor-button"
+                    :aria-pressed="clipFields.volume === 0"
+                    @click="
+                      editClip({
+                        type: 'volume',
+                        volume: clipFields.volume === 0 ? 1 : 0,
+                      })
+                    "
+                  >
+                    {{
+                      t(
+                        clipFields.volume === 0
+                          ? "editor.clip.unmute"
+                          : "editor.clip.mute",
+                      )
+                    }}
+                  </button></template
+                >
+                <template v-if="controls.visual"
+                  ><div class="editor-divider" />
+                  <div class="editor-field-pair">
+                    <label class="editor-field"
+                      >{{ t("editor.clip.transition")
+                      }}<select
+                        :aria-label="t('editor.clip.transitionLabel')"
+                        :value="selectedClip.transition?.type ?? 'cut'"
+                        @change="transition"
+                      >
+                        <option value="cut">{{ t("editor.clip.cut") }}</option>
+                        <option value="crossfade">
+                          {{ t("editor.clip.crossfade") }}
+                        </option>
+                        <option value="dip-to-black">
+                          {{ t("editor.clip.dipToBlack") }}
+                        </option>
+                        <option value="dip-to-white">
+                          {{ t("editor.clip.dipToWhite") }}
+                        </option>
+                      </select></label
+                    ><label v-if="selectedClip.transition" class="editor-field"
+                      >{{ t("editor.clip.fadeDuration")
+                      }}<input
+                        v-model.number="clipFields.transitionDuration"
+                        :aria-label="t('editor.clip.fadeDurationLabel')"
+                        type="number"
+                        min="0.01"
+                        :max="selectedClip.timelineDuration"
+                        step="0.1"
+                        @change="
+                          editClip({
+                            type: 'transition',
+                            transition:
+                              selectedClip.transition?.type ?? 'crossfade',
+                            duration: Number(clipFields.transitionDuration),
+                          })
+                        "
+                    /></label>
+                  </div>
+                  <div v-if="selectedClip.transition" class="editor-actions">
+                    <button
+                      class="editor-button"
+                      :aria-label="t('editor.clip.microPreview')"
+                      :disabled="microPreviewBusy || historyBusy"
+                      @click="startMicroPreview"
+                    >
+                      {{ t("editor.clip.microPreview") }}
+                    </button>
+                    <button
+                      v-if="activeMicroPreview"
+                      class="editor-button secondary"
+                      :disabled="microPreviewBusy"
+                      @click="applyMicroPreview"
+                    >
+                      ✓ Apply
+                    </button>
+                    <button
+                      v-if="activeMicroPreview"
+                      class="editor-button danger"
+                      :disabled="microPreviewBusy"
+                      @click="cancelMicroPreview"
+                    >
+                      ✕ Cancel
+                    </button>
+                  </div>
+                  <div v-if="activeMicroPreview" class="editor-field">
+                    <input
+                      type="range"
+                      min="0"
+                      :max="activeMicroPreview.previewDuration"
+                      step="0.01"
+                      :value="microPreviewOffset"
+                      @input="
+                        seekMicroPreview(
+                          Number(($event.target as HTMLInputElement).value),
                         )
                       "
+                    />
+                  </div>
+                  <div class="editor-field-pair">
+                    <label class="editor-field"
+                      >{{ t("editor.clip.scale")
+                      }}<input
+                        v-model.number="clipFields.scale"
+                        :aria-label="t('editor.clip.scaleLabel')"
+                        type="number"
+                        min="0.01"
+                        step="0.1"
+                        @change="transform" /></label
+                    ><label class="editor-field"
+                      >{{ t("editor.clip.rotation")
+                      }}<input
+                        v-model.number="clipFields.rotation"
+                        :aria-label="t('editor.clip.rotationLabel')"
+                        type="number"
+                        step="1"
+                        @change="transform"
+                    /></label>
+                  </div>
+                  <div class="editor-field-pair">
+                    <label class="editor-field"
+                      >{{ t("editor.clip.x")
+                      }}<input
+                        v-model.number="clipFields.x"
+                        :aria-label="t('editor.clip.xLabel')"
+                        type="number"
+                        step="1"
+                        @change="transform" /></label
+                    ><label class="editor-field"
+                      >{{ t("editor.clip.y")
+                      }}<input
+                        v-model.number="clipFields.y"
+                        :aria-label="t('editor.clip.yLabel')"
+                        type="number"
+                        step="1"
+                        @change="transform"
+                    /></label>
+                  </div>
+                  <div class="editor-actions editor-geometry-actions">
+                    <button class="editor-button" @click="rotateSelected(-90)">
+                      ↺ −90°
+                    </button>
+                    <button class="editor-button" @click="rotateSelected(90)">
+                      ↻ +90°
+                    </button>
+                    <button
+                      class="editor-button"
+                      @click="resetSelectedTransform"
                     >
-                      <option value="standalone">
-                        {{ t("editor.clip.coverageRoleStandalone") }}
-                      </option>
-                      <option value="primary-narrative">
-                        {{ t("editor.clip.coverageRolePrimary") }}
-                      </option>
-                      <option value="b-roll-overlay">
-                        {{ t("editor.clip.coverageRoleOverlay") }}
-                      </option>
-                    </select>
-                  </label>
+                      {{ t("editor.monitor.resetTransform") }}
+                    </button>
+                  </div>
+                </template>
+                <fieldset
+                  v-if="controls.visual"
+                  class="editor-fields"
+                  :disabled="clipSourceLocked"
+                >
+                  <p v-if="clipSourceLocked" class="editor-note">
+                    {{ t("editor.clip.sourceProtected") }}
+                  </p>
+                  <PhotoPresentationInspector
+                    :clip="selectedClip"
+                    :asset="selectedAsset"
+                    :assets="state.assets"
+                    :frame="projectSettings"
+                    :allow-photo-presentation="photoPresentationAllowed"
+                    :focal-editing="focalEditing"
+                    :focal-disabled="focalBlocked"
+                    @command="command"
+                    @focus="toggleFocal"
+                  />
+                  <NativeTextFontStatus
+                    v-if="selectedClip.title"
+                    :project-id="projectId"
+                    :composition-id="compositionId"
+                    :revision="state.revision"
+                    :reference="{ kind: 'title', clipId: selectedClip.id }"
+                    :active="active && status === 'saved'"
+                  />
+                  <div class="editor-divider" />
+                  <div class="editor-field-pair">
+                    <label class="editor-field">
+                      {{ t("editor.clip.coverageRole") }}
+                      <select
+                        :value="selectedClip.coverage?.role ?? 'standalone'"
+                        @change="
+                          setCoverageRole(
+                            ($event.target as HTMLSelectElement).value as any,
+                          )
+                        "
+                      >
+                        <option value="standalone">
+                          {{ t("editor.clip.coverageRoleStandalone") }}
+                        </option>
+                        <option value="primary-narrative">
+                          {{ t("editor.clip.coverageRolePrimary") }}
+                        </option>
+                        <option value="b-roll-overlay">
+                          {{ t("editor.clip.coverageRoleOverlay") }}
+                        </option>
+                      </select>
+                    </label>
+                    <button
+                      v-if="selectedClip.coverage?.role === 'b-roll-overlay'"
+                      class="editor-button"
+                      :disabled="coverageBusy || historyBusy"
+                      @click="proposeCoverage"
+                    >
+                      {{ t("editor.clip.proposeCoverage") }}
+                    </button>
+                  </div>
+                  <div v-if="coverageProposal" class="editor-actions">
+                    <button
+                      class="editor-button"
+                      :disabled="coverageBusy"
+                      @click="applyCoverage"
+                    >
+                      {{ t("editor.clip.applyCoverage") }}
+                    </button>
+                    <button
+                      class="editor-button secondary"
+                      @click="coverageProposal = null"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </fieldset>
+              </fieldset>
+              <AudioTimingInspector
+                v-if="
+                  selectedAsset.mediaType === 'audio' ||
+                  selectedAsset.mediaType === 'video'
+                "
+                :project-id="projectId"
+                :composition-id="compositionId"
+                :revision="state.revision"
+                :composition-duration="state.composition.duration"
+                :clip="selectedClip"
+                :asset="selectedAsset"
+                :busy="
+                  historyBusy ||
+                  directionBlocked ||
+                  graphicAgentBusy ||
+                  graphicAgentPending
+                "
+                :active="active"
+                :source-version="sourceVersion"
+                :commit="commitSoundTiming"
+              />
+              <PrimaryColorInspector
+                :composition="state.composition"
+                :clip="selectedClip"
+                :assets="state.assets"
+                :project-id="projectId"
+                :revision="state.revision"
+                :clip-eligible="lookEligible"
+                :clip-protected="!!selectedClip.locked || clipSourceLocked"
+                :disabled="historyBusy || directionBlocked"
+                @command="command"
+              />
+              <FilmLookInspector
+                :composition="state.composition"
+                :clip="selectedClip"
+                :clip-eligible="lookEligible"
+                :clip-protected="!!selectedClip.locked || clipSourceLocked"
+                :disabled="historyBusy || directionBlocked"
+                @command="command"
+              />
+              <MotionGenerationPanel
+                v-if="
+                  selectedAsset.mediaType === 'image' ||
+                  selectedAsset.metadata?.['openfilm.motionGeneration']
+                "
+                :project-id="projectId"
+                :composition-id="compositionId"
+                :state="state"
+                :clip="selectedClip"
+                :asset="selectedAsset"
+                :frame="projectSettings"
+                :source-version="sourceVersion"
+                :disabled="
+                  !!selectedClip.locked ||
+                  clipSourceLocked ||
+                  !!sourceUnavailable ||
+                  historyBusy ||
+                  hasPending ||
+                  generationImportBusy
+                "
+                :flush-inputs="flushInputs"
+                @apply="applyMotion"
+              />
+              <SceneDirectionReview
+                v-if="
+                  selectedAsset.mediaType === 'image' &&
+                  photoPresentationAllowed
+                "
+                ref="directionReview"
+                :project-id="projectId"
+                :composition-id="compositionId"
+                :state="state"
+                :clip="selectedClip"
+                :frame="projectSettings"
+                :source-version="sourceVersion"
+                :disabled="
+                  !!selectedClip.locked ||
+                  clipSourceLocked ||
+                  !!sourceUnavailable ||
+                  historyBusy
+                "
+                :flush-inputs="flushInputs"
+                :reload-saved="reloadDirectionState"
+                @preview="directionPreview = $event"
+                @edited="emit('edited')"
+              />
+              <fieldset class="editor-fields">
+                <div class="editor-actions">
                   <button
-                    v-if="selectedClip.coverage?.role === 'b-roll-overlay'"
                     class="editor-button"
-                    :disabled="coverageBusy || historyBusy"
-                    @click="proposeCoverage"
+                    :disabled="continuityBusy || historyBusy"
+                    @click="analyzeContinuity"
                   >
-                    {{ t("editor.clip.proposeCoverage") }}
+                    {{ t("editor.continuity.analyze") }}
+                  </button>
+                  <button
+                    v-if="
+                      continuityProposal &&
+                      continuityProposal.diagnostics.length > 0
+                    "
+                    class="editor-button secondary"
+                    :disabled="continuityBusy"
+                    @click="applyContinuity"
+                  >
+                    {{ t("editor.continuity.apply") }}
                   </button>
                 </div>
-                <div v-if="coverageProposal" class="editor-actions">
+                <p
+                  v-if="
+                    continuityProposal &&
+                    continuityProposal.diagnostics.length === 0
+                  "
+                  class="editor-note"
+                >
+                  {{ t("editor.continuity.noIssues") }}
+                </p>
+              </fieldset>
+              <fieldset
+                class="editor-fields"
+                :disabled="
+                  !!selectedClip.locked || lockedOverlaySource || historyBusy
+                "
+              >
+                <div class="editor-divider" />
+                <div class="editor-actions">
                   <button
                     class="editor-button"
-                    :disabled="coverageBusy"
-                    @click="applyCoverage"
+                    :aria-label="t('editor.clip.earlierLabel')"
+                    :disabled="selectedIndex <= 0"
+                    @click="move(-1)"
                   >
-                    {{ t("editor.clip.applyCoverage") }}
+                    ← {{ t("editor.clip.earlier") }}</button
+                  ><button
+                    class="editor-button"
+                    :aria-label="t('editor.clip.laterLabel')"
+                    :disabled="selectedIndex >= peers.length - 1"
+                    @click="move(1)"
+                  >
+                    {{ t("editor.clip.later") }} →
                   </button>
-                  <button
-                    class="editor-button secondary"
-                    @click="coverageProposal = null"
+                </div>
+                <label class="editor-field"
+                  >{{ t("editor.clip.replaceWith")
+                  }}<select
+                    v-model="replacementId"
+                    :aria-label="t('editor.clip.replacementLabel')"
+                    :disabled="clipSourceLocked"
                   >
-                    ✕
+                    <option value="">
+                      {{ t("editor.clip.chooseReplacement") }}
+                    </option>
+                    <option
+                      v-for="asset in replacements"
+                      :key="asset.id"
+                      :value="asset.id"
+                    >
+                      {{ asset.name }}
+                    </option>
+                  </select></label
+                >
+                <div class="editor-actions">
+                  <button
+                    class="editor-button"
+                    :disabled="!replacementId || clipSourceLocked"
+                    @click="replace"
+                  >
+                    {{ t("editor.clip.replace") }}</button
+                  ><button
+                    class="editor-button danger"
+                    :disabled="clipSourceLocked"
+                    @click="deleteSelected"
+                  >
+                    {{ t("editor.clip.delete") }}
                   </button>
                 </div>
               </fieldset>
-            </fieldset>
-            <MotionGenerationPanel
-              v-if="
-                selectedAsset.mediaType === 'image' ||
-                selectedAsset.metadata?.['openfilm.motionGeneration']
-              "
-              :project-id="projectId"
-              :composition-id="compositionId"
-              :state="state"
-              :clip="selectedClip"
-              :asset="selectedAsset"
-              :frame="projectSettings"
-              :source-version="sourceVersion"
-              :disabled="
-                !!selectedClip.locked ||
-                clipSourceLocked ||
-                !!sourceUnavailable ||
-                historyBusy ||
-                hasPending ||
-                generationImportBusy
-              "
-              :flush-inputs="flushInputs"
-              @apply="applyMotion"
-            />
-            <SceneDirectionReview
-              v-if="
-                selectedAsset.mediaType === 'image' && photoPresentationAllowed
-              "
-              ref="directionReview"
-              :project-id="projectId"
-              :composition-id="compositionId"
-              :state="state"
-              :clip="selectedClip"
-              :frame="projectSettings"
-              :source-version="sourceVersion"
-              :disabled="
-                !!selectedClip.locked ||
-                clipSourceLocked ||
-                !!sourceUnavailable ||
-                historyBusy
-              "
-              :flush-inputs="flushInputs"
-              :reload-saved="reloadDirectionState"
-              @preview="directionPreview = $event"
-              @edited="emit('edited')"
-            />
-            <fieldset class="editor-fields">
-              <div class="editor-actions">
-                <button
-                  class="editor-button"
-                  :disabled="continuityBusy || historyBusy"
-                  @click="analyzeContinuity"
-                >
-                  {{ t("editor.continuity.analyze") }}
-                </button>
-                <button
-                  v-if="
-                    continuityProposal &&
-                    continuityProposal.diagnostics.length > 0
-                  "
-                  class="editor-button secondary"
-                  :disabled="continuityBusy"
-                  @click="applyContinuity"
-                >
-                  {{ t("editor.continuity.apply") }}
-                </button>
-              </div>
-              <p
-                v-if="
-                  continuityProposal &&
-                  continuityProposal.diagnostics.length === 0
-                "
-                class="editor-note"
-              >
-                {{ t("editor.continuity.noIssues") }}
-              </p>
-            </fieldset>
-            <fieldset
-              class="editor-fields"
-              :disabled="
-                !!selectedClip.locked || lockedOverlaySource || historyBusy
-              "
-            >
-              <div class="editor-divider" />
-              <div class="editor-actions">
-                <button
-                  class="editor-button"
-                  :aria-label="t('editor.clip.earlierLabel')"
-                  :disabled="selectedIndex <= 0"
-                  @click="move(-1)"
-                >
-                  ← {{ t("editor.clip.earlier") }}</button
-                ><button
-                  class="editor-button"
-                  :aria-label="t('editor.clip.laterLabel')"
-                  :disabled="selectedIndex >= peers.length - 1"
-                  @click="move(1)"
-                >
-                  {{ t("editor.clip.later") }} →
-                </button>
-              </div>
-              <label class="editor-field"
-                >{{ t("editor.clip.replaceWith")
-                }}<select
-                  v-model="replacementId"
-                  :aria-label="t('editor.clip.replacementLabel')"
-                  :disabled="clipSourceLocked"
-                >
-                  <option value="">
-                    {{ t("editor.clip.chooseReplacement") }}
-                  </option>
-                  <option
-                    v-for="asset in replacements"
-                    :key="asset.id"
-                    :value="asset.id"
-                  >
-                    {{ asset.name }}
-                  </option>
-                </select></label
-              >
-              <div class="editor-actions">
-                <button
-                  class="editor-button"
-                  :disabled="!replacementId || clipSourceLocked"
-                  @click="replace"
-                >
-                  {{ t("editor.clip.replace") }}</button
-                ><button
-                  class="editor-button danger"
-                  :disabled="clipSourceLocked"
-                  @click="deleteSelected"
-                >
-                  {{ t("editor.clip.delete") }}
-                </button>
-              </div>
-            </fieldset>
-            <details class="editor-technical-details">
-              <summary>{{ t("editor.sourceDetails") }}</summary>
-              <SourceDetails :asset="selectedAsset" compact />
-            </details>
-          </template>
-          <template v-else-if="inspector === 'sound'">
-            <button
-              class="editor-button"
-              type="button"
-              :aria-expanded="audioGenerationOpen"
-              @click="audioGenerationOpen = !audioGenerationOpen"
-            >
-              {{ t("editor.audioGeneration.title") }}
-            </button>
-            <AudioGenerationPanel
-              v-if="audioGenerationOpen"
-              :project-id="projectId"
-              :composition-id="compositionId"
-              :revision="state?.revision ?? ''"
-              :disabled="
-                hasPending ||
-                historyBusy ||
-                directionBlocked ||
-                graphicAgentBusy ||
-                graphicAgentPending
-              "
-              @import="importGeneratedAudio"
-            />
-            <SoundtrackPanel
-              :composition="state.composition"
-              :assets="state.assets"
-              :selected-clip="selectedClip"
-              :busy="historyBusy"
-              :active="active && editMode === 'story'"
-              :source-version="sourceVersion"
-              @command="command"
-              @select="
-                (clip) => {
-                  chooseClip(clip);
-                  inspector = 'sound';
-                }
-              "
-            />
-          </template>
-          <template v-else-if="inspector === 'captions'">
-            <div class="editor-inspector-title">
-              <h3>{{ t("editor.captions.inspector") }}</h3>
+              <details class="editor-technical-details">
+                <summary>{{ t("editor.sourceDetails") }}</summary>
+                <SourceDetails :asset="selectedAsset" compact />
+              </details>
+            </template>
+            <template v-else-if="inspector === 'sound'">
               <button
                 class="editor-button"
-                :disabled="historyBusy"
-                @click="addCaptionCue"
+                type="button"
+                :aria-expanded="audioGenerationOpen"
+                @click="audioGenerationOpen = !audioGenerationOpen"
               >
-                {{ t("editor.captions.addCue") }}
+                {{ t("editor.audioGeneration.title") }}
               </button>
-            </div>
-            <label v-if="captionTracks.length" class="editor-field">
-              {{ t("editor.titleFinishing.previewTrack") }}
-              <select
-                :value="
-                  captionTrackId === undefined
-                    ? '__default__'
-                    : captionTrackId === null
-                      ? '__none__'
-                      : captionTrackId
+              <AudioGenerationPanel
+                v-if="audioGenerationOpen"
+                :project-id="projectId"
+                :composition-id="compositionId"
+                :revision="state?.revision ?? ''"
+                :disabled="
+                  hasPending ||
+                  historyBusy ||
+                  directionBlocked ||
+                  graphicAgentBusy ||
+                  graphicAgentPending
                 "
-                :disabled="historyBusy"
-                data-testid="monitor-caption-track"
-                @change="
-                  emit(
-                    'captionTrack',
-                    ($event.target as HTMLSelectElement).value === '__default__'
-                      ? undefined
-                      : ($event.target as HTMLSelectElement).value ===
-                          '__none__'
-                        ? null
-                        : ($event.target as HTMLSelectElement).value,
-                  )
+                @import="importGeneratedAudio"
+              />
+              <SoundtrackPanel
+                :composition="state.composition"
+                :assets="state.assets"
+                :selected-clip="selectedClip"
+                :busy="historyBusy"
+                :active="active && editMode === 'story'"
+                :source-version="sourceVersion"
+                @command="command"
+                @select="
+                  (clip) => {
+                    chooseClip(clip);
+                    inspector = 'sound';
+                  }
                 "
-              >
-                <option value="__default__">
-                  {{ t("editor.titleFinishing.firstTrack") }}
-                </option>
-                <option value="__none__">
-                  {{ t("editor.titleFinishing.noCaptions") }}
-                </option>
-                <option
-                  v-for="track in captionTracks"
-                  :key="track.id"
-                  :value="track.id"
+              />
+            </template>
+            <template v-else-if="inspector === 'captions'">
+              <div class="editor-inspector-title">
+                <h3>{{ t("editor.captions.inspector") }}</h3>
+                <button
+                  class="editor-button"
+                  :disabled="historyBusy"
+                  @click="addCaptionCue"
                 >
-                  {{ track.name }}
-                </option>
-              </select>
-            </label>
-            <label v-if="captionTracks.length" class="editor-field">
-              {{ t("editor.captions.track") }}
-              <select
-                :value="selectedCaptionTrackId"
-                :disabled="historyBusy"
-                @change="
-                  selectCaption(
-                    captionTracks.find(
-                      (track) =>
-                        track.id === ($event.target as HTMLSelectElement).value,
-                    )!,
-                  )
-                "
-              >
-                <option
-                  v-for="track in captionTracks"
-                  :key="track.id"
-                  :value="track.id"
+                  {{ t("editor.captions.addCue") }}
+                </button>
+              </div>
+              <label v-if="captionTracks.length" class="editor-field">
+                {{ t("editor.titleFinishing.previewTrack") }}
+                <select
+                  :value="
+                    captionTrackId === undefined
+                      ? '__default__'
+                      : captionTrackId === null
+                        ? '__none__'
+                        : captionTrackId
+                  "
+                  :disabled="historyBusy"
+                  data-testid="monitor-caption-track"
+                  @change="
+                    emit(
+                      'captionTrack',
+                      ($event.target as HTMLSelectElement).value ===
+                        '__default__'
+                        ? undefined
+                        : ($event.target as HTMLSelectElement).value ===
+                            '__none__'
+                          ? null
+                          : ($event.target as HTMLSelectElement).value,
+                    )
+                  "
                 >
-                  {{ track.name }}
-                </option>
-              </select>
-            </label>
-            <template v-if="selectedCaptionTrack">
-              <div v-if="selectedCaptionCue" class="editor-fields">
-                <label v-if="!selectedCaptionCue.textRuns" class="editor-field">
-                  {{ t("editor.captions.text") }}
-                  <textarea
-                    :value="selectedCaptionCue.text"
-                    :aria-label="t('editor.captions.text')"
-                    maxlength="2000"
-                    rows="3"
+                  <option value="__default__">
+                    {{ t("editor.titleFinishing.firstTrack") }}
+                  </option>
+                  <option value="__none__">
+                    {{ t("editor.titleFinishing.noCaptions") }}
+                  </option>
+                  <option
+                    v-for="track in captionTracks"
+                    :key="track.id"
+                    :value="track.id"
+                  >
+                    {{ track.name }}
+                  </option>
+                </select>
+              </label>
+              <label v-if="captionTracks.length" class="editor-field">
+                {{ t("editor.captions.track") }}
+                <select
+                  :value="selectedCaptionTrackId"
+                  :disabled="historyBusy"
+                  @change="
+                    selectCaption(
+                      captionTracks.find(
+                        (track) =>
+                          track.id ===
+                          ($event.target as HTMLSelectElement).value,
+                      )!,
+                    )
+                  "
+                >
+                  <option
+                    v-for="track in captionTracks"
+                    :key="track.id"
+                    :value="track.id"
+                  >
+                    {{ track.name }}
+                  </option>
+                </select>
+              </label>
+              <template v-if="selectedCaptionTrack">
+                <div v-if="selectedCaptionCue" class="editor-fields">
+                  <label
+                    v-if="!selectedCaptionCue.textRuns"
+                    class="editor-field"
+                  >
+                    {{ t("editor.captions.text") }}
+                    <textarea
+                      :value="captionTextDraft"
+                      :aria-label="t('editor.captions.text')"
+                      maxlength="2000"
+                      rows="3"
+                      :disabled="historyBusy"
+                      data-testid="caption-text"
+                      @input="draftCaptionText"
+                      @change="commitCaptionTextDraft"
+                    />
+                  </label>
+                  <BilingualTextControls
+                    :key="selectedCaptionCue.id"
+                    :text="selectedCaptionCue.text"
+                    :runs="selectedCaptionCue.textRuns"
+                    :style="selectedCaptionTrack.style"
+                    :frame="projectSettings"
                     :disabled="historyBusy"
-                    data-testid="caption-text"
                     @change="
                       updateCaptionCue({
-                        text: ($event.target as HTMLTextAreaElement).value,
+                        text: $event.text,
+                        textRuns: $event.runs,
                       })
                     "
                   />
-                </label>
-                <BilingualTextControls
-                  :key="selectedCaptionCue.id"
-                  :text="selectedCaptionCue.text"
-                  :runs="selectedCaptionCue.textRuns"
+                  <NativeTextFontStatus
+                    :project-id="projectId"
+                    :composition-id="compositionId"
+                    :revision="state.revision"
+                    :reference="{
+                      kind: 'caption',
+                      trackId: selectedCaptionTrack.id,
+                      cueId: selectedCaptionCue.id,
+                    }"
+                    :active="active && status === 'saved'"
+                  />
+                  <div class="editor-field-pair">
+                    <label class="editor-field">
+                      {{ t("editor.captions.startMs") }}
+                      <input
+                        :value="
+                          captionTimingValue(
+                            'startMs',
+                            selectedCaptionCue.startMs,
+                          )
+                        "
+                        type="number"
+                        min="0"
+                        :max="selectedCaptionCue.endMs - 1"
+                        step="1"
+                        :disabled="historyBusy"
+                        data-testid="caption-start"
+                        @focus="beginCaptionTimingDraft"
+                        @input="captureCaptionTimingDraft('startMs', $event)"
+                        @change="commitCaptionTimingDraft('startMs', $event)"
+                        @blur="clearCaptionTimingDraft"
+                      />
+                    </label>
+                    <label class="editor-field">
+                      {{ t("editor.captions.endMs") }}
+                      <input
+                        :value="
+                          captionTimingValue('endMs', selectedCaptionCue.endMs)
+                        "
+                        type="number"
+                        :min="selectedCaptionCue.startMs + 1"
+                        :max="Math.round(captionDuration * 1000)"
+                        step="1"
+                        :disabled="historyBusy"
+                        data-testid="caption-end"
+                        @focus="beginCaptionTimingDraft"
+                        @input="captureCaptionTimingDraft('endMs', $event)"
+                        @change="commitCaptionTimingDraft('endMs', $event)"
+                        @blur="clearCaptionTimingDraft"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    class="editor-button"
+                    :disabled="historyBusy"
+                    @click="
+                      locateCaption(selectedCaptionTrack, selectedCaptionCue.id)
+                    "
+                  >
+                    {{ t("editor.captions.locate") }}
+                  </button>
+                  <button
+                    class="editor-button danger"
+                    :disabled="historyBusy"
+                    @click="deleteCaptionCue"
+                  >
+                    {{ t("editor.captions.deleteCue") }}
+                  </button>
+                </div>
+                <fieldset class="editor-fields" :disabled="historyBusy">
+                  <legend>{{ t("editor.captions.style") }}</legend>
+                  <label class="editor-field">
+                    {{ t("editor.captions.font") }}
+                    <input
+                      :value="
+                        selectedCaptionTrack.style.fontFamily ??
+                        'Noto Sans CJK TC'
+                      "
+                      :aria-label="t('editor.captions.font')"
+                      type="text"
+                      maxlength="120"
+                      data-testid="caption-font"
+                      @change="updateCaptionStyle('fontFamily', $event)"
+                    />
+                  </label>
+                  <label class="editor-field">
+                    {{ t("editor.captions.fontSize") }}
+                    <input
+                      v-model.number="captionFontSize"
+                      :aria-label="t('editor.captions.fontSize')"
+                      type="number"
+                      min="8"
+                      max="240"
+                      step="1"
+                      data-testid="caption-font-size"
+                      @change="updateCaptionStyle('fontSize', $event)"
+                    />
+                  </label>
+                  <fieldset
+                    class="editor-caption-safe-area"
+                    :disabled="historyBusy"
+                  >
+                    <legend>{{ t("editor.captions.safeArea") }}</legend>
+                    <label
+                      v-for="side in [
+                        'left',
+                        'right',
+                        'top',
+                        'bottom',
+                      ] as const"
+                      :key="side"
+                      class="editor-field"
+                    >
+                      {{ t(`editor.captions.${side}`) }}
+                      <input
+                        v-model.number="captionSafeArea[side]"
+                        type="number"
+                        min="0"
+                        max="30"
+                        step="1"
+                        :data-testid="`caption-safe-${side}`"
+                        :aria-label="t(`editor.captions.${side}`)"
+                        @change="updateCaptionSafeArea(side, $event)"
+                      />
+                    </label>
+                  </fieldset>
+                </fieldset>
+                <TitleFinishingControls
                   :style="selectedCaptionTrack.style"
-                  :frame="projectSettings"
                   :disabled="historyBusy"
                   @change="
-                    updateCaptionCue({
-                      text: $event.text,
-                      textRuns: $event.runs,
+                    command({
+                      type: 'caption.track.style',
+                      trackId: selectedCaptionTrack.id,
+                      style: $event,
                     })
                   "
                 />
-                <NativeTextFontStatus
-                  :project-id="projectId"
-                  :composition-id="compositionId"
-                  :revision="state.revision"
-                  :reference="{
-                    kind: 'caption',
-                    trackId: selectedCaptionTrack.id,
-                    cueId: selectedCaptionCue.id,
-                  }"
-                  :active="active && status === 'saved'"
-                />
-                <div class="editor-field-pair">
-                  <label class="editor-field">
-                    {{ t("editor.captions.startMs") }}
-                    <input
-                      :value="
-                        captionTimingValue(
-                          'startMs',
-                          selectedCaptionCue.startMs,
-                        )
-                      "
-                      type="number"
-                      min="0"
-                      :max="selectedCaptionCue.endMs - 1"
-                      step="1"
-                      :disabled="historyBusy"
-                      data-testid="caption-start"
-                      @focus="beginCaptionTimingDraft"
-                      @input="captureCaptionTimingDraft('startMs', $event)"
-                      @change="commitCaptionTimingDraft('startMs', $event)"
-                      @blur="clearCaptionTimingDraft"
-                    />
-                  </label>
-                  <label class="editor-field">
-                    {{ t("editor.captions.endMs") }}
-                    <input
-                      :value="
-                        captionTimingValue('endMs', selectedCaptionCue.endMs)
-                      "
-                      type="number"
-                      :min="selectedCaptionCue.startMs + 1"
-                      :max="Math.round(captionDuration * 1000)"
-                      step="1"
-                      :disabled="historyBusy"
-                      data-testid="caption-end"
-                      @focus="beginCaptionTimingDraft"
-                      @input="captureCaptionTimingDraft('endMs', $event)"
-                      @change="commitCaptionTimingDraft('endMs', $event)"
-                      @blur="clearCaptionTimingDraft"
-                    />
-                  </label>
-                </div>
-                <button
-                  class="editor-button"
-                  :disabled="historyBusy"
-                  @click="
-                    locateCaption(selectedCaptionTrack, selectedCaptionCue.id)
-                  "
-                >
-                  {{ t("editor.captions.locate") }}
-                </button>
-                <button
-                  class="editor-button danger"
-                  :disabled="historyBusy"
-                  @click="deleteCaptionCue"
-                >
-                  {{ t("editor.captions.deleteCue") }}
-                </button>
+                <p v-if="!selectedCaptionCue" class="editor-note">
+                  {{ t("editor.captions.chooseCue") }}
+                </p>
+                <p class="editor-note">
+                  {{ t("editor.captions.manualReview") }}
+                </p>
+              </template>
+              <p v-else class="editor-note">{{ t("editor.captions.empty") }}</p>
+            </template>
+            <template v-else-if="inspector === 'beat' && selectedBeat"
+              ><div class="editor-inspector-title">
+                <h3>{{ selectedBeat.title }}</h3>
               </div>
               <fieldset class="editor-fields" :disabled="historyBusy">
-                <legend>{{ t("editor.captions.style") }}</legend>
-                <label class="editor-field">
-                  {{ t("editor.captions.font") }}
-                  <input
-                    :value="
-                      selectedCaptionTrack.style.fontFamily ??
-                      'Noto Sans CJK TC'
-                    "
-                    :aria-label="t('editor.captions.font')"
-                    type="text"
-                    maxlength="120"
-                    data-testid="caption-font"
-                    @change="updateCaptionStyle('fontFamily', $event)"
-                  />
-                </label>
-                <label class="editor-field">
-                  {{ t("editor.captions.fontSize") }}
-                  <input
-                    v-model.number="captionFontSize"
-                    :aria-label="t('editor.captions.fontSize')"
-                    type="number"
-                    min="8"
-                    max="240"
-                    step="1"
-                    data-testid="caption-font-size"
-                    @change="updateCaptionStyle('fontSize', $event)"
-                  />
-                </label>
-                <fieldset
-                  class="editor-caption-safe-area"
-                  :disabled="historyBusy"
-                >
-                  <legend>{{ t("editor.captions.safeArea") }}</legend>
-                  <label
-                    v-for="side in ['left', 'right', 'top', 'bottom'] as const"
-                    :key="side"
-                    class="editor-field"
-                  >
-                    {{ t(`editor.captions.${side}`) }}
-                    <input
-                      v-model.number="captionSafeArea[side]"
-                      type="number"
-                      min="0"
-                      max="30"
-                      step="1"
-                      :data-testid="`caption-safe-${side}`"
-                      :aria-label="t(`editor.captions.${side}`)"
-                      @change="updateCaptionSafeArea(side, $event)"
-                    />
-                  </label>
-                </fieldset>
-              </fieldset>
-              <TitleFinishingControls
-                :style="selectedCaptionTrack.style"
-                :disabled="historyBusy"
-                @change="
-                  command({
-                    type: 'caption.track.style',
-                    trackId: selectedCaptionTrack.id,
-                    style: $event,
-                  })
-                "
-              />
-              <p v-if="!selectedCaptionCue" class="editor-note">
-                {{ t("editor.captions.chooseCue") }}
-              </p>
-              <p class="editor-note">{{ t("editor.captions.manualReview") }}</p>
-            </template>
-            <p v-else class="editor-note">{{ t("editor.captions.empty") }}</p>
-          </template>
-          <template v-else-if="inspector === 'beat' && selectedBeat"
-            ><div class="editor-inspector-title">
-              <h3>{{ selectedBeat.title }}</h3>
-            </div>
-            <fieldset class="editor-fields" :disabled="historyBusy">
-              <label class="editor-field"
-                >{{ t("editor.beats.name")
-                }}<input
-                  v-model="beatFields.title"
-                  :aria-label="t('editor.beats.nameLabel')"
-                  @change="editBeat" /></label
-              ><label class="editor-field"
-                >{{ t("editor.beats.intent")
-                }}<textarea
-                  v-model="beatFields.intent"
-                  :aria-label="t('editor.beats.intentLabel')"
-                  rows="3"
-                  @change="editBeat"
-                /></label
-              ><label class="editor-field"
-                >{{ t("editor.beats.target")
-                }}<input
-                  v-model.number="beatFields.targetDuration"
-                  :aria-label="t('editor.beats.targetLabel')"
-                  type="number"
-                  min="0.01"
-                  step="0.1"
-                  @change="editBeat"
-              /></label>
-              <div class="editor-field-pair">
                 <label class="editor-field"
-                  >{{ t("editor.beats.minimum")
+                  >{{ t("editor.beats.name")
                   }}<input
-                    v-model.number="beatFields.minDuration"
-                    :aria-label="t('editor.beats.minimumLabel')"
-                    type="number"
-                    min="0"
-                    step="0.1"
+                    v-model="beatFields.title"
+                    :aria-label="t('editor.beats.nameLabel')"
                     @change="editBeat" /></label
                 ><label class="editor-field"
-                  >{{ t("editor.beats.maximum")
+                  >{{ t("editor.beats.intent")
+                  }}<textarea
+                    v-model="beatFields.intent"
+                    :aria-label="t('editor.beats.intentLabel')"
+                    rows="3"
+                    @change="editBeat"
+                  /></label
+                ><label class="editor-field"
+                  >{{ t("editor.beats.target")
                   }}<input
-                    v-model.number="beatFields.maxDuration"
-                    :aria-label="t('editor.beats.maximumLabel')"
+                    v-model.number="beatFields.targetDuration"
+                    :aria-label="t('editor.beats.targetLabel')"
                     type="number"
                     min="0.01"
                     step="0.1"
                     @change="editBeat"
                 /></label>
-              </div>
-              <div class="editor-divider" />
-              <h3>{{ t("editor.rhythm.title") }}</h3>
-              <p class="editor-note">{{ t("editor.rhythm.scope") }}</p>
-              <div class="editor-presets">
-                <button
-                  v-for="action in regenerateModes"
-                  :key="action.mode"
-                  class="editor-button"
-                  @click="
-                    command({
-                      type: 'regenerate-beat',
-                      beatId: selectedBeat.id,
-                      mode: action.mode,
-                    })
-                  "
-                >
-                  {{ t(action.label) }}
-                </button>
-              </div>
-            </fieldset></template
-          >
-          <p v-else class="editor-note">
-            {{
-              t(
-                inspector === "beat"
-                  ? "editor.beats.choose"
-                  : "editor.clip.choose",
-              )
-            }}
-          </p>
+                <div class="editor-field-pair">
+                  <label class="editor-field"
+                    >{{ t("editor.beats.minimum")
+                    }}<input
+                      v-model.number="beatFields.minDuration"
+                      :aria-label="t('editor.beats.minimumLabel')"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      @change="editBeat" /></label
+                  ><label class="editor-field"
+                    >{{ t("editor.beats.maximum")
+                    }}<input
+                      v-model.number="beatFields.maxDuration"
+                      :aria-label="t('editor.beats.maximumLabel')"
+                      type="number"
+                      min="0.01"
+                      step="0.1"
+                      @change="editBeat"
+                  /></label>
+                </div>
+                <div class="editor-divider" />
+                <h3>{{ t("editor.rhythm.title") }}</h3>
+                <p class="editor-note">{{ t("editor.rhythm.scope") }}</p>
+                <div class="editor-presets">
+                  <button
+                    v-for="action in regenerateModes"
+                    :key="action.mode"
+                    class="editor-button"
+                    @click="
+                      command({
+                        type: 'regenerate-beat',
+                        beatId: selectedBeat.id,
+                        mode: action.mode,
+                      })
+                    "
+                  >
+                    {{ t(action.label) }}
+                  </button>
+                </div>
+              </fieldset></template
+            >
+            <p v-else class="editor-note">
+              {{
+                t(
+                  inspector === "beat"
+                    ? "editor.beats.choose"
+                    : "editor.clip.choose",
+                )
+              }}
+            </p>
+          </div>
         </aside>
       </div>
       <footer

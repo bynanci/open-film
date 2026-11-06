@@ -7,8 +7,8 @@ substantial change, and check existing issues or pull requests to avoid duplicat
 work.
 
 Status reviewed against
-[`main`](https://github.com/bynanci/open-film/commit/1bafb5cd4532ce9f9a171499abc8631e4863d1ee)
-on 2026-11-05. The latest published source release remains **v0.4.0**.
+[`main`](https://github.com/bynanci/open-film/commit/d332fb3265077ca08f218f6ba9b6c65d2519eaa2)
+on 2026-11-06. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -17,6 +17,28 @@ on 2026-11-05. The latest published source release remains **v0.4.0**.
   history remain easy to follow.
 
 ## Editing and story workflow
+
+### Tobi-ishi workspace and control panels (2026-11-06 candidate)
+
+- [x] Share local color, typography, original angular backing planes and lighting
+      without clipping media, text, hit areas or keyboard focus.
+- [x] Keep one progress route in General mode; retain Pipeline review/recovery
+      in the compact bar and complete navigation in its drawer and Expert dock.
+- [x] Provide keyboard Inspector tabs and a device-local collapse preference;
+      put essential timing, speed and volume before styling tools.
+- [x] Disclose script/direction tools without unmounting authored drafts or review;
+      expose Import, Fit review, Preview and Relink through guarded quick actions.
+- [x] Validate content-sized whitespace, paired Storyboard media/text, independent
+      transcript scrolling and readable selected states with browser regressions.
+- [x] Execute local regression gates and record full-run failures, corrected
+      reruns and native dependency limits without treating reruns as a green CI run.
+- [ ] Obtain hosted exact-head CI before merging. Real workstation and NLE checks
+      remain separate.
+
+See the [design system](docs/design-system.md),
+[layout rationale](docs/layout-refinement.md) and
+[shared-surface decision](docs/adr/tobiishi-surfaces.md) and
+[dated validation](docs/validation-tobiishi-control-panels-2026-11-06.md).
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 

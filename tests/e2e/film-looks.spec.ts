@@ -568,7 +568,7 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
     if (locale !== "en-XA") await navigate(page, "export", locale);
     else await page.locator(".main-nav button").nth(3).click();
     const mode = page.locator(".export-look-options select").first();
-    const action = page.locator(".export-destination > .primary");
+    const action = page.locator(".export-options > .primary");
     for (const outputMode of ["preserve", "unify"]) {
       await mode.selectOption(outputMode);
       if (outputMode === "unify") {

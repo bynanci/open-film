@@ -5,6 +5,7 @@ export default {
     card: {
       lockedState: "已鎖定",
       favoriteState: "最愛",
+      rejectedState: "已排除",
       inspect: "檢視 {name}",
       select: "選取 {name}",
       remove: "取消選取 {name}",
@@ -172,6 +173,18 @@ export default {
       warnings: "匯出注意事項",
       warningSummary: "有 {count} 個項目需要確認。",
       technical: "匯出技術詳細資料",
+      technicalDetails: "查看原始相容性說明",
+      warningUserPins:
+        "目標剪輯軟體不會套用 OpenFilm 的固定選擇。匯入後請重新確認這些素材。",
+      warningGraphicScenes:
+        "動態圖像需要在目標剪輯軟體中重建；匯出 MP4 可保留完成後的畫面。",
+      warningTrack:
+        "OTIO 會保留標題與疊加軌道的 OpenFilm 中繼資料。目標剪輯軟體可能不會顯示或還原其外觀與時間，請手動重建。",
+      warningSpeed: "速度調整需要在目標剪輯軟體中手動設定。",
+      warningDiptych:
+        "匯出剪輯只包含主要照片。請在目標剪輯軟體中將第二張照片加入其他圖層。",
+      warningClipEdits:
+        "此片段的部分編輯以 OpenFilm 資料保存，請在目標剪輯軟體中重建。",
     },
     compatibility: {
       parserChecked: "已檢查檔案格式",

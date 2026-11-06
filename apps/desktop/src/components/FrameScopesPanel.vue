@@ -263,21 +263,27 @@ watch(
 .frame-scopes-panel {
   display: grid;
   flex: none;
-  gap: 0.65rem;
+  gap: var(--of-space-3);
   width: min(100%, 52rem);
   max-height: 34rem;
-  margin: 0.5rem auto;
-  padding: 0.75rem;
+  margin: var(--of-space-2) auto;
+  padding: var(--of-space-4);
   overflow: auto;
-  border: 1px solid var(--editor-border);
-  border-radius: 0.5rem;
-  background: var(--editor-panel);
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-1);
+  box-shadow: var(--of-shadow-raised);
+  transition: box-shadow var(--of-motion-normal) var(--of-motion-ease);
 }
 .frame-scopes-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--of-space-3);
+}
+.frame-scopes-header strong {
+  font-size: var(--of-font-base);
+  line-height: var(--of-line-heading);
 }
 .frame-scopes-boundary,
 .frame-scopes-meta {
@@ -285,24 +291,26 @@ watch(
   color: var(--editor-muted);
   font-size: var(--of-font-caption);
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .frame-scopes-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
-  gap: 0.65rem;
+  gap: var(--of-space-3);
 }
 .frame-scopes-grid figure {
   display: grid;
-  gap: 0.35rem;
+  gap: var(--of-space-2);
   min-width: 0;
   margin: 0;
-  padding: 0.5rem;
-  border: 1px solid var(--editor-border);
-  border-radius: 0.35rem;
-  background: #0b1018;
+  padding: var(--of-space-3);
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background: var(--of-player);
+  box-shadow: var(--of-shadow-soft);
 }
 .frame-scopes-grid figcaption {
-  color: var(--editor-text);
+  color: var(--of-on-media);
   font-size: var(--of-font-caption);
 }
 .frame-scopes-grid canvas {

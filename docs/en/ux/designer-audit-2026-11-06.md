@@ -1,0 +1,216 @@
+# OpenFilm 設計師體驗與開發交付紀錄
+
+日期：2026-11-06。受測來源：`7af68bef427e1b0213825325e5edc8593e7f7290`。
+
+本文件是設計專家檢視與瀏覽器任務驗證，不是招募受試者的可用性研究。
+既有完整回歸與截圖見 [控制面板驗證](../validation-tobiishi-control-panels-2026-11-06.md)。
+本次另外重跑 Story 與控制面板任務：11 項通過（47.0 秒）；其他功能以下明列證據與待驗證範圍。
+「建議」不代表已重現 correctness bug。未操作的實機功能不標完成。
+
+## 檢視方法與交付方式
+
+每個任務依序檢視：入口是否找得到、目前狀態是否可理解、主要動作是否突出、
+結果是否可預期、錯誤後能否恢復、是否可用鍵盤完成。保留飛石視覺，操作區採穩定矩形。
+P1 是阻擋任務或資料風險；P2 是明顯摩擦；P3 是細節精修。以下建議尚未等同已確認的 P1 bug。
+
+開發人員可將下表每個 ID 作為獨立 issue。先重現、附截圖／錄影，再實作；不要先全面改版。
+每項完成需附修改前後證據、鍵盤測試、三語系與小桌面驗收。不要改動既有存檔／審閱護欄。
+本文件已放在專案內交付；沒有對外傳送訊息或宣稱 GitHub issue 已建立。
+
+## 逐項問題與建議
+
+| ID／優先 | 任務與證據類型                      | 問題／操作摩擦                                               | 開發建議                                                                     | 驗收方式                                                    |
+| -------- | ----------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| UX-01 P2 | 首次開啟；既有 welcome 截圖／測試   | 原始碼啟動與一般人的「開啟影片工具」仍有距離；待新手驗證     | Welcome 提供可略過的三步示例入口，說明專案存放與原始素材關係                 | 陌生使用者不讀文件完成建立與加入素材；記錄需要提示的位置    |
+| UX-02 P2 | 建立故事；本次重跑                  | 名稱、影片類型、目標與上限容易被當成技術設定；設計建議       | 以範例時長與一句用途解釋，Advanced 才放進階參數；保留自訂                    | 三語系可建立自訂時長；不得將五分鐘寫死                      |
+| UX-03 P2 | Library；實際截圖                   | 小素材集右側空間大，掃視焦點較分散；視覺觀察                 | 依可用寬度調整媒體欄與 Inspector，保留一致縮圖比例；不要把三張圖放大填滿整頁 | 3／50／500 素材下檢查密度；選取不造成整頁位移               |
+| UX-04 P2 | Import／Activity；既有回歸          | 完成、待整理、需要注意的訊息可能分散在不同區域；待任務驗證   | 匯入完成提供單一摘要與「整理回憶」下一步，背景工作保留細節入口               | 混合素材匯入、部分失敗與取消都能知道下一步                  |
+| UX-05 P2 | Library 篩選；本次重跑空搜尋        | 使用者可能忘記篩選造成空清單                                 | 保留現有重設入口，增加目前生效條件摘要；不新增重複工具列                     | 搜尋＋媒體類型＋狀態組合可一次清除，焦點保留                |
+| UX-06 P2 | Story 三種視圖；本次重跑            | Outline／Graph／Storyboard 的不同用途需自行推斷              | 在首次切換提供可關閉的一句用途說明；記住選擇                                 | 切換不丟草稿、不改故事順序；鍵盤選取／焦點一致              |
+| UX-07 P2 | Storyboard；實際截圖                | 短內容卡片中標題與時間之間仍有較大留白；視覺觀察             | 將 intent 摘要放入文字欄，無內容時採較緊湊資訊組；媒體多時才擴張             | 無 intent、長敘述、1／8 個素材皆可讀；選取不改卡片寬度      |
+| UX-08 P2 | 腳本／場景；本次重跑                | 收合雖減少噪音，也降低建議功能可發現性                       | summary 顯示「已有腳本／待審閱 N」，保留 review owner 掛載                   | 收合後待審閱可辨識；切換故事不能遺失文字或錯套建議          |
+| UX-09 P2 | Edit 模式；本次重跑                 | Story／Precision／Transcript 與右側 Inspector 是兩套切換層級 | 模式標籤附短用途說明，Inspector 顯示目前物件名稱與類型                       | 不同模式仍指向同一 clip；不要只靠顏色表示目前模式           |
+| UX-10 P2 | Inspector；本次鍵盤測試             | 六個分類在雙欄排列時，左右鍵循序不一定符合視覺預期           | 評估單列可捲動分類或清楚的循序配置；保留現有 roving tabindex                 | Left／Right／Home／End 與可見焦點一致，小窗不截斷           |
+| UX-11 P2 | 調色／模板；原始碼與既有測試        | 片段調整與輸出統一風格是不同層級，可能混淆                   | 清楚標示「此片段」「整部影片輸出」，顯示覆寫來源與恢復動作                   | 切換統一輸出不覆蓋片段設定；取消預覽可還原                  |
+| UX-12 P2 | Fit to Duration；本次重跑           | 即使建議可審閱，使用者仍需理解目標與最大長度差異             | 以目前／目標／上限與預期縮短總量並列；逐項前後預覽                           | Skip 不存檔；Apply 根據最新狀態重算；鎖定片段不動           |
+| UX-13 P2 | Precision；既有場景／波形回歸       | Scene／Word／Marker 吸附來源較專業                           | 提供預設「吸附重要位置」，展開才調個別來源；顯示本次吸附理由                 | 鍵盤修剪、關閉吸附、過期 word alignment 都有明確行為        |
+| UX-14 P2 | Transcript；既有長文回歸            | 四行摘要保護版面，但被省略的內容不夠明顯                     | 顯示「展開／編輯全文」提示與搜尋命中定位，避免誤認內容被刪除                 | 4096 字仍完整保存；搜尋可到摘要之外；播放器不遮擋操作       |
+| UX-15 P2 | Glossary／Suggestions；既有回歸     | 校正、記住詞彙、接受建議的效力範圍需解釋                     | 動作旁標明專案／全域；接受後給可撤銷回饋，顯示 stale 原因                    | 離線仍可用；過期建議不能套用；接受不改音訊／Composition     |
+| UX-16 P2 | 音訊；既有音質／生成回歸            | 原音、音樂、淡入淡出、ducking 與品質檢查的入口分散           | 以「聽什麼／調整什麼」分組，提供固定原音／結果試聽；不要假裝可直接主觀評分   | 真耳機與喇叭聆聽、停止／切換素材不殘留播放；保留審閱採用    |
+| UX-17 P2 | 字幕／Graphics；既有回歸            | 樣式、安全距離、淡出與內容修改混合時容易失焦                 | 分內容、位置、外觀三組；安全區即時預覽並顯示輸出影響範圍                     | 明暗圖片與直橫式均可讀，Preview／MP4 一致；含 CJK 長字串    |
+| UX-18 P2 | Export；原始碼／既有截圖            | 裁切、品質、字幕與統一濾鏡會累積成長表單                     | 在主要輸出動作前提供摘要：解析度、比例、字幕、風格、時長與目的地             | 1080p／直式／覆寫風格／素材離線情境可預期，費時操作顯示進度 |
+| UX-19 P2 | NLE／Collect；既有測試              | 一般人不易理解交付檔案與真正已驗證能力的差別                 | 沿用目的導向出口；將必要人工重建與缺素材警告放在確認前                       | 真 Resolve 手動匯入另立證據；不可用檔案存在宣稱相容         |
+| UX-20 P2 | Missing Media／Recovery；既有回歸   | 錯誤、待儲存、衝突、離線的恢復動作易混淆                     | 先說明編輯是否安全，再給單一建議動作；技術細節收合                           | 拔碟／重連／錯檔／儲存失敗各自驗證；不能靜默丟草稿          |
+| UX-21 P3 | Settings／General／Expert；本次重跑 | 模式切換帶來入口位置變化，需要重新尋找                       | 說明模式只影響工具呈現；記住面板並保留核心動作位置                           | 切換不觸發 production、不改資料，焦點回到合理入口           |
+| UX-22 P2 | 全域鍵盤／縮放；部分已驗證          | 瀏覽器可用不代表 Windows IME、高 DPI、讀屏皆可用             | 建立實機鍵盤與 125／150／200% 縮放 QA；表單輸入不得吃快捷鍵                  | Space、Delete、Undo 與中文／日文輸入法、讀屏實測記錄        |
+
+## 功能覆蓋與後續實際體驗清單
+
+| 功能群                                                | 本次證據                             | 尚需補的體驗                                         |
+| ----------------------------------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| Library、Story、控制面板、快速操作                    | 本次瀏覽器重跑＋實際工作區截圖       | 陌生使用者第一次完成流程                             |
+| 修剪、重排、速度、音量、轉場、鎖定、Undo、Save/Reopen | 上一輪實際瀏覽器回歸，非本次全部重跑 | 真實長片連續操作                                     |
+| 波形、逐字稿、詞彙、審閱、場景吸附                    | 既有自動化與原始碼檢視               | 真語音品質與大型逐字稿人工操作                       |
+| 配樂、音質檢查、照片動態、字幕、Graphics、濾鏡        | 既有專屬回歸與原始碼檢視             | 私人素材經授權後的真實觀看／聆聽                     |
+| MP4、NLE、Collect、Relink、復原                       | 既有回歸與原始碼檢視                 | Windows 硬碟重新連結、Resolve 實機                   |
+| 原生開啟、長時間記憶體、Pixel／Insta360、遠端供應商   | 尚未實機體驗                         | 依既有 workstation QA 執行；遠端服務需合法設定與同意 |
+
+## 建議開發順序
+
+1. 先做 UX-09／10／18：模式與 Inspector 方向感、輸出前摘要；同一條剪輯到輸出任務可驗收。
+2. 接續 UX-04／08／20：明確完成狀態、待審閱提示、離線與恢復的單一下一步。
+3. 再做媒體與聲音的實際觀看／聆聽，以及陌生使用者任務測試。
+
+## 開發優化進度
+
+| ID    | 狀態   | 已落實                                                                                                           | 尚待驗收                                         |
+| ----- | ------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| UX-09 | 已實作 | Story／Precision／Transcript 切換附用途說明；Inspector 顯示目前素材名稱與類型                                    | 瀏覽器視覺檢查及三語系人工確認                   |
+| UX-10 | 已實作 | Inspector 分類改為單列橫向捲動，保留左右鍵與 roving tabindex                                                     | 小視窗鍵盤操作與焦點可見性人工確認               |
+| UX-18 | 已實作 | MP4 與可編輯時間軸主要動作前顯示長度、輸出畫面、比例、字幕、風格與目的地摘要                                     | 1080p／直式／素材離線的瀏覽器預檢                |
+| UX-04 | 已實作 | 匯入工作從觀察到完成／失敗／取消時，在媒體庫顯示摘要、素材庫分類數、錯誤細節及單一下一步；狀態在素材刷新後才發布 | 混合素材部分失敗與取消情境的瀏覽器實測           |
+| UX-08 | 已實作 | 收合的腳本工具摘要顯示已有腳本筆記與待審閱建議數，不卸載建議元件                                                 | 三語系長字串與更換場景後的瀏覽器實測             |
+| UX-20 | 已實作 | 媒體庫離線狀態提供「尋找離線素材」入口；儲存衝突分別說明草稿保留或無草稿，主要復原動作依狀態突出                 | 實際拔碟／重連、錯誤素材、儲存失敗與衝突復原驗收 |
+
+本輪 `pnpm format:check`、`pnpm lint`、`pnpm typecheck` 與 Desktop build 已通過。回歸測試套件及人工視覺／瀏覽器任務尚未執行；不以靜態檢查或建置取代操作驗證。
+
+不把整份清單一次重寫。每輪選一個任務，交付可運作的改善與回歸證據，再繼續下一個。
+
+## PR #119 後續挑戰迴圈 — 2026-11-06
+
+| 挑戰問題                                                                                      | 修改                                                                                                                                                | 可重現證據                                                                                                                             |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 首次使用快速操作開啟延遲載入的匯入面板時，焦點可能先落在主畫面，面板載入後也不會轉移          | 等待面板 mounted 並確認專案仍相同後聚焦；等候逾時或專案切換時回退到主工作區，避免焦點流程永久卡住                                                   | Playwright 延遲 350ms 載入測試；繁中建立、匯入、編輯、渲染、輸出與重開完整流程                                                         |
+| 同一次匯入的失敗數量同時出現在 Activity 與完成摘要，下一步不明確                              | 媒體庫已有該工作完成摘要時隱藏重複錯誤計數，詳細錯誤仍由摘要展開查看                                                                                | Desktop 部分失敗匯入流程                                                                                                               |
+| 1101–1200px 側欄縮成圖示寬度，但仍套用完整導覽標籤，文字會擠壓                                | 保留 168px 標籤側欄至 1101px；緊湊圖示樣式與寬度在 1100px 同時切換                                                                                  | 1200、1101、1100px viewport breakpoint 測試                                                                                            |
+| 變體比較彈窗在淺色主題沿用深色卡片，對比不足；`open` 也可能被缺省的 `show=false` 遮蔽         | 修正可見狀態與首次載入；子卡片使用主題 token；補上 dialog 標題關聯、初始／循環焦點、欄位內 Escape 關閉及關閉後焦點復原，並保留輸入法組字時的 Escape | Light／dark 對比 ≥ 4.5:1；1280×720 與 1024×720 截圖及邊界量測；鍵盤與 IME 組字瀏覽器測試                                               |
+| 舊 E2E 依賴已移除的編輯標題、舊 grid 樣式及唯一「加入素材」按鈕                               | 測試改驗證目前的 Composition timeline 區域、單列 Inspector 與兩個有效入口                                                                           | 16 項相關 Playwright 流程通過                                                                                                          |
+| 720px 高度下，播放器列被壓縮，照片堆疊也可能蓋住 44px 右下縮放把手                            | 小桌面工具列改為單列；監看區保底 360px 並優先取得垂直空間；變形控制提升至照片層上方；預覽指引仍提供讀屏描述與 hover 說明                            | 1024×720 四角完整 hit-test；桌面縮放、取消、Undo／Redo／重開；實際檢視工作區截圖                                                       |
+| 1024px 編輯列把模式用途說明截成省略號，佔用工具列空間且文字不完整                             | 緊湊版將說明移出視覺排版，仍保留讀屏描述與按鈕提示；寬版維持可見說明                                                                                | en-US 核心畫面 Playwright 通過；1280×720 與 1024×768 檢查；ARIA 描述仍連到完整文字                                                     |
+| Frame Scopes 在預設淺色主題將亮色圖表放上深底，卻沿用深色文字，對比只有約 1.34:1              | 圖表標題改用專為深色媒體表面設計的亮色 token                                                                                                        | Playwright 量測四個圖表標題；淺／深主題皆至少 4.5:1                                                                                    |
+| Story Plan 審閱素材區使用不存在的深色舊 token，淺色主題文字對比約 1.14:1                      | 素材區改用 Garden Stone 主題 surface token，沿用主題文字色                                                                                          | Story Graph Playwright 對比量測；淺／深主題皆至少 4.5:1                                                                                |
+| Story Plan 視窗其他區塊仍混用舊色盤，副標、來源、角色、理由與操作區層級不一致                 | 將殘留表面與語意狀態色改接 Garden Stone tokens，按鈕與標籤改用非橢圓的飛石圓角                                                                      | Story Graph E2E 檢查 13 種文字區域及淺／深主題截圖；實際樣本對比皆 ≥ 4.5:1                                                             |
+| 兩個 Story Plan 場景只佔三欄中的兩欄，右側留下非預期空白；影片素材也錯誤顯示照片景深 fallback | 改用 auto-fit 填滿現有場景欄寬；Planner 只為圖片產生景深資訊，並以一般使用者可理解的靜態照片文案完整翻譯                                            | Planner 單元測試 8 項與 Story Graph E2E 通過；確認影片不顯示照片說明，且 1024×720／1280×900 無溢出與按鈕裁切，淺／深主題對比皆 ≥ 4.5:1 |
+| Story Plan 將照片與影片都標為「Image / Clip」，靜態照片提示又與所屬素材脫離                   | 欄位標籤改成中性的在地化「Media」；提示移至個別照片素材列，影片不顯示照片專屬說明                                                                   | 混合媒體 E2E 確認照片／影片標籤、提示歸屬與 1024×720 淺／深主題畫面；Story workflow 8 項通過                                           |
+| 場景卡片可點選但沒有實際操作結果，鍵盤與讀屏會把整張內容誤認成按鈕；場景區名稱固定英文        | 場景內容使用 article 與標題層級，移除無效選取與 Tab 停靠；區域名稱使用 en-US／zh-TW／ja-JP 翻譯                                                     | Modal axe WCAG 2.1 AA 淺／深主題零違規；Tab 直接到實際操作按鈕；日文區域名稱及 Story workflow 8 項通過                                 |
+
+本次另修正 Windows 復原測試中，在故意中斷回應後讀取冪等結果時，對有限次 `ECONNRESET` 的容錯；不重試 HTTP 或其他錯誤。隔離重跑變體 UI 與 native benchmark runner 共 33 項通過。全量 Vitest 曾與 Playwright 同時執行，原生量測測例因此撞到被 E2E 服務占用的 4310 埠；不把該次並行結果記為綠燈，隔離重跑通過。
+
+`pnpm format:check`、`pnpm lint`、`pnpm typecheck`、`pnpm test:i18n` 與 `pnpm build` 通過；相關瀏覽器回歸 16 項及彈窗視覺回歸 1 項通過。真實 Windows 原生視窗、IME／讀屏、高 DPI 仍需工作站人工驗證。
+
+在遠端 head `4da316f` 上，直接操作、來源審閱、Import 取消與音訊 Inspector 共 13 項 Playwright 回歸通過。1024×720 截圖確認播放器保留可見高度；後續 `b2e44c7` CI 進一步證明照片層會擋住右下 hit area，已提升變形 overlay 疊放次序。語言切換流程改驗證 UI 文案切換時保留使用者自訂片名。舊測試對兩個同名「Add media」按鈕及 flex tabs 的預期已更新為工具列／空狀態兩個不同入口與兩欄 Inspector grid。原生字幕 cue 測試在 `b2e44c7` CI 曾失敗，本機連續重跑 3 次通過；由新 exact-head CI 繼續確認其穩定性。`pnpm format:check`、`pnpm test:i18n`、`pnpm test:docs-i18n`、`pnpm lint`、`pnpm typecheck`、`pnpm build` 通過。完整 `pnpm test` 本機執行超過 13 分鐘仍在跑 native benchmark 情境，已中止，故不列為通過。
+
+## Roundtable follow-up — long scene titles
+
+Design review and implementation review independently identified single-line scene title truncation in Story Plan review. Titles now wrap in their available space; scene numbers and source indicators retain their own space. Cards keep the existing Tobi-ishi surfaces and spacing.
+
+Verified: long CJK scene title at 1024×720 remains fully readable without horizontal page overflow; the adopt action remains in the viewport. Existing light/dark contrast and Axe WCAG checks pass. This is expert review with synthetic fixtures, not a recruited-user study.
+
+## Tobi-ishi UI enhancement rounds 2–5
+
+### 第 2 輪：素材卡的次要操作
+
+觀察：桌面聯絡表中每張素材卡都常駐顯示最愛、鎖定與排除按鈕，縮圖數量增加時重複圖示搶走素材內容的注意力。修改：精細指標裝置只在 hover 或鍵盤 focus 時顯示未啟用動作，已啟用狀態保持可見；觸控與混合輸入裝置維持操作常駐，並尊重減少動態偏好。驗收：Playwright 驗證滑鼠 hover、鍵盤 focus、已啟用狀態、減少動態偏好，以及 CDP 觸控模擬。
+
+### 第 3 輪：Precision Snap 停用原因
+
+觀察：來源尚未驗證時 Snap 停用，但使用者需要從其他狀態猜測原因。修改：在控制項旁顯示檢查中、尚未可用或來源檢查失敗的本地化說明，並以 aria-describedby 關聯到控制項；專用失敗狀態避免 Provider／背景工作錯誤誤稱素材讀取失敗，修剪與定位仍可使用。驗收：素材變更造成驗證失敗、復原流程的 E2E 確認提示與既有編輯護欄。
+
+### 第 4 輪：Export 相容性警告
+
+觀察：OTIO 相容性警告只有英文技術原文。修改：已知的固定釘選、GraphicScene、標題軌、速度、Diptych 與一般片段編輯，先顯示繁中／英文／日文的簡明提醒；原始警告收在個別技術細節中，未知警告仍保留原文。驗收：Proposal 匯出流程切換到繁中逐項檢查 fixture 內出現的分類，包含帶冒號的片段 ID，展開後仍讀到 METADATA ONLY 的原始細節；7 項分類單元測試覆蓋所有已知類型與未知 fallback。提醒文字明確表示標題與疊加軌的 metadata 不保證目標剪輯軟體會顯示或重建。
+
+### 第 5 輪：重新挑戰邊界狀態
+
+圓桌複查發現素材卡測試需先移除焦點，避免 `:focus-within` 假陽性；減少動態偏好應停用淡入；Snap 失敗提示應與共用錯誤狀態分離；OTIO 警告中的片段 ID 可能含冒號，不能按單一冒號切分。以上均已修正。Playwright Chromium 觸控模擬無法同時呈現主要 fine pointer 與 any-pointer coarse，因此混合輸入裝置需保留 workstation 人工確認。
+
+這些結果來自設計審查與 Playwright 合成專案，不等同外部使用者研究；Export 警告目前依 exporter 英文訊息辨識類別，未知警告保留原文。實機混合觸控／滑鼠行為尚未在 workstation 驗證。
+
+## UI enhancement follow-up: 20 focused refinements
+
+這是一批 20 個局部設計修正，並非 20 次外部使用者研究或 20 次完整產品重設計。沿用現有 Tobi-ishi tokens、資料流與鍵盤操作。
+
+| 回合 | 挑戰                   | 實作                          |
+| ---- | ---------------------- | ----------------------------- |
+| 1    | 品牌文字鬆散           | 收緊 wordmark 字距            |
+| 2    | 專案名稱缺少主次       | 標題字重提升至 700            |
+| 3    | 說明貼近標題且過長     | 增加段距並限制 65ch           |
+| 4    | 篩選項目間距鬆散       | 側欄項目使用較緊密節奏        |
+| 5    | 側欄容器吞掉內容寬度   | 縮減內距一級                  |
+| 6    | 篩選點擊區偏小         | 最小高度提升至 42px           |
+| 7    | 篩選每列像獨立卡片     | 靜止狀態改透明表面            |
+| 8    | 重複框線造成噪音       | 移除篩選按鈕描邊              |
+| 9    | 素材數量閱讀跳動       | 使用等寬數字與 1.6 行高       |
+| 10   | Select 與搜尋高度不同  | Select 最小高度 42px          |
+| 11   | 搜尋列垂直節奏不一致   | 搜尋列最小高度 42px           |
+| 12   | 搜尋字體與可用空間不足 | 使用 small 字級與 min-width:0 |
+| 13   | 聯絡表缺少閱讀方向     | 橫距收緊、縱距增加            |
+| 14   | 圖片載入時表面不連貫   | 使用既有播放器底色            |
+| 15   | 檔名太貼近影像         | 增加縮圖與檔名間距            |
+| 16   | 所有檔名都搶主標題     | 檔名字重降至 550              |
+| 17   | CJK 雙行檔名擁擠       | 行高提升至 1.6                |
+| 18   | 輸出目的卡呼吸不足     | 內距提升一級                  |
+| 19   | 輸出目的層級偏弱       | 目的名稱字重提升至 650        |
+| 20   | Inspector 長標籤擠壓   | 標籤行高 1.6 並允許長字換行   |
+
+驗證採用現有 component-redesign 與 tobiishi-workflow 瀏覽器套件：淺／深主題對比、觸控目標、頂列排版、播放器狀態保留、快速操作、側欄 breakpoint、素材次要動作、Inspector 鍵盤與工作區截圖。實際執行結果以本次測試輸出為準；Windows IME、高 DPI 與真實混合輸入仍需 workstation QA。
+
+截圖再審發現次要操作列位於檔名前，即使按鈕隱藏仍隔開影像與名稱。已調整為影像 → 檔名 → 次要操作；最後版本上述兩套 Playwright 共 12 項通過。格式、lint 與 typecheck 通過。
+
+## 2026-11-06 Roundtable: 20 review checkpoints
+
+The Visual Designer, Layout Specialist, Component Designer, and Accessibility Reviewer each raised five testable challenges (20 checkpoints total), followed by implementation re-challenges. This was an expert review with synthetic projects, not a recruited-user study or a claim of twenty complete product redesigns.
+
+| Round | Role                   | Challenge and decision                                                                                                                                              | Status / evidence                                                                                                                                                                                                       |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01    | Visual Designer        | Sidebar destinations looked like a stack of raised cards. Flatten idle and hover states; reserve a soft shadow for the current destination.                         | Done; E2E checks computed shadows for hover and current states.                                                                                                                                                         |
+| 02    | Visual Designer        | Library status messages risked becoming a stack of alerts. Keep import summary, media availability, and filtering in task order without adding another status card. | Existing grouping retained; reviewed the 1440×900 Library capture. Larger-library task testing remains useful.                                                                                                          |
+| 03    | Visual Designer        | Rejected photos were too dim to recognize. Use mild desaturation and retain a readable state label.                                                                 | Done; E2E covers rejected/missing states, image opacity, and badge position.                                                                                                                                            |
+| 04    | Visual Designer        | Player, Inspector, and timeline could crowd each other at compact desktop heights.                                                                                  | Checked at 1280×720; key editing surfaces remain visible without horizontal page overflow. Native window scaling still needs workstation QA.                                                                            |
+| 05    | Visual Designer        | Too many shadows made the workspace read like an enterprise dashboard. Use color and whitespace for secondary hierarchy.                                            | Done; only the current navigation/workflow step keeps soft elevation.                                                                                                                                                   |
+| 06    | Layout Specialist      | Project identity appears in the top bar and a heading appears in the workspace.                                                                                     | Captures show distinct roles: current project/workspace context versus task intent. Both remain.                                                                                                                        |
+| 07    | Layout Specialist      | Library filters, availability, and search could feel fragmented.                                                                                                    | No duplicate toolbar added. Existing order remains; a first-time user task with a larger library is a follow-up.                                                                                                        |
+| 08    | Layout Specialist      | The Compose action is separated from secondary Story actions.                                                                                                       | Kept the high-contrast primary action right-aligned for scanability; 1280×720 capture shows no clipping.                                                                                                                |
+| 09    | Layout Specialist      | One- or two-media Storyboard cards stretched across the 1920px workspace.                                                                                           | Done; cards use content-based fit width and the media strip scrolls internally. A single-media card stays below 1200px at 1920px; 1280/1440/1920 captures have no page overflow.                                        |
+| 10    | Layout Specialist      | Six Inspector sections could be dense at 720px height.                                                                                                              | Kept the visible 2×3 grouping to avoid hiding sections in a horizontal scroller; keyboard navigation and collapse/restore are covered by E2E.                                                                           |
+| 11    | Component Designer     | Variant labels must be associated with actual fields, not placeholders alone.                                                                                       | Done; every field has a label, including the section-only beat selector.                                                                                                                                                |
+| 12    | Component Designer     | Small controls are difficult on touch and mixed-input devices.                                                                                                      | Done; Variant and Local Presets use 44px targets under `any-pointer: coarse`; emulated-touch E2E checks button heights. Real hybrid hardware remains manual QA.                                                         |
+| 13    | Component Designer     | Modal spacing and radius constants were inconsistent.                                                                                                               | Done; existing spacing/radius tokens are used without adding a component framework.                                                                                                                                     |
+| 14    | Component Designer     | Emoji and untranslated mock preview labels weakened the A/B component language.                                                                                     | Done; existing icons and en-US/zh-TW/ja-JP labels are used.                                                                                                                                                             |
+| 15    | Component Designer     | View and close controls need sufficient hit area and a non-color selected state.                                                                                    | Done; 44px touch targets and `aria-pressed` for List/Create/Compare.                                                                                                                                                    |
+| 16    | Accessibility Reviewer | Escape during Chinese/Japanese IME composition must not close Settings.                                                                                             | Done; composing Escape keeps the dialog open, while normal Escape closes it and restores focus.                                                                                                                         |
+| 17    | Accessibility Reviewer | Compact workflow labels were visually hidden from assistive technology.                                                                                             | Done; all four workflow states retain sr-only labels and attention remains visible.                                                                                                                                     |
+| 18    | Accessibility Reviewer | Preset disclosures needed a larger target without losing the native disclosure marker.                                                                              | Done; `list-item` marker retained, 44px height, and 360px viewport E2E coverage.                                                                                                                                        |
+| 19    | Accessibility Reviewer | The outer aside and inner nav duplicated a landmark name.                                                                                                           | Done; the named nav is the only labeled navigation landmark.                                                                                                                                                            |
+| 20    | Accessibility Reviewer | Compact Library navigation could omit the offline count, or show duplicate tooltips.                                                                                | Done/checked; the visible count is aria-hidden and a localized `aria-describedby` supplies the description. Native `title` is compact-only. The CSS `::after` is the active-page decoration, not an aria-label tooltip. |
+
+Re-challenge caught a CSS specificity issue in hover shadows, an obsolete 300px card-height assertion, and a native disclosure-marker risk. The overrides now win, the test checks content overflow with a 320px ceiling, and the native marker stays in place. The relevant suites passed 18 tests, with new dark-contrast, 720p Story/Inspector, modal CDP-touch, and focus-restoration assertions. Workspace captures cover both themes and three desktop sizes; Storyboard also has a dark-theme capture. Build notices and hardware verification status are recorded in this round’s test results. These changes improve verifiable interaction and layout quality; they do not represent a monetary valuation or a promise of a five-million-dollar market value.
+
+## Roundtable re-challenge: rounds 21–24
+
+| Round / role                | New challenge and evidence                                                                                                                                        | Refinement and verification                                                                                                                                                                                                            |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 21 / Accessibility Reviewer | During dark-theme switching, a Story secondary button briefly measured 1.109:1: foreground text changed immediately while the background was still transitioning. | Secondary buttons now animate shadow only, so theme text and surfaces change together. Browser coverage measures at least 4.5:1 immediately after switching.                                                                           |
+| 22 / Layout Specialist      | At 1280×720, the Story first viewport showed only beat one; the next story title was completely below the fold.                                                   | Short-desktop mode reduces explanatory copy and spacing without shrinking media at larger sizes. E2E requires at least 80% of beat two’s title in the first viewport and checks the other desktop sizes.                               |
+| 23 / Layout Specialist      | At 1280×720, Photo duration sat inside the Inspector scroll area; the scrollbar cue was weak and the keyboard path was untested.                                  | Inspector scrollbars are more visible. E2E tabs from the Clip section to the field, checks focus scrolling and full visibility, edits to three seconds, and confirms the Composition was saved.                                        |
+| 24 / Component Designer     | Storyboard still had an outer card border and rounded status badges; modal touch coverage did not actually activate controls.                                     | Neutral card borders were removed; stepping-stone surface and route marker identify selection, and badges use smaller corner radii. CDP touch events operate Compare, audio selection, and close controls while checking 44px targets. |
+
+These four checkpoints came from another design/accessibility review, not a recruited-user study. The relevant Playwright suite covers dark contrast, the 1280×720 first viewport, keyboard Inspector editing, touch actions, and three desktop captures; report the final count from the exact-head run. Real touch hardware, Windows high-DPI, and screen-reader verification still require workstation QA.
+
+### Re-challenge extension: rounds 25–26
+
+The Component Designer found that touch checks measured target height but not width. The test now checks that tabs, card actions, audio controls, and close controls are each at least 44×44px. Storyboard status badges also use the `--of-space-1` vertical spacing token while retaining their compact, non-oval corners.
+
+The Layout Specialist found that Chromium/Linux overlay scrollbars still hid the Inspector scroll cue. An 8px theme-colored track and thumb are now styled; Playwright checks the thumb width and verifies that keyboard focus scrolls the field fully into view. Dark Story now has contrast and overflow checks at both 1280×720 and 1440×900.
+
+### Re-challenge extension: round 27
+
+The Component Designer found that the variants dialog used almost the full desktop width while two cards occupied only its left side. The normal list/create views now use a centered 980px reading width and `auto-fit` card columns. The dialog expands to 1240px only for side-by-side playback comparison. E2E checks the compact layout at 1280×720 and 1024×720, verifies the comparison expands, and repeated the touch/contrast flow three times successfully. The screenshots use generated media; hybrid-device touch still needs workstation QA.
+
+### Re-challenge extension: round 28
+
+The Accessibility Reviewer reproduced a caption draft disappearing when an earlier save acknowledgement replaced the Composition snapshot while the multiline editor still had focus. The editor now keeps a cue-scoped local draft and commits it on field change; it no longer renders the in-progress value directly from the last saved snapshot. A browser regression holds the save response while the user types, then verifies the draft remains visible, saves, and survives reopening. All 13 local caption E2E cases pass, including en-US, zh-TW, ja-JP and pseudo-localized layout checks; the hosted run is still required for exact-head confirmation.
+
+### Re-challenge extension: round 29
+
+The Visual Designer challenged the Storyboard overflow check after CI reported a 3px overflow. Trace review showed the card's translated Tobi-ishi shadow—not its text or media—extended beyond the surface, while the actual content remained within its padding. The browser check now measures visible content against the padded card bounds and ignores hidden grid items, preserving the shadow while still detecting clipped content. All eight local Tobi-ishi workflow tests pass; exact-head hosted confirmation is pending.

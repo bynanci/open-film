@@ -63,12 +63,16 @@ const modes: WorkspaceMode[] = ["standard", "expert"];
   max-width: 160px;
   min-height: 36px;
   padding: var(--of-space-2) var(--of-space-3);
-  border: 1px solid var(--of-border-control);
-  border-radius: var(--of-radius-md);
-  background: var(--of-surface-1);
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-2);
   color: var(--of-text-primary);
   font-family: var(--of-font-body);
   font-size: var(--of-font-small);
+  transition: background-color var(--of-motion-fast) var(--of-motion-ease);
+}
+.workspace-mode-control select:hover:not(:disabled) {
+  background: var(--of-surface-3);
 }
 .workspace-mode-options {
   display: grid;
@@ -82,21 +86,30 @@ const modes: WorkspaceMode[] = ["standard", "expert"];
   align-items: flex-start;
   gap: var(--of-space-3);
   padding: var(--of-space-5);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-lg);
   background: var(--of-bg);
   color: var(--of-text-primary);
   text-align: start;
   white-space: normal;
   overflow-wrap: anywhere;
+  box-shadow: var(--of-shadow-raised);
+  transition:
+    background-color var(--of-motion-normal) var(--of-motion-ease),
+    box-shadow var(--of-motion-normal) var(--of-motion-ease);
+}
+.workspace-mode-options button:hover:not(:disabled) {
+  background: var(--of-surface-2);
+  box-shadow: var(--of-shadow-hover);
 }
 .workspace-mode-options button > * {
   min-width: 0;
   max-width: 100%;
 }
 .workspace-mode-options button.selected {
-  border-color: var(--of-accent);
+  border: 0;
   background: var(--of-accent-soft);
+  box-shadow: var(--of-shadow-hover);
 }
 .workspace-mode-title {
   display: flex;

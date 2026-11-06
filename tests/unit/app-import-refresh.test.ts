@@ -22,7 +22,15 @@ const names = [
   "refreshInitialJobs",
   "refreshJobs",
   "pollJobs",
+  "transitionedImportCompletion",
+  "publishImportCompletion",
 ];
+const completionStart = source.indexOf(
+  "function transitionedImportCompletion(",
+);
+const completionEnd = source.indexOf("\n}", completionStart) + 2;
+if (completionStart < 0 || completionEnd < 2)
+  throw new Error("Missing App import completion transition");
 function appFunction(name: string) {
   const declaration = source.includes(`async function ${name}(`)
     ? `async function ${name}(`
@@ -39,6 +47,7 @@ const code = transformSync(
     'let jobsGeneration = 0, polling = false, lastJobSignature = "";',
     "let pendingMediaRefresh, mediaRefreshOwner;",
     "const EMPTY_ANALYSIS_RECOVERY = Object.freeze({});",
+    source.slice(completionStart, completionEnd),
     ...names.map(appFunction),
   ].join("\n"),
   { loader: "ts", format: "esm" },
@@ -79,11 +88,14 @@ function host(
   const reads: ReturnType<typeof deferred<JobSnapshot>>[] = [];
   const jobSignals: (AbortSignal | undefined)[] = [];
   const posts: { path: string; body: unknown }[] = [];
-  const acknowledgement = deferred<void>();
+  const acknowledgement = deferred<{ jobId: string }>();
   const project = ref<{ id: string } | null>({ id: "our-film" });
   const jobs = ref<Job[]>([{ ...imported(), id: "first-import" }]);
   const refreshes = { assets: 0, project: 0, media: 0 };
   const importOpen = ref(true);
+  const importCompletion = ref(null);
+  const pendingImportCompletion = ref(null);
+  const startedImportJobIds = new Set<string>();
   const busy = ref("");
   const error = ref<unknown>("");
   const analysisRecovery = ref<Record<string, unknown>>({});
@@ -113,6 +125,9 @@ function host(
     project,
     jobs,
     importOpen,
+    importCompletion,
+    pendingImportCompletion,
+    startedImportJobIds,
     busy,
     error,
     notice: ref<unknown>(null),
@@ -136,7 +151,7 @@ function host(
     storyScriptReview: ref(null),
     post: (path: string, body: unknown) => {
       posts.push({ path, body });
-      return acknowledgement.promise;
+      return acknowledgement.promise.then(() => ({ jobId: "second-import" }));
     },
     message: (key: string) => key,
     reloadAssets: () => {
@@ -264,7 +279,7 @@ describe("App import completion refresh", () => {
       expect(h.posts).toEqual([
         { path: "/import", body: { folder: "/media/second-folder" } },
       ]);
-      h.acknowledgement.resolve();
+      h.acknowledgement.resolve({ jobId: "second-import" });
       await turn();
       expect(h.reads).toHaveLength(1);
       h.reads[0]!.resolve({ jobs: [imported(status)] });
@@ -287,7 +302,7 @@ describe("App import completion refresh", () => {
   it("refreshes once when a running import completes in the later poll", async () => {
     const h = host();
     const start = h.beginImport("/media/second-folder");
-    h.acknowledgement.resolve();
+    h.acknowledgement.resolve({ jobId: "second-import" });
     await turn();
     h.reads[0]!.resolve({ jobs: [imported("running")] });
     await start;

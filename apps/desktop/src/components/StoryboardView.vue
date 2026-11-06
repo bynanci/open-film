@@ -6,6 +6,7 @@ import { beatTimelineDuration, durationStatus } from "../duration";
 import { formatDuration as duration, formatNumber } from "../i18n";
 import { sourceUrl, thumbnailUrl, type SourceStatus } from "../api";
 import Icon from "./Icon.vue";
+import GardenStones from "./GardenStones.vue";
 
 const props = defineProps<{
   story: Story;
@@ -153,7 +154,7 @@ watch(
       }}</span>
     </header>
     <div v-if="!story.beats.length" class="empty-state storyboard-empty">
-      <span class="empty-symbol"><Icon name="film" :size="30" /></span>
+      <GardenStones class="empty-state-garden" />
       <h3>{{ t("app.storyGraph.storyboard.empty") }}</h3>
     </div>
     <div
@@ -167,9 +168,11 @@ watch(
         :key="beat.id"
         role="listitem"
         class="storyboard-card"
+        data-stone="task"
         :class="{
           active: activeBeatId === beat.id,
           mapped: getBeatClips(beat.id).length > 0,
+          'has-media': !!beat.selectedAssetIds?.length,
         }"
         :aria-current="activeBeatId === beat.id ? 'step' : undefined"
         tabindex="0"
@@ -177,6 +180,7 @@ watch(
         @click="selectBeat(beat.id)"
         @keydown="handleKeySelect($event, beat.id)"
       >
+        <span class="storyboard-route-marker" aria-hidden="true" />
         <header class="card-header">
           <div class="card-number-title">
             <span class="beat-index">{{
@@ -473,7 +477,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--of-space-4);
-  max-width: 980px;
+  width: 100%;
+  max-width: none;
   position: relative;
   padding-left: var(--of-space-6);
 }
@@ -490,12 +495,12 @@ watch(
   position: relative;
   min-width: 0;
   padding: var(--of-panel-inset);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
-  transition: border-color var(--of-motion-fast) var(--of-motion-ease);
+  transition: box-shadow var(--of-motion-normal) var(--of-motion-ease);
 }
-.storyboard-card::before {
+.storyboard-route-marker {
   content: "";
   position: absolute;
   left: -24px;
@@ -503,22 +508,63 @@ watch(
   width: 7px;
   height: 7px;
   border: 1px solid var(--of-border-strong);
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--of-bg);
 }
 .storyboard-card:hover {
-  border-color: var(--of-border-strong);
+  box-shadow: var(--of-shadow-soft);
 }
 .storyboard-card.active {
-  border-color: var(--of-accent);
+  background: var(--of-accent-soft);
 }
-.storyboard-card.active::before {
+.storyboard-card.active .storyboard-route-marker {
   border-color: var(--of-accent);
   background: var(--of-accent);
 }
 .storyboard-card:focus-visible {
   outline: 2px solid var(--of-focus);
   outline-offset: 3px;
+}
+@media (min-width: 1000px) {
+  .storyboard-card {
+    display: grid;
+    width: fit-content;
+    max-width: 100%;
+    align-self: flex-start;
+    grid-template-columns:
+      minmax(240px, min(32vw, 460px))
+      fit-content(64vw);
+    gap: var(--of-space-4) var(--of-space-6);
+  }
+  .storyboard-card:not(.has-media) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .card-header {
+    grid-column: 1;
+    grid-row: 1;
+    margin-bottom: 0;
+  }
+  .card-body {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .card-assets {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+  .storyboard-card:not(.has-media) .card-assets {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .card-footer {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: end;
+  }
+  .storyboard-card:not(.has-media) .card-footer {
+    grid-column: 1;
+    grid-row: 4;
+  }
 }
 .card-header {
   display: flex;
@@ -552,8 +598,8 @@ watch(
   display: inline-flex;
   gap: var(--of-space-1);
   align-items: center;
-  padding: 3px var(--of-space-2);
-  border-radius: var(--of-radius-round);
+  padding: var(--of-space-1) var(--of-space-2);
+  border-radius: var(--of-radius-sm);
   font-size: var(--of-font-caption);
   line-height: 1.4;
 }
@@ -577,12 +623,15 @@ watch(
   display: flex;
   gap: var(--of-space-3);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--of-border-strong) transparent;
   padding: var(--of-space-1) var(--of-space-1) var(--of-space-2);
   margin-inline: -4px;
 }
 .asset-preview-item {
   display: flex;
-  flex: 0 0 128px;
+  flex: 0 0 clamp(156px, 14vw, 210px);
   min-width: 0;
   flex-direction: column;
   gap: var(--of-space-1);
@@ -593,18 +642,19 @@ watch(
   justify-content: center;
   position: relative;
   width: 100%;
-  height: 92px;
+  aspect-ratio: 1;
+  height: auto;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-md);
+  border: 0;
+  border-radius: var(--of-radius-media);
   background: var(--of-player);
   color: var(--of-on-media);
   cursor: pointer;
 }
 .thumbnail-wrapper:hover:not(:disabled),
 .thumbnail-wrapper.playing {
-  border-color: var(--of-accent);
+  box-shadow: inset 0 0 0 2px var(--of-accent);
 }
 .thumbnail-wrapper:focus-visible {
   outline: 2px solid var(--of-focus);
@@ -643,6 +693,8 @@ watch(
   background: var(--of-media-scrim);
 }
 .asset-name {
+  font-family: var(--of-font-media);
+  font-weight: 600;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -737,7 +789,6 @@ watch(
   gap: var(--of-space-3);
   margin-top: var(--of-space-4);
   padding-top: var(--of-space-3);
-  border-top: 1px solid var(--of-border-subtle);
 }
 .card-timing {
   display: flex;
@@ -764,6 +815,26 @@ watch(
 @media (max-width: 1100px) {
   .storyboard-card {
     padding: var(--of-space-4);
+  }
+}
+@media (min-width: 1000px) and (max-height: 760px) {
+  .storyboard-view {
+    padding-block: var(--of-space-3);
+  }
+  .storyboard-header {
+    margin-bottom: var(--of-space-3);
+  }
+  .storyboard-hint {
+    display: none;
+  }
+  .storyboard-grid {
+    gap: var(--of-space-3);
+  }
+  .storyboard-card {
+    padding: var(--of-space-4);
+  }
+  .asset-preview-item {
+    flex-basis: 150px;
   }
 }
 </style>

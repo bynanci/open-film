@@ -285,6 +285,39 @@ test("samples bounded source-frame scopes without modifying the edit", async ({
   await expect(panel).toContainText("Luma waveform");
   await expect(panel).toContainText("BT.709 vectorscope");
   await expect(panel).toContainText("before OpenFilm transforms");
+  const luminance = (color: string) => {
+    const channels = color
+      .match(/[\d.]+/g)!
+      .slice(0, 3)
+      .map(Number);
+    const linear = channels.map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  };
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator("html").evaluate((element, value) => {
+      element.setAttribute("data-theme", value);
+    }, theme);
+    const captions = await panel.locator("figure").evaluateAll((figures) =>
+      figures.map((figure) => ({
+        foreground: getComputedStyle(figure.querySelector("figcaption")!).color,
+        background: getComputedStyle(figure).backgroundColor,
+      })),
+    );
+    for (const caption of captions) {
+      const foreground = luminance(caption.foreground);
+      const background = luminance(caption.background);
+      expect(
+        (Math.max(foreground, background) + 0.05) /
+          (Math.min(foreground, background) + 0.05),
+        `${theme} source frame scope caption contrast`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
   expect(await state(request)).toEqual(before);
 });
 

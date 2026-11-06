@@ -104,6 +104,11 @@ test("offers a guided default and remembers the expert workspace without changin
     "open",
     "",
   );
+  const trackControls = page.locator(".cut-desk-track-controls");
+  await expect(trackControls).toBeVisible();
+  const trackButton = trackControls.locator(".track-btn").first();
+  await expect(trackButton).toHaveCSS("width", "30px");
+  await expect(trackButton).toHaveCSS("border-left-width", "0px");
   const after = (await (await request.get(`${api}/project`)).json()).project;
   expect(after).toEqual(before);
   await page.reload();
@@ -735,7 +740,9 @@ test("searches actions with the keyboard and restores focus without starting pro
   const jobs = (await (await request.get(`${api}/jobs`)).json()).jobs;
   await origin.click();
   await search.fill("ＥＤＩＴ");
-  await expect(dialog.getByRole("option")).toHaveCount(1);
+  await expect(dialog.getByRole("option").first().locator("strong")).toHaveText(
+    "Edit",
+  );
   await page.keyboard.press("Enter");
   await expect(page.locator(".timeline-editor")).toBeVisible();
   await expect(page.locator("#workspace-main")).toBeFocused();

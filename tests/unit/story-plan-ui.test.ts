@@ -19,8 +19,9 @@ describe("Phase M9B: Storyboard Proposal & Review Modal UI Component", () => {
     expect(content).toContain('aria-modal="true"');
 
     // Must handle all 5 storyboard proposal dimensions:
-    // 1. whichImage
-    expect(content).toContain("whichImage");
+    // 1. media selection and thumbnails
+    expect(content).toContain('t("app.storyPlan.card.media")');
+    expect(content).toContain('class="card-section media-section"');
     expect(content).toContain("thumbnailUrl");
     // 2. whatExpressed (intent)
     expect(content).toContain("whatExpressed");

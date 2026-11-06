@@ -336,21 +336,52 @@ test("cancels a real import and keeps the project available", async ({
       title: "An unfinished import",
       path: fixture.project,
     });
+    const previousJobsResponse = await request.get(
+      "http://127.0.0.1:4310/api/jobs",
+    );
+    expect(previousJobsResponse.ok()).toBe(true);
+    const previousJobs = (await previousJobsResponse.json()).jobs as {
+      id: string;
+      type: string;
+    }[];
+    const previousImportIds = new Set(
+      previousJobs.filter((job) => job.type === "import").map((job) => job.id),
+    );
     await page.getByRole("button", { name: "Add your first media" }).click();
     await chooseImportFolder(page, fixture.media);
     await page
       .getByRole("button", { name: "Cancel import", exact: true })
       .click();
     await expect(
-      page.getByText("Import cancelled", { exact: true }),
+      page.getByRole("heading", { name: "Import stopped", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
+    const jobsResponse = await request.get("http://127.0.0.1:4310/api/jobs");
+    expect(jobsResponse.ok()).toBe(true);
+    const { jobs } = (await jobsResponse.json()) as {
+      jobs: { id: string; type: string; status: string }[];
+    };
+    expect(
+      jobs.some(
+        (job) =>
+          job.type === "import" &&
+          job.status === "cancelled" &&
+          !previousImportIds.has(job.id),
+      ),
+    ).toBe(true);
     const project = await request.get("http://127.0.0.1:4310/api/project");
     expect(project.ok()).toBe(true);
     expect((await project.json()).project.title).toBe("An unfinished import");
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+    const addMoreMedia = page.getByRole("button", {
+      name: "Add more media",
+      exact: true,
+    });
+    await expect(addMoreMedia).toBeVisible();
+    await expect(addMoreMedia).toBeEnabled();
+    await addMoreMedia.click();
     await expect(
-      page.getByRole("button", { name: "Add media", exact: true }),
-    ).toBeEnabled();
+      page.getByRole("region", { name: "Import media" }),
+    ).toBeVisible();
   } finally {
     cleanupFixtures.push(fixture.cleanup);
   }

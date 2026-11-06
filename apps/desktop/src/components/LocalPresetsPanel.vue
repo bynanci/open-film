@@ -371,6 +371,11 @@ onBeforeUnmount(() => scope.cancel());
 .local-presets :is(p, dd, li, code) {
   overflow-wrap: anywhere;
 }
+.local-presets details > summary {
+  display: list-item;
+  min-height: 44px;
+  padding-block: var(--of-space-2);
+}
 .local-presets p,
 .local-presets small {
   color: var(--of-text-secondary);
@@ -440,7 +445,7 @@ onBeforeUnmount(() => scope.cancel());
   display: block;
   font-size: var(--of-font-caption);
 }
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   .local-presets button {
     min-height: 44px;
   }

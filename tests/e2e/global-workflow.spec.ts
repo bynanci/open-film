@@ -261,6 +261,10 @@ test("completes a Traditional Chinese film and preserves authored text across ru
     .getByRole("button", { name: text("app.welcome.create"), exact: true })
     .click();
   const creation = page.locator(".create-film-form");
+  const nameField = creation.getByLabel(text("app.create.name"), {
+    exact: true,
+  });
+  await expect(nameField).toBeFocused();
   await expect(
     creation.getByRole("combobox", {
       name: text("app.create.timebase"),
@@ -268,22 +272,25 @@ test("completes a Traditional Chinese film and preserves authored text across ru
     }),
   ).toHaveValue("30-ndf");
   await expect(creation).not.toContainText(/\bapp\.[\w.]+/u);
-  const create = creation.getByRole("button", {
-    name: text("app.create.submit"),
+  await nameField.press("Enter");
+  await expect(creation.getByRole("alert")).toHaveText("請為影片取個名字。");
+  await expect(nameField).toBeFocused();
+  await expect(nameField).toHaveAttribute("aria-invalid", "true");
+  await expect(nameField).toHaveAttribute(
+    "aria-describedby",
+    "launcher-form-error",
+  );
+  await nameField.fill("台北到東京，屬於我們的故事");
+  const targetField = creation.getByLabel(text("app.create.target"), {
     exact: true,
   });
-  await create.click();
-  await expect(creation.getByRole("alert")).toHaveText("請為影片取個名字。");
-  await creation
-    .getByLabel(text("app.create.name"), { exact: true })
-    .fill("台北到東京，屬於我們的故事");
-  await creation
-    .getByLabel(text("app.create.target"), { exact: true })
-    .fill("0");
-  await create.click();
+  await targetField.fill("0");
+  await targetField.press("Enter");
   await expect(creation.getByRole("alert")).toHaveText(
     "目標長度須大於零，最長時間不得短於目標長度。",
   );
+  await expect(targetField).toBeFocused();
+  await expect(targetField).toHaveAttribute("aria-invalid", "true");
   expect(await project(request)).toBeNull();
   await createFilm(
     page,
@@ -298,6 +305,9 @@ test("completes a Traditional Chinese film and preserves authored text across ru
     },
     locale,
   );
+  await expect(
+    page.locator('[data-focus-target="import-panel"]'),
+  ).toBeFocused();
   expect(await project(request)).toMatchObject({
     projectContentLocale: locale,
     settings: {
@@ -543,6 +553,7 @@ test("completes a Traditional Chinese film and preserves authored text across ru
       })
       .click();
     await openFilm(reopened, path, "ja-JP");
+    await expect(reopened.locator("#workspace-main")).toBeFocused();
     const persisted = JSON.parse(
       await readFile(join(path, "project.json"), "utf8"),
     );
@@ -598,6 +609,15 @@ for (const locale of ["en-US", "ja-JP"] as const) {
     await page
       .getByRole("button", { name: text("app.welcome.open"), exact: true })
       .click();
+    const openForm = page.locator(".open-project-form");
+    const folderField = openForm.getByLabel(text("app.create.existingFolder"));
+    await expect(folderField).toBeFocused();
+    await folderField.press("Enter");
+    await expect(openForm.getByRole("alert")).toHaveText(
+      text("app.create.pathRequired"),
+    );
+    await expect(folderField).toBeFocused();
+    await expect(folderField).toHaveAttribute("aria-invalid", "true");
     await page
       .getByLabel(text("app.create.existingFolder"))
       .fill(join(root, "missing 回憶 # &.openfilm"));
@@ -617,6 +637,9 @@ for (const locale of ["en-US", "ja-JP"] as const) {
     await page
       .getByRole("button", { name: text("app.actions.back"), exact: true })
       .click();
+    await expect(
+      page.getByRole("button", { name: text("app.welcome.open"), exact: true }),
+    ).toBeFocused();
     const path = join(root, `${locale}-smoke.openfilm`);
     if (locale === "en-US") {
       await page.locator(".settings-toggle").click();

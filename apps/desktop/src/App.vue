@@ -9,6 +9,7 @@ import {
   onMounted,
   onUnmounted,
   ref,
+  shallowRef,
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
@@ -66,8 +67,10 @@ import {
   type ExportCompatibilityReport,
 } from "./api";
 import Icon from "./components/Icon.vue";
+import GardenStones from "./components/GardenStones.vue";
 import AssetCard from "./components/AssetCard.vue";
 import SourceDetails from "./components/SourceDetails.vue";
+import { startGardenLighting } from "./garden-lighting";
 import {
   preferences,
   getLastWorkspaceForProject,
@@ -90,8 +93,13 @@ const AppSettings = defineAsyncComponent({
   loadingComponent: WorkspaceLoading,
   delay: 150,
 });
+let importPanelModulePromise:
+  Promise<typeof import("./components/ImportPanel.vue")> | undefined;
+function loadImportPanel() {
+  return (importPanelModulePromise ??= import("./components/ImportPanel.vue"));
+}
 const ImportPanel = defineAsyncComponent({
-  loader: () => import("./components/ImportPanel.vue"),
+  loader: loadImportPanel,
   loadingComponent: WorkspaceLoading,
   delay: 150,
 });
@@ -196,6 +204,14 @@ function uiMessage(value: unknown) {
 }
 type AssetState = "favorite" | "rejected" | "locked";
 const tabs: Tab[] = ["library", "story", "edit", "export", "versions"];
+const compactSidebar = ref(false);
+const compactSidebarQuery =
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(max-width: 1100px)")
+    : null;
+function syncCompactSidebar() {
+  compactSidebar.value = compactSidebarQuery?.matches ?? false;
+}
 const workspaceIcons: Record<Tab, string> = {
   library: "image",
   story: "layers",
@@ -225,7 +241,26 @@ watch([() => project.value?.id, projectGeneration], () => {
   workspaceCommandsOpen.value = false;
 });
 const workspaceHeader = ref<HTMLElement | null>(null);
+const workspaceMain = ref<HTMLElement | null>(null);
 const workspaceHeaderHeight = ref(64);
+async function focusWorkspaceMain(importReady = false) {
+  const projectId = project.value?.id;
+  const generation = projectGeneration.value;
+  const current = () =>
+    project.value?.id === projectId && projectGeneration.value === generation;
+  if (importReady) await loadImportPanel();
+  if (!current()) return;
+  const importPanelMounted = importReady && (await waitForImportPanelMount());
+  if (!current()) return;
+  await nextTick();
+  if (!current()) return;
+  const main = workspaceMain.value;
+  if (!main) return;
+  const importPanel = importPanelMounted
+    ? main.querySelector<HTMLElement>('[data-focus-target="import-panel"]')
+    : null;
+  (importPanel ?? main).focus({ preventScroll: true });
+}
 let headerObserver: ResizeObserver | undefined;
 watch(workspaceHeader, (element) => {
   headerObserver?.disconnect();
@@ -299,6 +334,45 @@ const defaultRoot = computed(
   () => workspaceInfo.value?.defaultProjectRoot ?? "",
 );
 const importOpen = ref(false);
+const importPanelReady = ref(false);
+let resolveImportPanelReady: ((mounted: boolean) => void) | undefined;
+let importPanelReadyPromise = new Promise<boolean>(
+  (resolve) => (resolveImportPanelReady = resolve),
+);
+function resetImportPanelReady() {
+  resolveImportPanelReady?.(false);
+  importPanelReady.value = false;
+  importPanelReadyPromise = new Promise<boolean>(
+    (resolve) => (resolveImportPanelReady = resolve),
+  );
+}
+function markImportPanelReady(owner: string) {
+  if (!importOpen.value || project.value?.id !== owner) return;
+  importPanelReady.value = true;
+  resolveImportPanelReady?.(true);
+  resolveImportPanelReady = undefined;
+}
+watch([importOpen, () => project.value?.id], () => resetImportPanelReady(), {
+  flush: "sync",
+});
+async function waitForImportPanelMount() {
+  const owner = project.value?.id;
+  if (importPanelReady.value) return true;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const mounted = await Promise.race([
+    importPanelReadyPromise,
+    new Promise<boolean>((resolve) => {
+      timeout = setTimeout(() => resolve(false), 5_000);
+    }),
+  ]);
+  if (timeout) clearTimeout(timeout);
+  if (!mounted || !owner || !importOpen.value || project.value?.id !== owner)
+    return false;
+  await nextTick();
+  return !!workspaceMain.value?.querySelector(
+    '[data-focus-target="import-panel"]',
+  );
+}
 const assets = ref<MediaAsset[]>([]);
 const assetCache = ref<Record<string, MediaAsset>>({});
 const mediaStatus = ref<MediaStatus | null>(null);
@@ -364,6 +438,7 @@ watch(
 );
 const scenePlannerOpen = ref(false);
 const scenePlanner = ref<InstanceType<typeof ScenePlanner> | null>(null);
+const scenePlannerToggle = ref<HTMLButtonElement | null>(null);
 const scenePlannerReady = ref(false);
 let resolveScenePlannerReady: ((mounted: boolean) => void) | undefined;
 let scenePlannerReadyPromise = new Promise<boolean>(
@@ -380,6 +455,17 @@ function markScenePlannerReady() {
   scenePlannerReady.value = true;
   resolveScenePlannerReady?.(true);
   resolveScenePlannerReady = undefined;
+  if (tab.value === "story" && typeof document !== "undefined")
+    void nextTick(() =>
+      document.getElementById("scene-planner")?.focus({ preventScroll: true }),
+    );
+}
+function closeScenePlanner() {
+  scenePlannerOpen.value = false;
+  if (tab.value === "story")
+    void nextTick(() =>
+      scenePlannerToggle.value?.focus({ preventScroll: true }),
+    );
 }
 watch(
   scenePlannerOpen,
@@ -421,6 +507,7 @@ const storyScriptReview = ref<InstanceType<typeof StoryScriptReview> | null>(
 );
 const storyReviewBusy = ref(false);
 const storyReviewPending = ref(false);
+const storyReviewPendingCount = ref(0);
 // Empty poll results carry no recovery evidence; keep their prop identity stable.
 // Non-empty maps remain fresh so owner/checkpoint changes are always published.
 const EMPTY_ANALYSIS_RECOVERY: Record<string, AnalysisJobRecoveryState> =
@@ -473,6 +560,44 @@ const projectSwitchBlocked = computed(
     ),
 );
 const recentJob = computed(() => latestActivityJob(jobs.value));
+type ImportCompletionNotice = {
+  projectId: string;
+  id: string;
+  status: "completed" | "failed" | "cancelled";
+  errors: NonNullable<Job["errors"]>;
+};
+const importCompletion = shallowRef<ImportCompletionNotice | null>(null);
+const pendingImportCompletion = shallowRef<ImportCompletionNotice | null>(null);
+const recentActivityJob = computed(() => {
+  const job = recentJob.value;
+  return tab.value === "library" && importCompletion.value?.id === job?.id
+    ? null
+    : job;
+});
+const startedImportJobIds = new Set<string>();
+function transitionedImportCompletion(
+  nextJobs: readonly Job[],
+  previousJobs: readonly Job[],
+  projectId: string,
+): ImportCompletionNotice | undefined {
+  for (const job of nextJobs) {
+    if (
+      job.type !== "import" ||
+      !["completed", "failed", "cancelled"].includes(job.status)
+    )
+      continue;
+    const previous = previousJobs.find((item) => item.id === job.id);
+    const startedHere = startedImportJobIds.has(job.id);
+    if ((!previous || previous.status === job.status) && !startedHere) continue;
+    startedImportJobIds.delete(job.id);
+    return {
+      projectId,
+      id: job.id,
+      status: job.status as ImportCompletionNotice["status"],
+      errors: job.errors ?? [],
+    };
+  }
+}
 const cancellingJobs = ref<Record<string, boolean>>({});
 const renderCancellationRequested = ref<string | null>(null);
 const storyCreateOpen = ref(false);
@@ -884,6 +1009,7 @@ async function changeTab(next: Tab) {
     tab.value === "edit"
   )
     nativeBenchmark.record("edit-leave", { clipCount: clipCount.value });
+  if (next !== "library") importCompletion.value = null;
   setWorkspace(next);
   if (next === "story" && !beatDirty.value) hydrateBeat();
   if (next === "library") await checkMediaStatus();
@@ -980,6 +1106,7 @@ if (native)
     { flush: "sync" },
   );
 let poll: ReturnType<typeof setInterval> | undefined;
+let stopGardenLighting: (() => void) | undefined;
 let polling = false;
 let lastJobSignature = "";
 let jobsGeneration = 0;
@@ -1403,27 +1530,34 @@ async function resetProjectView() {
 }
 async function createFilm(value: FilmCreation) {
   if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
-  await run("creatingProject", async () => {
+  const created = await run("creatingProject", async () => {
     await api.createProject(value);
     await resetProjectView();
     importOpen.value = true;
   });
+  if (created) await focusWorkspaceMain(true);
 }
 async function openProject(path: string) {
   if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
-  await run("openingProject", async () => {
+  const opened = await run("openingProject", async () => {
     await post("/project/open", { path });
     await resetProjectView();
   });
+  if (opened) await focusWorkspaceMain();
 }
 async function beginImport(folder: string) {
   if (relinkBusy.value || !folder.trim()) return;
   await run("startingImport", async () => {
-    await post("/import", { folder: folder.trim() });
-    await importStarted();
+    const { jobId } = await post<{ jobId: string }>("/import", {
+      folder: folder.trim(),
+    });
+    await importStarted(jobId);
   });
 }
-async function importStarted() {
+async function importStarted(jobId: string) {
+  importCompletion.value = null;
+  pendingImportCompletion.value = null;
+  startedImportJobIds.add(jobId);
   await refreshJobs();
   importOpen.value = false;
   notice.value = message("feedback.importStarted");
@@ -1431,8 +1565,8 @@ async function importStarted() {
 async function importFiles(paths: string[]) {
   if (relinkBusy.value || !paths.length) return;
   await run("startingImport", async () => {
-    await api.importFiles(paths);
-    await importStarted();
+    const { jobId } = await api.importFiles(paths);
+    await importStarted(jobId);
   });
 }
 async function uploadFiles(files: File[]) {
@@ -1447,13 +1581,13 @@ async function uploadFiles(files: File[]) {
   };
   await run("uploadingFiles", async () => {
     try {
-      await api.uploadFiles(files, {
+      const { jobId } = await api.uploadFiles(files, {
         signal: uploadController!.signal,
         onProgress: (progress) => {
           uploadProgress.value = progress;
         },
       });
-      await importStarted();
+      await importStarted(jobId);
     } finally {
       uploading.value = false;
       uploadProgress.value = undefined;
@@ -1694,6 +1828,7 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
     if (tab.value !== "library") return;
     if (id === "media") importOpen.value = true;
     else {
+      importCompletion.value = null;
       importOpen.value = false;
       await selectLibraryFilter("events");
     }
@@ -1702,10 +1837,25 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
 function resetJobView() {
   jobsGeneration += 1;
   jobs.value = [];
+  startedImportJobIds.clear();
+  importCompletion.value = null;
+  pendingImportCompletion.value = null;
   analysisRecovery.value = EMPTY_ANALYSIS_RECOVERY;
   lastJobSignature = "";
   pendingMediaRefresh = undefined;
   mediaRefreshOwner = undefined;
+}
+function publishImportCompletion(projectId: string) {
+  const pending = pendingImportCompletion.value;
+  if (
+    !pending ||
+    pending.projectId !== projectId ||
+    project.value?.id !== projectId ||
+    pendingMediaRefresh?.projectId === projectId
+  )
+    return;
+  importCompletion.value = pending;
+  pendingImportCompletion.value = null;
 }
 function queueMediaRefresh(projectId: string, checkStatus: boolean) {
   // Object identity is the refresh token. A new import cannot be acknowledged
@@ -1768,6 +1918,10 @@ async function refreshJobs(refreshImportedMedia = true) {
   const projectId = project.value?.id;
   const result = await api.jobs();
   if (generation === jobsGeneration && project.value?.id === projectId) {
+    const completion = projectId
+      ? transitionedImportCompletion(result.jobs, jobs.value, projectId)
+      : undefined;
+    if (completion) pendingImportCompletion.value = completion;
     const newlyImported = result.jobs.some(
       (job) =>
         job.type === "import" &&
@@ -1791,6 +1945,7 @@ async function refreshJobs(refreshImportedMedia = true) {
         // its pending media refresh without replacing a render/cancel result.
       }
     }
+    if (projectId) publishImportCompletion(projectId);
   }
   return project.value?.id === projectId ? result.jobs : undefined;
 }
@@ -1815,6 +1970,13 @@ async function pollJobs() {
             previous.progress === job.progress,
         ),
     );
+    const importCompletionTransition = transitionedImportCompletion(
+      result.jobs,
+      jobs.value,
+      projectId,
+    );
+    if (importCompletionTransition)
+      pendingImportCompletion.value = importCompletionTransition;
     const newlyImported = result.jobs.some(
       (job) =>
         job.type === "import" &&
@@ -1858,6 +2020,7 @@ async function pollJobs() {
     // Pending derived reads survive unchanged jobs/signatures and own their
     // project/token separately from publication of newer Activity snapshots.
     await refreshPendingMedia();
+    publishImportCompletion(projectId);
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
   } finally {
@@ -2086,6 +2249,7 @@ async function loadAssetIds(requested: string[]) {
   }
 }
 function hydrateBeat() {
+  storyReviewPendingCount.value = 0;
   const beat = activeBeat.value;
   beatDraft.value = {
     title: beat?.title ?? "",
@@ -2665,6 +2829,46 @@ const workspaceCommands = computed<WorkspaceCommand[]>(() => {
       keywords: ["story", view],
     })),
     {
+      id: "import-media",
+      label: t("app.library.add"),
+      icon: "plus",
+      description: blocked ? unavailable : t("app.import.title"),
+      disabled: blocked,
+      keywords: ["add import media photos videos folder"],
+    },
+    {
+      id: "fit-duration",
+      label: t("editor.fit.title"),
+      icon: "film",
+      description: blocked
+        ? unavailable
+        : !activeComposition.value
+          ? t("app.workspaceMode.noComposition")
+          : t("app.workspaceMode.fitHint"),
+      disabled: blocked || !activeComposition.value,
+      keywords: ["fit duration shorten length time"],
+    },
+    {
+      id: "render-preview",
+      label: t("app.composition.render"),
+      icon: "play",
+      description: blocked
+        ? unavailable
+        : !activeComposition.value
+          ? t("app.workspaceMode.noComposition")
+          : t("app.composition.previewHint"),
+      disabled: blocked || !activeComposition.value,
+      keywords: ["render preview watch"],
+    },
+    {
+      id: "find-missing-media",
+      label: t("app.library.relink"),
+      icon: "refresh",
+      description: blocked ? unavailable : t("app.library.offlineHint"),
+      disabled: blocked || !librarySummary.value.total,
+      keywords: ["find missing offline relink reconnect media"],
+    },
+    {
       id: "new-story",
       label: t("app.story.new"),
       icon: "plus",
@@ -2703,6 +2907,29 @@ async function runWorkspaceCommand(id: WorkspaceCommandId) {
   if (id === "pipeline") {
     pipelineWorkbenchOpen.value = true;
     pipelineWorkbenchMode.value = "drawer";
+    return;
+  }
+  if (id === "import-media" || id === "find-missing-media") {
+    await changeTab("library");
+    if (!current() || tab.value !== "library") return;
+    if (id === "import-media") {
+      importOpen.value = true;
+      await focusWorkspaceMain(true);
+    } else await openRelink();
+    return;
+  }
+  if (id === "fit-duration" || id === "render-preview") {
+    await changeTab("edit");
+    if (!current() || tab.value !== "edit") return;
+    if (id === "render-preview") await renderPreview();
+    else {
+      // Edit may lazily mount TimelineEditor on a project's first visit.
+      // Wait for its existing readiness/flush gate before calling its API.
+      if (!(await flushEditor())) return;
+      if (!current() || tab.value !== "edit") return;
+      await nextTick();
+      await timelineEditor.value?.openFitReview();
+    }
     return;
   }
   const destination = id.startsWith("workspace:")
@@ -2971,6 +3198,9 @@ function protectDrafts(event: BeforeUnloadEvent) {
   }
 }
 onMounted(async () => {
+  syncCompactSidebar();
+  compactSidebarQuery?.addEventListener("change", syncCompactSidebar);
+  stopGardenLighting = startGardenLighting();
   window.addEventListener("beforeunload", protectDrafts);
   await boot();
   await restoreNativeDrafts();
@@ -2981,6 +3211,9 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeyboard);
 });
 onUnmounted(() => {
+  compactSidebarQuery?.removeEventListener("change", syncCompactSidebar);
+  stopGardenLighting?.();
+  stopGardenLighting = undefined;
   nativeDisposed = true;
   nativeBootGeneration++;
   retryNativeBootReady = undefined;
@@ -3180,10 +3413,9 @@ onUnmounted(() => {
       @retry="boot"
     />
 
-    <aside
+    <div
       v-if="project"
       class="workspace-sidebar"
-      :aria-label="t('app.navigation.label')"
       data-testid="workspace-sidebar"
     >
       <nav :aria-label="t('app.navigation.label')" class="main-nav">
@@ -3193,8 +3425,13 @@ onUnmounted(() => {
           type="button"
           :class="{ current: tab === item }"
           :aria-label="t(`app.navigation.${item}`)"
+          :aria-describedby="
+            item === 'library' && missingCount + inaccessibleCount > 0
+              ? 'library-nav-attention'
+              : undefined
+          "
           :aria-current="tab === item ? 'page' : undefined"
-          :title="t(`app.navigation.${item}`)"
+          :title="compactSidebar ? t(`app.navigation.${item}`) : undefined"
           :disabled="!!busy || relinkBusy || collectBusy"
           @click="changeTab(item)"
         >
@@ -3203,7 +3440,20 @@ onUnmounted(() => {
           <span
             v-if="item === 'library' && missingCount + inaccessibleCount > 0"
             class="nav-attention-count"
+            aria-hidden="true"
             >{{ formatNumber(missingCount + inaccessibleCount) }}</span
+          >
+          <span
+            v-if="item === 'library' && missingCount + inaccessibleCount > 0"
+            id="library-nav-attention"
+            class="sr-only"
+            >{{
+              t(
+                "app.library.offlineCount",
+                { count: formatNumber(missingCount + inaccessibleCount) },
+                missingCount + inaccessibleCount,
+              )
+            }}</span
           >
         </button>
       </nav>
@@ -3215,7 +3465,7 @@ onUnmounted(() => {
           @navigate="navigateWorkflow"
         />
       </section>
-    </aside>
+    </div>
     <main
       v-if="project"
       id="workspace-main"
@@ -3224,11 +3474,8 @@ onUnmounted(() => {
       class="workspace-content"
       :class="`workspace-${tab}`"
     >
-      <div
-        class="project-heading"
-        :class="{ 'project-heading-compact': tab === 'edit' }"
-      >
-        <div v-if="tab !== 'edit'">
+      <div v-if="tab !== 'edit'" class="project-heading">
+        <div>
           <span class="eyebrow">{{ t(`app.navigation.${tab}`) }}</span>
           <h1>
             {{
@@ -3276,8 +3523,11 @@ onUnmounted(() => {
             }}</button
           ><button
             v-if="tab === 'story'"
+            ref="scenePlannerToggle"
             class="secondary"
             data-testid="scene-planner-toggle"
+            :aria-expanded="scenePlannerOpen"
+            aria-controls="scene-planner"
             :disabled="!!busy || relinkBusy"
             @click="openScenePlanner"
           >
@@ -3318,7 +3568,7 @@ onUnmounted(() => {
         :disabled="!!busy || relinkBusy"
         :prepare="flushPending"
         :accept-plan="acceptScenePlan"
-        @close="scenePlannerOpen = false"
+        @close="closeScenePlanner"
         @working="scenePlannerWorking"
         @draft="scenePlanDraftPresent = $event"
         @ready="markScenePlannerReady"
@@ -3351,6 +3601,7 @@ onUnmounted(() => {
         @upload="uploadFiles"
         @cancel="uploadController?.abort()"
         @reviewed="sourceReviewApplied"
+        @ready="markImportPanelReady"
         @error="error = $event"
         @close="importOpen = false"
       />
@@ -3358,7 +3609,8 @@ onUnmounted(() => {
       <section
         v-if="
           activeJobs.length ||
-          (recentJob && (tab === 'library' || recentJob.status !== 'completed'))
+          (recentActivityJob &&
+            (tab === 'library' || recentActivityJob.status !== 'completed'))
         "
         class="jobs activity-strip"
         :aria-label="t('app.activity.label')"
@@ -3366,8 +3618,8 @@ onUnmounted(() => {
         <div
           v-for="job in activeJobs.length
             ? activeJobs
-            : recentJob
-              ? [recentJob]
+            : recentActivityJob
+              ? [recentActivityJob]
               : []"
           :key="job.id"
           class="job-row"
@@ -3390,13 +3642,22 @@ onUnmounted(() => {
               :size="17"
             />
             <strong>{{ jobTitle(job) }}</strong>
-            <span class="job-status">{{
-              job.status === "running" || job.status === "queued"
-                ? job.type === "import" || (job.progress ?? 0) > 0
-                  ? `${progress(job)}%`
-                  : t("app.activity.inProgress")
-                : t(`app.activity.status.${job.status}`)
-            }}</span>
+            <span
+              v-if="
+                !(
+                  job.status === 'completed' &&
+                  ['import', 'render'].includes(job.type)
+                )
+              "
+              class="job-status"
+              >{{
+                job.status === "running" || job.status === "queued"
+                  ? job.type === "import" || (job.progress ?? 0) > 0
+                    ? `${progress(job)}%`
+                    : t("app.activity.inProgress")
+                  : t(`app.activity.status.${job.status}`)
+              }}</span
+            >
           </div>
           <progress
             v-if="job.status === 'running' || job.status === 'queued'"
@@ -3460,7 +3721,13 @@ onUnmounted(() => {
                       : t("app.activity.cancelImport")
             }}
           </button>
-          <details v-if="job.errors?.length" class="job-errors">
+          <details
+            v-if="
+              job.errors?.length &&
+              !(tab === 'library' && importCompletion?.id === job.id)
+            "
+            class="job-errors"
+          >
             <summary>
               {{
                 t(
@@ -3484,6 +3751,77 @@ onUnmounted(() => {
               </li>
             </ul>
           </details>
+        </div>
+      </section>
+
+      <section
+        v-if="tab === 'library' && importCompletion"
+        class="import-completion-summary"
+        :class="importCompletion.status === 'completed' ? 'success' : 'warning'"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="import-completion-copy">
+          <h2>
+            {{
+              t(
+                importCompletion.status === "completed"
+                  ? "app.activity.import.complete"
+                  : `app.import.completion.${importCompletion.status}`,
+              )
+            }}
+          </h2>
+          <p>
+            {{
+              t("app.import.completion.libraryCounts", {
+                total: formatNumber(librarySummary.total),
+                photos: formatNumber(librarySummary.images),
+                videos: formatNumber(librarySummary.videos),
+                audio: formatNumber(librarySummary.audio),
+              })
+            }}
+          </p>
+          <details v-if="importCompletion.errors.length">
+            <summary>
+              {{
+                t(
+                  "app.import.completion.attention",
+                  { count: formatNumber(importCompletion.errors.length) },
+                  importCompletion.errors.length,
+                )
+              }}
+            </summary>
+            <ul>
+              <li
+                v-for="(problem, index) in importCompletion.errors"
+                :key="`${importCompletion.id}:${index}`"
+              >
+                <strong :title="problem.uri">{{
+                  problem.uri.split(/[\\/]/).at(-1)
+                }}</strong>
+                · {{ localizeError(problem) }}
+                <details v-if="errorDetail(problem)">
+                  <summary>{{ t("app.actions.details") }}</summary>
+                  <pre>{{ errorDetail(problem) }}</pre>
+                </details>
+              </li>
+            </ul>
+          </details>
+        </div>
+        <div class="import-completion-actions">
+          <button
+            v-if="librarySummary.total"
+            class="primary"
+            @click="navigateWorkflow('organize')"
+          >
+            {{ t("app.import.completion.organize") }}<Icon name="arrow" />
+          </button>
+          <button v-else class="primary" @click="importOpen = true">
+            {{ t("app.import.completion.addMore") }}<Icon name="arrow" />
+          </button>
+          <button class="text-button" @click="importCompletion = null">
+            {{ t("app.import.completion.dismiss") }}
+          </button>
         </div>
       </section>
 
@@ -3516,6 +3854,7 @@ onUnmounted(() => {
               v-if="
                 total > 0 ||
                 (mediaStatus?.assets.length ?? 0) > 0 ||
+                offlineLibraries.length > 0 ||
                 mediaStatusError
               "
               class="media-availability"
@@ -3541,6 +3880,9 @@ onUnmounted(() => {
                       missingCount + inaccessibleCount,
                     )
                   }}</strong
+                  ><strong v-else-if="offlineLibraries.length">{{
+                    t("app.library.offline")
+                  }}</strong
                   ><strong v-else>{{
                     checkingMedia
                       ? t("app.library.checking")
@@ -3548,7 +3890,13 @@ onUnmounted(() => {
                         ? t("app.library.available")
                         : t("app.library.notChecked")
                   }}</strong>
-                  <p v-if="missingCount || inaccessibleCount">
+                  <p
+                    v-if="
+                      missingCount ||
+                      inaccessibleCount ||
+                      offlineLibraries.length
+                    "
+                  >
                     {{ t("app.library.offlineHint") }}
                   </p>
                   <p v-else-if="mediaStatus">
@@ -3564,17 +3912,31 @@ onUnmounted(() => {
                     {{ uiMessage(mediaStatusError) }}
                   </p>
                 </div>
-                <button
-                  class="secondary"
-                  :disabled="checkingMedia || relinkBusy"
-                  @click="checkMediaStatus"
-                >
-                  <Icon name="refresh" :size="14" />{{
-                    checkingMedia
-                      ? t("app.library.checkingShort")
-                      : t("app.library.checkAgain")
-                  }}
-                </button>
+                <div class="media-availability-actions">
+                  <button
+                    v-if="
+                      missingCount ||
+                      inaccessibleCount ||
+                      offlineLibraries.length
+                    "
+                    class="primary"
+                    :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+                    @click="openRelink()"
+                  >
+                    {{ t("app.library.findMissing") }}<Icon name="arrow" />
+                  </button>
+                  <button
+                    class="text-button"
+                    :disabled="checkingMedia || relinkBusy"
+                    @click="checkMediaStatus"
+                  >
+                    <Icon name="refresh" :size="14" />{{
+                      checkingMedia
+                        ? t("app.library.checkingShort")
+                        : t("app.library.checkAgain")
+                    }}
+                  </button>
+                </div>
               </div>
               <div
                 v-for="library in offlineLibraries"
@@ -3696,6 +4058,17 @@ onUnmounted(() => {
                     {{ t("app.library.rejected") }}
                   </option>
                 </select>
+                <button
+                  v-if="search || stateFilter || mediaFilter"
+                  type="button"
+                  class="text-button library-filter-reset"
+                  :disabled="!!busy || relinkBusy"
+                  @click="clearLibraryFilters"
+                >
+                  <Icon name="refresh" :size="14" />{{
+                    t("app.library.clearFilters")
+                  }}
+                </button>
               </form>
               <div
                 class="library-layout"
@@ -3718,9 +4091,7 @@ onUnmounted(() => {
                   />
                 </section>
                 <div v-else class="empty-state library-empty">
-                  <span class="empty-symbol"
-                    ><Icon name="film" :size="30"
-                  /></span>
+                  <GardenStones class="empty-state-garden" />
                   <h2>
                     {{
                       libraryFilter === "missing"
@@ -3775,6 +4146,7 @@ onUnmounted(() => {
                 <aside
                   v-if="selectedAsset"
                   class="asset-inspector"
+                  data-stone="anchor"
                   :aria-label="t('app.inspector.label')"
                 >
                   <div class="inspector-title">
@@ -4030,9 +4402,7 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <div v-if="!analyzed" class="empty-state">
-                <span class="empty-symbol"
-                  ><Icon name="grid" :size="30"
-                /></span>
+                <GardenStones class="empty-state-garden" />
                 <h2>
                   {{
                     libraryView === "events"
@@ -4399,7 +4769,7 @@ onUnmounted(() => {
           v-if="!project.stories.length && !storyCreateOpen"
           class="empty-state story-empty"
         >
-          <span class="empty-symbol"><Icon name="film" :size="30" /></span>
+          <GardenStones class="empty-state-garden" />
           <h2>{{ t("app.story.emptyTitle") }}</h2>
           <p>{{ t("app.story.emptyHint") }}</p>
           <button class="primary" @click="openStoryCreate">
@@ -4428,7 +4798,7 @@ onUnmounted(() => {
               </select></label
             >
             <div
-              v-show="!expertMode"
+              v-if="expertMode"
               class="story-workflow"
               data-testid="story-workflow"
               role="group"
@@ -4527,6 +4897,7 @@ onUnmounted(() => {
               })
             }}</span
             ><button
+              v-if="expertMode"
               class="secondary pipeline-action"
               :disabled="
                 !!busy || beatDirty || storyReviewBusy || storyReviewPending
@@ -4696,6 +5067,7 @@ onUnmounted(() => {
               <section
                 v-if="activeBeat"
                 class="beat-editor"
+                data-stone="anchor"
                 :aria-label="t('app.story.editBeat')"
               >
                 <div class="beat-editor-heading">
@@ -4716,195 +5088,245 @@ onUnmounted(() => {
                     }}<Icon name="check" :size="15" />
                   </button>
                 </div>
-                <div class="beat-fields">
-                  <label class="field"
-                    >{{ t("app.story.beatTitle")
-                    }}<input
-                      v-model="beatDraft.title"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
+                <div class="beat-editor-workspace">
+                  <div class="beat-editor-tools">
+                    <div class="beat-fields">
+                      <label class="field"
+                        >{{ t("app.story.beatTitle")
+                        }}<input
+                          v-model="beatDraft.title"
+                          :disabled="
+                            (!!busy && busy !== 'savingBeat') ||
+                            relinkBusy ||
+                            ((storyReviewBusy || storyReviewPending) &&
+                              busy !== 'savingBeat')
+                          "
+                          :aria-label="t('app.story.beatTitle')"
+                          @input="beatDirty = true" /></label
+                      ><label class="field compact-field"
+                        >{{ t("app.story.beatDurationLabel")
+                        }}<input
+                          v-model.number="beatDraft.targetDuration"
+                          :disabled="
+                            (!!busy && busy !== 'savingBeat') ||
+                            relinkBusy ||
+                            ((storyReviewBusy || storyReviewPending) &&
+                              busy !== 'savingBeat')
+                          "
+                          :aria-label="t('app.story.beatDuration')"
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          @input="beatDirty = true" /></label
+                      ><label class="field intent-field"
+                        >{{ t("app.story.intent")
+                        }}<textarea
+                          v-model="beatDraft.intent"
+                          :disabled="
+                            (!!busy && busy !== 'savingBeat') ||
+                            relinkBusy ||
+                            ((storyReviewBusy || storyReviewPending) &&
+                              busy !== 'savingBeat')
+                          "
+                          :aria-label="t('app.story.beatIntent')"
+                          rows="2"
+                          @input="beatDirty = true"
+                        />
+                      </label>
+                    </div>
+                    <details
+                      class="story-writing-tools"
+                      :open="
+                        expertMode ||
+                        !!beatDraft.narration ||
+                        !!beatDraft.visualDirection ||
+                        storyReviewPending ||
+                        storyReviewBusy
                       "
-                      :aria-label="t('app.story.beatTitle')"
-                      @input="beatDirty = true" /></label
-                  ><label class="field compact-field"
-                    >{{ t("app.story.beatDurationLabel")
-                    }}<input
-                      v-model.number="beatDraft.targetDuration"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      :aria-label="t('app.story.beatDuration')"
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      @input="beatDirty = true" /></label
-                  ><label class="field intent-field"
-                    >{{ t("app.story.intent")
-                    }}<textarea
-                      v-model="beatDraft.intent"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      :aria-label="t('app.story.beatIntent')"
-                      rows="2"
-                      @input="beatDirty = true"
-                    />
-                  </label>
-                </div>
-                <div class="beat-script-fields">
-                  <label class="field"
-                    >{{ t("scenePlan.narration")
-                    }}<textarea
-                      v-model="beatDraft.narration"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      data-testid="beat-script-narration"
-                      rows="3"
-                      maxlength="8000"
-                      @input="beatDirty = true"
-                    />
-                  </label>
-                  <label class="field"
-                    >{{ t("scenePlan.visualDirection")
-                    }}<textarea
-                      v-model="beatDraft.visualDirection"
-                      :disabled="
-                        (!!busy && busy !== 'savingBeat') ||
-                        relinkBusy ||
-                        ((storyReviewBusy || storyReviewPending) &&
-                          busy !== 'savingBeat')
-                      "
-                      data-testid="beat-script-visual-direction"
-                      rows="3"
-                      maxlength="8000"
-                      @input="beatDirty = true"
-                    />
-                  </label>
-                </div>
-                <StoryScriptReview
-                  :key="
-                    JSON.stringify([project.id, activeStory.id, activeBeat.id])
-                  "
-                  ref="storyScriptReview"
-                  :project-id="project.id"
-                  :story-id="activeStory.id"
-                  :beat-id="activeBeat.id"
-                  :jobs="jobs"
-                  :disabled="!!busy || relinkBusy"
-                  :prepare="() => flushPending(true)"
-                  @accepted="scriptReviewAccepted"
-                  @activity="refreshJobs"
-                  @busy="storyReviewBusy = $event"
-                  @pending="storyReviewPending = $event"
-                />
-                <div class="candidate-heading">
-                  <h3>{{ t("app.story.choose") }}</h3>
-                  <span>{{
-                    t("app.story.candidates", {
-                      selected: beatDraft.selectedAssetIds.length,
-                      count: candidateIds.length,
-                    })
-                  }}</span>
-                </div>
-                <div class="story-suggestion-actions">
-                  <button
-                    class="secondary"
-                    :disabled="!!busy"
-                    @click="refreshSuggestions"
-                  >
-                    <Icon name="refresh" :size="15" />{{
-                      t("app.story.refreshSuggestions")
-                    }}</button
-                  ><small>{{ t("app.story.refreshHint") }}</small>
-                </div>
-                <p class="candidate-guidance">
-                  {{ t("app.story.mustIncludeHint") }}
-                </p>
-                <p v-if="beatDirty" class="edit-note" role="status">
-                  {{ t("app.story.dirty") }}
-                </p>
-                <section
-                  v-if="selectedBeatAssets.length"
-                  class="selected-memories"
-                  :aria-label="t('app.story.mustInclude')"
-                >
-                  <h3>{{ t("app.story.mustInclude") }}</h3>
-                  <div class="candidate-sheet">
-                    <AssetCard
-                      v-for="asset in selectedBeatAssets"
-                      :key="asset.id"
-                      :asset="asset"
-                      :source-status="sourceStatuses[asset.id]"
-                      choice
-                      :mutation-disabled="!!busy || relinkBusy"
-                      chosen
-                      @select="chooseCandidate"
-                    />
+                    >
+                      <summary>
+                        <span>{{ t("app.workspaceMode.scriptTools") }}</span>
+                        <span
+                          v-if="
+                            beatDraft.narration.trim() ||
+                            beatDraft.visualDirection.trim()
+                          "
+                          class="story-writing-script-state"
+                        >
+                          {{ t("scriptReview.hasNotes") }}
+                        </span>
+                        <span
+                          v-if="storyReviewPendingCount"
+                          class="story-writing-review-count"
+                          role="status"
+                        >
+                          {{
+                            t(
+                              "scriptReview.pendingCount",
+                              { count: formatNumber(storyReviewPendingCount) },
+                              storyReviewPendingCount,
+                            )
+                          }}
+                        </span>
+                      </summary>
+                      <div class="beat-script-fields">
+                        <label class="field"
+                          >{{ t("scenePlan.narration")
+                          }}<textarea
+                            v-model="beatDraft.narration"
+                            :disabled="
+                              (!!busy && busy !== 'savingBeat') ||
+                              relinkBusy ||
+                              ((storyReviewBusy || storyReviewPending) &&
+                                busy !== 'savingBeat')
+                            "
+                            data-testid="beat-script-narration"
+                            rows="3"
+                            maxlength="8000"
+                            @input="beatDirty = true"
+                          />
+                        </label>
+                        <label class="field"
+                          >{{ t("scenePlan.visualDirection")
+                          }}<textarea
+                            v-model="beatDraft.visualDirection"
+                            :disabled="
+                              (!!busy && busy !== 'savingBeat') ||
+                              relinkBusy ||
+                              ((storyReviewBusy || storyReviewPending) &&
+                                busy !== 'savingBeat')
+                            "
+                            data-testid="beat-script-visual-direction"
+                            rows="3"
+                            maxlength="8000"
+                            @input="beatDirty = true"
+                          />
+                        </label>
+                      </div>
+                      <StoryScriptReview
+                        :key="
+                          JSON.stringify([
+                            project.id,
+                            activeStory.id,
+                            activeBeat.id,
+                          ])
+                        "
+                        ref="storyScriptReview"
+                        :project-id="project.id"
+                        :story-id="activeStory.id"
+                        :beat-id="activeBeat.id"
+                        :jobs="jobs"
+                        :disabled="!!busy || relinkBusy"
+                        :prepare="() => flushPending(true)"
+                        @accepted="scriptReviewAccepted"
+                        @activity="refreshJobs"
+                        @busy="storyReviewBusy = $event"
+                        @pending="storyReviewPending = $event"
+                        @pending-count="storyReviewPendingCount = $event"
+                      />
+                    </details>
                   </div>
-                </section>
-                <h3 v-if="candidateAssets.length">
-                  {{ t("app.story.suggestions") }}
-                </h3>
-                <div v-if="candidateAssets.length" class="candidate-sheet">
-                  <AssetCard
-                    v-for="asset in candidateAssets.filter(
-                      (item) => !beatDraft.selectedAssetIds.includes(item.id),
-                    )"
-                    :key="asset.id"
-                    :asset="asset"
-                    :source-status="sourceStatuses[asset.id]"
-                    choice
-                    :mutation-disabled="!!busy || relinkBusy"
-                    :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
-                    @select="chooseCandidate"
-                  />
-                </div>
-                <div v-else class="small-empty">
-                  {{ t("app.story.noCandidates") }}
-                </div>
-                <div v-if="candidateIds.length > 24" class="pagination">
-                  <span>{{
-                    t("app.story.candidatePage", {
-                      from: formatNumber(candidateOffset + 1),
-                      to: formatNumber(
-                        Math.min(candidateOffset + 24, candidateIds.length),
-                      ),
-                      count: formatNumber(candidateIds.length),
-                    })
-                  }}</span>
-                  <div>
-                    <button
-                      class="secondary"
-                      :disabled="candidateOffset === 0"
-                      @click="
-                        candidateOffset -= 24;
-                        run('loadingCandidates', loadCandidates);
-                      "
+                  <div class="beat-editor-memories">
+                    <div class="candidate-heading">
+                      <h3>{{ t("app.story.choose") }}</h3>
+                      <span>{{
+                        t("app.story.candidates", {
+                          selected: beatDraft.selectedAssetIds.length,
+                          count: candidateIds.length,
+                        })
+                      }}</span>
+                    </div>
+                    <div class="story-suggestion-actions">
+                      <button
+                        class="secondary"
+                        :disabled="!!busy"
+                        @click="refreshSuggestions"
+                      >
+                        <Icon name="refresh" :size="15" />{{
+                          t("app.story.refreshSuggestions")
+                        }}</button
+                      ><small>{{ t("app.story.refreshHint") }}</small>
+                    </div>
+                    <p class="candidate-guidance">
+                      {{ t("app.story.mustIncludeHint") }}
+                    </p>
+                    <p v-if="beatDirty" class="edit-note" role="status">
+                      {{ t("app.story.dirty") }}
+                    </p>
+                    <section
+                      v-if="selectedBeatAssets.length"
+                      class="selected-memories"
+                      :aria-label="t('app.story.mustInclude')"
                     >
-                      {{ t("app.actions.previous") }}</button
-                    ><button
-                      class="secondary"
-                      :disabled="candidateOffset + 24 >= candidateIds.length"
-                      @click="
-                        candidateOffset += 24;
-                        run('loadingCandidates', loadCandidates);
-                      "
-                    >
-                      {{ t("app.actions.next") }}
-                    </button>
+                      <h3>{{ t("app.story.mustInclude") }}</h3>
+                      <div class="candidate-sheet">
+                        <AssetCard
+                          v-for="asset in selectedBeatAssets"
+                          :key="asset.id"
+                          :asset="asset"
+                          :source-status="sourceStatuses[asset.id]"
+                          choice
+                          :mutation-disabled="!!busy || relinkBusy"
+                          chosen
+                          @select="chooseCandidate"
+                        />
+                      </div>
+                    </section>
+                    <h3 v-if="candidateAssets.length">
+                      {{ t("app.story.suggestions") }}
+                    </h3>
+                    <div v-if="candidateAssets.length" class="candidate-sheet">
+                      <AssetCard
+                        v-for="asset in candidateAssets.filter(
+                          (item) =>
+                            !beatDraft.selectedAssetIds.includes(item.id),
+                        )"
+                        :key="asset.id"
+                        :asset="asset"
+                        :source-status="sourceStatuses[asset.id]"
+                        choice
+                        :mutation-disabled="!!busy || relinkBusy"
+                        :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
+                        @select="chooseCandidate"
+                      />
+                    </div>
+                    <div v-else class="small-empty">
+                      {{ t("app.story.noCandidates") }}
+                    </div>
+                    <div v-if="candidateIds.length > 24" class="pagination">
+                      <span>{{
+                        t("app.story.candidatePage", {
+                          from: formatNumber(candidateOffset + 1),
+                          to: formatNumber(
+                            Math.min(candidateOffset + 24, candidateIds.length),
+                          ),
+                          count: formatNumber(candidateIds.length),
+                        })
+                      }}</span>
+                      <div>
+                        <button
+                          class="secondary"
+                          :disabled="candidateOffset === 0"
+                          @click="
+                            candidateOffset -= 24;
+                            run('loadingCandidates', loadCandidates);
+                          "
+                        >
+                          {{ t("app.actions.previous") }}</button
+                        ><button
+                          class="secondary"
+                          :disabled="
+                            candidateOffset + 24 >= candidateIds.length
+                          "
+                          @click="
+                            candidateOffset += 24;
+                            run('loadingCandidates', loadCandidates);
+                          "
+                        >
+                          {{ t("app.actions.next") }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -4918,7 +5340,7 @@ onUnmounted(() => {
         class="editing-workflow"
       >
         <div v-if="!activeComposition" class="empty-state">
-          <span class="empty-symbol"><Icon name="film" :size="30" /></span>
+          <GardenStones class="empty-state-garden" />
           <h2>{{ t("app.composition.emptyTitle") }}</h2>
           <p>{{ t("app.composition.emptyHint") }}</p>
           <button class="primary" @click="changeTab('story')">

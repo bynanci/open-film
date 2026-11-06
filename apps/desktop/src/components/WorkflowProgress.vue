@@ -14,7 +14,6 @@ const { t } = useI18n();
       class="workflow-step"
       :data-state="step.state"
       :aria-current="step.state === 'current' ? 'step' : undefined"
-      :title="t(`app.workflow.state.${step.state}`)"
       :disabled="disabled"
       @click="$emit('navigate', step.id)"
     >

@@ -64,6 +64,14 @@ the editor. Film language controls generated template text independently; custom
 titles and legacy text remain intact. Theme and default film language/storage are
 local preferences. There is no remote provider toggle for an absent feature.
 
+Ctrl/Cmd+K searches existing Import, Fit review, Preview and Find Missing Media
+actions. General mode keeps one progress route and a compact Pipeline bar; open
+the drawer for the full route and review/recovery actions. The Inspector uses
+Arrow Left/Right, Home and End to switch categories and remembers an explicit
+collapse choice on this device. Essential timing and audio controls precede
+styling. Story's script/direction disclosure retains its mounted review owner
+and opens for authored text or pending work.
+
 ## Precision mode
 
 Edit retains Story mode and adds Precision for a selected video/audio clip.
