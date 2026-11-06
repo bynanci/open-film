@@ -1,6 +1,6 @@
 import { createApp } from "vue";
 import RuntimeGate from "./components/RuntimeGate.vue";
-import { i18n } from "./i18n";
+import { i18n, initializeLocale } from "./i18n";
 import "./preferences";
 import "./tokens.css";
 import "./style.css";
@@ -11,4 +11,9 @@ import "./export-report.css";
 import "./product.css";
 import "./versions.css";
 
-createApp(RuntimeGate).use(i18n).mount("#app");
+async function start() {
+  await initializeLocale();
+  createApp(RuntimeGate).use(i18n).mount("#app");
+}
+
+void start();

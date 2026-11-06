@@ -714,7 +714,7 @@ for (const [locale, viewport] of [
         await page.evaluate(async () => {
           const path = "/src/i18n/index.ts";
           const { setUiLocale, uiLocale } = await import(path);
-          setUiLocale("en-XA");
+          await setUiLocale("en-XA");
           return uiLocale.value;
         }),
       ).toBe("en-XA");

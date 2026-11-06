@@ -2372,7 +2372,7 @@ for (const locale of ["zh-TW", "ja-JP"] as const) {
       const switchedLocale = await page.evaluate(async () => {
         const modulePath = "/src/i18n/index.ts";
         const { setUiLocale, uiLocale } = await import(modulePath);
-        setUiLocale("en-XA");
+        await setUiLocale("en-XA");
         return uiLocale.value;
       });
       expect(switchedLocale).toBe("en-XA");

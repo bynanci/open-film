@@ -91,13 +91,27 @@ describe("formatting without changing content", () => {
 });
 
 describe("translation coverage and errors", () => {
+  it("loads an unselected UI catalog only when its locale is requested", async () => {
+    const { i18n, setUiLocale, uiLocale } =
+      await import("../../apps/desktop/src/i18n");
+
+    expect(i18n.global.availableLocales).not.toContain("zh-TW");
+    expect(i18n.global.availableLocales).not.toContain("ja-JP");
+
+    await setUiLocale("zh-TW");
+
+    expect(uiLocale.value).toBe("zh-TW");
+    expect(i18n.global.availableLocales).toContain("zh-TW");
+    expect(i18n.global.t("app.actions.working")).toBe("處理中…");
+  });
+
   it("compiles every real message and plural branch with Vue I18n", async () => {
     const { i18n, setUiLocale } = await import("../../apps/desktop/src/i18n");
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
-        setUiLocale(locale);
+        await setUiLocale(locale);
         for (const [key, value] of Object.entries(flattenMessages(enUS))) {
           for (const count of value.includes("|") ? [0, 1, 2, 100] : [2]) {
             const params = Object.fromEntries(
@@ -115,7 +129,7 @@ describe("translation coverage and errors", () => {
       expect(errors.mock.calls).toEqual([]);
       expect(warnings.mock.calls).toEqual([]);
     } finally {
-      setUiLocale("en-US");
+      await setUiLocale("en-US");
       errors.mockRestore();
       warnings.mockRestore();
     }
@@ -134,19 +148,19 @@ describe("translation coverage and errors", () => {
         code: "media.missing",
         params: { name: "夏日 #1 & 秋.MP4" },
       };
-      setUiLocale("zh-TW");
+      await setUiLocale("zh-TW");
       expect(storage.get("openfilm.uiLocale")).toBe("zh-TW");
       expect(localizeError(error)).toContain("已離線");
-      setUiLocale("ja-JP");
+      await setUiLocale("ja-JP");
       expect(localizeError(error)).toContain("オフライン");
-      initializeLocale("en-US");
+      await initializeLocale("en-US");
       expect(uiLocale.value).toBe("ja-JP");
       expect(error).toEqual({
         code: "media.missing",
         params: { name: "夏日 #1 & 秋.MP4" },
       });
     } finally {
-      setUiLocale("en-US");
+      await setUiLocale("en-US");
       vi.unstubAllGlobals();
     }
   });
