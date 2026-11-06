@@ -551,6 +551,28 @@ The audit reports `vulnerabilities.found: false` and zero entries in its vulnera
 
 Using isolated Rust/Cargo 1.99.0 tooling, locked reverse feature trees were inspected for `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` and `aarch64-apple-darwin`; the current lockfile SHA-256 remains `a6d4ca550fcf3db4b851405d650e8d7d8aa74de5e4f160f2eb950ef7cec66142`. These observations improve on the earlier direct-source grep, but do not establish a binary call graph. In c068 main, the GLib code remains unpatched; its gate still requires compatible source remediation or full source-aware control evidence and independent review. Keep all findings visible and re-audit any later candidate against a fresh database. Do not infer a release pass from the standard audit's exit 0.
 
+### 2026-11-06 current-main audit refresh
+
+The exact `main` source inspected was `b6304914a7eb351d8e5d0a0a11b41e163713e20b`.
+With isolated Rust/Cargo 1.99.0 tooling and `cargo-audit 0.22.2`, a new
+`cargo audit --json` on `apps/desktop/src-tauri/Cargo.lock` completed at
+2026-11-06 09:45:07 UTC. The lock SHA-256 is
+`a6d4ca550fcf3db4b851405d650e8d7d8aa74de5e4f160f2eb950ef7cec66142`, unchanged
+from the prior source-aware review; the Tauri manifest and toolchain declaration
+are unchanged from c068 as well. The scan examined 431 locked packages and used
+advisory database commit `26fd2d43f7280a1fb925a3743ec463017afe7119` (1,409
+advisories; last updated `2026-11-05T09:50:49+01:00`). The raw JSON is retained
+at [`rustsec-main-b630491-2026-11-06.json`](https://github.com/bynanci/open-film/blob/main/docs/evidence/native-installer/rustsec-main-b630491-2026-11-06.json),
+SHA-256 `1e7c14faa21b79ab4b72fa0e3f7c0a8acbf6e61e828906c1a544b40845f823dc`.
+
+The report has zero vulnerabilities, two `unsound` advisories (GLib and Tokio)
+and one `unmaintained` notice (`proc-macro-error`). Its scanner settings classify
+`unsound` and `unmaintained` as informational; the ordinary command therefore
+exited 0. This confirms the current lockfile warnings but does not make them
+patched, unreachable by binary proof, or release-approved. The GLib
+`VariantStrIter` source-aware admission gate remains open. No dependency update,
+native build, source reproduction or workstation observation is claimed here.
+
 ### Separate D7B source-repair experiment (not admitted)
 
 An isolated source-repair experiment at `423ccd3af308fe855b0da7f9ab9d0e1e78be8b2a` was audited on 2026-11-04. It is not based on current main `fcc00131c2f2d90d9dd20952dad192a65cceaa31`: it is 219 commits behind and 5 commits ahead, so it is not a release candidate and must be reconciled onto current main before further candidate validation. The reviewed GLib source verifier passed for 121 files, and locked Linux metadata/closure verification passed for 431 dependencies with the source patch and Tokio 1.53.3. The candidate lock SHA-256 is `c0f457e0ab610c0db6c5d4eddc5997f4de3a91e2c832587c956d337b5e7c8161`.

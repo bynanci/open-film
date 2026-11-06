@@ -3,5 +3,6 @@ Cargo.lock
 coverage
 dist
 node_modules
+docs/evidence/native-installer/rustsec-main-b630491-2026-11-06.json
 **/target
 apps/desktop/src-tauri/gen
