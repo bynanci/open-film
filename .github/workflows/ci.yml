@@ -114,7 +114,7 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       # Each VM owns its server; one worker serializes UI access while shards balance tests within spec files.
-      - run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --reporter=list,github,json
+      - run: pnpm test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,github,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v4
