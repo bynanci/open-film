@@ -89,7 +89,28 @@ remain separate acceptance scopes. See the
 
 ### Professional Cut Desk
 
-- [ ] **Phase 4:** finish the remaining finishing interactions and physical workstation checks. Reuse the existing proxy, sequence-waveform and audio-policy implementations.
+- [x] **Phase 4A — source scopes and split-wipe comparison.** Merged in
+      [PR #112](https://github.com/bynanci/open-film/pull/112). Browser scopes
+      describe bounded, pre-look source samples; calibrated display, HDR and
+      hardware-monitor behavior are not included. See the
+      [Phase 4A validation](docs/validation-cut-desk-phase-4a-scopes.md).
+- [ ] **Phase 4B — deterministic animation.** Specify and implement supported
+      keyframed properties and speed ramps with arbitrary-seek evaluation and
+      Monitor/FFmpeg parity. Preserve the existing Composition and user-pin
+      contracts.
+- [x] **Phase 4C — shortcut profiles.** Merged in
+      [PR #113](https://github.com/bynanci/open-film/pull/113). Profiles are
+      validated declarative local preferences, separate from project content.
+      Supported physical keyboard layouts and native OS reservations remain a
+      workstation check. See the
+      [Phase 4C validation](docs/validation-cut-desk-phase-4c-shortcut-profiles.md).
+- [ ] **Phase 4D — long-form evidence.** Add bounded performance telemetry and
+      gather workstation evidence for proxies, high-DPI, pen/trackpad and
+      multichannel audio workflows.
+- [ ] **Phase 4E — compound editing.** Start only after a versioned Composition
+      contract proves the feature cannot introduce a hidden second timeline.
+- [ ] **Phase 4F — multicamera.** Start only with explicit synchronization and
+      source-provenance evidence.
 
 Phases 1A–1C, Phase 2 (Roll, Slip, Slide, Insert, Overwrite, Lift, Ripple Delete, Batch edits) and Phase 3 (track controls: target, lock, mute, solo, visibility & persistence) have merged implementations, including precision zoom/pan, snap-bypass gestures, responsive monitor layouts and accessibility controls.
 See the [Cut Desk guide](docs/professional-cut-desk.md),
