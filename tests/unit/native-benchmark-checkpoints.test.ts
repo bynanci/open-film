@@ -713,6 +713,8 @@ describe("actual workspace readiness guards", () => {
       ),
       poll: undefined,
       stopGardenLighting: undefined,
+      compactSidebarQuery: { removeEventListener: vi.fn() },
+      syncCompactSidebar: vi.fn(),
       onUnmounted: (callback: () => void) => {
         unmount = callback;
       },
@@ -1280,6 +1282,7 @@ describe("actual workspace readiness guards", () => {
       const removeWindowListener = vi.fn();
       const removeDocumentListener = vi.fn();
       const clearLookCompare = vi.fn();
+      const compactSidebarQuery = { removeEventListener: vi.fn() };
       await turn();
       expect(h.visibilityListeners.size).toBe(1);
       const cleanup = actualFunction(
@@ -1301,6 +1304,8 @@ describe("actual workspace readiness guards", () => {
           nativeEditGeneration: 1,
           poll: undefined,
           stopGardenLighting: undefined,
+          compactSidebarQuery,
+          syncCompactSidebar: vi.fn(),
           window: { removeEventListener: removeWindowListener },
           document: { removeEventListener: removeDocumentListener },
           handleKeyboard: () => {},
@@ -1327,6 +1332,11 @@ describe("actual workspace readiness guards", () => {
         },
       );
       cleanup();
+      if (workspace === "boot")
+        expect(compactSidebarQuery.removeEventListener).toHaveBeenCalledWith(
+          "change",
+          expect.any(Function),
+        );
       if (workspace === "editor")
         expect(abortCaptionImport).toHaveBeenCalledTimes(1);
       if (workspace === "editor") {

@@ -238,6 +238,7 @@ async function fixture(initialStart?: () => Promise<unknown>) {
   const browser = new EventTarget();
   Object.assign(browser, { __TAURI_INTERNALS__: { invoke } });
   vi.stubGlobal("window", browser);
+  vi.stubGlobal("document", { getElementById: vi.fn(() => null) });
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -429,6 +430,15 @@ async function fixture(initialStart?: () => Promise<unknown>) {
 }
 
 describe("native recovery retains actual App local draft owners", () => {
+  it("mounts when the host has no matchMedia implementation", async () => {
+    const h = await fixture();
+    try {
+      expect(h.browser).not.toHaveProperty("matchMedia");
+      expect(h.current.setupState.project?.id).toBe("project");
+    } finally {
+      h.unmount();
+    }
+  });
   it("handles an initial close request while native startup is still pending", async () => {
     let finish!: (value: unknown) => void;
     const pending = new Promise((resolve) => {

@@ -205,9 +205,12 @@ function uiMessage(value: unknown) {
 type AssetState = "favorite" | "rejected" | "locked";
 const tabs: Tab[] = ["library", "story", "edit", "export", "versions"];
 const compactSidebar = ref(false);
-const compactSidebarQuery = window.matchMedia("(max-width: 1100px)");
+const compactSidebarQuery =
+  typeof window.matchMedia === "function"
+    ? window.matchMedia("(max-width: 1100px)")
+    : undefined;
 function syncCompactSidebar() {
-  compactSidebar.value = compactSidebarQuery.matches;
+  compactSidebar.value = compactSidebarQuery?.matches ?? false;
 }
 const workspaceIcons: Record<Tab, string> = {
   library: "image",
@@ -3196,7 +3199,7 @@ function protectDrafts(event: BeforeUnloadEvent) {
 }
 onMounted(async () => {
   syncCompactSidebar();
-  compactSidebarQuery.addEventListener("change", syncCompactSidebar);
+  compactSidebarQuery?.addEventListener("change", syncCompactSidebar);
   stopGardenLighting = startGardenLighting();
   window.addEventListener("beforeunload", protectDrafts);
   await boot();
@@ -3208,7 +3211,7 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeyboard);
 });
 onUnmounted(() => {
-  compactSidebarQuery.removeEventListener("change", syncCompactSidebar);
+  compactSidebarQuery?.removeEventListener("change", syncCompactSidebar);
   stopGardenLighting?.();
   stopGardenLighting = undefined;
   nativeDisposed = true;
