@@ -124,6 +124,35 @@ async function decode(path: string) {
     ])
   ).stdout;
 }
+/** Independent source oracle in the declared pre-matrix encoded SDR RGBA domain. */
+async function matrixSourcePixel(path: string, toneMap?: string) {
+  const pixels = (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-filter_complex_threads",
+      "1",
+      "-filter_complex",
+      `sws_flags=+accurate_rnd+bitexact;[0:v]${toneMap ? `${toneMap},` : ""}format=rgba[source]`,
+      "-map",
+      "[source]",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "rgba",
+      "-f",
+      "rawvideo",
+      "-",
+    ])
+  ).stdout;
+  expect(pixels.length).toBe(settings.width * settings.height * 4);
+  const offset = (45 * settings.width + 80) * 4;
+  return [...pixels.subarray(offset, offset + 3)];
+}
 function transformed(rgb: number[], recipe: FilmLook, alpha = 255) {
   const matrix = filmLookMatrix(recipe);
   return [0, 5, 10].map((row) =>
@@ -144,13 +173,20 @@ function closeChannels(
   expected: number[],
   tolerance: 1 | 3 = 3,
 ) {
-  for (let i = 0; i < 3; i++)
-    assertRenderQaMetric(
-      tolerance === 1
-        ? "filmLook.losslessChannelError"
-        : "filmLook.channelError",
-      Math.abs(actual[i]! - Math.round(expected[i]!)),
-    );
+  for (let i = 0; i < 3; i++) {
+    try {
+      assertRenderQaMetric(
+        tolerance === 1
+          ? "filmLook.losslessChannelError"
+          : "filmLook.channelError",
+        Math.abs(actual[i]! - Math.round(expected[i]!)),
+      );
+    } catch (error) {
+      if (error instanceof Error)
+        error.message += `; channel ${i}, actual RGB ${JSON.stringify(actual)}, expected RGB ${JSON.stringify(expected)}`;
+      throw error;
+    }
+  }
 }
 it("renders all six shared matrices with distinct pixels and correct strength", async () => {
   const { asset, composition, render } = await fixture();
@@ -352,7 +388,9 @@ it("grades video sources and keeps different looks through a crossfade", async (
     uri: pathToFileURL(video).href,
     name: "source.mp4",
   });
-  const source = sample(await decode(video));
+  // Decode only the source oracle in the pre-matrix domain. Consumer output
+  // decoding and the original three-channel-unit bound remain unchanged.
+  const source = await matrixSourcePixel(video);
   const first: Clip = {
     ...composition.tracks[0]!.clips[0]!,
     assetId: sourceAsset.id,
@@ -502,21 +540,7 @@ it("applies the matrix after HDR tone mapping and retains metadata guards", asyn
   });
   expect(asset.hdr).toBe(true);
   const { hdrToneMapFilter } = await import("@openfilm/media");
-  const mapped = (
-    await runProcess("ffmpeg", [
-      "-v",
-      "error",
-      "-i",
-      path,
-      "-vf",
-      `${hdrToneMapFilter(asset)},format=rgb24`,
-      "-frames:v",
-      "1",
-      "-f",
-      "rawvideo",
-      "-",
-    ])
-  ).stdout;
+  const mapped = await matrixSourcePixel(path, hdrToneMapFilter(asset));
   const film: Composition = {
     ...composition,
     defaultLook: look("retro"),
@@ -528,10 +552,7 @@ it("applies the matrix after HDR tone mapping and retains metadata guards", asyn
     ],
   };
   const result = await render(film, "pq-graded", {}, [asset]);
-  closeChannels(
-    sample(result.pixels),
-    transformed(sample(mapped), look("retro")),
-  );
+  closeChannels(sample(result.pixels), transformed(mapped, look("retro")));
   await expect(
     render(film, "pq-missing-metadata", {}, [
       { ...asset, metadata: { ...asset.metadata, "openfilm.color": {} } },

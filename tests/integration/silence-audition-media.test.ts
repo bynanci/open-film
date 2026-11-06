@@ -294,11 +294,8 @@ it.each([
   { kind: "source-lock", code: "timeline.lockedClipConflict" },
   { kind: "pin", code: "timeline.pinConflict" },
   { kind: "jl", code: "timeline.audioTimingConflict" },
-  { kind: "short-fade", code: "timeline.audioAutomationConflict" },
-  { kind: "long-fade", code: "timeline.audioAutomationConflict" },
-  { kind: "envelope", code: "timeline.audioAutomationConflict" },
 ])(
-  "fails closed before rendering a protected or unsupported measured cut ($kind)",
+  "fails closed before rendering a protected or independently timed measured cut ($kind)",
   async ({ kind, code }) => {
     const f = await fixture(48000),
       composition = f.app.project.timelines[0]!,
@@ -326,22 +323,6 @@ it.each([
         sourceOutSample: 192000,
       };
     }
-    if (kind === "short-fade" || kind === "long-fade")
-      clip.audioAutomation = {
-        version: 1,
-        role: "dialogue",
-        fadeIn: kind === "short-fade" ? 0.02 : 3,
-        fadeOut: kind === "short-fade" ? 0.02 : 3,
-      };
-    if (kind === "envelope")
-      clip.audioAutomation = {
-        version: 1,
-        role: "dialogue",
-        points: [
-          { time: 0, gain: 0.5 },
-          { time: 4, gain: 1 },
-        ],
-      };
     await f.app.save();
     const project = await readFile(join(f.app.directory, "project.json"));
     await expect(

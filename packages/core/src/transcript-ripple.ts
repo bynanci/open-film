@@ -13,6 +13,7 @@ import {
   type TranscriptSegment,
 } from "./intelligence.js";
 import { resolveCompositionCoverageBindings } from "./coverage.js";
+import { mapAudioAutomationForClipWindow } from "./audio-policy.js";
 import { validateComposition } from "./validation.js";
 
 const EPSILON = 1e-4;
@@ -443,6 +444,7 @@ function applySingleRippleInterval(
         // Entirely inside the cut: delete
       } else if (cStart < tStart && cEnd > tEnd) {
         // Cut is strictly inside the clip: split into two halves
+        const original = structuredClone(clip);
         const leftDuration = tStart - cStart;
         const leftSourceOut = cSourceIn + leftDuration * speed;
 
@@ -455,6 +457,15 @@ function applySingleRippleInterval(
           ...clip,
           timelineDuration: leftDuration,
           sourceOut: leftSourceOut,
+          ...(clip.audioAutomation
+            ? {
+                audioAutomation: mapAudioAutomationForClipWindow(
+                  original,
+                  0,
+                  leftDuration,
+                ),
+              }
+            : {}),
         };
 
         const rightClip: Clip = {
@@ -464,22 +475,45 @@ function applySingleRippleInterval(
           timelineDuration: rightDuration,
           sourceIn: rightSourceIn,
           sourceOut: rightSourceOut,
+          ...(clip.audioAutomation
+            ? {
+                audioAutomation: mapAudioAutomationForClipWindow(
+                  original,
+                  tEnd - cStart,
+                  rightDuration,
+                ),
+              }
+            : {}),
         };
         delete rightClip.transition;
 
         newClips.push(leftClip, rightClip);
       } else if (cStart < tStart && cEnd > tStart) {
         // Overlaps the end of the clip: trim right
+        const original = structuredClone(clip);
         const newDuration = tStart - cStart;
         clip.timelineDuration = newDuration;
         clip.sourceOut = cSourceIn + newDuration * speed;
+        if (clip.audioAutomation)
+          clip.audioAutomation = mapAudioAutomationForClipWindow(
+            original,
+            0,
+            newDuration,
+          );
         newClips.push(clip);
       } else if (cStart < tEnd && cEnd > tEnd) {
         // Overlaps the start of the clip: trim left and reposition
+        const original = structuredClone(clip);
         const cutDuration = tEnd - cStart;
         clip.timelineStart = tStart;
         clip.timelineDuration = cEnd - tEnd;
         clip.sourceIn = cSourceIn + cutDuration * speed;
+        if (clip.audioAutomation)
+          clip.audioAutomation = mapAudioAutomationForClipWindow(
+            original,
+            cutDuration,
+            clip.timelineDuration,
+          );
         newClips.push(clip);
       }
     }
@@ -503,28 +537,49 @@ function applySingleRippleInterval(
       } else if (oStart >= tStart - EPSILON && oEnd <= tEnd + EPSILON) {
         // Fully covered by cut: removed
       } else if (oStart < tStart && oEnd > tEnd) {
+        const original = structuredClone(clip);
         clip.timelineDuration = Math.max(0.01, clip.timelineDuration - delta);
         if (clip.sourceOut !== undefined && clip.sourceIn !== undefined) {
           clip.sourceOut =
             clip.sourceIn +
             clip.timelineDuration * (clip.transform?.speed ?? 1);
         }
+        if (clip.audioAutomation)
+          clip.audioAutomation = mapAudioAutomationForClipWindow(
+            original,
+            0,
+            clip.timelineDuration,
+          );
         newClips.push(clip);
       } else if (oStart < tStart && oEnd > tStart) {
+        const original = structuredClone(clip);
         clip.timelineDuration = Math.max(0.01, tStart - oStart);
         if (clip.sourceOut !== undefined && clip.sourceIn !== undefined) {
           clip.sourceOut =
             clip.sourceIn +
             clip.timelineDuration * (clip.transform?.speed ?? 1);
         }
+        if (clip.audioAutomation)
+          clip.audioAutomation = mapAudioAutomationForClipWindow(
+            original,
+            0,
+            clip.timelineDuration,
+          );
         newClips.push(clip);
       } else if (oStart < tEnd && oEnd > tEnd) {
+        const original = structuredClone(clip);
         const cutDuration = tEnd - oStart;
         clip.timelineStart = tStart;
         clip.timelineDuration = Math.max(0.01, oEnd - tEnd);
         if (clip.sourceIn !== undefined) {
           clip.sourceIn += cutDuration * (clip.transform?.speed ?? 1);
         }
+        if (clip.audioAutomation)
+          clip.audioAutomation = mapAudioAutomationForClipWindow(
+            original,
+            cutDuration,
+            clip.timelineDuration,
+          );
         newClips.push(clip);
       }
     }

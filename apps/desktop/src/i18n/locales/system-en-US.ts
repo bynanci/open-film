@@ -98,7 +98,7 @@ export default {
     },
     timeline: {
       audioAutomationConflict:
-        "Silence trimming would shorten or split a clip with local audio automation. Adjust the clip automation first.",
+        "This edit cannot safely preserve the clip's audio automation clock. Reset the automation or review the trim again, then retry.",
       audioTimingConflict:
         "The independent sound range conflicts with this edit. Adjust or explicitly reset sound timing first.",
       audioCaptionConflict:

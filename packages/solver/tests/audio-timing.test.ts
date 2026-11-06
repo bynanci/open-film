@@ -7,6 +7,8 @@ import {
   type TimelineCommand,
 } from "../src/index.js";
 import {
+  evaluateAudioGain,
+  buildAudioMixPlan,
   resolveProjectTimebase,
   type MediaAsset,
   type AudioTimingV1,
@@ -239,6 +241,238 @@ describe("independent sound edit policy", () => {
       expect(clip(before).audioTiming).toEqual(timing);
     },
   );
+  it("splits automation by exact clip-local clock while preserving source locks and timing", () => {
+    const before = doc(),
+      original = clip(before);
+    original.transform = { speed: 2 };
+    original.sourceOut = 9;
+    original.audioAutomation = {
+      version: 1,
+      role: "dialogue",
+      fadeIn: 1,
+      fadeOut: 2,
+      points: [
+        { time: 0, gain: 0.2 },
+        { time: 2, gain: 0.8 },
+        { time: 4, gain: 0.4 },
+      ],
+      ducking: [{ start: 0.5, end: 3.5, gain: 0.5, attack: 0.5, release: 1 }],
+    };
+    const originalAutomation = structuredClone(original.audioAutomation),
+      after = applyTimelineCommand(
+        before,
+        assets,
+        { type: "clip.split", clipId: "a", sourceTime: 3 },
+        context,
+      ),
+      [left, right] = after.composition.tracks[0]!.clips;
+
+    expect(left).toMatchObject({
+      timelineDuration: 1,
+      sourceIn: 1,
+      sourceOut: 3,
+    });
+    expect(right).toMatchObject({
+      id: "a-split-1",
+      timelineStart: 1,
+      timelineDuration: 3,
+      sourceIn: 3,
+      sourceOut: 9,
+    });
+    expect(left!.audioAutomation).toMatchObject({
+      version: 2,
+      timeMap: { continuityId: "a", offsetSamples: 0, durationSamples: 192000 },
+    });
+    expect(right!.audioAutomation).toMatchObject({
+      version: 2,
+      timeMap: {
+        continuityId: "a",
+        offsetSamples: 48000,
+        durationSamples: 192000,
+      },
+    });
+    for (const [fragment, offsetSamples, count] of [
+      [left!, 0, 48000],
+      [right!, 48000, 144000],
+    ] as const)
+      for (let sample = 0; sample < count; sample++)
+        expect(
+          evaluateAudioGain(
+            fragment.audioAutomation,
+            sample / 48000,
+            fragment.timelineDuration,
+          ),
+        ).toBe(
+          evaluateAudioGain(
+            originalAutomation,
+            (offsetSamples + sample) / 48000,
+            4,
+          ),
+        );
+    expect(before.composition.tracks[0]!.clips[0]!.audioAutomation).toEqual(
+      originalAutomation,
+    );
+  });
+  it.each([1, 1.25, 2])(
+    "retains one sample clock through repeated right-fragment splits at %sx speed",
+    (speed) => {
+      const before = doc(),
+        original = clip(before);
+      original.transform = { speed };
+      original.sourceOut = 1 + 4 * speed;
+      original.audioAutomation = {
+        version: 1,
+        role: "dialogue",
+        fadeIn: 1,
+        fadeOut: 2,
+        points: [
+          { time: 0, gain: 0.2 },
+          { time: 2, gain: 0.8 },
+          { time: 4, gain: 0.4 },
+        ],
+        ducking: [{ start: 0.5, end: 3.5, gain: 0.5, attack: 0.5, release: 1 }],
+      };
+      const snapshot = structuredClone(before);
+      let after = before;
+      for (const time of [1, 2.5, 3.25]) {
+        const target = after.composition.tracks[0]!.clips.find(
+          (item) =>
+            item.timelineStart < time &&
+            item.timelineStart + item.timelineDuration > time,
+        )!;
+        after = applyTimelineCommand(
+          after,
+          assets,
+          {
+            type: "clip.split",
+            clipId: target.id,
+            sourceTime: 1 + time * speed,
+          },
+          context,
+        );
+      }
+      const fragments = after.composition.tracks[0]!.clips.filter(
+        (item) => item.timelineStart < 4,
+      );
+      expect(fragments).toHaveLength(4);
+      for (const [index, fragment] of fragments.entries()) {
+        const start = [0, 1, 2.5, 3.25][index]!,
+          duration = [1, 1.5, 0.75, 0.75][index]!;
+        expect(fragment).toMatchObject({
+          timelineStart: start,
+          timelineDuration: duration,
+          sourceIn: 1 + start * speed,
+          sourceOut: 1 + (start + duration) * speed,
+          audioAutomation: {
+            version: 2,
+            timeMap: {
+              continuityId: "a",
+              offsetSamples: start * 48000,
+              durationSamples: 192000,
+              speed,
+            },
+          },
+        });
+        for (const local of [0, duration / 2, duration - 1 / 48000])
+          expect(
+            evaluateAudioGain(fragment.audioAutomation, local, duration),
+          ).toBe(evaluateAudioGain(original.audioAutomation, start + local, 4));
+      }
+      expect(before).toEqual(snapshot);
+    },
+  );
+  it("keeps absolute placement and source clocks through fractional repeated splits", () => {
+    const before = doc(),
+      original = clip(before),
+      sourceIn = 0.1234567,
+      start = 0.00137;
+    Object.assign(original, {
+      timelineStart: start,
+      timelineDuration: 2,
+      sourceIn,
+      sourceOut: sourceIn + 2.5,
+      transform: { speed: 1.25 },
+      audioAutomation: { version: 1, role: "dialogue", fadeIn: 0.4 },
+    });
+    let after = before;
+    for (const local of [0.10001, 0.20002, 0.30003, 0.40004]) {
+      const target = after.composition.tracks[0]!.clips.find(
+        (item) =>
+          item.timelineStart < start + local &&
+          item.timelineStart + item.timelineDuration > start + local,
+      )!;
+      after = applyTimelineCommand(
+        after,
+        assets,
+        {
+          type: "clip.split",
+          clipId: target.id,
+          sourceTime: sourceIn + local * 1.25,
+        },
+        context,
+      );
+    }
+    const fragments = after.composition.tracks[0]!.clips.filter((item) =>
+        item.id.startsWith("a"),
+      ),
+      segments = buildAudioMixPlan(after.composition, assets, {
+        timebase: context.timebase,
+        coverage: [],
+      }).segments.filter((segment) => segment.clipId.startsWith("a"));
+    expect(
+      fragments.map((fragment) =>
+        fragment.audioAutomation?.version === 2
+          ? fragment.audioAutomation.timeMap.offsetSamples
+          : undefined,
+      ),
+    ).toEqual([0, 4800, 9601, 14401, 19202]);
+    expect(segments.map((segment) => segment.startSample)).toEqual([
+      48, 4848, 9649, 14449, 19250,
+    ]);
+    expect(segments.map((segment) => segment.endSample)).toEqual([
+      4848, 9649, 14449, 19250, 96048,
+    ]);
+  });
+  it("rejects independent timing on a mapped fragment until an explicit automation reset", () => {
+    const before = doc();
+    clip(before).audioAutomation = { version: 1, role: "dialogue", fadeIn: 1 };
+    const split = applyTimelineCommand(
+        before,
+        assets,
+        { type: "clip.split", clipId: "a", sourceTime: 2 },
+        context,
+      ),
+      snapshot = structuredClone(split);
+    expect(() =>
+      applyTimelineCommand(
+        split,
+        assets,
+        { type: "audio.timing", clipId: "a", timing },
+        context,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "timeline.audioAutomationConflict" }),
+    );
+    expect(split).toEqual(snapshot);
+    const reset = applyTimelineCommand(
+      split,
+      assets,
+      {
+        type: "audio.configure",
+        clipId: "a",
+        automation: { version: 1, role: "dialogue" },
+      },
+      context,
+    );
+    expect(() =>
+      applyTimelineCommand(
+        reset,
+        assets,
+        { type: "audio.timing", clipId: "a", timing },
+        context,
+      ),
+    ).not.toThrow();
+  });
   it("rejects locks, source exhaustion, missing stream and film truncation without clamping effects", () => {
     const before = explicit();
     for (const changed of [

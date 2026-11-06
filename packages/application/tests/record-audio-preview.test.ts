@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   OpenFilmApplication,
@@ -305,6 +306,50 @@ it("allows one active project preparation, cancels pending work, and enforces on
   ).rejects.toThrow(/3600|hour/i);
   service.dispose();
 });
+it("counts preserved DSP history against the existing preview duration budget before rendering", async () => {
+  const { app, asset } = await fixture(),
+    composition = app.project.timelines[0]!,
+    clip = composition.tracks[0]!.clips[0]!;
+  composition.duration = 1;
+  delete clip.audioTiming;
+  Object.assign(clip, {
+    timelineStart: 0,
+    timelineDuration: 1,
+    sourceIn: 0.864,
+    sourceOut: 0.86401,
+    transform: { speed: 0.00001 },
+    audioAutomation: {
+      version: 2,
+      role: "dialogue",
+      timeMap: {
+        version: 1,
+        sampleRate: 48000,
+        continuityId: "original",
+        offsetSamples: 86400 * 48000,
+        durationSamples: 86401 * 48000,
+        sourceInSample: 0,
+        sourceOutSample: 41472,
+        sourceInSeconds: 0,
+        sourceOutSeconds: 0.86401,
+        timelineOffsetSeconds: 0,
+        speed: 0.00001,
+      },
+    },
+  });
+  app.project.schemaVersion = "1.3.0";
+  await app.save();
+  const render = vi.fn(async () => {
+      throw new Error("Oversized history reached the renderer");
+    }),
+    service = new RecordAudioPreviewService(app, render);
+  clean.push(() => service.dispose());
+  await expect(
+    service.prepare("c", new TimelineEditor(app).get("c").revision),
+  ).rejects.toThrow(/history.*one-hour|3600/i);
+  expect(render).not.toHaveBeenCalled();
+  expect(await hashFile(fileURLToPath(asset.uri))).toBe(asset.contentHash);
+});
+
 it("releases the preparation owner and filesystem lock after work cleanup fails", async () => {
   const { app, revision } = await fixture();
   let attempts = 0;

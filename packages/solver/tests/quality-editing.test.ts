@@ -424,7 +424,7 @@ describe("photo film audio overlays", () => {
     },
   );
 
-  it("does not silently duplicate local automation when splitting audio", () => {
+  it("preserves the original automation clock when splitting audio", () => {
     let before = edit(document(), addMusic);
     before = edit(before, {
       type: "audio.configure",
@@ -439,14 +439,80 @@ describe("photo film audio overlays", () => {
         ],
       },
     });
-    expect(() =>
-      edit(before, {
+    const after = edit(before, {
         type: "clip.split",
         clipId: "soundtrack",
         sourceTime: 10,
       }),
-    ).toThrow(/automation/i);
-    expect(clip(before, "soundtrack").timelineDuration).toBe(20);
+      left = clip(after, "soundtrack"),
+      right = after.composition.tracks
+        .flatMap((track) => track.clips)
+        .find((item) => item.id.startsWith("soundtrack-split-"))!;
+    expect(left.audioAutomation).toMatchObject({
+      version: 2,
+      timeMap: { offsetSamples: 0, durationSamples: 960_000 },
+    });
+    expect(right.audioAutomation).toMatchObject({
+      version: 2,
+      timeMap: { offsetSamples: 384_000, durationSamples: 960_000 },
+    });
+    expect(() => validateComposition(after.composition)).not.toThrow();
+  });
+
+  it("keeps mapped automation application-owned and rejects stale source transforms", () => {
+    let before = edit(document(), addMusic);
+    before = edit(before, {
+      type: "audio.configure",
+      clipId: "soundtrack",
+      automation: { version: 1, role: "music", fadeIn: 1 },
+    });
+    const split = edit(before, {
+      type: "clip.split",
+      clipId: "soundtrack",
+      sourceTime: 10,
+    });
+    expect(() =>
+      edit(split, {
+        type: "audio.configure",
+        clipId: "soundtrack",
+        automation: {
+          version: 2,
+          role: "music",
+          fadeIn: 1,
+          timeMap: {
+            version: 1,
+            sampleRate: 48000,
+            continuityId: "forged",
+            offsetSamples: 0,
+            durationSamples: 960_000,
+            sourceInSample: 96_000,
+            sourceOutSample: 1_056_000,
+            sourceInSeconds: 2,
+            sourceOutSeconds: 22,
+            timelineOffsetSeconds: 0,
+            speed: 1,
+          },
+        },
+      }),
+    ).toThrow(/application-managed/i);
+    expect(() =>
+      edit(split, {
+        type: "trim",
+        clipId: "soundtrack",
+        sourceIn: 3,
+        sourceOut: 10,
+      }),
+    ).toThrow(/reset its automation or review/i);
+    const right = split.composition.tracks[1]!.clips.find((item) =>
+      item.id.startsWith("soundtrack-split-"),
+    )!;
+    expect(() =>
+      edit(split, {
+        type: "replace",
+        clipId: right.id,
+        assetId: "voice",
+      }),
+    ).toThrow(/reset or re-review/i);
   });
 
   it("keeps automation valid when shortening the film or the audio source-out", () => {

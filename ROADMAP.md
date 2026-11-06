@@ -19,26 +19,34 @@ and the [contributing guide](CONTRIBUTING.md).
 | v1.0                                                               | Release goal                    | Published when the documented readiness criteria are met; the package version alone does not establish a release.     |
 
 The Silence scope below was checked against main
-[`272af117c90384a2f79e50df39b0fb2f3185c31e`](https://github.com/bynanci/open-film/commit/272af117c90384a2f79e50df39b0fb2f3185c31e)
+[`1bafb5cd4532ce9f9a171499abc8631e4863d1ee`](https://github.com/bynanci/open-film/commit/1bafb5cd4532ce9f9a171499abc8631e4863d1ee)
 on 2026-11-05. Durable Jobs and Desktop Review are merged in PRs #107/#108.
-The rendered-audition candidate and physical workstation quality acceptance
-remain separate from those merged implementations.
+Rendered audition is merged in PR #111. Physical workstation and listening
+acceptance remain separate gates.
 
 ## Current focus
 
 ### Add reviewed local media-intelligence workflows
 
-The 2026-11-04 CLI/application slice and the 2026-11-05 durable Job/API candidate
-add source-bound low-energy analysis, restart-safe review and explicit Apply.
+The 2026-11-04 CLI/application slice and 2026-11-05 durable Job/API PRs add
+source-bound low-energy analysis, restart-safe review and explicit Apply.
 They reuse FFmpeg, existing SQLite reservation and owner recovery, the
 `SilenceService` and one TimelineEditor. Analysis never automatically edits the
-Composition. Affected clips with local audio automation fail closed before a
-Review is published until ripple remapping is proven. The desktop Precision Review UI is merged. The current candidate adds
-read-only before/after audition through the existing Record mix; actual-media
-quality and workstation listening gates remain open. No Auto-Editor runtime or eleven upstream tools/models are installed.
+Composition. The desktop Precision Review UI and read-only before/after audition
+through the existing Record mix are merged. The Audio Automation Ripple
+implementation in [PR #114](https://github.com/bynanci/open-film/pull/114) adds a
+versioned 48 kHz clock map for gain/fade/ducking preservation through reviewed
+ripple and direct split. Incompatible sample spans, J/L timing and mapped
+source/tempo changes fail closed. Explicit envelope reset and original-source
+Collect preserve reviewability; Record also bounds the retained DSP history.
+Complex-graph deterministic rounding is validated through actual FFmpeg contexts
+and unchanged Windows pixel probes. The PR records final review and CI results.
+Actual-media listening and workstation gates remain
+open. No Auto-Editor runtime or eleven upstream tools/models are installed.
 
-Next slices are validated rendered audition and optional providers whose quality, clocks,
-runtime costs and artifact rights are verified.
+Next slices are hosted validation and integration review for the automation
+clock, followed by optional providers whose quality, timing, runtime costs and
+artifact rights are verified.
 Existing scene/rhythm analysis, primary-color adjustment, role-based stems and
 GraphicScenes remain the foundation. See the
 [eleven-project integration reference](docs/en/media-intelligence-integrations.md),

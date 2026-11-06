@@ -381,7 +381,27 @@ export interface CaptionTrack {
   style: TitleStyle;
   cues: CaptionCue[];
 }
-export interface AudioAutomation {
+export interface AudioAutomationTimeMapV1 {
+  version: 1;
+  sampleRate: 48000;
+  /** Stable source-clip identity shared by fragments with one DSP history. */
+  continuityId: string;
+  /** First local output sample's position in the original automation clock. */
+  offsetSamples: number;
+  /** Original clip-local output duration after speed adjustment. */
+  durationSamples: number;
+  /** Canonical 48 kHz source window used to keep tempo/DSP phase continuous. */
+  sourceInSample: number;
+  sourceOutSample: number;
+  /** Exact original legacy trim; retained before tempo/DSP processing. */
+  sourceInSeconds: number;
+  sourceOutSeconds: number;
+  /** Preserve the original millisecond delivery origin during sample placement. */
+  timelineOffsetSeconds: number;
+  speed: number;
+}
+
+export interface AudioAutomationV1 {
   version: 1;
   role: "music" | "narration" | "ambience" | "dialogue";
   /** Times use local timeline seconds; all gains are linear values from 0 to 1. */
@@ -397,6 +417,14 @@ export interface AudioAutomation {
     release: number;
   }[];
 }
+
+/** Ripple fragments retain their original post-speed clock and source DSP context. */
+export interface AudioAutomationV2 extends Omit<AudioAutomationV1, "version"> {
+  version: 2;
+  timeMap: AudioAutomationTimeMapV1;
+}
+
+export type AudioAutomation = AudioAutomationV1 | AudioAutomationV2;
 
 /** Stable creative recipes; names shown in the product are translated separately. */
 export const FILM_LOOK_PRESET_IDS = [
@@ -502,7 +530,7 @@ export interface Composition {
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;
 
 export interface OpenFilmProject {
-  schemaVersion: typeof PROJECT_SCHEMA_VERSION | "1.1.0" | "1.2.0";
+  schemaVersion: typeof PROJECT_SCHEMA_VERSION | "1.1.0" | "1.2.0" | "1.3.0";
   id: string;
   title: string;
   createdAt: string;

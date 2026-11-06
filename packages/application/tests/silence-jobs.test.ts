@@ -209,6 +209,84 @@ it("runs the existing SilenceService into review, applies once, and replays afte
   expect(await hashFile(f.source)).toBe(review.review.proposal.sourceHash);
 });
 
+it("durably maps clip-local automation through reviewed silence Apply, Undo/Redo and reopen", async () => {
+  const f = await fixture(),
+    timeline = f.app.project.timelines[0]!,
+    sourceClip = timeline.tracks[0]!.clips[0]!;
+  sourceClip.audioAutomation = {
+    version: 1,
+    role: "dialogue",
+    fadeIn: 0.5,
+    fadeOut: 1,
+    points: [
+      { time: 0, gain: 0.8 },
+      { time: 2, gain: 0.5 },
+      { time: 4, gain: 0.9 },
+    ],
+    ducking: [
+      { start: 0.4, end: 2.5, gain: 0.4, attack: 0.5, release: 0.5 },
+      { start: 1.8, end: 3.5, gain: 0.7, attack: 0.2, release: 0.5 },
+    ],
+  };
+  await f.app.save();
+  const before = f.editor.get("timeline"),
+    sourceHash = await hashFile(f.source),
+    { job } = await f.app.silenceJobs.create(createInput(f.app)),
+    reviewed = await f.app.silenceJobs.run(job.id);
+  expect(reviewed.status).toBe("waiting-review");
+  const review = await f.app.silenceJobs.getReview(job.id),
+    accepted = await f.app.silenceJobs.apply(job.id, {
+      reviewId: review.review.reviewId,
+      proposal: review.review.proposal,
+      requestId: "automation-ripple-apply",
+    });
+  expect(accepted.edit.composition.tracks[0]!.clips).toHaveLength(2);
+  expect(
+    accepted.edit.composition.tracks[0]!.clips.map(
+      (clip) => clip.audioAutomation,
+    ),
+  ).toMatchObject([
+    {
+      version: 2,
+      fadeIn: 0.5,
+      fadeOut: 1,
+      points: sourceClip.audioAutomation.points,
+      ducking: sourceClip.audioAutomation.ducking,
+      timeMap: { offsetSamples: 0, durationSamples: 192_000 },
+    },
+    {
+      version: 2,
+      fadeIn: 0.5,
+      fadeOut: 1,
+      points: sourceClip.audioAutomation.points,
+      ducking: sourceClip.audioAutomation.ducking,
+      timeMap: {
+        offsetSamples: Math.round(
+          review.review.proposal.timelineIntervals[0]!.end * 48_000,
+        ),
+        durationSamples: 192_000,
+      },
+    },
+  ]);
+  expect(f.app.project.schemaVersion).toBe("1.3.0");
+  expect(await hashFile(f.source)).toBe(sourceHash);
+  const undone = await f.app.timelineEditor.undo(
+    "timeline",
+    accepted.edit.revision,
+  );
+  expect(undone.composition).toEqual(before.composition);
+  const redone = await f.app.timelineEditor.redo("timeline", undone.revision);
+  expect(redone.composition).toEqual(accepted.edit.composition);
+  await f.app.save();
+  f.app.close();
+  applications.delete(f.app);
+  const reopened = await OpenFilmApplication.open(f.directory);
+  applications.add(reopened);
+  expect(reopened.project.schemaVersion).toBe("1.3.0");
+  expect(reopened.project.timelines[0]).toEqual(accepted.edit.composition);
+  expect(await hashFile(f.source)).toBe(sourceHash);
+});
+
 it("creates a durable selection-only child Job without changing the parent Review", async () => {
   const f = await fixture();
   const created = await f.app.silenceJobs.create(createInput(f.app));
@@ -316,6 +394,33 @@ it("rejects a stale Composition without reanalyzing and rejects changed Apply re
   expect(accepted.edit.composition.tracks[0]!.clips).toHaveLength(2);
 });
 
+it("persists a failed Job without a Review when a fractional ripple cannot preserve mapped samples", async () => {
+  const f = await fixture(),
+    composition = f.app.project.timelines[0]!,
+    clip = composition.tracks[0]!.clips[0]!;
+  composition.duration = 4 / 1.3;
+  clip.timelineDuration = composition.duration;
+  clip.transform = { speed: 1.3 };
+  clip.audioAutomation = { version: 1, role: "dialogue", fadeIn: 0.5 };
+  await f.app.save();
+  const before = f.editor.get("timeline"),
+    hash = await hashFile(f.source),
+    { job } = await f.app.silenceJobs.create(
+      createInput(f.app, "fractional-automation"),
+    ),
+    failed = await f.app.silenceJobs.run(job.id);
+  expect(failed.status).toBe("failed");
+  expect(failed.errors).toContainEqual(
+    expect.objectContaining({ code: "timeline.audioAutomationConflict" }),
+  );
+  expect(failed.silenceAnalysis?.reviewId).toBeUndefined();
+  await expect(f.app.silenceJobs.getReview(job.id)).rejects.toMatchObject({
+    status: 404,
+  });
+  expect(f.editor.get("timeline").composition).toEqual(before.composition);
+  expect(await hashFile(f.source)).toBe(hash);
+});
+
 it("rejects changed source bytes against the reserved hash without silent recalculation", async () => {
   const f = await fixture();
   const { job } = await f.app.silenceJobs.create(createInput(f.app));
@@ -332,12 +437,7 @@ it("rejects changed source bytes against the reserved hash without silent recalc
   });
 });
 
-it.each([
-  "locked",
-  "pinned",
-  "independently-timed",
-  "audio-automation",
-] as const)(
+it.each(["locked", "pinned", "independently-timed"] as const)(
   "keeps the existing silence protection for %s clips through durable Jobs",
   async (protection) => {
     const f = await fixture();
@@ -349,9 +449,7 @@ it.each([
         ? "timeline.pinConflict"
         : protection === "independently-timed"
           ? "timeline.audioTimingConflict"
-          : protection === "audio-automation"
-            ? "timeline.audioAutomationConflict"
-            : "timeline.lockedClipConflict";
+          : "timeline.lockedClipConflict";
     if (protection === "locked") track.locked = true;
     if (protection === "pinned")
       clip.userOverrides = {
@@ -367,12 +465,6 @@ it.each([
         sourceInSample: 0,
         sourceOutSample: 192_000,
       };
-    if (protection === "audio-automation")
-      clip.audioAutomation = {
-        version: 1,
-        role: "dialogue",
-        points: [{ time: 3, gain: 0.5 }],
-      };
     if (protection !== "locked") f.app.project.schemaVersion = "1.2.0";
     await f.app.save();
     const before = f.editor.get("timeline");
@@ -382,10 +474,6 @@ it.each([
     expect(failed.errors?.at(-1)?.code).toBe(expectedCode);
     expect(failed.silenceAnalysis?.reviewId).toBeUndefined();
     expect(f.editor.get("timeline").composition).toEqual(before.composition);
-    if (protection === "audio-automation")
-      await expect(f.app.silenceJobs.getReview(job.id)).rejects.toMatchObject({
-        status: 404,
-      });
   },
 );
 

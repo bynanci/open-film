@@ -49,12 +49,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install native media tools and independent timeline parser
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
-          python -m pip install opentimelineio==0.18.1
+        timeout-minutes: 8
+        run: bash scripts/ci/install-media-tools.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:ci-partition
+      # Catch toolchain color-conversion mismatches before the full media run;
+      # every case still runs again in the unchanged mandatory media suite.
+      - name: Verify deterministic FFmpeg conversion
+        run: pnpm exec vitest run packages/render/tests/export-profile.test.ts packages/render/tests/film-looks.test.ts --maxWorkers=1
       - run: pnpm test:media
         env:
           OPENFILM_GRAPHIC_QA_OUTPUT: ${{ runner.temp }}/graphic-scene-qa
@@ -106,10 +108,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install native media tools and independent timeline parser
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
-          python -m pip install opentimelineio==0.18.1
+        timeout-minutes: 8
+        run: bash scripts/ci/install-media-tools.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
