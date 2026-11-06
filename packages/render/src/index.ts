@@ -870,6 +870,11 @@ export class FFmpegRenderer {
         work,
         { signal: options.signal },
       );
+      const filledPhotoClips = new Map<string, Clip>();
+      if (ambient.fills.size)
+        for (const clip of photoClips)
+          if (!filledPhotoClips.has(clip.id))
+            filledPhotoClips.set(clip.id, clip);
       for (const [id, asset] of ambient.assetOverrides) assetMap.set(id, asset);
       for (const track of composition.tracks) {
         if (audioOnly && track.type === "titles") continue;
@@ -1477,7 +1482,7 @@ export class FFmpegRenderer {
                   version: 1 as const,
                   bezierBisectionSteps: 24 as const,
                   fills: [...ambient.fills].map(([clipId, fill]) => {
-                    const clip = photoClips.find((item) => item.id === clipId)!;
+                    const clip = filledPhotoClips.get(clipId)!;
                     const ids = new Set([
                       clip.assetId,
                       ...(clip.layout?.secondary

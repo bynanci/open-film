@@ -386,10 +386,8 @@ export function validateSilenceCutProposal(value: unknown): SilenceCutProposal {
     )
   )
     invalid(`${path}.candidates`, "must map every measured source interval");
-  if (
-    new Set(candidates.map((candidate) => candidate.id)).size !==
-    candidates.length
-  )
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+  if (candidateIds.size !== candidates.length)
     invalid(`${path}.candidates`, "duplicate candidate IDs");
   const selectedCandidateIds = list(
     data.selectedCandidateIds,
@@ -397,9 +395,7 @@ export function validateSilenceCutProposal(value: unknown): SilenceCutProposal {
   ).map((id, index) => text(id, `${path}.selectedCandidateIds[${index}]`, 128));
   if (
     new Set(selectedCandidateIds).size !== selectedCandidateIds.length ||
-    selectedCandidateIds.some(
-      (id) => !candidates.some((candidate) => candidate.id === id),
-    )
+    selectedCandidateIds.some((id) => !candidateIds.has(id))
   )
     invalid(
       `${path}.selectedCandidateIds`,
@@ -596,11 +592,10 @@ export function createSilenceCutProposal(
   const requestedSelection = options.selectedCandidateIds
     ? [...options.selectedCandidateIds]
     : candidates.map((candidate) => candidate.id);
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
   if (
     new Set(requestedSelection).size !== requestedSelection.length ||
-    requestedSelection.some(
-      (id) => !candidates.some((candidate) => candidate.id === id),
-    )
+    requestedSelection.some((id) => !candidateIds.has(id))
   )
     invalid("selectedCandidateIds", "must contain unique known candidate IDs");
   const selected = new Set(requestedSelection);
