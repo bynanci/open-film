@@ -210,3 +210,7 @@ The Component Designer found that the variants dialog used almost the full deskt
 ### Re-challenge extension: round 28
 
 The Accessibility Reviewer reproduced a caption draft disappearing when an earlier save acknowledgement replaced the Composition snapshot while the multiline editor still had focus. The editor now keeps a cue-scoped local draft and commits it on field change; it no longer renders the in-progress value directly from the last saved snapshot. A browser regression holds the save response while the user types, then verifies the draft remains visible, saves, and survives reopening. All 13 local caption E2E cases pass, including en-US, zh-TW, ja-JP and pseudo-localized layout checks; the hosted run is still required for exact-head confirmation.
+
+### Re-challenge extension: round 29
+
+The Visual Designer challenged the Storyboard overflow check after CI reported a 3px overflow. Trace review showed the card's translated Tobi-ishi shadow—not its text or media—extended beyond the surface, while the actual content remained within its padding. The browser check now measures visible content against the padded card bounds and ignores hidden grid items, preserving the shadow while still detecting clipped content. All eight local Tobi-ishi workflow tests pass; exact-head hosted confirmation is pending.

@@ -405,6 +405,31 @@ test("captures the actual shareable workspace at each product step", async ({
       return r! * 0.2126 + g! * 0.7152 + b! * 0.0722;
     };
     return elements.map((card) => {
+      const cardBounds = card.getBoundingClientRect();
+      const cardStyle = getComputedStyle(card);
+      const innerTop =
+        cardBounds.top +
+        Number.parseFloat(cardStyle.borderTopWidth) +
+        Number.parseFloat(cardStyle.paddingTop);
+      const innerBottom =
+        cardBounds.bottom -
+        Number.parseFloat(cardStyle.borderBottomWidth) -
+        Number.parseFloat(cardStyle.paddingBottom);
+      const contentItems = Array.from(
+        card.querySelectorAll<HTMLElement>(
+          ":scope > .card-header, :scope > .card-assets, :scope > .card-body, :scope > .card-footer",
+        ),
+      ).filter((item) => getComputedStyle(item).display !== "none");
+      // The Tobi-ishi ::after layer intentionally casts a translated shadow
+      // outside the card. Measure content against the padded box so decoration
+      // does not look like clipped text or media.
+      const contentOverflow = Math.max(
+        0,
+        ...contentItems.flatMap((item) => {
+          const bounds = item.getBoundingClientRect();
+          return [innerTop - bounds.top, bounds.bottom - innerBottom];
+        }),
+      );
       const background = getComputedStyle(card, "::before").backgroundColor;
       const contrast = (selector: string) => {
         const text = getComputedStyle(card.querySelector(selector)!).color;
@@ -416,8 +441,8 @@ test("captures the actual shareable workspace at each product step", async ({
       return {
         title: contrast(".card-title"),
         timing: contrast(".card-timing"),
-        height: card.getBoundingClientRect().height,
-        contentOverflow: card.scrollHeight - card.clientHeight,
+        height: cardBounds.height,
+        contentOverflow,
       };
     });
   });
