@@ -26,6 +26,15 @@ acceptance remain separate gates.
 
 ## Current focus
 
+### Guide visitors through their first film
+
+The Tobi-ishi public website candidate shares the desktop's palette, original
+angular surfaces and local lighting. Three localized homepages connect a clear
+five-step path to existing guides, with actual development screenshots and an
+on-demand silent film rendered by OpenFilm. Search, theme, article navigation and
+source-only release status remain explicit. This dependent website slice has its
+own [validation record](docs/validation-tobiishi-website-2026-11-06.md).
+
 ### Bring the Tobi-ishi identity into everyday tasks
 
 The current UI candidate shares warm stone tokens and original angular surfaces,

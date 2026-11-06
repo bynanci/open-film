@@ -104,7 +104,7 @@ produce a verified end-user installer.
 
 | You want to…                                 | Start here                                                                                                                                      |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Make your first film                         | [Getting started](docs/en/getting-started.md), [user workflow](docs/en/product-workflow.md) and [documentation index](docs/en/index.md)         |
+| Make your first film                         | [Getting started](docs/en/getting-started.md), [user workflow](docs/en/product-workflow.md) and [task guides](docs/en/guides.md)                |
 | Try a reproducible example                   | [Proposal film reference workflow](docs/reference-workflows/proposal-film.md), using generated media                                            |
 | Move a project or continue in another editor | [Media portability](docs/en/media-portability.md), [Collect Media](docs/en/collect-media.md) and [NLE compatibility](docs/nle-compatibility.md) |
 | Understand the product direction             | [Project vision](docs/PROJECT_BRIEF.md), [roadmap](ROADMAP.md) and [task status](TASKS.md)                                                      |

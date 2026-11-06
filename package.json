@@ -38,7 +38,9 @@
     "test:ci-partition": "tsx scripts/ci/check-test-partition.ts",
     "test:browser-partition": "tsx scripts/ci/check-browser-shards.ts partition",
     "test:browser-results": "tsx scripts/ci/check-browser-shards.ts results",
-    "test:render-qa": "vitest run --config vitest.render-qa.config.ts"
+    "test:render-qa": "vitest run --config vitest.render-qa.config.ts",
+    "test:website": "playwright test --config playwright.website.config.ts",
+    "typecheck:website": "vue-tsc --noEmit -p docs/tsconfig.json"
   },
   "dependencies": {
     "@openfilm/analysis": "workspace:*",

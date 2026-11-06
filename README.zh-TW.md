@@ -90,7 +90,7 @@ pnpm cli --help
 
 | 你想要……                   | 從這裡開始                                                                                                                |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 製作第一部影片             | [快速開始](docs/getting-started.md)、[使用流程](docs/product-workflow.md)與[文件索引](docs/index.md)                      |
+| 製作第一部影片             | [快速開始](docs/getting-started.md)、[使用流程](docs/product-workflow.md)與[任務指南](docs/guides.md)                     |
 | 跑過可重現的範例           | 使用產生素材的[求婚影片參考流程](docs/reference-workflows/proposal-film.md)                                               |
 | 搬移專案或交給其他剪輯軟體 | [媒體可攜性](docs/media-portability.md)、[Collect Media](docs/collect-media.md)與 [NLE 相容性](docs/nle-compatibility.md) |
 | 了解產品方向               | [專案願景](docs/PROJECT_BRIEF.md)、[roadmap](ROADMAP.md)與[工作項目](TASKS.md)                                            |

@@ -94,7 +94,7 @@ pnpm cli --help
 
 | 目的                                             | 参照先                                                                                                                               |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 最初の映像を作る                                 | [はじめに](docs/ja/getting-started.md)、[制作フロー](docs/ja/product-workflow.md)、[ドキュメント索引](docs/ja/index.md)              |
+| 最初の映像を作る                                 | [はじめに](docs/ja/getting-started.md)、[制作フロー](docs/ja/product-workflow.md)、[目的別ガイド](docs/ja/guides.md)                 |
 | 再現可能なサンプルを試す                         | 生成素材を使う[プロポーズ映像の参考フロー](docs/reference-workflows/proposal-film.md)                                                |
 | プロジェクトを移動する、別の編集ソフトに引き継ぐ | [メディアの可搬性](docs/ja/media-portability.md)、[Collect Media](docs/ja/collect-media.md)、[NLE 互換性](docs/nle-compatibility.md) |
 | プロジェクトの方向性を知る                       | [プロジェクトのビジョン](docs/PROJECT_BRIEF.md)、[ロードマップ](ROADMAP.md)、[タスク一覧](TASKS.md)                                  |

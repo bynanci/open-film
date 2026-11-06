@@ -45,7 +45,9 @@
     "scripts/photo-film-quality.ts",
     "scripts/native/**/*.ts",
     "scripts/benchmark-review-selection.ts",
-    "scripts/ci/**/*.ts"
+    "scripts/ci/**/*.ts",
+    "playwright.website.config.ts",
+    "scripts/website/**/*.ts"
   ],
   "exclude": ["node_modules", "**/dist", "apps/desktop/src-tauri"]
 }

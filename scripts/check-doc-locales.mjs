@@ -52,6 +52,7 @@ for (const readme of readmes) {
 }
 
 const guideSlugs = [
+  "guides",
   "getting-started",
   "product-workflow",
   "collect-media",

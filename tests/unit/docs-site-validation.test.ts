@@ -40,6 +40,7 @@ it("ignores installed documentation dependencies while still requiring every own
     write("README.ja.md", "説明");
     for (const slug of [
       "index",
+      "guides",
       "getting-started",
       "product-workflow",
       "collect-media",

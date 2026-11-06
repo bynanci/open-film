@@ -16,6 +16,27 @@ on 2026-11-06. The latest published source release remains **v0.4.0**.
 - Existing milestone IDs are retained so design documents and implementation
   history remain easy to follow.
 
+## Public website and shared identity
+
+### Tobi-ishi website and task guides (2026-11-06 candidate)
+
+- [x] Give the zh-TW, en-US and ja-JP website one ordered five-step film-making
+      path, task-guide hub and contextual setup/workflow navigation.
+- [x] Reuse the application palette, local fonts, angular backing planes and
+      location-free lighting while retaining VitePress routes, search and theme.
+- [x] Use original generated garden artwork, actual fixture-workspace captures
+      and a twelve-second silent OpenFilm-rendered sample with recorded origins.
+- [x] Load the sample film on request and retain the workflow when media fails;
+      preserve search focus, sidebar keyboard behavior and reduced motion.
+- [x] Verify three locales, expanded labels, 390/768/1280/1920px layouts, local
+      requests and accessibility with 13 production-site browser tests.
+- [ ] Obtain required exact-head hosted CI before merging this dependent website
+      candidate. Source-release and workstation/manual gates remain accurate.
+
+See [website implementation](docs/tobiishi-website.md),
+[asset provenance](docs/website-assets.md) and
+[dated validation](docs/validation-tobiishi-website-2026-11-06.md).
+
 ## Editing and story workflow
 
 ### Tobi-ishi workspace and control panels (2026-11-06 candidate)

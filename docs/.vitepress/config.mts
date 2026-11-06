@@ -227,6 +227,7 @@ const listedDocumentation = {
 const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
 const localizedSlugs = new Set([
   "index.md",
+  "guides.md",
   "getting-started.md",
   "product-workflow.md",
   "collect-media.md",
@@ -388,13 +389,9 @@ export default defineConfig({
         "Official OpenFilm documentation for the story-first, local-first media editor.",
       themeConfig: {
         nav: [
+          { text: "Workflow", link: "/en/product-workflow" },
+          { text: "Guides", link: "/en/guides" },
           { text: "Get started", link: "/en/getting-started" },
-          {
-            text: "GitHub",
-            link: "https://github.com/bynanci/open-film",
-            target: "_blank",
-            rel: "noreferrer",
-          },
         ],
         sidebar: [
           group("Getting started", englishGettingStarted, false),
@@ -427,13 +424,9 @@ export default defineConfig({
         "ストーリー重視、ローカルファーストのメディアエディター OpenFilm の公式ドキュメント。",
       themeConfig: {
         nav: [
+          { text: "制作の流れ", link: "/ja/product-workflow" },
+          { text: "ガイド", link: "/ja/guides" },
           { text: "スタートガイド", link: "/ja/getting-started" },
-          {
-            text: "GitHub",
-            link: "https://github.com/bynanci/open-film",
-            target: "_blank",
-            rel: "noreferrer",
-          },
         ],
         sidebar: [
           group("スタートガイド", japaneseGettingStarted, false),
@@ -468,15 +461,15 @@ export default defineConfig({
   markdown: { html: false },
   themeConfig: {
     siteTitle: "OpenFilm",
+    logo: {
+      light: "/images/openfilm-logo-light.png",
+      dark: "/images/openfilm-logo-dark.jpg",
+    },
     i18nRouting: false,
     nav: [
+      { text: "製作流程", link: "/product-workflow" },
+      { text: "使用指南", link: "/guides" },
       { text: "開始使用", link: "/getting-started" },
-      {
-        text: "GitHub",
-        link: "https://github.com/bynanci/open-film",
-        target: "_blank",
-        rel: "noreferrer",
-      },
     ],
     sidebar: [
       group("開始使用", gettingStarted, false),

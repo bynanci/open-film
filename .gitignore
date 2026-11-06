@@ -20,3 +20,4 @@ apps/desktop/src-tauri/resources/runtime/
 runtime-inputs.local.json
 .worktrees/
 .superpowers/
+website-test-results/

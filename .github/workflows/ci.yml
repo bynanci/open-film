@@ -136,15 +136,30 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24.14.0
           cache: npm
           cache-dependency-path: docs/package-lock.json
+      - run: pnpm install --frozen-lockfile
       - run: npm ci
         working-directory: docs
       - run: npm run build
         working-directory: docs
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Install local CJK fonts for website layout QA
+        run: sudo apt-get install -y fonts-noto-cjk
+      - run: pnpm typecheck:website
+      - run: pnpm test:website
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: website-browser-evidence
+          path: website-test-results/
+          retention-days: 7
   # Preserve the historical required-check identity; every lane and case is mandatory.
   typescript-and-media:
     needs: [fast-contract-check, heavy-media-qa, browser-e2e, docs-site]

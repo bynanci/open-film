@@ -304,6 +304,7 @@ review. Inspector arrow/Home/End navigation, device-local collapse preferences,
 and searchable Import/Fit/Preview/Relink actions use the existing application
 commands and save barriers. None changes the project format or processing engine.
 
-Website adapters should reuse these planes and palette with a larger, ordered
-path. Public sample-media screenshots and original artwork must be identified
-separately from released-product claims.
+The [website adapter](tobiishi-website.md) uses these planes and palette with a
+larger ordered path, paired section headings and sequential small-screen reading.
+Its [original artwork and development captures](website-assets.md) have explicit
+origins, separate from released-product claims.

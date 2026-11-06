@@ -32,6 +32,8 @@ and offers cancellation for active import and render jobs.
 
 ## 2. Organize media
 
+![OpenFilm development workspace in English, with generated sample media](/images/product-library.webp)
+
 The Library provides All, Moments, Similar, Favorites, Rejected and Missing views.
 Choose a thumbnail to inspect it. Mark favorites, reject unwanted shots or lock
 important memories. Organize groups related moments and repeated shots. Device,
@@ -46,6 +48,10 @@ empty-state guidance when a later step needs a story or composition first.
 
 ## 3. Build the story
 
+In General mode, Script & scene direction opens on demand and stays open for authored content or pending review. Quick actions also finds Import Media, Fit, Preview and Find Missing Media.
+
+![OpenFilm development workspace in English, with generated sample media](/images/product-story.webp)
+
 Create a story from the film's chosen template and duration defaults. The Story
 board lists beats with titles, timing and selected-memory counts. Choose a beat
 to refine its title, intent and target; selected memories are shown separately
@@ -58,6 +64,8 @@ the cut takes the story into **Edit**.
 **Expected result:** Story beats, important media and duration intentions have become an editable cut. For more detailed scene design, read [story templates](creative-story-templates.md) and [scene-script planning](scene-script-planning.md).
 
 ## 4. Edit and preview
+
+![OpenFilm development workspace in English, with generated sample media](/images/product-edit.webp)
 
 Clips remain grouped by story beat. Select a photo to change its hold and framing;
 select a video to trim, adjust speed/volume or change its framing. Photos and video

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "createdAt": "2026-11-06T03:18:07.422Z",
+  "generator": "OpenAI image generation; original fictional garden scenes created for OpenFilm on 2026-11-06",
+  "license": "Apache-2.0 project assets; OpenFilm logo identity follows TRADEMARKS.md",
+  "imagery": [
+    {
+      "file": "garden-path.webp",
+      "sha256": "110e91fb5887faa60cc867d7afb2c0dd899397c11ac28e0f556d7e0a610765ca",
+      "type": "original-generated-artwork"
+    },
+    {
+      "file": "garden-courtyard.webp",
+      "sha256": "80b6cf97a8487f0651d00c0fbb9c1f235ea66ddacb53327e094020c18b8cc171",
+      "type": "original-generated-artwork"
+    }
+  ],
+  "film": {
+    "file": "../media/garden-film.mp4",
+    "rendererSourceSha": "7084d3fe35a69a8a09a9092a50a894b60e09ac0a",
+    "sha256": "55b79576fd19a16d5cee541528b2ced7f7b65a57873084fa796d525e1917407a",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_type": "video",
+          "width": 1280,
+          "height": 720,
+          "r_frame_rate": "24/1"
+        },
+        {
+          "codec_type": "audio",
+          "r_frame_rate": "0/0"
+        }
+      ],
+      "format": {
+        "duration": "12.000000"
+      }
+    },
+    "audioPeak": 0,
+    "notes": "Rendered by OpenFilmApplication.render, with two crossfades and no external finishing. Silent sample, not hardware or audio-quality QA."
+  },
+  "screenshots": {
+    "source": "Actual Playwright browser captures with generated sample media",
+    "development": true,
+    "appSourceSha": "7084d3fe35a69a8a09a9092a50a894b60e09ac0a"
+  }
+}
