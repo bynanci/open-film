@@ -13,7 +13,8 @@ and [Render QA run
 
 Branch: `codex/cut-desk-phase-4b-visual-keyframes-main` (stacked; local candidate)
 
-Status: local validation candidate; not pushed or merged.
+Status: [draft PR #126](https://github.com/bynanci/open-film/pull/126); CI
+pending and unmerged.
 
 ## Shared state flow
 

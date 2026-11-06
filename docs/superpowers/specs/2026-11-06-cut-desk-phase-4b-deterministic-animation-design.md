@@ -222,8 +222,8 @@ User Pin or dependent timing contract cannot be preserved.
 
 ### 4B.2 — visual property keyframes
 
-**Implementation candidate:** `codex/cut-desk-phase-4b-visual-keyframes-main`,
-stacked on draft PR #125. This candidate adds strict schema-1.4 persistence,
+**Draft PR #126:** `codex/cut-desk-phase-4b-visual-keyframes-main`, stacked on
+draft PR #125. This candidate adds strict schema-1.4 persistence,
 typed edit commands, transient Monitor preview, split/trim rebasing and an
 FFmpeg visual consumer for position, scale, rotation and opacity. It deliberately
 does not add a source-time map or alter any audio clock. See
