@@ -62,6 +62,7 @@ const props = defineProps<{
   };
 }>();
 const emit = defineEmits<{
+  ready: [projectId: string];
   error: [error: unknown];
   close: [];
   cancel: [];
@@ -2020,6 +2021,7 @@ watch(
 );
 
 onMounted(async () => {
+  emit("ready", props.projectId);
   if (!props.native) return;
   const token = generation;
   const owner = props.projectId;

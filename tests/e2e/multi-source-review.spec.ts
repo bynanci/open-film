@@ -32,6 +32,34 @@ async function savedProject(
   return (await response.json()).project;
 }
 
+async function readJsonAfterTransientReset(
+  request: APIRequestContext,
+  url: string,
+) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await request.get(url);
+      expect(
+        response.ok(),
+        `${response.status()} ${response.statusText()}`,
+      ).toBe(true);
+      return await response.json();
+    } catch (error) {
+      // The lost-response recovery test intentionally resets a browser socket.
+      // On Windows the local server may also reset this idempotent verification
+      // GET while the reloaded page is reconnecting. Retry only that transport
+      // failure; HTTP errors and all other failures remain visible.
+      if (
+        attempt >= 2 ||
+        !(error instanceof Error) ||
+        !error.message.includes("ECONNRESET")
+      )
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
+}
+
 async function prepareReview(page: Page, locale: ProjectContentLocale) {
   const fixture = await createDesktopFixture(0);
   cleanup.push(fixture.cleanup);
@@ -319,11 +347,10 @@ test("split review derives both ranges from the real video duration", async ({
       exact: true,
     }),
   ).toHaveCount(0);
-  const review = await (
-    await request.get(
-      `${api}/analysis-runs/${encodeURIComponent(record.run.id)}/review`,
-    )
-  ).json();
+  const review = await readJsonAfterTransientReset(
+    request,
+    `${api}/analysis-runs/${encodeURIComponent(record.run.id)}/review`,
+  );
   expect(
     review.result.items.find((item: { id: string }) => item.id === result.id)
       .review.sourceRanges,

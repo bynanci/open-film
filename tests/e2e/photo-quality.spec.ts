@@ -710,7 +710,7 @@ test("sound preview reloads restored trim and speed on Undo and Redo", async ({
   await expect(soundStart).toHaveCSS("border-left-width", "0px");
   await expect(page.locator(".editor-inspector-tabs")).toHaveCSS(
     "display",
-    "grid",
+    "flex",
   );
   await page.screenshot({
     path: test.info().outputPath("audio-inspector-1440.png"),

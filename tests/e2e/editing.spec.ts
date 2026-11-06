@@ -190,7 +190,7 @@ async function openTimeline(page: Page) {
   await page.goto("/");
   await navigate(page, "edit");
   await expect(
-    page.getByRole("heading", { name: "Make every moment count." }),
+    page.getByRole("region", { name: "Composition timeline" }),
   ).toBeVisible();
   await saved(page);
 }

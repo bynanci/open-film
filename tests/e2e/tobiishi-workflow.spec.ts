@@ -112,10 +112,46 @@ test("finds safe quick actions and opens Fit review without applying an edit", a
   await page
     .getByRole("combobox", { name: "Search actions" })
     .fill("import media");
+  let lazyImportWasDelayed = false;
+  await page.route("**/ImportPanel.vue*", async (route) => {
+    lazyImportWasDelayed = true;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await route.continue();
+  });
   await page.keyboard.press("Enter");
   await expect(page.locator(".import-panel")).toBeVisible();
   await expect(page.locator(".import-panel")).toBeFocused();
+  expect(lazyImportWasDelayed).toBe(true);
   expect(await project(request)).toEqual(before);
+});
+
+test("keeps the sidebar readable until compact icon navigation activates", async ({
+  page,
+}) => {
+  const sidebar = page.locator(".workspace-sidebar");
+  const label = page.locator(".workspace-sidebar .main-nav .nav-label").first();
+
+  for (const width of [1200, 1101]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      (await sidebar.boundingBox())!.width,
+      `${width}px sidebar`,
+    ).toBeGreaterThanOrEqual(160);
+    expect(
+      (await label.boundingBox())!.width,
+      `${width}px navigation label`,
+    ).toBeGreaterThan(1);
+  }
+
+  await page.setViewportSize({ width: 1100, height: 900 });
+  expect(
+    (await sidebar.boundingBox())!.width,
+    "compact sidebar",
+  ).toBeLessThanOrEqual(80);
+  expect(
+    (await label.boundingBox())!.width,
+    "compact navigation label",
+  ).toBeLessThanOrEqual(1);
 });
 
 test("navigates inspector tabs with the keyboard and restores the collapsed panel", async ({

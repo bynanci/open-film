@@ -231,8 +231,9 @@ const workspaceHeader = ref<HTMLElement | null>(null);
 const workspaceMain = ref<HTMLElement | null>(null);
 const workspaceHeaderHeight = ref(64);
 async function focusWorkspaceMain(importReady = false) {
+  const importPanelMounted = importReady && (await waitForImportPanelMount());
   await nextTick();
-  const importPanel = importReady
+  const importPanel = importPanelMounted
     ? workspaceMain.value?.querySelector<HTMLElement>(
         '[data-focus-target="import-panel"]',
       )
@@ -312,6 +313,45 @@ const defaultRoot = computed(
   () => workspaceInfo.value?.defaultProjectRoot ?? "",
 );
 const importOpen = ref(false);
+const importPanelReady = ref(false);
+let resolveImportPanelReady: ((mounted: boolean) => void) | undefined;
+let importPanelReadyPromise = new Promise<boolean>(
+  (resolve) => (resolveImportPanelReady = resolve),
+);
+function resetImportPanelReady() {
+  resolveImportPanelReady?.(false);
+  importPanelReady.value = false;
+  importPanelReadyPromise = new Promise<boolean>(
+    (resolve) => (resolveImportPanelReady = resolve),
+  );
+}
+function markImportPanelReady(owner: string) {
+  if (!importOpen.value || project.value?.id !== owner) return;
+  importPanelReady.value = true;
+  resolveImportPanelReady?.(true);
+  resolveImportPanelReady = undefined;
+}
+watch([importOpen, () => project.value?.id], () => resetImportPanelReady(), {
+  flush: "sync",
+});
+async function waitForImportPanelMount() {
+  const owner = project.value?.id;
+  if (importPanelReady.value) return true;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const mounted = await Promise.race([
+    importPanelReadyPromise,
+    new Promise<boolean>((resolve) => {
+      timeout = setTimeout(() => resolve(false), 5_000);
+    }),
+  ]);
+  if (timeout) clearTimeout(timeout);
+  if (!mounted || !owner || !importOpen.value || project.value?.id !== owner)
+    return false;
+  await nextTick();
+  return !!workspaceMain.value?.querySelector(
+    '[data-focus-target="import-panel"]',
+  );
+}
 const assets = ref<MediaAsset[]>([]);
 const assetCache = ref<Record<string, MediaAsset>>({});
 const mediaStatus = ref<MediaStatus | null>(null);
@@ -3499,6 +3539,7 @@ onUnmounted(() => {
         @upload="uploadFiles"
         @cancel="uploadController?.abort()"
         @reviewed="sourceReviewApplied"
+        @ready="markImportPanelReady"
         @error="error = $event"
         @close="importOpen = false"
       />
@@ -3617,7 +3658,13 @@ onUnmounted(() => {
                       : t("app.activity.cancelImport")
             }}
           </button>
-          <details v-if="job.errors?.length" class="job-errors">
+          <details
+            v-if="
+              job.errors?.length &&
+              !(tab === 'library' && importCompletion?.id === job.id)
+            "
+            class="job-errors"
+          >
             <summary>
               {{
                 t(

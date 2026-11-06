@@ -59,6 +59,166 @@ test.afterAll(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+test("variant review surfaces keep readable contrast in both themes", async ({
+  page,
+  request,
+}) => {
+  const { project } = await (await request.get(`${api}/project`)).json();
+  const story = project.stories.at(-1);
+  const composition = project.timelines.at(-1);
+  expect(story).toBeTruthy();
+  expect(composition).toBeTruthy();
+
+  for (const [index, name] of ["Quiet afternoon", "Longer pause"].entries()) {
+    const response = await request.post(`${api}/creative-variants`, {
+      data: {
+        name,
+        intent: `Reviewable theme contrast sample ${index + 1}`,
+        scope: { type: "film" },
+        baselineStoryId: story.id,
+        baselineCompositionId: composition.id,
+        modifications: {},
+      },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+
+  await navigate(page, "story", "zh-TW");
+  await page.getByTestId("creative-variants-btn").click();
+  const modal = page.getByTestId("creative-variant-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute("aria-modal", "true");
+  await expect(modal).toHaveAttribute(
+    "aria-labelledby",
+    "creative-variant-dialog-title",
+  );
+  await expect(modal.locator(".close-btn")).toBeFocused();
+  await expect(modal.locator(".variant-card")).toHaveCount(2);
+
+  const contrastRatio = (foreground: string, background: string) => {
+    const luminance = (value: string) => {
+      const channels = value
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number);
+      const linear = channels.map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+    };
+    const first = luminance(foreground);
+    const second = luminance(background);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  };
+
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator("html").evaluate((element, value) => {
+      element.setAttribute("data-theme", value);
+    }, theme);
+    const cardPair = await modal
+      .locator(".variant-card")
+      .first()
+      .evaluate((card) => ({
+        foreground: getComputedStyle(card.querySelector(".variant-name")!)
+          .color,
+        background: getComputedStyle(card).backgroundColor,
+      }));
+    expect(
+      contrastRatio(cardPair.foreground, cardPair.background),
+      `${theme} theme variant card contrast`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1024, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const dialogBox = await modal
+      .locator(".variants-modal-container")
+      .boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(
+      viewport.width + 1,
+    );
+    expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(
+      viewport.height + 1,
+    );
+    const bodyWidth = await modal
+      .locator(".variants-modal-body")
+      .evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }));
+    expect(bodyWidth.scrollWidth).toBeLessThanOrEqual(
+      bodyWidth.clientWidth + 1,
+    );
+    await page.screenshot({
+      path: test
+        .info()
+        .outputPath(`variant-review-${viewport.width}x${viewport.height}.png`),
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await modal
+    .locator(".variant-card")
+    .last()
+    .locator(".card-btn")
+    .first()
+    .click();
+  await expect(modal.locator(".player-card")).toHaveCount(2);
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator("html").evaluate((element, value) => {
+      element.setAttribute("data-theme", value);
+    }, theme);
+    const playerPairs = await modal
+      .locator(".player-card")
+      .evaluateAll((cards) =>
+        cards.map((card) => ({
+          foreground: getComputedStyle(card.querySelector(".player-label")!)
+            .color,
+          background: getComputedStyle(card).backgroundColor,
+        })),
+      );
+    for (const pair of playerPairs)
+      expect(
+        contrastRatio(pair.foreground, pair.background),
+        `${theme} theme comparison player contrast`,
+      ).toBeGreaterThanOrEqual(4.5);
+  }
+
+  const dialogButtons = modal.getByRole("button");
+  await dialogButtons.last().focus();
+  await page.keyboard.press("Tab");
+  await expect(dialogButtons.first()).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialogButtons.last()).toBeFocused();
+
+  await modal.locator(".tab-btn").nth(1).click();
+  const nameField = modal.locator("input").first();
+  await nameField.focus();
+  await nameField.evaluate((element) => {
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        keyCode: 229,
+        isComposing: true,
+        bubbles: true,
+      }),
+    );
+  });
+  await expect(modal).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modal).toHaveCount(0);
+  await expect(page.getByTestId("creative-variants-btn")).toBeFocused();
+});
+
 test("keeps the desktop project and utility controls on one row without clipping", async ({
   page,
 }) => {

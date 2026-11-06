@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
 
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   CreativeVariant,
@@ -37,7 +37,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const isVisible = computed(() => props.show ?? props.open ?? false);
+const isVisible = computed(() => props.show === true || props.open === true);
+const modalRef = ref<HTMLElement | null>(null);
+const closeButtonRef = ref<HTMLButtonElement | null>(null);
+let restoreFocusTo: HTMLElement | null = null;
 
 type ModalView = "list" | "create" | "compare";
 
@@ -216,18 +219,47 @@ function selectAudio(channel: "A" | "B") {
   }
 }
 
-function handleKeydown(e: KeyboardEvent) {
-  if (!props.show) return;
-  const target = e.target as HTMLElement | null;
-  const inForm =
-    target &&
-    (target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable);
-  if (inForm) return;
+function closeModal() {
+  emit("close");
+  window.requestAnimationFrame(() => {
+    if (restoreFocusTo?.isConnected)
+      restoreFocusTo.focus({ preventScroll: true });
+  });
+}
 
+function handleKeydown(e: KeyboardEvent) {
+  if (!isVisible.value) return;
+  if (e.isComposing || e.keyCode === 229) return;
   if (e.key === "Escape") {
-    emit("close");
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
+    return;
+  }
+  if (e.key !== "Tab") return;
+
+  const modal = modalRef.value;
+  if (!modal) return;
+  const focusable = Array.from(
+    modal.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => element.getClientRects().length > 0);
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (!first || !last) {
+    e.preventDefault();
+    modal.focus({ preventScroll: true });
+    return;
+  }
+
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || !modal.contains(active))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || !modal.contains(active))) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
@@ -243,10 +275,17 @@ watch(
       }
     }
   },
+  { immediate: true },
 );
 
-onMounted(() => {
+onMounted(async () => {
+  restoreFocusTo =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
   window.addEventListener("keydown", handleKeydown);
+  await nextTick();
+  closeButtonRef.value?.focus({ preventScroll: true });
 });
 
 onUnmounted(() => {
@@ -260,14 +299,17 @@ onUnmounted(() => {
     class="variants-modal-backdrop"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="creative-variant-dialog-title"
     data-testid="creative-variant-modal"
   >
-    <div class="variants-modal-container">
+    <div ref="modalRef" class="variants-modal-container" tabindex="-1">
       <!-- Header -->
       <header class="variants-modal-header">
         <div class="header-title-row">
           <Icon name="compare" class="header-icon" />
-          <h2 class="header-title">{{ t("app.variants.modalTitle") }}</h2>
+          <h2 id="creative-variant-dialog-title" class="header-title">
+            {{ t("app.variants.modalTitle") }}
+          </h2>
           <div class="header-tabs">
             <button
               class="tab-btn"
@@ -294,9 +336,10 @@ onUnmounted(() => {
           </div>
         </div>
         <button
+          ref="closeButtonRef"
           class="close-btn"
           :aria-label="t('app.variants.actions.close')"
-          @click="emit('close')"
+          @click="closeModal"
         >
           ✕
         </button>
@@ -779,6 +822,7 @@ onUnmounted(() => {
 }
 
 .variants-modal-container {
+  box-sizing: border-box;
   width: 90vw;
   max-width: 1240px;
   max-height: 90vh;
@@ -790,6 +834,7 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   box-shadow: var(--of-shadow-dialog);
+  font-family: var(--of-font-ui);
 }
 
 .variants-modal-header {
@@ -820,24 +865,23 @@ onUnmounted(() => {
 
 .tab-btn {
   background: transparent;
-  border: 1px solid var(--color-border, #444);
-  color: var(--color-text-muted, #aaa);
+  border: 0;
+  color: var(--of-text-secondary);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   cursor: pointer;
 }
 
 .tab-btn.active {
-  background: var(--color-accent, #3b82f6);
-  color: #fff;
-  border-color: var(--color-accent, #3b82f6);
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .close-btn {
   background: transparent;
   border: none;
   font-size: 1.25rem;
-  color: var(--color-text-muted, #aaa);
+  color: var(--of-text-secondary);
   cursor: pointer;
 }
 
@@ -849,15 +893,13 @@ onUnmounted(() => {
 }
 
 .error-alert {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .success-alert {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .alert-dismiss {
@@ -890,16 +932,19 @@ onUnmounted(() => {
 .variant-card {
   background: var(--of-surface-2);
   color: var(--of-text-primary);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .variant-card.adopted {
-  border-color: #34d399;
+  box-shadow:
+    inset 3px 0 var(--of-success),
+    var(--of-shadow-soft);
 }
 
 .card-header {
@@ -916,23 +961,24 @@ onUnmounted(() => {
 .status-badge {
   font-size: 0.75rem;
   padding: 2px 8px;
-  border-radius: 12px;
-  background: #444;
+  border-radius: var(--of-radius-sm);
+  background: var(--of-surface-3);
+  color: var(--of-text-secondary);
 }
 
 .status-badge.adopted {
-  background: #065f46;
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .status-badge.compared {
-  background: #1e3a8a;
-  color: #60a5fa;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 .variant-intent {
   font-size: 0.85rem;
-  color: var(--color-text-muted, #bbb);
+  color: var(--of-text-secondary);
   margin: 0;
   flex: 1;
 }
@@ -941,7 +987,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #888;
+  color: var(--of-text-muted);
 }
 
 .card-actions {
@@ -954,21 +1000,22 @@ onUnmounted(() => {
   flex: 1;
   padding: 6px;
   font-size: 0.8rem;
-  border-radius: 4px;
-  border: 1px solid var(--color-border, #444);
-  background: #333;
-  color: #fff;
+  border-radius: var(--of-radius-md);
+  border: 0;
+  background: var(--of-surface-3);
+  color: var(--of-text-primary);
   cursor: pointer;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .adopt-btn {
-  background: #059669;
-  border-color: #059669;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .delete-btn {
-  background: #7f1d1d;
-  border-color: #7f1d1d;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 /* Create Form */
@@ -993,12 +1040,14 @@ onUnmounted(() => {
 .form-field input,
 .form-field textarea,
 .form-field select {
-  background: #111;
-  border: 1px solid #444;
-  color: #fff;
+  background: var(--of-bg);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.9rem;
+  box-shadow: inset 0 1px 3px
+    color-mix(in srgb, var(--of-shadow-tint) 12%, transparent);
 }
 
 .radio-group {
@@ -1013,8 +1062,8 @@ onUnmounted(() => {
 }
 
 .primary-btn {
-  background: var(--color-accent, #3b82f6);
-  color: #fff;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
@@ -1028,18 +1077,19 @@ onUnmounted(() => {
 }
 
 .secondary-btn {
-  background: transparent;
-  color: #ccc;
-  border: 1px solid #555;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  border: 0;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   cursor: pointer;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .impact-preview-column {
-  background: #16161c;
-  border: 1px solid #333;
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1049,7 +1099,7 @@ onUnmounted(() => {
 .impact-subtitle {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #aaa;
+  color: var(--of-text-secondary);
   display: block;
   margin-bottom: 6px;
 }
@@ -1059,7 +1109,7 @@ onUnmounted(() => {
   margin: 0;
   padding-left: 20px;
   font-size: 0.85rem;
-  color: #ddd;
+  color: var(--of-text-primary);
 }
 
 .preserved-tags {
@@ -1069,26 +1119,26 @@ onUnmounted(() => {
 }
 
 .preserved-chip {
-  background: #222;
-  border: 1px solid #444;
+  background: var(--of-success-soft);
+  border: 0;
   font-size: 0.75rem;
   padding: 2px 6px;
-  border-radius: 3px;
-  color: #34d399;
+  border-radius: var(--of-radius-sm);
+  color: var(--of-success);
 }
 
 .brief-notice {
   font-size: 0.75rem;
-  color: #f59e0b;
+  color: var(--of-warning);
   margin: 0 0 6px 0;
 }
 
 .locked-warning {
-  background: rgba(245, 158, 11, 0.2);
-  border: 1px solid #f59e0b;
-  color: #fbbf24;
+  background: var(--of-warning-soft);
+  border: 0;
+  color: var(--of-warning);
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.85rem;
   display: flex;
   align-items: center;
@@ -1101,7 +1151,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
-  background: #16161c;
+  background: var(--of-surface-2);
   padding: 12px 16px;
   border-radius: 6px;
 }
@@ -1113,16 +1163,16 @@ onUnmounted(() => {
 }
 
 .selector-box select {
-  background: #111;
-  border: 1px solid #444;
-  color: #fff;
+  background: var(--of-bg);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
 }
 
 .vs-badge {
   font-weight: bold;
-  color: #f59e0b;
+  color: var(--of-warning);
 }
 
 .comparison-players-row {
@@ -1135,12 +1185,13 @@ onUnmounted(() => {
 .player-card {
   background: var(--of-surface-2);
   color: var(--of-text-primary);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-lg);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .player-header {
@@ -1156,22 +1207,23 @@ onUnmounted(() => {
 
 .duration-badge {
   font-size: 0.75rem;
-  background: #333;
+  background: var(--of-surface-3);
+  color: var(--of-text-secondary);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
 }
 
 .delta-badge {
   font-size: 0.75rem;
-  background: #065f46;
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
   padding: 2px 6px;
   border-radius: 4px;
 }
 
 .delta-badge.shorter {
-  background: #1e3a8a;
-  color: #60a5fa;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 .player-view {
@@ -1188,7 +1240,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: #888;
+  color: var(--of-on-media-muted);
 }
 
 .video-placeholder-icon {
@@ -1202,23 +1254,24 @@ onUnmounted(() => {
 }
 
 .audio-toggle-btn {
-  background: #333;
-  border: 1px solid #555;
-  color: #fff;
+  background: var(--of-surface-3);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   cursor: pointer;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .audio-toggle-btn.active {
-  background: #059669;
-  border-color: #059669;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .audio-rule-notice {
   font-size: 0.75rem;
-  color: #888;
+  color: var(--of-text-muted);
 }
 
 /* Section Navigation */
@@ -1227,7 +1280,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
-  background: #181820;
+  background: var(--of-surface-2);
   padding: 10px 16px;
   border-radius: 6px;
 }
@@ -1235,7 +1288,7 @@ onUnmounted(() => {
 .nav-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #aaa;
+  color: var(--of-text-secondary);
 }
 
 .beats-track {
@@ -1245,11 +1298,11 @@ onUnmounted(() => {
 }
 
 .beat-nav-item {
-  background: #262632;
-  border: 1px solid #3c3c4a;
-  color: #ccc;
+  background: var(--of-surface-3);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   cursor: pointer;
   display: flex;
@@ -1259,25 +1312,24 @@ onUnmounted(() => {
 }
 
 .beat-nav-item.active {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #fff;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .beat-nav-item.changed {
-  border-color: #f59e0b;
+  box-shadow: inset 0 -2px var(--of-warning);
 }
 
 .changed-indicator {
-  color: #f59e0b;
+  color: var(--of-warning);
   font-size: 0.7rem;
 }
 
 /* Diff Table */
 .diff-summary-card {
-  background: #1a1a22;
-  border: 1px solid #333;
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 16px;
   margin-bottom: 20px;
 }
@@ -1295,17 +1347,17 @@ onUnmounted(() => {
 .diff-table th,
 .diff-table td {
   padding: 8px 12px;
-  border-bottom: 1px solid #2a2a34;
+  border-bottom: 1px solid var(--of-border-subtle);
   text-align: left;
 }
 
 .diff-table th {
-  color: #aaa;
+  color: var(--of-text-secondary);
   font-weight: 500;
 }
 
 .diff-script {
-  color: #999;
+  color: var(--of-text-muted);
   font-size: 0.75rem;
   font-style: italic;
 }
@@ -1317,20 +1369,20 @@ onUnmounted(() => {
 }
 
 .diff-changed {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .diff-identical {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 /* Adopt Decision Banner */
 .adopt-decision-banner {
-  background: #152238;
-  border: 1px solid #1e3a8a;
-  border-radius: 6px;
+  background: var(--of-accent-soft);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 16px 20px;
   display: flex;
   justify-content: space-between;
@@ -1346,11 +1398,12 @@ onUnmounted(() => {
 .checkpoint-notice p {
   margin: 4px 0 0 0;
   font-size: 0.8rem;
-  color: #93c5fd;
+  color: var(--of-accent);
 }
 
 .adopt-action-btn {
-  background: #059669;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
   font-size: 0.95rem;
   padding: 10px 20px;
 }
