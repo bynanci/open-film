@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     env:
       OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -101,8 +101,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      # Each VM owns its fixed ports and project; retain one worker and serial files.
-      - run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --reporter=list,github,json
+      # Each VM owns its server; one worker serializes UI access while shards balance tests within spec files.
+      - run: pnpm test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,github,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v4
