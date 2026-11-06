@@ -2207,15 +2207,20 @@ function resetPicture(centerOnly = false) {
   previewPicture(value);
   void commitPicture(value);
 }
-function togglePictureAdjustment() {
+async function togglePictureAdjustment() {
   clipTransformOverlay.value?.cancel();
-  if (!pictureAdjusting.value && sourceScreenElement.value) {
-    const { clientWidth: width, clientHeight: height } =
-      sourceScreenElement.value;
-    if (width > 0 && height > 0)
-      sourceViewport.value = roundFrameDimensions({ width, height });
-  }
   pictureAdjusting.value = !pictureAdjusting.value;
+  if (!pictureAdjusting.value) return;
+
+  // The transform toolbar changes the monitor's available layout. Measure
+  // after Vue applies that toolbar so the first overlay frame uses the actual
+  // source viewport rather than the pre-adjustment size.
+  await nextTick();
+  const screen = sourceScreenElement.value;
+  if (!screen) return;
+  const { clientWidth: width, clientHeight: height } = screen;
+  if (width > 0 && height > 0)
+    sourceViewport.value = roundFrameDimensions({ width, height });
 }
 const previewGeometry = computed(() => {
   const graphics = graphicPreviewTime.value !== undefined;

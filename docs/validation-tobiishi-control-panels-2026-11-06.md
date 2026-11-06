@@ -66,8 +66,7 @@ The current follow-up is reconciled on top of PR #119 head
 passed fast-contract, heavy-media, docs-site, native-shell and all three render
 QA platforms. Browser shard 1 failed two direct-clip hit-test checks; Windows
 media recovery failed the split-review import helper before it observed the two
-source cards. Those failures are being checked on the reconciled candidate; this
-record does not treat the older SHA as green.
+source cards. Those findings were investigated and corrected in this follow-up.
 
 The follow-up keeps the f98 modal work and its theme/focus/contrast E2E checks,
 retains project-generation fencing for lazy Import focus, and reconciles the
@@ -75,9 +74,26 @@ sidebar breakpoint with the remote change: labels remain visible at 1200px and
 1101px, and the 76px icon rail starts at 1100px. The Windows import helper now
 waits for and validates the durable `POST /api/import-draft/sources` response
 and saved selection count before asserting rendered cards. Entering picture
-adjustment samples the currently laid-out source viewport before geometry is
-calculated, preventing stale first-frame monitor dimensions from shifting direct
-resize hit targets.
+adjustment now samples the source viewport after Vue applies the adjustment
+toolbar, preventing the toolbar reflow from leaving stale first-frame monitor
+dimensions and clipped resize hit targets.
+
+The exact-head Verify run
+[42195116358](https://github.com/bynanci/open-film/actions/runs/42195116358)
+on `4da316f3666a106918a72e12d8fbea78be088ac3` exposed three stale or timing-
+sensitive browser assertions: the cancellation test expected two identically
+named `Add media` buttons although the completion summary intentionally has one
+`Add more media` action; two direct-clip tests hit resize handles calculated
+before the toolbar reflow; and the audio-preview test expected the Inspector
+tabs to use `display:flex` although the current two-column design uses CSS grid.
+Browser shard 1 had 86 passes and 3 failures, shard 2 had 86 passes and 1
+failure. Shards 3 and 4, fast-contract, heavy-media, docs-site, native-shell,
+all three Render QA platforms, Windows recovery and DCO passed. The legacy
+`typescript-and-media` aggregate failed only because the required-lane guard
+observed the two failed browser shards; its media checks were not run as a
+separate job. The new local regressions exercise the single completion action,
+post-layout resize geometry and current Inspector layout without weakening the
+render, hit-target or import-cancellation behavior.
 
 Local evidence on the reconciled, unpushed worktree:
 
@@ -87,10 +103,11 @@ Local evidence on the reconciled, unpushed worktree:
 | `pnpm test:contracts`                                    | 77 files and 1,504 tests passed.                                                                                                                                                     |
 | Focused UI E2E                                           | 17/17 passed: component redesign, multi-source review and Tobi-ishi workflow.                                                                                                        |
 | Direct clip manipulation E2E                             | 5/5 passed, including proportional resize and coarse-pointer hit targets.                                                                                                            |
+| Exact remote-failure regressions                         | 12/12 passed over 3 repetitions: import cancellation, proportional/coarse-pointer resize, and audio-preview Undo/Redo.                                                               |
 | Responsive surfaces E2E                                  | 8/8 passed, including theme animation frames and narrow layouts.                                                                                                                     |
 | Focused unit regressions                                 | 111/111 passed across six App/workspace/variant test files.                                                                                                                          |
 | Format, i18n/docs, partitions, lint, typecheck and build | Passed; 3,198 locale keys, 450 Vitest files (77 contracts/373 media), and 350 browser cases partitioned. TimelineEditor remains 589.11 KB and triggers the existing 500 KB advisory. |
-| Hosted verification for the reconciled SHA               | Not run yet; the changes have not been pushed.                                                                                                                                       |
+| Hosted verification after the exact-head fixes           | Pending; the follow-up commit has not been pushed yet.                                                                                                                               |
 
 The prior `main@b630491` Verify, Windows media recovery and Render QA pass in
 [run 42171211968](https://github.com/bynanci/open-film/actions/runs/42171211968).

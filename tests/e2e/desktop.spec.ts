@@ -348,16 +348,16 @@ test("cancels a real import and keeps the project available", async ({
     expect(project.ok()).toBe(true);
     expect((await project.json()).project.title).toBe("An unfinished import");
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
-    const addMedia = page.getByRole("button", {
-      name: "Add media",
+    const addMoreMedia = page.getByRole("button", {
+      name: "Add more media",
       exact: true,
     });
-    const addFirstMedia = page.getByRole("button", {
-      name: "Add your first media",
-      exact: true,
-    });
-    await expect(addMedia).toBeEnabled();
-    await expect(addFirstMedia).toBeEnabled();
+    await expect(addMoreMedia).toBeVisible();
+    await expect(addMoreMedia).toBeEnabled();
+    await addMoreMedia.click();
+    await expect(
+      page.getByRole("region", { name: "Import media" }),
+    ).toBeVisible();
   } finally {
     cleanupFixtures.push(fixture.cleanup);
   }
