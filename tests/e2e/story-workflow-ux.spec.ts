@@ -199,6 +199,18 @@ test("story plan image labels keep readable contrast in both themes", async ({
       "Photo stays still",
     );
     await expect(dialog.locator(".depth-fallback-pill")).toHaveCount(1);
+    const fallbackAssetNames = await dialog
+      .locator(".depth-fallback-pill")
+      .evaluateAll((badges) =>
+        badges.map(
+          (badge) =>
+            badge
+              .closest(".asset-chip")
+              ?.querySelector(".asset-name")
+              ?.textContent?.trim() ?? null,
+        ),
+      );
+    expect(fallbackAssetNames).toEqual(["01-photo.png"]);
     await expect(dialog.locator(".storyboard-card")).toHaveCount(2);
     await expect(
       dialog.locator(".which-image-section .section-label"),

@@ -314,19 +314,17 @@ watch(
                     <span v-else class="role-badge role-standard">
                       {{ t(`app.storyPlan.card.${ast.role}Role`) }}
                     </span>
+                    <span
+                      v-if="ast.photoDepthFallback"
+                      class="depth-fallback-pill"
+                    >
+                      {{ t("app.storyPlan.card.photoDepthFallback") }}
+                    </span>
                   </div>
                 </div>
               </div>
               <div v-else class="empty-asset-notice">
                 {{ t("app.storyPlan.card.noAssets") }}
-              </div>
-
-              <!-- PhotoDepth Fallback indicator without fake depth mask -->
-              <div
-                v-if="scene.assets[0]?.photoDepthFallback"
-                class="depth-fallback-pill"
-              >
-                {{ t("app.storyPlan.card.photoDepthFallback") }}
               </div>
             </div>
 
