@@ -33,6 +33,18 @@ export interface ResolvedSequenceFrame {
   transitionOverlay?: { color: "black" | "white"; opacity: number };
 }
 
+export interface ResolvedClipFrameTimeV1 {
+  version: 1;
+  /** First project frame occupied by the clip. */
+  startFrame: number;
+  /** Project-frame offset from the clip start; may extend into a held visual tail. */
+  localFrame: number;
+  /** Rational-timebase seconds derived from localFrame, never accumulated. */
+  localTime: number;
+  /** Source seconds for this output frame, clamped at the exclusive source end. */
+  sourceTime: number;
+}
+
 function finite(value: number, field: string, positive = false): void {
   if (!Number.isFinite(value) || (positive ? value <= 0 : value < 0))
     throw new Error(
@@ -78,6 +90,49 @@ export function resolveClipSourceRange(
   if (asset.duration !== undefined && sourceOut > asset.duration + 0.05)
     throw new Error(`Clip ${clip.id} trim exceeds the source duration`);
   return { sourceIn, sourceOut, speed };
+}
+
+function resolveClipFrameTimeFromRange(
+  clip: Clip,
+  sourceRange: { sourceIn: number; sourceOut: number; speed: number },
+  frame: number,
+  timebase: ProjectTimebaseV1,
+  startFrame: number,
+): ResolvedClipFrameTimeV1 {
+  if (!Number.isSafeInteger(frame) || frame < 0)
+    throw new Error("frame must be a nonnegative safe integer");
+  if (frame < startFrame)
+    throw new Error(`Frame ${frame} occurs before clip ${clip.id}`);
+  const localFrame = frame - startFrame;
+  const localTime = sequenceTimeAt(localFrame, timebase);
+  const sourceTime =
+    localTime >= clip.timelineDuration
+      ? sourceRange.sourceOut
+      : Math.min(
+          sourceRange.sourceOut,
+          sourceRange.sourceIn + localTime * sourceRange.speed,
+        );
+  return { version: 1, startFrame, localFrame, localTime, sourceTime };
+}
+
+/** Resolve one output frame without transport history. Frames after the clip's
+ * half-open range are accepted for presentation-only tails and hold sourceOut.
+ */
+export function resolveClipFrameTime(
+  clip: Clip,
+  asset: MediaAsset,
+  frame: number,
+  timebase: ProjectTimebaseV1,
+): ResolvedClipFrameTimeV1 {
+  const sourceRange = resolveClipSourceRange(clip, asset);
+  const { startFrame } = resolveClipFrameRange(clip, timebase);
+  return resolveClipFrameTimeFromRange(
+    clip,
+    sourceRange,
+    frame,
+    timebase,
+    startFrame,
+  );
 }
 
 function primaryTrackIndex(composition: Composition): number {
@@ -250,7 +305,14 @@ export function resolveCompositionFrame(
             probe?.streams?.some((stream) => stream.codec_type === "audio"),
           ));
       if (!visualActive && !audibleActive) continue;
-      const localTime = sequenceTimeAt(frame - range.startFrame, timebase);
+      const frameTime = resolveClipFrameTimeFromRange(
+        clip,
+        { sourceIn, sourceOut, speed },
+        frame,
+        timebase,
+        range.startFrame,
+      );
+      const { localTime } = frameTime;
       const fade = clip.transition?.duration ?? 0;
       const opacity =
         clip.transition?.type === "crossfade" && fade > 0
@@ -265,10 +327,7 @@ export function resolveCompositionFrame(
         startFrame: range.startFrame,
         endFrame: displayed.endFrame,
         localTime,
-        sourceTime:
-          localTime >= clip.timelineDuration
-            ? sourceOut
-            : Math.min(sourceOut, sourceIn + localTime * speed),
+        sourceTime: frameTime.sourceTime,
         opacity,
         visual: visualActive,
         audible: audibleActive,

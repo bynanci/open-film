@@ -67,6 +67,13 @@ the [Cut Desk guide](docs/professional-cut-desk.md),
 [precision-gesture validation](docs/validation-cut-desk-phase-1b.md) and
 [responsive-workspace validation](docs/validation-cut-desk-phase-1c.md).
 
+Cut Desk Phase 4B is being advanced in verified slices. The 4B.1 candidate
+defines a shared deterministic frame-time resolver for existing scalar-speed
+clips; visual keyframes and speed ramps remain separate until preview and FFmpeg
+consume their saved values consistently. See the
+[4B design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md)
+and [4B.1 validation](docs/validation-cut-desk-phase-4b-time-contract.md).
+
 ### Make story decisions easier to review
 
 Build on the existing Story Graph, authored StoryPlan, Pipeline and creative
