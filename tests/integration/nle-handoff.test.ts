@@ -2695,7 +2695,9 @@ it("renders the admitted 64-cue reference within the filter argument budget", as
     .spyOn(media, "runProcess")
     .mockImplementation(async (command, args, options) => {
       const result = await originalRunProcess(command, args, options);
-      const scriptIndex = args.indexOf("-filter_complex_script");
+      const scriptIndex = args.findIndex(
+        (arg) => arg === "-/filter_complex" || arg === "-filter_complex_script",
+      );
       if (command === "ffmpeg" && scriptIndex >= 0)
         filterGraphs.push(await readFile(args[scriptIndex + 1]!, "utf8"));
       return result;
@@ -2721,7 +2723,10 @@ it("renders the admitted 64-cue reference within the filter argument budget", as
   });
   const graphArguments = processes.mock.calls.filter(
     ([command, args]) =>
-      command === "ffmpeg" && args.includes("-filter_complex_script"),
+      command === "ffmpeg" &&
+      args.some(
+        (arg) => arg === "-/filter_complex" || arg === "-filter_complex_script",
+      ),
   );
   expect(graphArguments).toHaveLength(1);
   expect(filterGraphs).toHaveLength(1);

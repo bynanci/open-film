@@ -1,6 +1,7 @@
 import { compileAudioMixPlan } from "./audio-plan.js";
 export { compileAudioMixPlan } from "./audio-plan.js";
 import { renderPresetSnapshots } from "./preset-integrity.js";
+import { getFilterGraphFileOption } from "./filter-graph-cli.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -1563,12 +1564,13 @@ export class FFmpegRenderer {
         mode: 0o600,
         flag: "wx",
       });
+      const filterGraphFileOption = await getFilterGraphFileOption();
       args.push(
         "-filter_threads",
         "1",
         "-filter_complex_threads",
         "1",
-        "-filter_complex_script",
+        filterGraphFileOption,
         filterGraphPath,
       );
       if (options.maximumOutputBytes !== undefined)

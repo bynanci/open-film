@@ -46,8 +46,8 @@ pending and unmerged.
 - `pnpm test` — passed, 454 files and 5,935 tests in 566.89 seconds (full
   Vitest suite).
 - The first full run found two existing probes that expected inline
-  `-filter_complex`. Updated those probes to capture and inspect the actual
-  `-filter_complex_script` used by FFmpeg, retaining the 128 KiB graph budget
+  `-filter_complex`. Updated those probes to read the actual graph from its
+  version-appropriate FFmpeg file option, retaining the 128 KiB graph budget
   and scaler-context assertions. Both focused regressions passed; the full
   rerun above is green.
 - `pnpm test:ci-partition` — passed; verified 454 tests partition into 80
@@ -69,8 +69,15 @@ clip keyframes|multi-track cubic graph larger than Windows command-line limits'`
   — passed with a real synthetic MP4. Three eight-key cubic tracks exceed the
   Windows 32,767-character process command-line limit when expanded as filter
   expressions. The renderer now writes the generated graph into its unique
-  render work directory and passes FFmpeg `-filter_complex_script`; the test
+  render work directory and chooses `-/filter_complex` for FFmpeg 7+ or the
+  legacy `-filter_complex_script` for FFmpeg 6.x; the test
   decodes all eight output frames and confirms the source SHA-256 is unchanged.
+- Hosted Windows Render QA on head `042cb4a6ca0df1f8916ece2a36c5777d625b0bfc`
+  [failed](https://github.com/bynanci/open-film/actions/runs/42292162198/job/128148073005)
+  because pinned FFmpeg 9.0.2 returned `Unrecognized option
+'filter_complex_script'`. A version-aware option selector now uses FFmpeg's
+  generic `-/filter_complex` file syntax on FFmpeg 7+; the exact-head Windows
+  gate must confirm this fix.
 - `vitest run tests/unit/record-monitor.test.ts -t 'previews transient clip
 keyframes'` — passed; the held-frame preview updates while preserving the
   saved Composition and existing media resource.
