@@ -4594,8 +4594,10 @@ textarea {
 }
 
 .workspace-sidebar .main-nav button,
-.workspace-sidebar .workflow-step {
-  transition-property: background-color, box-shadow, color;
+.workspace-sidebar .workflow-step,
+.workspace-library .library-sidebar button {
+  /* Keep theme text/background changes atomic so their contrast never dips. */
+  transition-property: box-shadow;
   transition-duration: var(--of-motion-normal);
   transition-timing-function: var(--of-motion-ease);
 }

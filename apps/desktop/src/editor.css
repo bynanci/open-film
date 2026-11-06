@@ -2424,6 +2424,16 @@ button.editor-beat-heading:hover {
   }
 }
 
+@media (min-width: 901px) and (max-height: 760px) {
+  .timeline-editor.timeline-editor-contained .editor-workspace {
+    grid-template-rows: minmax(15.5rem, 2.2fr) minmax(7rem, 1fr);
+  }
+
+  .timeline-editor-contained .editor-source-screen {
+    min-height: 6rem;
+  }
+}
+
 @media (max-width: 900px) {
   .timeline-editor-contained .editor-story-rail {
     max-height: 24rem;

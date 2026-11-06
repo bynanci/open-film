@@ -419,6 +419,15 @@ test.describe("coarse pointer", () => {
         },
         { box: bounds! },
       );
+      expect(hitTest.playerRegion).not.toBeNull();
+      expect(hitTest.sourceScreen).not.toBeNull();
+      expect(hitTest.storyRail).not.toBeNull();
+      expect(hitTest.sourceScreen!.bottom).toBeLessThanOrEqual(
+        hitTest.playerRegion!.bottom + 0.5,
+      );
+      expect(hitTest.storyRail!.top).toBeGreaterThanOrEqual(
+        hitTest.playerRegion!.bottom - 0.5,
+      );
       expect(
         hitTest.points.map(({ label }) => label),
         `${name} must remain hit-testable across its full target: ${JSON.stringify(hitTest)}`,

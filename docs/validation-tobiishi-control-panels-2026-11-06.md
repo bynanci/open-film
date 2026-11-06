@@ -61,7 +61,7 @@ These checks do not impose a height cap on authored long content.
 
 The current follow-up is based on `main`
 `b6304914a7eb351d8e5d0a0a11b41e163713e20b` and includes PR #119 updates through
-`b2e44c776588184661d5e003a358dbdb17bf5251`. The previous exact-head run
+`e205f3bbedc65061f3520d00995546afdeaf80cb`. The previous exact-head run
 [42190592757](https://github.com/bynanci/open-film/actions/runs/42190592757)
 passed fast-contract, heavy-media, docs-site, native-shell and all three render
 QA platforms. Browser shard 1 failed two direct-clip hit-test checks; Windows
@@ -115,23 +115,44 @@ adjustment toolbar reflows. The caption test now waits for the matching
 the saved cue. The language test now checks the selected locale, the localized
 timeline region and translated validation feedback. Shards 2–4, fast-contract,
 heavy-media, docs-site, native-shell, Windows media recovery and all Render QA
-platforms passed. The legacy `typescript-and-media` guard failed only because
+platforms passed. A follow-up raises the transform overlay above the source
+image, so the right-side handles remain visible and hit-testable. The legacy
+`typescript-and-media` guard failed only because
 it observed `BROWSER_RESULT: failure`; its fast, media and docs results were
 successful.
 
+On PR head `316e741aadfcf3b41508e8f99c9689850d6ad18c`, Verify run
+[42201643719](https://github.com/bynanci/open-film/actions/runs/42201643719)
+found one additional compact-height defect in browser shard 1: at 1024×720 the
+picture toolbar wrapped, leaving the source viewport 22px below its player row
+and overlapping the Story rail. The lower half of the bottom-right touch target
+then hit the source image. The same run's fast-contract, docs-site, native-shell,
+Windows media recovery, and Windows/macOS Render QA jobs passed. Browser shards
+2 and 4, heavy-media QA, and Linux Render QA were cancelled after the browser
+failure; they are not passing evidence. The required-lane aggregate therefore
+failed. The CSS follow-up reserves more player height at short desktop
+viewports and reduces the minimum preview height so the source viewport stays
+inside its row. The coarse-pointer E2E now asserts row boundaries as well as all
+four hit targets.
+
+After rebasing onto the concurrent PR commits through `e205f3b`, the local
+cross-workflow regression run found a transient low-contrast frame when theme
+colors animated together. The final styles change navigation and workflow text
+and backgrounds atomically while keeping shadow motion. The axe theme/focus
+regression passed after this correction.
+
 Local evidence on the reconciled, unpushed worktree:
 
-| Check                                                    | Result                                                                                                                                                                               |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                              | 450 files and 5,904 tests passed in 545.48s.                                                                                                                                         |
-| `pnpm test:contracts`                                    | 77 files and 1,504 tests passed.                                                                                                                                                     |
-| Focused UI E2E                                           | 17/17 passed: component redesign, multi-source review and Tobi-ishi workflow.                                                                                                        |
-| Direct clip manipulation E2E                             | 5/5 passed, including proportional resize and coarse-pointer hit targets.                                                                                                            |
-| Exact remote-failure regressions                         | 18/18 passed over 3 repetitions: import cancellation, proportional/coarse-pointer resize, caption persistence, zh-TW/ja-JP switching, and audio-preview Undo/Redo.                   |
-| Responsive surfaces E2E                                  | 8/8 passed, including theme animation frames and narrow layouts.                                                                                                                     |
-| Focused unit regressions                                 | 111/111 passed across six App/workspace/variant test files.                                                                                                                          |
-| Format, i18n/docs, partitions, lint, typecheck and build | Passed; 3,198 locale keys, 450 Vitest files (77 contracts/373 media), and 350 browser cases partitioned. TimelineEditor remains 589.11 KB and triggers the existing 500 KB advisory. |
-| Hosted verification after the exact-head fixes           | Pending for the final follow-up SHA; the b2e44c7 run still has the three browser-shard-1 failures listed above.                                                                      |
+| Check                                  | Result                                                                                                                                                                                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused interaction/theme E2E          | 52/52 passed across captions, direct clip manipulation, global visual/axe, Professional Cut Desk, and Story workflow UX.                                                                                                                              |
+| Compact-height touch resize regression | 5/5 passed at 1024×720; preview and Story rows remain disjoint and all four 44px targets receive hits.                                                                                                                                                |
+| Native caption persistence regression  | 5/5 passed with durable edit response and reopen assertions.                                                                                                                                                                                          |
+| Theme contrast and keyboard focus      | 1/1 passed after making text/background theme updates atomic; axe reports no contrast violations.                                                                                                                                                     |
+| Local fast-contract and build checks   | `format:check`, `test:i18n` (3,198 keys), `lint`, `typecheck`, `test:contracts` (77 files / 1,504 tests), and `build` passed.                                                                                                                         |
+| Bundle advisory                        | TimelineEditor is 589.37 KB minified, above the existing 500 KB advisory; build succeeds.                                                                                                                                                             |
+| Hosted verification                    | On `e205f3b`, fast-contract, docs-site, native-shell, Windows recovery, all three Render QA platforms and DCO passed. Browser shard 1 reproduced the 1024×720 resize-hit failure; shards 2–4 passed and heavy-media was still running when inspected. |
+| Full Vitest                            | Not rerun after rebasing onto the latest PR commits; the current focused contract suite passed.                                                                                                                                                       |
 
 The prior `main@b630491` Verify, Windows media recovery and Render QA pass in
 [run 42171211968](https://github.com/bynanci/open-film/actions/runs/42171211968).
