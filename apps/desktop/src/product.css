@@ -303,7 +303,7 @@ input[type="range"] {
 }
 .wordmark-text {
   font-weight: 760;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.045em;
 }
 .logo-bracket {
   font-size: 1.75rem;
@@ -440,13 +440,14 @@ label.ui-language {
 .editing-room .project-heading h1 {
   margin-top: 0;
   font-size: var(--of-font-heading);
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: -0.025em;
   line-height: var(--of-line-heading);
   overflow-wrap: anywhere;
 }
 .project-heading p {
-  margin-top: var(--of-space-1);
+  margin-top: var(--of-space-2);
+  max-width: 65ch;
 }
 .project-heading-actions {
   gap: var(--of-space-3);
@@ -759,8 +760,8 @@ label.ui-language {
 .library-sidebar {
   display: flex;
   flex-direction: column;
-  gap: var(--of-space-2);
-  padding: var(--of-space-4);
+  gap: var(--of-space-1);
+  padding: var(--of-space-3);
   background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-lg);
@@ -771,11 +772,11 @@ label.ui-language {
   align-items: center;
   justify-content: space-between;
   gap: var(--of-space-2);
-  min-height: 38px;
+  min-height: 42px;
   padding: var(--of-space-2) var(--of-space-3);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-md);
-  background: var(--of-surface-2);
+  background: transparent;
   color: var(--of-text-primary);
   text-align: left;
   font-size: var(--of-font-small);
@@ -821,10 +822,12 @@ label.ui-language {
 .library-summary {
   font-size: var(--of-font-small);
   color: var(--of-text-secondary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
 }
 .filter-bar > select {
   max-width: 180px;
-  min-height: 38px;
+  min-height: 42px;
   background-color: var(--of-surface-2);
   border: 0;
   border-radius: var(--of-radius-md);
@@ -836,19 +839,21 @@ label.ui-language {
   background-color: var(--of-surface-3);
 }
 .search-field {
-  min-height: 38px;
+  min-height: 42px;
   padding: 0 var(--of-space-3);
   background: var(--of-surface-2);
   border: 1px solid var(--of-border-control);
   border-radius: var(--of-radius-md);
 }
 .search-field input {
-  font-size: var(--of-font-caption);
+  font-size: var(--of-font-small);
+  min-width: 0;
 }
 .contact-sheet,
 .library-layout.inspecting .contact-sheet {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
-  gap: var(--of-space-5);
+  column-gap: var(--of-space-4);
+  row-gap: var(--of-space-6);
 }
 .library-layout.inspecting {
   grid-template-columns: minmax(0, 1fr) 276px;
@@ -869,6 +874,7 @@ label.ui-language {
   aspect-ratio: var(--asset-aspect-ratio, 1);
   border-radius: var(--of-radius-media);
   isolation: isolate;
+  background: var(--of-player);
 }
 .thumbnail-empty,
 .preview-placeholder,
@@ -930,15 +936,15 @@ label.ui-language {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: var(--of-space-1) var(--of-space-1) 0;
+  padding: var(--of-space-2) var(--of-space-1) 0;
 }
 .asset-name {
   font-family: var(--of-font-media);
-  font-weight: 600;
+  font-weight: 550;
   display: -webkit-box;
   max-width: 100%;
   font-size: var(--of-font-caption);
-  line-height: 1.45;
+  line-height: 1.6;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2304,6 +2310,8 @@ label.ui-language {
 .editor-field > span,
 .editor-field > label {
   font-size: var(--of-font-caption);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .editor-presets {
   flex-wrap: wrap;
@@ -2509,7 +2517,7 @@ label.ui-language {
   min-width: 0;
   align-items: flex-start;
   gap: var(--of-space-3);
-  padding: var(--of-space-3);
+  padding: var(--of-space-4);
   border: 0;
   border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
@@ -2526,7 +2534,7 @@ label.ui-language {
 .export-goal strong {
   display: block;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.4;
 }
 .export-goal small {

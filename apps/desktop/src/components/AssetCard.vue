@@ -149,6 +149,9 @@ watch(
         ></span
       >
     </button>
+    <div class="asset-caption">
+      <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
+    </div>
     <div v-if="!choice" class="asset-actions">
       <button
         :class="{ active: asset.state.favorite }"
@@ -192,9 +195,6 @@ watch(
       <span v-if="asset.rating" class="asset-rating"
         ><Icon name="star" :size="11" /> {{ asset.rating }}</span
       >
-    </div>
-    <div class="asset-caption">
-      <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
     </div>
   </article>
 </template>
