@@ -151,8 +151,10 @@ and workstation checks remain in the verification section below.
 - [x] Implement source-bound onset/downbeat/phrase landmark extraction,
       durable persistence, reopen restoration, and cut-point snap proposals
       ([rhythm pipeline validation](tests/integration/rhythm-pipeline.test.ts), [D3A2 validation](docs/validation-rhythm-analysis-snapping.md)).
-- [ ] Define and implement the remaining general event/person coverage and
-      media-balance constraints without changing user-pinned choices.
+- [x] Define and implement explicit per-beat event/person coverage and
+      media-balance constraints without changing user-pinned choices. Story
+      Graph authoring, StoryPlan preservation, durable project validation, and
+      solver conflict behavior are recorded in the [Story Coverage validation](docs/validation-story-coverage.md).
 
 Continuity diagnostics (D2A), adjacent-scene previews and dip transitions (D2B),
 rhythm proposals (D3A2), A-roll/B-roll coverage (D3B2) and transcript ripple edits
@@ -280,6 +282,7 @@ what was checked and what still needs physical or editorial validation.
 | Continuity diagnostics and adjacent-scene micro-previews (D2A, D2B)              | [Continuity](docs/validation-continuity-diagnostics.md), [micro-previews and dips](docs/validation-scene-micro-preview-dips.md)                                                               |
 | Source-bound rhythm evidence and accepted snap proposals (D3A2)                  | [Rhythm analysis](docs/validation-rhythm-analysis-snapping.md)                                                                                                                                |
 | A-roll/B-roll coverage commands and narration retention (D3B2)                   | [PR #87](https://github.com/bynanci/open-film/pull/87), [audio policy](docs/validation-audio-policy.md)                                                                                       |
+| Explicit event/person coverage and image/video balance                           | [Story Coverage validation](docs/validation-story-coverage.md)                                                                                                                                |
 | Reliable-timestamp transcript ripple and cross-track retiming (D4)               | [Transcript ripple](docs/validation-transcript-ripple.md)                                                                                                                                     |
 | macOS Darwin cross-process dead-owner detection & boot session verification      | [macOS dead owner recovery](docs/validation-macos-dead-owner.md)                                                                                                                              |
 | Multi-source discovery, manifests, analysis and explicit adoption (D1)           | [Multi-source validation](docs/validation-multi-source-analysis.md)                                                                                                                           |

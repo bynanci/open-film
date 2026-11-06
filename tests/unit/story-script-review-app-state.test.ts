@@ -99,6 +99,7 @@ function fixture(graphBeatSaveTask?: Promise<boolean>) {
     intent: story.beats[0]!.intent,
     targetDuration: 3,
     selectedAssetIds: ["asset"],
+    constraints: [],
     narration: "Draft words",
     visualDirection: "Keep this direction",
   });

@@ -47,6 +47,7 @@ import type {
   OpenFilmProject,
   Story,
   StoryBeat,
+  StoryConstraint,
   Event,
   SimilarityGroup,
   Job,
@@ -667,6 +668,7 @@ const beatDraft = ref<{
   selectedAssetIds: string[];
   narration: string;
   visualDirection: string;
+  constraints: StoryConstraint[];
 }>({
   title: "",
   intent: "",
@@ -674,6 +676,7 @@ const beatDraft = ref<{
   selectedAssetIds: [],
   narration: "",
   visualDirection: "",
+  constraints: [],
 });
 const beatDirty = ref(false);
 let graphBeatSaveTask: Promise<boolean> | undefined;
@@ -781,6 +784,9 @@ function handleGraphBeatEdit(storyId: string, beat: StoryBeat) {
     targetDuration: beat.targetDuration ?? beatDraft.value.targetDuration,
     narration: beat.script?.narration ?? "",
     visualDirection: beat.script?.visualDirection ?? "",
+    constraints: JSON.parse(
+      JSON.stringify(beat.constraints ?? []),
+    ) as StoryConstraint[],
   };
   beatDirty.value = true;
   if (graphBeatSaveTask) return;
@@ -2258,6 +2264,9 @@ function hydrateBeat() {
     selectedAssetIds: [...(beat?.selectedAssetIds ?? [])],
     narration: beat?.script?.narration ?? "",
     visualDirection: beat?.script?.visualDirection ?? "",
+    constraints: JSON.parse(
+      JSON.stringify(beat?.constraints ?? []),
+    ) as StoryConstraint[],
   };
   beatDirty.value = false;
   candidateOffset.value = 0;
@@ -2400,6 +2409,9 @@ async function saveBeat(): Promise<boolean> {
       intent: draft.intent.trim(),
       targetDuration: Number(draft.targetDuration),
       selectedAssetIds: draft.selectedAssetIds,
+      constraints: JSON.parse(
+        JSON.stringify(draft.constraints),
+      ) as StoryConstraint[],
       ...(beat.script || draft.narration || draft.visualDirection
         ? {
             script: {

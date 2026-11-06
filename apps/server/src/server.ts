@@ -6481,6 +6481,9 @@ export async function startServer(options: ServerOptions = {}) {
             for (const id of [
               ...(beat.candidateAssetIds ?? []),
               ...(beat.selectedAssetIds ?? []),
+              ...(beat.constraints?.flatMap((constraint) =>
+                "assetIds" in constraint ? constraint.assetIds : [],
+              ) ?? []),
             ])
               if (!application.catalog.getAsset(id))
                 throw new HttpError(
