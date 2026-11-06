@@ -244,7 +244,7 @@ describe("saved Story script review", () => {
   it("requests bounded suggestions for only the selected saved field and renders their evidence", async () => {
     const h = fixture();
     await h.panel.refresh();
-    expect(h.api.scriptReviewSuggestions).toHaveBeenCalledWith("story", {
+    expect(h.api.scriptReviewSuggestions).toHaveBeenNthCalledWith(1, "story", {
       beatId: "beat",
       field: "narration",
       status: "pending",

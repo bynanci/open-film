@@ -485,6 +485,7 @@ export default {
           "目前媒體庫：{total} 個素材 · {photos} 張照片 · {videos} 部影片 · {audio} 個音訊",
         attention: "{count} 個檔案需要留意",
         organize: "整理回憶",
+        addMore: "新增媒體",
         dismiss: "關閉提示",
       },
     },

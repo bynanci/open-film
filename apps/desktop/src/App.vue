@@ -93,8 +93,13 @@ const AppSettings = defineAsyncComponent({
   loadingComponent: WorkspaceLoading,
   delay: 150,
 });
+let importPanelModulePromise:
+  Promise<typeof import("./components/ImportPanel.vue")> | undefined;
+function loadImportPanel() {
+  return (importPanelModulePromise ??= import("./components/ImportPanel.vue"));
+}
 const ImportPanel = defineAsyncComponent({
-  loader: () => import("./components/ImportPanel.vue"),
+  loader: loadImportPanel,
   loadingComponent: WorkspaceLoading,
   delay: 150,
 });
@@ -231,14 +236,22 @@ const workspaceHeader = ref<HTMLElement | null>(null);
 const workspaceMain = ref<HTMLElement | null>(null);
 const workspaceHeaderHeight = ref(64);
 async function focusWorkspaceMain(importReady = false) {
+  const projectId = project.value?.id;
+  const generation = projectGeneration.value;
+  const current = () =>
+    project.value?.id === projectId && projectGeneration.value === generation;
+  if (importReady) await loadImportPanel();
+  if (!current()) return;
   const importPanelMounted = importReady && (await waitForImportPanelMount());
+  if (!current()) return;
   await nextTick();
+  if (!current()) return;
+  const main = workspaceMain.value;
+  if (!main) return;
   const importPanel = importPanelMounted
-    ? workspaceMain.value?.querySelector<HTMLElement>(
-        '[data-focus-target="import-panel"]',
-      )
+    ? main.querySelector<HTMLElement>('[data-focus-target="import-panel"]')
     : null;
-  (importPanel ?? workspaceMain.value)?.focus({ preventScroll: true });
+  (importPanel ?? main).focus({ preventScroll: true });
 }
 let headerObserver: ResizeObserver | undefined;
 watch(workspaceHeader, (element) => {
@@ -535,6 +548,12 @@ type ImportCompletionNotice = {
 };
 const importCompletion = shallowRef<ImportCompletionNotice | null>(null);
 const pendingImportCompletion = shallowRef<ImportCompletionNotice | null>(null);
+const recentActivityJob = computed(() => {
+  const job = recentJob.value;
+  return tab.value === "library" && importCompletion.value?.id === job?.id
+    ? null
+    : job;
+});
 const startedImportJobIds = new Set<string>();
 function transitionedImportCompletion(
   nextJobs: readonly Job[],
@@ -3547,7 +3566,8 @@ onUnmounted(() => {
       <section
         v-if="
           activeJobs.length ||
-          (recentJob && (tab === 'library' || recentJob.status !== 'completed'))
+          (recentActivityJob &&
+            (tab === 'library' || recentActivityJob.status !== 'completed'))
         "
         class="jobs activity-strip"
         :aria-label="t('app.activity.label')"
@@ -3555,8 +3575,8 @@ onUnmounted(() => {
         <div
           v-for="job in activeJobs.length
             ? activeJobs
-            : recentJob
-              ? [recentJob]
+            : recentActivityJob
+              ? [recentActivityJob]
               : []"
           :key="job.id"
           class="job-row"
@@ -3699,7 +3719,15 @@ onUnmounted(() => {
         aria-live="polite"
       >
         <div class="import-completion-copy">
-          <h2>{{ t(`app.import.completion.${importCompletion.status}`) }}</h2>
+          <h2>
+            {{
+              t(
+                importCompletion.status === "completed"
+                  ? "app.activity.import.complete"
+                  : `app.import.completion.${importCompletion.status}`,
+              )
+            }}
+          </h2>
           <p>
             {{
               t("app.import.completion.libraryCounts", {
@@ -3746,7 +3774,7 @@ onUnmounted(() => {
             {{ t("app.import.completion.organize") }}<Icon name="arrow" />
           </button>
           <button v-else class="primary" @click="importOpen = true">
-            {{ t("app.library.add") }}<Icon name="arrow" />
+            {{ t("app.import.completion.addMore") }}<Icon name="arrow" />
           </button>
           <button class="text-button" @click="importCompletion = null">
             {{ t("app.import.completion.dismiss") }}

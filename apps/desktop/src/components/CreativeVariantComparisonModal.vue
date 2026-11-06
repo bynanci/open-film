@@ -823,6 +823,9 @@ onUnmounted(() => {
 
 .variants-modal-container {
   box-sizing: border-box;
+  --color-bg-card: var(--of-surface-2);
+  --color-border: var(--of-border-subtle);
+  --color-text-muted: var(--of-text-secondary);
   width: 90vw;
   max-width: 1240px;
   max-height: 90vh;

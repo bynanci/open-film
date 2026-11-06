@@ -513,6 +513,7 @@ export default {
         attention:
           "No files need attention | {count} file needs attention | {count} files need attention",
         organize: "Organize memories",
+        addMore: "Add more media",
         dismiss: "Dismiss",
       },
     },

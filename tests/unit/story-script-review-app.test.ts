@@ -67,6 +67,7 @@ function renderReview(storyId = "story", beatId = "beat", authored = true) {
         relinkBusy: false,
         storyReviewBusy: false,
         storyReviewPending: false,
+        storyReviewPendingCount: 0,
         jobs: [],
         flushPending: vi.fn(),
         scriptReviewAccepted: vi.fn(),

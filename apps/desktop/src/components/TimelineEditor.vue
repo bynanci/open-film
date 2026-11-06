@@ -2209,6 +2209,12 @@ function resetPicture(centerOnly = false) {
 }
 function togglePictureAdjustment() {
   clipTransformOverlay.value?.cancel();
+  if (!pictureAdjusting.value && sourceScreenElement.value) {
+    const { clientWidth: width, clientHeight: height } =
+      sourceScreenElement.value;
+    if (width > 0 && height > 0)
+      sourceViewport.value = roundFrameDimensions({ width, height });
+  }
   pictureAdjusting.value = !pictureAdjusting.value;
 }
 const previewGeometry = computed(() => {

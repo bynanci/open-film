@@ -57,6 +57,47 @@ The browser test requires at least 4.5:1 for titles and timing on selected and
 unselected backing planes, and a content-sized short-fixture card below 300px.
 These checks do not impose a height cap on authored long content.
 
+## PR #119 current-head follow-up — 2026-11-06
+
+The current follow-up is reconciled on top of PR #119 head
+`b3daac4fb8bf9819093c2b5291b33ccfa6a858ec`, based on `main`
+`b6304914a7eb351d8e5d0a0a11b41e163713e20b`. The previous exact-head run
+[42190592757](https://github.com/bynanci/open-film/actions/runs/42190592757)
+passed fast-contract, heavy-media, docs-site, native-shell and all three render
+QA platforms. Browser shard 1 failed two direct-clip hit-test checks; Windows
+media recovery failed the split-review import helper before it observed the two
+source cards. Those failures are being checked on the reconciled candidate; this
+record does not treat the older SHA as green.
+
+The follow-up keeps the f98 modal work and its theme/focus/contrast E2E checks,
+retains project-generation fencing for lazy Import focus, and reconciles the
+sidebar breakpoint with the remote change: labels remain visible at 1200px and
+1101px, and the 76px icon rail starts at 1100px. The Windows import helper now
+waits for and validates the durable `POST /api/import-draft/sources` response
+and saved selection count before asserting rendered cards. Entering picture
+adjustment samples the currently laid-out source viewport before geometry is
+calculated, preventing stale first-frame monitor dimensions from shifting direct
+resize hit targets.
+
+Local evidence on the reconciled, unpushed worktree:
+
+| Check                                                    | Result                                                                                                                                                                               |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm test`                                              | 450 files and 5,904 tests passed in 545.48s.                                                                                                                                         |
+| `pnpm test:contracts`                                    | 77 files and 1,504 tests passed.                                                                                                                                                     |
+| Focused UI E2E                                           | 17/17 passed: component redesign, multi-source review and Tobi-ishi workflow.                                                                                                        |
+| Direct clip manipulation E2E                             | 5/5 passed, including proportional resize and coarse-pointer hit targets.                                                                                                            |
+| Responsive surfaces E2E                                  | 8/8 passed, including theme animation frames and narrow layouts.                                                                                                                     |
+| Focused unit regressions                                 | 111/111 passed across six App/workspace/variant test files.                                                                                                                          |
+| Format, i18n/docs, partitions, lint, typecheck and build | Passed; 3,198 locale keys, 450 Vitest files (77 contracts/373 media), and 350 browser cases partitioned. TimelineEditor remains 589.11 KB and triggers the existing 500 KB advisory. |
+| Hosted verification for the reconciled SHA               | Not run yet; the changes have not been pushed.                                                                                                                                       |
+
+The prior `main@b630491` Verify, Windows media recovery and Render QA pass in
+[run 42171211968](https://github.com/bynanci/open-film/actions/runs/42171211968).
+It does not replace required exact-head CI for this follow-up. Real Windows/macOS
+installer, signing/notarization, workstation, Resolve, GPU/4K and listening checks
+remain separate gates.
+
 ## Interaction and visual coverage
 
 Desktop captures cover en-US, zh-TW, ja-JP and expanded en-XA at 1280×720,

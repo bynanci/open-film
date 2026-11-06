@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import {
   expect,
+  request as playwrightRequest,
   test,
   type Page,
   type APIRequestContext,
@@ -114,10 +115,21 @@ async function prepareReview(page: Page, locale: ProjectContentLocale) {
     name: uiText(locale, "app.import.label"),
     exact: true,
   });
+  const sourcesAdded = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/import-draft/sources") &&
+      response.request().method() === "POST",
+  );
   await panel
     .getByLabel(uiText(locale, "app.import.addFiles"), { exact: true })
     .setInputFiles(files);
-  await expect(panel.locator(".import-source-card")).toHaveCount(2);
+  const sourceResponse = await sourcesAdded;
+  expect(sourceResponse.ok(), await sourceResponse.text()).toBe(true);
+  const { draft } = await sourceResponse.json();
+  expect(draft.selections).toHaveLength(2);
+  await expect(panel.locator(".import-source-card")).toHaveCount(2, {
+    timeout: 15_000,
+  });
   await panel
     .getByRole("button", {
       name: uiText(locale, "app.import.scan.action"),
@@ -361,7 +373,6 @@ test("split review derives both ranges from the real video duration", async ({
 
 test("a committed review with a lost response recovers after reload using one receipt", async ({
   page,
-  request,
 }) => {
   const locale = "zh-TW";
   const { panel, record, fixture } = await prepareReview(page, locale);
@@ -433,11 +444,17 @@ test("a committed review with a lost response recovers after reload using one re
   await retry.press("Enter");
   expect((await requestRetried).postDataJSON()).toEqual(originalPayload);
   await expect(retry).toHaveCount(0);
-  const review = await (
-    await request.get(
+  const verification = await playwrightRequest.newContext();
+  let review: { decisions: { id: string; outcome: string }[] };
+  try {
+    const response = await verification.get(
       `${api}/analysis-runs/${encodeURIComponent(record.run.id)}/review`,
-    )
-  ).json();
+    );
+    expect(response.ok()).toBe(true);
+    review = await response.json();
+  } finally {
+    await verification.dispose();
+  }
   expect(review.decisions).toHaveLength(1);
   expect(review.decisions[0]).toMatchObject({
     id: acceptedId,

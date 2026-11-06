@@ -511,6 +511,7 @@ export default {
           "ライブラリ内：{total} 件 · 写真 {photos} 件 · 動画 {videos} 件 · 音声 {audio} 件",
         attention: "{count} 件のファイルに対応が必要です",
         organize: "思い出を整理",
+        addMore: "メディアを追加",
         dismiss: "閉じる",
       },
     },
