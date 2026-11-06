@@ -42,10 +42,16 @@ solver enforcement, Story Graph authoring, and StoryPlan preservation.
 Validation on 2026-11-06:
 
 - `pnpm exec vitest run packages/core/tests packages/solver/tests packages/application/tests/story-plan.test.ts tests/integration/story-intent.test.ts` — **69 files, 1,418 tests passed**.
+- `pnpm test:contracts` — **78 files, 1,525 tests passed**.
+- `pnpm test` — **449 files, 5,905 tests passed** after updating the existing App-state fixture for the added constraint field.
 - `pnpm typecheck` — passed.
 - `pnpm lint` — passed.
 - `pnpm test:i18n` — passed; 3,179 semantic keys match across en-US, zh-TW, and ja-JP.
 - `pnpm format:check` — passed.
+- `pnpm test:docs-i18n` — passed; 165 English reference mirrors are in sync.
+- `pnpm build` — passed.
+- `pnpm test:interchange` — passed; 18 tests, including source hashes/bounds and relocation.
+- `pnpm test:ci-partition` — passed; all 449 test files are assigned to a CI lane.
 - `tests/e2e/story-arc-authoring.spec.ts` — **1 test passed**. The run exercised freeform beat editing, Story Graph constraints authoring, and persistence through the existing Story API. An earlier run exposed a Vue reactive-proxy `structuredClone` failure in the Desktop save path; the save/hydrate paths now copy JSON contract values and the end-to-end flow passes.
 
 The unit and integration suite covers schema validation, project JSON roundtrip,
