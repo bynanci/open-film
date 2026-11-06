@@ -8,6 +8,7 @@ import type {
 import {
   primaryEditFrames,
   resolveClipFrameRange,
+  resolveClipFrameTime,
   resolveClipSourceRange,
   resolveCompositionFrame,
 } from "../src/sequence.js";
@@ -167,6 +168,87 @@ describe("shared clip source ranges", () => {
     (duration) => {
       expect(() =>
         resolveClipSourceRange(clip(), { ...video, duration }),
+      ).toThrow();
+    },
+  );
+});
+
+describe("shared clip frame-time resolution", () => {
+  it("resolves the legacy scalar-speed source clock from arbitrary rational frames", () => {
+    const fractionalTimebase: ProjectTimebaseV1 = {
+      version: 1,
+      rateNumerator: 30000,
+      rateDenominator: 1001,
+      dropFrame: false,
+    };
+    const duration = (4 * 1001) / 30000;
+    const saved = clip({
+      timelineDuration: duration,
+      sourceIn: 2,
+      sourceOut: 2 + duration * 1.5,
+      transform: { speed: 1.5 },
+    });
+
+    expect(resolveClipFrameTime(saved, video, 0, fractionalTimebase)).toEqual({
+      version: 1,
+      startFrame: 0,
+      localFrame: 0,
+      localTime: 0,
+      sourceTime: 2,
+    });
+    expect(resolveClipFrameTime(saved, video, 1, fractionalTimebase)).toEqual({
+      version: 1,
+      startFrame: 0,
+      localFrame: 1,
+      localTime: 1001 / 30000,
+      sourceTime: 2 + (1001 / 30000) * 1.5,
+    });
+    expect(resolveClipFrameTime(saved, video, 3, fractionalTimebase)).toEqual({
+      version: 1,
+      startFrame: 0,
+      localFrame: 3,
+      localTime: 3 / (30000 / 1001),
+      sourceTime: 2 + (3 / (30000 / 1001)) * 1.5,
+    });
+    expect(resolveClipFrameTime(saved, video, 4, fractionalTimebase)).toEqual({
+      version: 1,
+      startFrame: 0,
+      localFrame: 4,
+      localTime: (4 * 1001) / 30000,
+      sourceTime: saved.sourceOut,
+    });
+  });
+
+  it("returns the same frame result for out-of-order seeks and rejects frames before the clip", () => {
+    const saved = clip({
+      timelineStart: 0.15,
+      timelineDuration: 0.4,
+      sourceIn: 1,
+      transform: { speed: 1.25 },
+    });
+    const frames = [3, 8, 4, 10, 3, 5];
+    const expected = new Map(
+      frames.map((frame) => [
+        frame,
+        resolveClipFrameTime(saved, video, frame, timebase),
+      ]),
+    );
+
+    for (const frame of [...frames].reverse())
+      expect(resolveClipFrameTime(saved, video, frame, timebase)).toEqual(
+        expected.get(frame),
+      );
+    expect(() => resolveClipFrameTime(saved, video, 2, timebase)).toThrow(
+      /before clip/i,
+    );
+    expect(() => resolveClipFrameTime(saved, video, 3.5, timebase)).toThrow();
+  });
+
+  it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid sequence frame %s",
+    (frame) => {
+      expect(() =>
+        resolveClipFrameTime(clip(), video, frame, timebase),
       ).toThrow();
     },
   );
