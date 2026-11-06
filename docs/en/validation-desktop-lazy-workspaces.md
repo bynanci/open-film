@@ -92,4 +92,11 @@ split into separate export and project-switch tests so their pending actions do
 not race each other. The caption workflow test now waits for the textarea's
 change event to reach durable Composition state before issuing later timing and
 style edits. The three focused regressions passed locally, and the caption test
-passed five consecutive local runs. Full-shard CI for this follow-up is pending.
+passed five consecutive local runs.
+
+On candidate `28d88e4`, all four browser shards passed. Heavy media QA found
+that `foreign-analysis-navigation.test.ts` did not provide the newly referenced
+`activeComposition` and `editorFlushReady` bindings to its extracted App
+functions. The fixture now models a current timeline and ready editor. Its
+targeted run passed 36/36; format, lint, typecheck and docs locale checks also
+pass locally. The full heavy-media rerun is pending for the follow-up commit.
