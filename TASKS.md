@@ -111,7 +111,28 @@ remain separate acceptance scopes. See the
 
 ### Professional Cut Desk
 
-- [ ] **Phase 4:** finish the remaining finishing interactions and physical workstation checks. Reuse the existing proxy, sequence-waveform and audio-policy implementations.
+- [x] **Phase 4A — source scopes and split-wipe comparison.** Merged in
+      [PR #112](https://github.com/bynanci/open-film/pull/112). Browser scopes
+      describe bounded, pre-look source samples; calibrated display, HDR and
+      hardware-monitor behavior are not included. See the
+      [Phase 4A validation](docs/validation-cut-desk-phase-4a-scopes.md).
+- [ ] **Phase 4B — deterministic animation.** Specify and implement supported
+      keyframed properties and speed ramps with arbitrary-seek evaluation and
+      Monitor/FFmpeg parity. Preserve the existing Composition and user-pin
+      contracts.
+- [x] **Phase 4C — shortcut profiles.** Merged in
+      [PR #113](https://github.com/bynanci/open-film/pull/113). Profiles are
+      validated declarative local preferences, separate from project content.
+      Supported physical keyboard layouts and native OS reservations remain a
+      workstation check. See the
+      [Phase 4C validation](docs/validation-cut-desk-phase-4c-shortcut-profiles.md).
+- [ ] **Phase 4D — long-form evidence.** Add bounded performance telemetry and
+      gather workstation evidence for proxies, high-DPI, pen/trackpad and
+      multichannel audio workflows.
+- [ ] **Phase 4E — compound editing.** Start only after a versioned Composition
+      contract proves the feature cannot introduce a hidden second timeline.
+- [ ] **Phase 4F — multicamera.** Start only with explicit synchronization and
+      source-provenance evidence.
 
 Phases 1A–1C, Phase 2 (Roll, Slip, Slide, Insert, Overwrite, Lift, Ripple Delete, Batch edits) and Phase 3 (track controls: target, lock, mute, solo, visibility & persistence) have merged implementations, including precision zoom/pan, snap-bypass gestures, responsive monitor layouts and accessibility controls.
 See the [Cut Desk guide](docs/professional-cut-desk.md),
@@ -223,18 +244,19 @@ change. Discuss their scope before implementation.
       200-row page and keeps only selected dependencies between pages; the
       existing Editor document asset pool is unchanged. See the
       [picker scale validation](docs/validation-catalog-scale-benchmark.md).
-- [ ] Defer the non-English UI message catalogs until their locale is selected.
-      The candidate keeps English in the initial bundle and emits separate
-      Traditional Chinese/Japanese chunks; see the
+- [x] Defer non-English UI message catalogs until the locale is selected.
+      English remains the fallback; current build emits separate Traditional
+      Chinese and Japanese chunks. See the
       [locale loading validation](docs/validation-desktop-locale-loading.md).
-- [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
-      initial JavaScript bundle. The current candidate's entry and static
-      modulepreloads total 887.29 kB minified / 290.42 kB gzip; the prior recorded
-      entry was 1.72 MB / 508 kB. Edit navigation is measured in the browser, but
-      native cold-start evidence is still required before setting a size target.
-      Lazy editor flush and native planner-draft recovery now wait for their
-      async components to become usable; targeted browser regressions cover both.
-      See the [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
+- [x] Lazy-load infrequently used Desktop workspaces. The current entry and
+      static JavaScript preloads total 556.04 kB minified / 181.11 kB gzip, and
+      the synthetic browser flow measured 254 ms to a usable Edit view. Lazy
+      editor flush and native planner-draft recovery wait for their async
+      components. See the
+      [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
+- [ ] Measure cold startup from signed Windows/macOS installer candidates and
+      set an initial-workspace size target from those workstation results. The
+      browser bundle and Vite navigation measurements do not satisfy this gate.
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
 - [ ] Evaluate remote image-to-video adapters against verified APIs, consent,

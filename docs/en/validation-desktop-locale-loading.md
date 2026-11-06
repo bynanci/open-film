@@ -1,8 +1,8 @@
 # Desktop Locale Loading Validation
 
-Measured on 2026-11-06 in a Windows worktree based on `main` at
-`1bafb5cd4532ce9f9a171499abc8631e4863d1ee`. Environment: Node.js 24.14.0,
-pnpm 11.11.0, Vite 8.2.4, Chromium through Playwright.
+Rechecked on 2026-11-06 against `main` at
+`b6304914a7eb351d8e5d0a0a11b41e163713e20b`. Environment: Linux x86_64,
+Node.js 24.19.0, pnpm 11.19.0, Vite 8.2.4, Chromium through Playwright.
 
 ## Behavior
 
@@ -25,11 +25,15 @@ Japanese and English and checks that the editor state remains mounted.
 `pnpm build` completed successfully. The `index.html` entry references no
 non-English locale chunk. The build emits the following separate assets:
 
-| Resource                    |    Minified |      gzip | Loading       |
-| --------------------------- | ----------: | --------: | ------------- |
-| Initial JavaScript entry    | 1,460.63 kB | 417.07 kB | Startup       |
-| Traditional Chinese catalog |   145.52 kB |  54.83 kB | When selected |
-| Japanese catalog            |   194.63 kB |  57.91 kB | When selected |
+| Resource                    |  Minified |     gzip | Loading       |
+| --------------------------- | --------: | -------: | ------------- |
+| Traditional Chinese catalog | 145.85 kB | 54.93 kB | When selected |
+| Japanese catalog            | 195.20 kB | 58.08 kB | When selected |
+
+The current entry and its five static JavaScript preloads total 556.04 kB
+minified / 181.11 kB gzip. The initial stylesheet is 195.75 kB / 31.54 kB gzip.
+`index.html` references neither non-English catalog; English is bundled with
+the locale runtime as the fallback.
 
 The prior initial bundle recorded in `TASKS.md` was 1.72 MB minified / 508 kB
 gzip, with both non-English catalogs included. The candidate build still warns
@@ -41,16 +45,16 @@ message catalogs and does not split the rest of the application.
 - `pnpm typecheck` — passed.
 - `pnpm lint` — passed.
 - `pnpm build` — passed; emitted the main-entry size advisory described above.
-- `pnpm test:unit` — 233 files passed, 3,588 tests passed and 2 skipped.
-- `pnpm test:i18n` — 3,156 semantic keys and placeholders validated across all
+- `pnpm build` — passed; produced separate 145.85 kB Traditional Chinese and
+  195.20 kB Japanese catalog chunks.
+- `pnpm test:i18n` — 3,159 semantic keys and placeholders validated across all
   three production locales.
 - `pnpm exec vitest run tests/unit/i18n.test.ts --maxWorkers=1` — 12 passed.
-- `pnpm exec playwright test tests/e2e/editing.spec.ts --grep "switches editor language in place"` — 1 passed.
+- `pnpm exec playwright test tests/e2e/editing.spec.ts --grep 'switches editor language in place'` — 1 passed.
 
 ## Limits
 
-No native cold-start result is claimed. The standard release executable was not
-present during this run, and this measurement is a production browser bundle
-comparison, not an installer or clean-machine startup benchmark. Locale
+No native cold-start result is claimed. This is a production browser bundle
+measurement, not an installer or clean-machine startup benchmark. Locale
 switching depends on the local chunk being available; a failed load leaves the
 current locale active and does not persist the requested locale.
