@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   api,
@@ -27,6 +27,7 @@ const emit = defineEmits<{
   close: [];
   working: [working: boolean];
   draft: [present: boolean];
+  ready: [];
 }>();
 const { t } = useI18n();
 const title = ref(props.title);
@@ -104,6 +105,7 @@ const failureMessage = computed(() =>
   stale.value ? t("scenePlan.stale") : localizeError(failure.value),
 );
 watch(hasDraft, (value) => emit("draft", value), { flush: "sync" });
+onMounted(() => emit("ready"));
 onBeforeUnmount(() => emit("draft", false));
 function changed() {
   formChanged.value = true;

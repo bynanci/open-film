@@ -69,4 +69,17 @@ size target is set from this browser-only evidence. This also does not establish
 clean-install, update/rollback, Windows or macOS signing, notarization, or
 installer-candidate evidence from the separate M7 release gate.
 
-The editor flush gate rejects preview/export/navigation while an eagerly requested async TimelineEditor has not mounted. This preserves pending-draft recovery during slow chunk loading. The focused UI/attribution unit suite passed (4 tests); browser slow-network recovery verification remains a separate gate.
+When preview, export or navigation requests a flush while the lazy TimelineEditor is still loading, the parent waits for its first editor load/recovery attempt to settle before calling `flush()`. A failed initial load or unavailable flush method keeps the action blocked. The `cancels a real preview render while its request is pending` browser regression exercises the lazy mount and initial-load path; it passed locally after this readiness fence was added. This does not claim a separate throttled-network measurement.
+
+Native planner draft recovery now waits for the async `ScenePlanner` component's mounted signal before applying retained input, then rechecks project ownership, draft retention and planner baseline.
+
+Current regression verification on 2026-11-06:
+
+- `pnpm format:check` — passed.
+- `pnpm typecheck` — passed.
+- `pnpm lint` — passed.
+- `pnpm build` — passed with the existing deferred `TimelineEditor` chunk-size advisory.
+- `pnpm exec vitest run tests/unit/native-runtime-draft-recovery.test.ts --maxWorkers=1` — 35 passed.
+- `pnpm exec playwright test tests/e2e/desktop.spec.ts` — 3 passed, including preview render cancellation during async editor hydration.
+- `pnpm exec playwright test tests/e2e/workspace-shell.spec.ts` — 2 passed, including project switching from an empty Edit workspace.
+- `pnpm exec playwright test tests/e2e/native-runtime.spec.ts` — 4 passed, including retained planner inputs on runtime retry.

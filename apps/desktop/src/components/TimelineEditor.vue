@@ -156,6 +156,7 @@ const props = defineProps<{
   captionTrackId?: string | null;
 }>();
 const emit = defineEmits<{
+  ready: [];
   change: [state: EditorState];
   edited: [];
   playback: [];
@@ -3636,6 +3637,19 @@ onMounted(() => {
     layoutObserver.observe(sourceScreenElement.value);
   measureWorkspace();
 });
+let editorReadyEmitted = false;
+watch(
+  status,
+  (next) => {
+    // Parent actions may flush as soon as the lazy editor mounts. Wait until
+    // the first authoritative load or recovery attempt settles so a healthy
+    // editor is not mistaken for an unsaved/loading failure.
+    if (editorReadyEmitted || next === "loading") return;
+    editorReadyEmitted = true;
+    emit("ready");
+  },
+  { flush: "post" },
+);
 onBeforeUnmount(() => {
   recordDisposed = true;
   generationImportDisposed = true;

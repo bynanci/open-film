@@ -145,8 +145,14 @@ const CreativeVariantComparisonModal = defineAsyncComponent({
   loadingComponent: WorkspaceLoading,
   delay: 150,
 });
+let timelineEditorModulePromise:
+  Promise<typeof import("./components/TimelineEditor.vue")> | undefined;
+function loadTimelineEditor() {
+  return (timelineEditorModulePromise ??=
+    import("./components/TimelineEditor.vue"));
+}
 const TimelineEditor = defineAsyncComponent({
-  loader: () => import("./components/TimelineEditor.vue"),
+  loader: loadTimelineEditor,
   loadingComponent: WorkspaceLoading,
   delay: 150,
 });
@@ -358,6 +364,37 @@ watch(
 );
 const scenePlannerOpen = ref(false);
 const scenePlanner = ref<InstanceType<typeof ScenePlanner> | null>(null);
+const scenePlannerReady = ref(false);
+let resolveScenePlannerReady: ((mounted: boolean) => void) | undefined;
+let scenePlannerReadyPromise = new Promise<boolean>(
+  (resolve) => (resolveScenePlannerReady = resolve),
+);
+function resetScenePlannerReady() {
+  resolveScenePlannerReady?.(false);
+  scenePlannerReady.value = false;
+  scenePlannerReadyPromise = new Promise<boolean>(
+    (resolve) => (resolveScenePlannerReady = resolve),
+  );
+}
+function markScenePlannerReady() {
+  scenePlannerReady.value = true;
+  resolveScenePlannerReady?.(true);
+  resolveScenePlannerReady = undefined;
+}
+watch(
+  scenePlannerOpen,
+  (open) => {
+    if (!open) resetScenePlannerReady();
+  },
+  { flush: "sync" },
+);
+async function waitForScenePlannerMount() {
+  if (scenePlannerReady.value && scenePlanner.value) return true;
+  const ready = scenePlannerReadyPromise;
+  if (!(await ready)) return false;
+  await nextTick();
+  return !!scenePlanner.value;
+}
 const scenePlanDraftPresent = ref(false);
 let projectMutationVersion = 0;
 const libraryView = ref<"all" | "events" | "duplicates">("all");
@@ -710,6 +747,25 @@ const showRenderedPreview = ref(false);
 const renderedPlayer = ref<HTMLVideoElement | null>(null);
 const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
 const editorMountRequested = ref(false);
+const editorFlushReady = ref(false);
+let resolveEditorReady: ((mounted: boolean) => void) | undefined;
+let editorReadyPromise = new Promise<boolean>(
+  (resolve) => (resolveEditorReady = resolve),
+);
+function resetEditorReady() {
+  resolveEditorReady?.(false);
+  editorFlushReady.value = false;
+  editorReadyPromise = new Promise<boolean>(
+    (resolve) => (resolveEditorReady = resolve),
+  );
+}
+function markEditorReady() {
+  editorFlushReady.value = true;
+  resolveEditorReady?.(true);
+  resolveEditorReady = undefined;
+}
+watch(editorMountRequested, resetEditorReady, { flush: "sync" });
+watch(projectGeneration, resetEditorReady, { flush: "sync" });
 function setWorkspace(workspace: Tab) {
   tab.value = workspace;
   if (workspace === "edit") editorMountRequested.value = true;
@@ -734,6 +790,7 @@ watch(
     // editor flush gate protects pending work before navigation or export.
     // Any stored bytes (even malformed/empty), or an unreadable store, keep the
     // previous eager behavior; only the editor interprets recovery contents.
+    resetEditorReady();
     editorMountRequested.value = false;
     lookOverride.value = undefined;
     outputQuality.value = "standard";
@@ -775,14 +832,29 @@ function editorEdited() {
   if (exportPath.value) exportStale.value = true;
 }
 async function flushEditor() {
-  if (!timelineEditor.value) {
-    if (editorMountRequested.value) {
+  // Empty projects have no composition or TimelineEditor to mount or flush.
+  if (!activeComposition.value) return true;
+  if (
+    !editorFlushReady.value ||
+    typeof timelineEditor.value?.flush !== "function"
+  ) {
+    if (!editorMountRequested.value && !timelineEditor.value) return true;
+    if (!editorMountRequested.value) editorMountRequested.value = true;
+    const ready = editorReadyPromise;
+    await loadTimelineEditor();
+    if (!(await ready)) {
       error.value = message("feedback.flushFailed");
       return false;
     }
-    return true;
+    await nextTick();
   }
-  const saved = await timelineEditor.value.flush();
+  const editor = timelineEditor.value;
+  if (!editor) return !editorMountRequested.value;
+  if (!editorFlushReady.value || typeof editor.flush !== "function") {
+    error.value = message("feedback.flushFailed");
+    return false;
+  }
+  const saved = await editor.flush();
   if (!saved) error.value = message("feedback.flushFailed");
   return saved;
 }
@@ -2864,16 +2936,17 @@ async function restoreNativeDrafts() {
     ) {
       scenePlannerOpen.value = true;
       setWorkspace("story");
-      await nextTick();
+      if (!(await waitForScenePlannerMount())) continue;
+      const planner = scenePlanner.value;
       if (
         !owned() ||
         !retained(entry) ||
         scenePlanDraftPresent.value ||
-        !scenePlanner.value ||
+        !planner ||
         plannerBaseline() !== entry.baseline
       )
         continue;
-      scenePlanner.value.restoreNativeDraft(entry.value);
+      planner.restoreNativeDraft(entry.value);
       emit("nativeDraftsRestored", [entry.id]);
     }
     // Manually edited proposal text stays exportable. Old proposals/acceptance IDs never replay.
@@ -3248,6 +3321,7 @@ onUnmounted(() => {
         @close="scenePlannerOpen = false"
         @working="scenePlannerWorking"
         @draft="scenePlanDraftPresent = $event"
+        @ready="markScenePlannerReady"
       />
 
       <RelinkMedia
@@ -5049,6 +5123,7 @@ onUnmounted(() => {
             :jobs="jobs"
             :analysis-recovery="analysisRecovery"
             :recovering-analysis-jobs="recoveringAnalysisJobs"
+            @ready="markEditorReady"
             @relink="openRelink($event)"
             @change="editorChanged"
             @edited="editorEdited"

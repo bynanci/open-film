@@ -68,6 +68,7 @@ interface AppState {
   scenePlannerOpen: boolean;
   scenePlanner: unknown;
   scenePlanDraftPresent: boolean;
+  markScenePlannerReady: () => void;
   project: SavedProject | null;
   projectPath: string | null;
   resetProjectView: () => Promise<void>;
@@ -322,6 +323,7 @@ async function fixture(initialStart?: () => Promise<unknown>) {
           onDraft: (present: boolean) => {
             state.scenePlanDraftPresent = present;
           },
+          onReady: () => state.markScenePlannerReady(),
         })
       : vue.h("div");
   };

@@ -206,6 +206,8 @@ change. Discuss their scope before implementation.
       modulepreloads total 887.29 kB minified / 290.42 kB gzip; the prior recorded
       entry was 1.72 MB / 508 kB. Edit navigation is measured in the browser, but
       native cold-start evidence is still required before setting a size target.
+      Lazy editor flush and native planner-draft recovery now wait for their
+      async components to become usable; targeted browser regressions cover both.
       See the [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
