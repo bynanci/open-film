@@ -477,6 +477,16 @@ export default {
       uploadProgress: "檔案傳輸進度",
       cancelUpload: "取消傳輸",
       originals: "原始檔保持不變。透過瀏覽器選取的檔案會複製到此本機專案。",
+      completion: {
+        completed: "媒體匯入完成",
+        failed: "部分媒體需要處理",
+        cancelled: "匯入已停止",
+        libraryCounts:
+          "目前媒體庫：{total} 個素材 · {photos} 張照片 · {videos} 部影片 · {audio} 個音訊",
+        attention: "{count} 個檔案需要留意",
+        organize: "整理回憶",
+        dismiss: "關閉提示",
+      },
     },
     export: {
       label: "匯出影片",
@@ -491,6 +501,28 @@ export default {
       mp4Title: "可以觀看的影片成品",
       mp4Hint: "OpenFilm 會將目前剪輯與效果算繪為 MP4，儲存在專案中。",
       saveMp4: "匯出 MP4",
+      reviewSummary: {
+        title: "匯出前確認",
+        filmLength: "影片長度",
+        outputFrame: "輸出畫面",
+        aspectRatio: "畫面比例",
+        framing: "畫面填滿方式",
+        quality: "畫質",
+        burnedCaptions: "燒錄字幕",
+        handoffCaptions: "字幕交接",
+        noCaptionTracks: "沒有已儲存的字幕軌",
+        firstCaptionHandoff: "第一條字幕軌：{name} · 請查看支援細節",
+        look: "整體風格",
+        destination: "儲存位置",
+        projectFolder: "目前專案資料夾",
+        captionTrackUnavailable: "找不到所選字幕軌",
+        uniformLook: "統一風格 · {preset} · {strength}",
+        destinations: {
+          resolve: "DaVinci Resolve",
+          finalcut: "Final Cut Pro",
+          premiere: "Adobe Premiere Pro",
+        },
+      },
       destination: "繼續使用",
       compatibility: {
         verified: "已在編輯軟體中驗證",
@@ -630,6 +662,7 @@ export default {
       description: "收藏你想記住的時刻。",
       add: "加入媒體",
       relink: "重新連結媒體",
+      findMissing: "尋找離線素材",
       availability: "媒體可用狀態",
       offlineCount: "{count} 個檔案離線",
       offlineHint:

@@ -991,11 +991,16 @@ button.editor-beat-heading:hover {
 }
 
 .editor-inspector-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
+  display: flex;
+  max-width: 100%;
+  gap: var(--of-space-1);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
   margin-bottom: var(--of-space-4);
-  padding-block: var(--of-space-1);
+  padding: var(--of-space-1) 2px var(--of-space-2);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1255,17 +1260,19 @@ button.editor-beat-heading:hover {
 
 .editor-inspector-tabs button {
   display: inline-flex;
-  min-width: 0;
-  min-height: 38px;
+  flex: 0 0 auto;
+  min-width: max-content;
+  min-height: 40px;
   align-items: center;
   justify-content: center;
-  padding: var(--of-space-1);
-  overflow-wrap: anywhere;
+  padding: var(--of-space-1) var(--of-space-2);
   border-radius: var(--of-radius-sm);
   color: var(--editor-muted);
   font-size: var(--of-font-caption);
   line-height: 1.3;
   text-align: center;
+  white-space: nowrap;
+  scroll-snap-align: start;
   transition:
     color var(--of-motion-fast) var(--of-motion-ease),
     background-color var(--of-motion-fast) var(--of-motion-ease);
@@ -1497,6 +1504,13 @@ button.editor-beat-heading:hover {
   border-color: var(--of-accent);
   color: var(--of-danger);
   background: var(--of-accent-soft);
+}
+
+.editor-message .editor-recovery-safety {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--of-text-primary);
+  font-weight: 500;
 }
 
 .editor-empty {

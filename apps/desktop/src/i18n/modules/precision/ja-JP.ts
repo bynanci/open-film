@@ -20,7 +20,13 @@ export default {
       "表示されたフレーム区切り記号で、ソースの長さ以内の有効なタイムコードを入力してください。",
     modeLabel: "編集モード",
     storyMode: "ストーリー",
+    storyModeDescription: "ストーリービートと中の素材の順番を整えます。",
     precisionMode: "精密",
+    precisionModeDescription:
+      "ソース範囲をトリムし、フレーム単位で分割して波形マーカーを確認します。",
+    transcriptModeDescription:
+      "カットを変更せずに文字起こしを修正し、提案を確認します。",
+    inspectorObject: "選択中：{kind}",
     selectedClip: "選択中のクリップ",
     title: "精密ソース編集",
     emptyTitle: "動画または音声クリップを選択",

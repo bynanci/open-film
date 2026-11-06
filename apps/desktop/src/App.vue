@@ -2,7 +2,15 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import {
   initializeLocale,
@@ -327,6 +335,7 @@ const storyScriptReview = ref<InstanceType<typeof StoryScriptReview> | null>(
 );
 const storyReviewBusy = ref(false);
 const storyReviewPending = ref(false);
+const storyReviewPendingCount = ref(0);
 // Empty poll results carry no recovery evidence; keep their prop identity stable.
 // Non-empty maps remain fresh so owner/checkpoint changes are always published.
 const EMPTY_ANALYSIS_RECOVERY: Record<string, AnalysisJobRecoveryState> =
@@ -379,6 +388,38 @@ const projectSwitchBlocked = computed(
     ),
 );
 const recentJob = computed(() => latestActivityJob(jobs.value));
+type ImportCompletionNotice = {
+  projectId: string;
+  id: string;
+  status: "completed" | "failed" | "cancelled";
+  errors: NonNullable<Job["errors"]>;
+};
+const importCompletion = shallowRef<ImportCompletionNotice | null>(null);
+const pendingImportCompletion = shallowRef<ImportCompletionNotice | null>(null);
+const startedImportJobIds = new Set<string>();
+function transitionedImportCompletion(
+  nextJobs: readonly Job[],
+  previousJobs: readonly Job[],
+  projectId: string,
+): ImportCompletionNotice | undefined {
+  for (const job of nextJobs) {
+    if (
+      job.type !== "import" ||
+      !["completed", "failed", "cancelled"].includes(job.status)
+    )
+      continue;
+    const previous = previousJobs.find((item) => item.id === job.id);
+    const startedHere = startedImportJobIds.has(job.id);
+    if ((!previous || previous.status === job.status) && !startedHere) continue;
+    startedImportJobIds.delete(job.id);
+    return {
+      projectId,
+      id: job.id,
+      status: job.status as ImportCompletionNotice["status"],
+      errors: job.errors ?? [],
+    };
+  }
+}
 const cancellingJobs = ref<Record<string, boolean>>({});
 const renderCancellationRequested = ref<string | null>(null);
 const storyCreateOpen = ref(false);
@@ -749,6 +790,7 @@ async function changeTab(next: Tab) {
     tab.value === "edit"
   )
     nativeBenchmark.record("edit-leave", { clipCount: clipCount.value });
+  if (next !== "library") importCompletion.value = null;
   setWorkspace(next);
   if (next === "story" && !beatDirty.value) hydrateBeat();
   if (next === "library") await checkMediaStatus();
@@ -1287,11 +1329,16 @@ async function openProject(path: string) {
 async function beginImport(folder: string) {
   if (relinkBusy.value || !folder.trim()) return;
   await run("startingImport", async () => {
-    await post("/import", { folder: folder.trim() });
-    await importStarted();
+    const { jobId } = await post<{ jobId: string }>("/import", {
+      folder: folder.trim(),
+    });
+    await importStarted(jobId);
   });
 }
-async function importStarted() {
+async function importStarted(jobId: string) {
+  importCompletion.value = null;
+  pendingImportCompletion.value = null;
+  startedImportJobIds.add(jobId);
   await refreshJobs();
   importOpen.value = false;
   notice.value = message("feedback.importStarted");
@@ -1299,8 +1346,8 @@ async function importStarted() {
 async function importFiles(paths: string[]) {
   if (relinkBusy.value || !paths.length) return;
   await run("startingImport", async () => {
-    await api.importFiles(paths);
-    await importStarted();
+    const { jobId } = await api.importFiles(paths);
+    await importStarted(jobId);
   });
 }
 async function uploadFiles(files: File[]) {
@@ -1315,13 +1362,13 @@ async function uploadFiles(files: File[]) {
   };
   await run("uploadingFiles", async () => {
     try {
-      await api.uploadFiles(files, {
+      const { jobId } = await api.uploadFiles(files, {
         signal: uploadController!.signal,
         onProgress: (progress) => {
           uploadProgress.value = progress;
         },
       });
-      await importStarted();
+      await importStarted(jobId);
     } finally {
       uploading.value = false;
       uploadProgress.value = undefined;
@@ -1562,6 +1609,7 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
     if (tab.value !== "library") return;
     if (id === "media") importOpen.value = true;
     else {
+      importCompletion.value = null;
       importOpen.value = false;
       await selectLibraryFilter("events");
     }
@@ -1570,10 +1618,25 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
 function resetJobView() {
   jobsGeneration += 1;
   jobs.value = [];
+  startedImportJobIds.clear();
+  importCompletion.value = null;
+  pendingImportCompletion.value = null;
   analysisRecovery.value = EMPTY_ANALYSIS_RECOVERY;
   lastJobSignature = "";
   pendingMediaRefresh = undefined;
   mediaRefreshOwner = undefined;
+}
+function publishImportCompletion(projectId: string) {
+  const pending = pendingImportCompletion.value;
+  if (
+    !pending ||
+    pending.projectId !== projectId ||
+    project.value?.id !== projectId ||
+    pendingMediaRefresh?.projectId === projectId
+  )
+    return;
+  importCompletion.value = pending;
+  pendingImportCompletion.value = null;
 }
 function queueMediaRefresh(projectId: string, checkStatus: boolean) {
   // Object identity is the refresh token. A new import cannot be acknowledged
@@ -1636,6 +1699,10 @@ async function refreshJobs(refreshImportedMedia = true) {
   const projectId = project.value?.id;
   const result = await api.jobs();
   if (generation === jobsGeneration && project.value?.id === projectId) {
+    const completion = projectId
+      ? transitionedImportCompletion(result.jobs, jobs.value, projectId)
+      : undefined;
+    if (completion) pendingImportCompletion.value = completion;
     const newlyImported = result.jobs.some(
       (job) =>
         job.type === "import" &&
@@ -1659,6 +1726,7 @@ async function refreshJobs(refreshImportedMedia = true) {
         // its pending media refresh without replacing a render/cancel result.
       }
     }
+    if (projectId) publishImportCompletion(projectId);
   }
   return project.value?.id === projectId ? result.jobs : undefined;
 }
@@ -1683,6 +1751,13 @@ async function pollJobs() {
             previous.progress === job.progress,
         ),
     );
+    const importCompletionTransition = transitionedImportCompletion(
+      result.jobs,
+      jobs.value,
+      projectId,
+    );
+    if (importCompletionTransition)
+      pendingImportCompletion.value = importCompletionTransition;
     const newlyImported = result.jobs.some(
       (job) =>
         job.type === "import" &&
@@ -1726,6 +1801,7 @@ async function pollJobs() {
     // Pending derived reads survive unchanged jobs/signatures and own their
     // project/token separately from publication of newer Activity snapshots.
     await refreshPendingMedia();
+    publishImportCompletion(projectId);
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
   } finally {
@@ -1954,6 +2030,7 @@ async function loadAssetIds(requested: string[]) {
   }
 }
 function hydrateBeat() {
+  storyReviewPendingCount.value = 0;
   const beat = activeBeat.value;
   beatDraft.value = {
     title: beat?.title ?? "",
@@ -3409,6 +3486,69 @@ onUnmounted(() => {
         </div>
       </section>
 
+      <section
+        v-if="tab === 'library' && importCompletion"
+        class="import-completion-summary"
+        :class="importCompletion.status === 'completed' ? 'success' : 'warning'"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="import-completion-copy">
+          <h2>{{ t(`app.import.completion.${importCompletion.status}`) }}</h2>
+          <p>
+            {{
+              t("app.import.completion.libraryCounts", {
+                total: formatNumber(librarySummary.total),
+                photos: formatNumber(librarySummary.images),
+                videos: formatNumber(librarySummary.videos),
+                audio: formatNumber(librarySummary.audio),
+              })
+            }}
+          </p>
+          <details v-if="importCompletion.errors.length">
+            <summary>
+              {{
+                t(
+                  "app.import.completion.attention",
+                  { count: formatNumber(importCompletion.errors.length) },
+                  importCompletion.errors.length,
+                )
+              }}
+            </summary>
+            <ul>
+              <li
+                v-for="(problem, index) in importCompletion.errors"
+                :key="`${importCompletion.id}:${index}`"
+              >
+                <strong :title="problem.uri">{{
+                  problem.uri.split(/[\\/]/).at(-1)
+                }}</strong>
+                · {{ localizeError(problem) }}
+                <details v-if="errorDetail(problem)">
+                  <summary>{{ t("app.actions.details") }}</summary>
+                  <pre>{{ errorDetail(problem) }}</pre>
+                </details>
+              </li>
+            </ul>
+          </details>
+        </div>
+        <div class="import-completion-actions">
+          <button
+            v-if="librarySummary.total"
+            class="primary"
+            @click="navigateWorkflow('organize')"
+          >
+            {{ t("app.import.completion.organize") }}<Icon name="arrow" />
+          </button>
+          <button v-else class="primary" @click="importOpen = true">
+            {{ t("app.library.add") }}<Icon name="arrow" />
+          </button>
+          <button class="text-button" @click="importCompletion = null">
+            {{ t("app.import.completion.dismiss") }}
+          </button>
+        </div>
+      </section>
+
       <template v-if="tab === 'library'">
         <div class="library-workspace">
           <nav class="library-sidebar" :aria-label="t('app.library.view')">
@@ -3438,6 +3578,7 @@ onUnmounted(() => {
               v-if="
                 total > 0 ||
                 (mediaStatus?.assets.length ?? 0) > 0 ||
+                offlineLibraries.length > 0 ||
                 mediaStatusError
               "
               class="media-availability"
@@ -3463,6 +3604,9 @@ onUnmounted(() => {
                       missingCount + inaccessibleCount,
                     )
                   }}</strong
+                  ><strong v-else-if="offlineLibraries.length">{{
+                    t("app.library.offline")
+                  }}</strong
                   ><strong v-else>{{
                     checkingMedia
                       ? t("app.library.checking")
@@ -3470,7 +3614,13 @@ onUnmounted(() => {
                         ? t("app.library.available")
                         : t("app.library.notChecked")
                   }}</strong>
-                  <p v-if="missingCount || inaccessibleCount">
+                  <p
+                    v-if="
+                      missingCount ||
+                      inaccessibleCount ||
+                      offlineLibraries.length
+                    "
+                  >
                     {{ t("app.library.offlineHint") }}
                   </p>
                   <p v-else-if="mediaStatus">
@@ -3486,17 +3636,31 @@ onUnmounted(() => {
                     {{ uiMessage(mediaStatusError) }}
                   </p>
                 </div>
-                <button
-                  class="secondary"
-                  :disabled="checkingMedia || relinkBusy"
-                  @click="checkMediaStatus"
-                >
-                  <Icon name="refresh" :size="14" />{{
-                    checkingMedia
-                      ? t("app.library.checkingShort")
-                      : t("app.library.checkAgain")
-                  }}
-                </button>
+                <div class="media-availability-actions">
+                  <button
+                    v-if="
+                      missingCount ||
+                      inaccessibleCount ||
+                      offlineLibraries.length
+                    "
+                    class="primary"
+                    :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+                    @click="openRelink()"
+                  >
+                    {{ t("app.library.findMissing") }}<Icon name="arrow" />
+                  </button>
+                  <button
+                    class="text-button"
+                    :disabled="checkingMedia || relinkBusy"
+                    @click="checkMediaStatus"
+                  >
+                    <Icon name="refresh" :size="14" />{{
+                      checkingMedia
+                        ? t("app.library.checkingShort")
+                        : t("app.library.checkAgain")
+                    }}
+                  </button>
+                </div>
               </div>
               <div
                 v-for="library in offlineLibraries"
@@ -4705,7 +4869,29 @@ onUnmounted(() => {
                       "
                     >
                       <summary>
-                        {{ t("app.workspaceMode.scriptTools") }}
+                        <span>{{ t("app.workspaceMode.scriptTools") }}</span>
+                        <span
+                          v-if="
+                            beatDraft.narration.trim() ||
+                            beatDraft.visualDirection.trim()
+                          "
+                          class="story-writing-script-state"
+                        >
+                          {{ t("scriptReview.hasNotes") }}
+                        </span>
+                        <span
+                          v-if="storyReviewPendingCount"
+                          class="story-writing-review-count"
+                          role="status"
+                        >
+                          {{
+                            t(
+                              "scriptReview.pendingCount",
+                              { count: formatNumber(storyReviewPendingCount) },
+                              storyReviewPendingCount,
+                            )
+                          }}
+                        </span>
                       </summary>
                       <div class="beat-script-fields">
                         <label class="field"
@@ -4760,6 +4946,7 @@ onUnmounted(() => {
                         @activity="refreshJobs"
                         @busy="storyReviewBusy = $event"
                         @pending="storyReviewPending = $event"
+                        @pending-count="storyReviewPendingCount = $event"
                       />
                     </details>
                   </div>

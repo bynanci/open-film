@@ -504,6 +504,17 @@ export default {
       cancelUpload: "Cancel transfer",
       originals:
         "Originals stay unchanged. Files chosen in a browser are copied into this local project.",
+      completion: {
+        completed: "Import complete",
+        failed: "Import needs attention",
+        cancelled: "Import stopped",
+        libraryCounts:
+          "Library now: {total} media · {photos} photos · {videos} videos · {audio} audio",
+        attention:
+          "No files need attention | {count} file needs attention | {count} files need attention",
+        organize: "Organize memories",
+        dismiss: "Dismiss",
+      },
     },
     export: {
       label: "Export film",
@@ -520,6 +531,28 @@ export default {
       mp4Hint:
         "OpenFilm renders your current cut with its edits and saves an MP4 in your project.",
       saveMp4: "Export MP4",
+      reviewSummary: {
+        title: "Before you export",
+        filmLength: "Film length",
+        outputFrame: "Output frame",
+        aspectRatio: "Aspect ratio",
+        framing: "Framing",
+        quality: "Picture quality",
+        burnedCaptions: "Burned captions",
+        handoffCaptions: "Caption handoff",
+        noCaptionTracks: "No saved caption tracks",
+        firstCaptionHandoff: "First track: {name} · check support details",
+        look: "Visual look",
+        destination: "Destination",
+        projectFolder: "This project folder",
+        captionTrackUnavailable: "Selected caption track unavailable",
+        uniformLook: "One look · {preset} · {strength}",
+        destinations: {
+          resolve: "DaVinci Resolve",
+          finalcut: "Final Cut Pro",
+          premiere: "Adobe Premiere Pro",
+        },
+      },
       destination: "Continue in",
       compatibility: {
         verified: "Verified in the editing application",
@@ -674,6 +707,7 @@ export default {
       description: "A place for the moments you want to remember.",
       add: "Add media",
       relink: "Relink Media",
+      findMissing: "Find Missing Media",
       availability: "Media availability",
       offlineCount:
         "All files are connected | {count} file is offline | {count} files are offline",

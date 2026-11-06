@@ -36,6 +36,8 @@ export default {
   ...transcript,
   scriptReview: {
     heading: "脚本の提案",
+    hasNotes: "脚本メモあり",
+    pendingCount: "{count} 件の提案を確認",
     description:
       "保存済みのシーンの項目を一つずつ確認します。変更は提案を採用したときに保存されます。",
     field: "確認する文章",

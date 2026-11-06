@@ -503,6 +503,16 @@ export default {
       cancelUpload: "転送をキャンセル",
       originals:
         "元のファイルは変更しません。ブラウザーで選んだファイルはローカルプロジェクトへコピーされます。",
+      completion: {
+        completed: "メディアの取り込みが完了しました",
+        failed: "一部のメディアに対応が必要です",
+        cancelled: "取り込みを停止しました",
+        libraryCounts:
+          "ライブラリ内：{total} 件 · 写真 {photos} 件 · 動画 {videos} 件 · 音声 {audio} 件",
+        attention: "{count} 件のファイルに対応が必要です",
+        organize: "思い出を整理",
+        dismiss: "閉じる",
+      },
     },
     export: {
       label: "フィルムを書き出す",
@@ -519,6 +529,29 @@ export default {
       mp4Hint:
         "現在のカットと編集内容をレンダリングし、MP4 をプロジェクトに保存します。",
       saveMp4: "MP4 を書き出す",
+      reviewSummary: {
+        title: "書き出し前の確認",
+        filmLength: "フィルムの長さ",
+        outputFrame: "出力フレーム",
+        aspectRatio: "画面比率",
+        framing: "フレーミング",
+        quality: "画質",
+        burnedCaptions: "焼き込み字幕",
+        handoffCaptions: "字幕の受け渡し",
+        noCaptionTracks: "保存済みの字幕トラックはありません",
+        firstCaptionHandoff:
+          "最初のトラック：{name} · 対応状況を確認してください",
+        look: "映像のルック",
+        destination: "保存先",
+        projectFolder: "現在のプロジェクトフォルダー",
+        captionTrackUnavailable: "選択した字幕トラックが見つかりません",
+        uniformLook: "全体のルック · {preset} · {strength}",
+        destinations: {
+          resolve: "DaVinci Resolve",
+          finalcut: "Final Cut Pro",
+          premiere: "Adobe Premiere Pro",
+        },
+      },
       destination: "次の編集ソフト",
       compatibility: {
         verified: "編集ソフトで検証済み",
@@ -675,6 +708,7 @@ export default {
       description: "覚えていたい瞬間を集める場所。",
       add: "メディアを追加",
       relink: "メディアを再リンク",
+      findMissing: "オフラインのメディアを探す",
       availability: "メディアの利用状況",
       offlineCount: "{count} 個のファイルがオフラインです",
       offlineHint:

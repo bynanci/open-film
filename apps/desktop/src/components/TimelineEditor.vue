@@ -516,6 +516,31 @@ function onSplitterKeydown(event: KeyboardEvent) {
 }
 
 const editMode = ref<"story" | "precision" | "transcript">("story");
+const activeEditMode = computed<"story" | "precision" | "transcript">(() =>
+  editMode.value === "transcript"
+    ? "transcript"
+    : cutDeskDualMode.value
+      ? activeTarget.value === "record"
+        ? "story"
+        : "precision"
+      : editMode.value,
+);
+function editModeLabel(mode: "story" | "precision" | "transcript") {
+  return t(
+    mode === "story"
+      ? props.expertMode
+        ? "cutDesk.record"
+        : "precision.storyMode"
+      : mode === "precision"
+        ? props.expertMode
+          ? "cutDesk.source"
+          : "precision.precisionMode"
+        : "transcript.mode",
+  );
+}
+const activeEditModeHint = computed(() =>
+  t(`precision.${activeEditMode.value}ModeDescription`),
+);
 const recordMonitor = ref<InstanceType<typeof RecordMonitor> | null>(null);
 const frameScopesOpen = ref(false);
 const frameScopeAnalysis = shallowRef<FrameScopeAnalysis>();
@@ -3738,50 +3763,31 @@ onBeforeUnmount(() => {
       <div class="editor-heading">
         <h2>{{ t("editor.heading") }}</h2>
       </div>
-      <div
-        class="editor-mode-switch"
-        role="group"
-        :aria-label="t('precision.modeLabel')"
-      >
-        <button
-          v-for="mode in ['story', 'precision', 'transcript'] as const"
-          :key="mode"
-          class="editor-button"
-          :disabled="directionBlocked"
-          :aria-pressed="
-            cutDeskDualMode
-              ? mode === 'story'
-                ? activeTarget === 'record'
-                : mode === 'precision'
-                  ? activeTarget === 'source'
-                  : editMode === 'transcript'
-              : editMode === mode
-          "
-          :class="{
-            selected: cutDeskDualMode
-              ? mode === 'story'
-                ? activeTarget === 'record'
-                : mode === 'precision'
-                  ? activeTarget === 'source'
-                  : editMode === 'transcript'
-              : editMode === mode,
-          }"
-          @click="setEditMode(mode)"
+      <div class="editor-mode-context">
+        <div
+          class="editor-mode-switch"
+          role="group"
+          :aria-label="t('precision.modeLabel')"
         >
-          {{
-            t(
-              mode === "story"
-                ? expertMode
-                  ? "cutDesk.record"
-                  : "precision.storyMode"
-                : mode === "precision"
-                  ? expertMode
-                    ? "cutDesk.source"
-                    : "precision.precisionMode"
-                  : "transcript.mode",
-            )
-          }}
-        </button>
+          <button
+            v-for="mode in ['story', 'precision', 'transcript'] as const"
+            :key="mode"
+            class="editor-button"
+            :disabled="directionBlocked"
+            :aria-pressed="activeEditMode === mode"
+            :aria-describedby="
+              activeEditMode === mode ? 'editor-mode-hint' : undefined
+            "
+            :title="t(`precision.${mode}ModeDescription`)"
+            :class="{ selected: activeEditMode === mode }"
+            @click="setEditMode(mode)"
+          >
+            {{ editModeLabel(mode) }}
+          </button>
+        </div>
+        <p id="editor-mode-hint" class="editor-mode-hint" aria-live="polite">
+          {{ activeEditModeHint }}
+        </p>
       </div>
       <div
         v-if="expertMode && editMode !== 'transcript'"
@@ -4113,21 +4119,54 @@ onBeforeUnmount(() => {
       class="editor-message error"
       role="alert"
     >
-      <span>{{ message || t("editor.draft.kept") }}</span>
+      <span>
+        {{
+          message ||
+          t(
+            status === "conflict"
+              ? "editor.save.conflict"
+              : "editor.save.failed",
+          )
+        }}
+      </span>
+      <p
+        v-if="status === 'conflict' && !hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.conflictNoDraft") }}
+      </p>
+      <p
+        v-else-if="status === 'conflict' && hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.conflictWithDraft") }}
+      </p>
+      <p
+        v-else-if="status === 'failed' && hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.kept") }}
+      </p>
+      <p
+        v-else-if="status === 'failed' && !hasPending"
+        class="editor-recovery-safety"
+      >
+        {{ t("editor.draft.failedNoDraft") }}
+      </p>
       <details v-if="messageDetail" class="editor-technical-details">
         <summary>{{ t("editor.technicalDetails") }}</summary>
         <pre>{{ messageDetail }}</pre>
       </details>
       <button
         v-if="status === 'failed'"
-        class="editor-button"
+        class="editor-button primary"
         @click="state && hasPending ? flush() : load()"
       >
-        {{ t("editor.draft.retry") }}
+        {{ t(hasPending ? "editor.draft.retry" : "editor.draft.reload") }}
       </button>
       <button
         v-if="status === 'conflict' && !hasPending"
-        class="editor-button"
+        class="editor-button primary"
         @click="load"
       >
         {{ t("editor.draft.reload") }}
@@ -4135,7 +4174,7 @@ onBeforeUnmount(() => {
       <template v-if="status === 'conflict' && hasPending"
         ><button class="editor-button" @click="flush">
           {{ t("editor.draft.retry") }}</button
-        ><button class="editor-button" @click="draftAction = 'reapply'">
+        ><button class="editor-button primary" @click="draftAction = 'reapply'">
           {{ t("editor.draft.reapply") }}
         </button></template
       >
@@ -5797,6 +5836,7 @@ onBeforeUnmount(() => {
           <div
             class="editor-inspector-tabs"
             role="tablist"
+            aria-orientation="horizontal"
             :aria-label="t('editor.inspector')"
             @keydown="inspectorKeyboard"
           >
@@ -5892,6 +5932,13 @@ onBeforeUnmount(() => {
             >
               <div class="editor-inspector-title">
                 <h3>{{ selectedAsset.name }}</h3>
+                <p>
+                  {{
+                    t("precision.inspectorObject", {
+                      kind: t(`app.mediaKind.${selectedAsset.mediaType}`),
+                    })
+                  }}
+                </p>
                 <button
                   class="editor-button"
                   :aria-label="

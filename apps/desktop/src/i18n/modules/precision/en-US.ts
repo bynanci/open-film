@@ -2,7 +2,14 @@ export default {
   precision: {
     modeLabel: "Editing mode",
     storyMode: "Story",
+    storyModeDescription:
+      "Arrange story beats and the memories within each one.",
     precisionMode: "Precision",
+    precisionModeDescription:
+      "Trim source ranges, split on a frame, and review waveform markers.",
+    transcriptModeDescription:
+      "Correct spoken words and review suggestions without changing the cut.",
+    inspectorObject: "Selected {kind}",
     selectedClip: "Selected clip",
     title: "Precision source editor",
     emptyTitle: "Choose a video or audio clip",

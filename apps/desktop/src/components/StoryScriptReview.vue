@@ -33,6 +33,7 @@ const emit = defineEmits<{
   activity: [];
   busy: [value: boolean];
   pending: [value: boolean];
+  pendingCount: [value: number];
 }>();
 const { t } = useI18n();
 const owner = {
@@ -176,16 +177,35 @@ async function refresh(offset = requestedOffset.value) {
     history.value === reviewed;
   loading.value = true;
   try {
-    const [suggestions, status] = await Promise.all([
-      api.scriptReviewSuggestions(props.storyId, {
-        beatId: props.beatId,
-        field: selectedField,
-        ...(!reviewed ? { status: "pending" as const } : {}),
-        offset,
-        limit: pageSize,
-      }),
-      api.reviewProvider("scene-script"),
-    ]);
+    const otherField: ScriptReviewField =
+      selectedField === "narration" ? "visualDirection" : "narration";
+    const [suggestions, status, otherFieldPending, selectedFieldPending] =
+      await Promise.all([
+        api.scriptReviewSuggestions(props.storyId, {
+          beatId: props.beatId,
+          field: selectedField,
+          ...(!reviewed ? { status: "pending" as const } : {}),
+          offset,
+          limit: pageSize,
+        }),
+        api.reviewProvider("scene-script"),
+        api.scriptReviewSuggestions(props.storyId, {
+          beatId: props.beatId,
+          field: otherField,
+          status: "pending",
+          offset: 0,
+          limit: 1,
+        }),
+        reviewed
+          ? api.scriptReviewSuggestions(props.storyId, {
+              beatId: props.beatId,
+              field: selectedField,
+              status: "pending",
+              offset: 0,
+              limit: 1,
+            })
+          : Promise.resolve(undefined),
+      ]);
     if (!current()) return;
     if (offset > 0 && offset >= suggestions.total) {
       await refresh(0);
@@ -193,6 +213,12 @@ async function refresh(offset = requestedOffset.value) {
     }
     data.value = suggestions;
     provider.value = status;
+    if (otherFieldPending)
+      emit(
+        "pendingCount",
+        (selectedFieldPending?.total ?? suggestions.total) +
+          otherFieldPending.total,
+      );
     const job = activeJob.value;
     if (job) {
       const status = await api.reviewRecovery(job.id);
