@@ -82,10 +82,11 @@ rather than introduce a second timeline. See the [Cut Desk guide](docs/professio
 [responsive-workspace validation](docs/validation-cut-desk-phase-1c.md).
 
 Cut Desk Phase 4B is progressing in separate reviewable stages: the shared
-frame-time contract is draft PR [#125](https://github.com/bynanci/open-film/pull/125),
-and visual keyframes are draft PR [#126](https://github.com/bynanci/open-film/pull/126)
-stacked on it. Speed ramps remain gated on source-mapped caption/audio/rhythm
-consumers and an explicit audio policy. See the [4B contract evidence](docs/validation-cut-desk-phase-4b-time-contract.md)
+frame-time contract merged in PR [#125](https://github.com/bynanci/open-film/pull/125)
+at `7add4762fe8174d76f43b863375ea39b73121e76`; visual keyframes are in draft PR
+[#126](https://github.com/bynanci/open-film/pull/126), awaiting exact-head checks.
+Speed ramps remain gated on source-mapped caption/audio/rhythm consumers and an
+explicit audio policy. See the [4B contract evidence](docs/validation-cut-desk-phase-4b-time-contract.md)
 and [visual-keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
 
 ### Make story decisions easier to review

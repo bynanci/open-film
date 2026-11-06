@@ -136,8 +136,8 @@ remain separate acceptance scopes. See the
 
 #### Phase 4B — deterministic animation
 
-- [x] **4B.1 shared frame-time contract:** draft PR [#125](https://github.com/bynanci/open-film/pull/125), stacked candidate; its recorded exact-head CI passed. It remains unmerged.
-- [ ] **4B.2 visual keyframes:** draft PR [#126](https://github.com/bynanci/open-film/pull/126), stacked on #125. Large FFmpeg graphs use a unique temporary script and a version-matched FFmpeg file-option (`-/filter_complex` on 7+, legacy script flag on 6.x) to avoid Windows process command-line limits; hosted checks must rerun on the updated head.
+- [x] **4B.1 shared frame-time contract:** merged in PR [#125](https://github.com/bynanci/open-film/pull/125) at `7add4762fe8174d76f43b863375ea39b73121e76`; exact-head hosted verification passed before merge.
+- [ ] **4B.2 visual keyframes:** draft PR [#126](https://github.com/bynanci/open-film/pull/126), based on merged 4B.1. Large FFmpeg graphs use a unique temporary script and a version-matched FFmpeg file-option (`-/filter_complex` on 7+, legacy script flag on 6.x) to avoid Windows process command-line limits; current exact-head hosted checks are required before merge.
 - [ ] **4B.3 speed ramps:** blocked until source-mapped caption, audio and rhythm consumers are reconciled and an explicit audio policy is approved. Keep existing audio timing unchanged until then.
 
 See the [4B design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md), [shared contract validation](docs/validation-cut-desk-phase-4b-time-contract.md) and [visual keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).

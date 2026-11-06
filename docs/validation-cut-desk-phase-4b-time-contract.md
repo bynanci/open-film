@@ -83,6 +83,6 @@ macOS on the final PR #125 head.
 
 ## Follow-on implementation
 
-The visual keyframe slice is being developed on a separate stacked branch.
-Its current code, local checks and outstanding end-to-end/hosted gates are
-recorded in `docs/validation-cut-desk-phase-4b-visual-keyframes.md`.
+The visual keyframe slice is under review in PR #126, based on the merged
+4B.1 contract. Its implementation, validation and remaining gates are recorded
+in `docs/validation-cut-desk-phase-4b-visual-keyframes.md`.

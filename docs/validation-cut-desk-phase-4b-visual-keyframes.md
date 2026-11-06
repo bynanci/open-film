@@ -5,8 +5,8 @@ Base: main at [`7add4762fe8174d76f43b863375ea39b73121e76`](https://github.com/by
 Implementation: [draft PR #126](https://github.com/bynanci/open-film/pull/126).
 Pre-sync candidate head: `e6eed6360b1a94c03e1becdd90f1c6bcd02edd48`; the code
 was last changed at `e7fb5ec4d9e5ff97454038f853ac04163eb94540`.
-Current branch has been synchronized with main; its new exact head requires a
-fresh full hosted validation before merge.
+The synchronized code passed focused local validation; full hosted checks must
+pass on the submitted PR head before merge.
 
 ## Shared state flow
 
@@ -28,8 +28,17 @@ fresh full hosted validation before merge.
 
 ## Local evidence
 
+After syncing with main at `7555b312a224fbbbedeaf14a639f354a266c1849`, the
+following checks passed before a documentation-only refresh:
+
+- `pnpm format:check`, `pnpm typecheck`, and `pnpm test:contracts` — 81 files,
+  1,547 tests.
+- `pnpm test:i18n` — 3,252 semantic keys; `pnpm test:docs-i18n` — 172 English
+  reference mirrors.
+
 These local results were collected on the pre-sync code candidate, not on the
-new synchronized head:
+initial synchronized head. The animation implementation was unchanged after
+those checks; the following broader results are from the earlier code candidate:
 
 - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` — passed.
   Build retains the existing `TimelineEditor` chunk-size advisory.
@@ -78,7 +87,7 @@ new head. Fresh full exact-head CI is required.
   Native NLE keyframe interchange is not claimed.
 - 4B.3 forward speed ramps remain unimplemented. No audio retiming policy or
   audio behavior is inferred by this visual slice.
-- Current synchronized head must pass fast-contract, all six browser shards,
+- The current PR head must pass fast-contract, all six browser shards,
   heavy-media, native-shell, Render QA and Windows FFmpeg 9 before merge.
 - No Windows/macOS workstation, GPU/4K, Resolve or listening evidence was
   collected for this candidate.
