@@ -381,19 +381,16 @@ test("caption font draft survives an earlier cue save acknowledgement", async ({
   await expect(page.getByTestId("caption-cue")).toHaveCount(2);
   await page.getByTestId("caption-inspector-tab").click();
   let release!: () => void;
-  let captured!: () => void;
+  let editPersisted = false;
   const held = new Promise<void>((resolve) => {
     release = resolve;
-  });
-  const saved = new Promise<void>((resolve) => {
-    captured = resolve;
   });
   const editPath = `/api/compositions/${fixture.composition.id}/edit`;
   await page.route(
     `**${editPath}`,
     async (route) => {
       const response = await route.fetch();
-      captured();
+      editPersisted = true;
       await held;
       await route.fulfill({ response });
     },
@@ -401,8 +398,10 @@ test("caption font draft survives an earlier cue save acknowledgement", async ({
   );
   const text = page.getByTestId("caption-text");
   await text.fill("Saved cue before typography");
-  await text.press("Tab");
-  await saved;
+  await text.blur();
+  await expect(text).not.toBeFocused();
+  await expect.poll(() => editPersisted, { timeout: 15_000 }).toBe(true);
+  await expect(text).toHaveValue("Saved cue before typography");
   const size = page.getByTestId("caption-font-size");
   await size.fill("34");
   release();
