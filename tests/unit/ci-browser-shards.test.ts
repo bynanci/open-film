@@ -48,36 +48,37 @@ function reports() {
 function validShards() {
   return ids.map((id) => [id]);
 }
+const invalidPartitions: string[][][] = [
+  ids.slice(0, browserShardCount - 1).map((id) => [id]),
+  (() => {
+    const shards = validShards();
+    shards[1] = [ids[0]!];
+    return shards;
+  })(),
+  (() => {
+    const shards = validShards();
+    shards[0] = [ids[0]!, ids[0]!];
+    return shards;
+  })(),
+  (() => {
+    const shards = validShards();
+    shards[browserShardCount - 1] = ["extra"];
+    return shards;
+  })(),
+  (() => {
+    const shards = validShards();
+    shards[browserShardCount - 1] = [];
+    return shards;
+  })(),
+  [],
+];
 it("requires nonempty disjoint exact discovery coverage across all shards", () => {
   expect(validateBrowserPartition(ids, validShards())).toEqual({
     total: browserShardCount,
     shards: ids.map(() => 1),
   });
 });
-it.each([
-  [ids.slice(0, browserShardCount - 1).map((id) => [id])],
-  (() => {
-    const shards = validShards();
-    shards[1] = [ids[0]!];
-    return [shards];
-  })(),
-  (() => {
-    const shards = validShards();
-    shards[0] = [ids[0]!, ids[0]!];
-    return [shards];
-  })(),
-  (() => {
-    const shards = validShards();
-    shards[browserShardCount - 1] = ["extra"];
-    return [shards];
-  })(),
-  (() => {
-    const shards = validShards();
-    shards[browserShardCount - 1] = [];
-    return [shards];
-  })(),
-  [[]],
-])(
+it.each(invalidPartitions)(
   "rejects missing, duplicate, extra, empty or absent shards %#",
   (...shards) => {
     expect(() => validateBrowserPartition(ids, shards)).toThrow();
