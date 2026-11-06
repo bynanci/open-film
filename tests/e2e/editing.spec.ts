@@ -828,8 +828,9 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   const englishError = await error.innerText();
   await page.locator(".ui-language select").selectOption("zh-TW");
   await expect(
-    page.getByRole("heading", { name: "讓每個片刻都有意義。" }),
+    page.getByRole("heading", { name: "The moments between" }),
   ).toBeVisible();
+  // UI language changes must not rewrite the user's film/story title.
   await expect(error).not.toHaveText(englishError);
   await expect(page.getByLabel("照片時長", { exact: true })).toHaveValue("0");
   await expect(
@@ -840,7 +841,7 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   ).toBeVisible();
   await page.locator(".ui-language select").selectOption("ja-JP");
   await expect(
-    page.getByRole("heading", { name: "一つひとつの瞬間を大切に。" }),
+    page.getByRole("heading", { name: "The moments between" }),
   ).toBeVisible();
   await expect(error).toContainText(
     "この変更は素材やストーリーの制限を超えています。",
