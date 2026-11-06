@@ -59,15 +59,14 @@ These checks do not impose a height cap on authored long content.
 
 ## PR #119 current-head follow-up — 2026-11-06
 
-The current follow-up is reconciled on top of PR #119 head
-`b3daac4fb8bf9819093c2b5291b33ccfa6a858ec`, based on `main`
-`b6304914a7eb351d8e5d0a0a11b41e163713e20b`. The previous exact-head run
+The current follow-up is based on `main`
+`b6304914a7eb351d8e5d0a0a11b41e163713e20b` and includes PR #119 updates through
+`e205f3bbedc65061f3520d00995546afdeaf80cb`. The previous exact-head run
 [42190592757](https://github.com/bynanci/open-film/actions/runs/42190592757)
 passed fast-contract, heavy-media, docs-site, native-shell and all three render
 QA platforms. Browser shard 1 failed two direct-clip hit-test checks; Windows
 media recovery failed the split-review import helper before it observed the two
-source cards. Those failures are being checked on the reconciled candidate; this
-record does not treat the older SHA as green.
+source cards. Those findings were investigated and corrected in this follow-up.
 
 The follow-up keeps the f98 modal work and its theme/focus/contrast E2E checks,
 retains project-generation fencing for lazy Import focus, and reconciles the
@@ -75,22 +74,85 @@ sidebar breakpoint with the remote change: labels remain visible at 1200px and
 1101px, and the 76px icon rail starts at 1100px. The Windows import helper now
 waits for and validates the durable `POST /api/import-draft/sources` response
 and saved selection count before asserting rendered cards. Entering picture
-adjustment samples the currently laid-out source viewport before geometry is
-calculated, preventing stale first-frame monitor dimensions from shifting direct
-resize hit targets.
+adjustment now samples the source viewport after Vue applies the adjustment
+toolbar, preventing the toolbar reflow from leaving stale first-frame monitor
+dimensions and clipped resize hit targets.
+
+The exact-head Verify run
+[42195116358](https://github.com/bynanci/open-film/actions/runs/42195116358)
+on `4da316f3666a106918a72e12d8fbea78be088ac3` exposed three stale or timing-
+sensitive browser assertions: the cancellation test expected two identically
+named `Add media` buttons although the completion summary intentionally has one
+`Add more media` action; two direct-clip tests hit resize handles calculated
+before the toolbar reflow; and the audio-preview test expected the Inspector
+tabs to use `display:flex` although the current two-column design uses CSS grid.
+Browser shard 1 had 86 passes and 3 failures, shard 2 had 86 passes and 1
+failure. Shards 3 and 4, fast-contract, heavy-media, docs-site, native-shell,
+all three Render QA platforms, Windows recovery and DCO passed. The legacy
+`typescript-and-media` aggregate failed only because the required-lane guard
+observed the two failed browser shards; its media checks were not run as a
+separate job. The new local regressions exercise the single completion action,
+post-layout resize geometry and current Inspector layout without weakening the
+render, hit-target or import-cancellation behavior.
+
+A follow-up local repetition also showed that the cancellation test waited for a
+transient `Import cancelled` notice even after the durable completion summary
+had changed to `Import stopped`. The test now waits for that persistent status
+and confirms `/api/jobs` contains a terminal cancelled import before checking
+the project and reopening Import. This tests the completed cancellation state
+instead of depending on notification timing.
+
+After the `4da316f` browser failures were corrected, PR branch commit `b2e44c7`
+preserved the monitor controls and added viewport diagnostics. Its Verify run
+[42198971760](https://github.com/bynanci/open-film/actions/runs/42198971760)
+reported three failures in browser shard 1 (`86 passed`): the resize handle
+still extended below the source viewport at 1024×720; the native-caption test
+timed out while the saved cue still had its prior text; and the language test
+expected a welcome tagline in the Edit workspace, whose actual heading is the
+film title. The first is addressed by measuring the source viewport after the
+adjustment toolbar reflows. The caption test now waits for the matching
+`POST /api/compositions/:id/edit` response, checks its status and then checks
+the saved cue. The language test now checks the selected locale, the localized
+timeline region and translated validation feedback. Shards 2–4, fast-contract,
+heavy-media, docs-site, native-shell, Windows media recovery and all Render QA
+platforms passed. A follow-up raises the transform overlay above the source
+image, so the right-side handles remain visible and hit-testable. The legacy
+`typescript-and-media` guard failed only because
+it observed `BROWSER_RESULT: failure`; its fast, media and docs results were
+successful.
+
+On PR head `316e741aadfcf3b41508e8f99c9689850d6ad18c`, Verify run
+[42201643719](https://github.com/bynanci/open-film/actions/runs/42201643719)
+found one additional compact-height defect in browser shard 1: at 1024×720 the
+picture toolbar wrapped, leaving the source viewport 22px below its player row
+and overlapping the Story rail. The lower half of the bottom-right touch target
+then hit the source image. The same run's fast-contract, docs-site, native-shell,
+Windows media recovery, and Windows/macOS Render QA jobs passed. Browser shards
+2 and 4, heavy-media QA, and Linux Render QA were cancelled after the browser
+failure; they are not passing evidence. The required-lane aggregate therefore
+failed. The CSS follow-up reserves more player height at short desktop
+viewports and reduces the minimum preview height so the source viewport stays
+inside its row. The coarse-pointer E2E now asserts row boundaries as well as all
+four hit targets.
+
+After rebasing onto the concurrent PR commits through `e205f3b`, the local
+cross-workflow regression run found a transient low-contrast frame when theme
+colors animated together. The final styles change navigation and workflow text
+and backgrounds atomically while keeping shadow motion. The axe theme/focus
+regression passed after this correction.
 
 Local evidence on the reconciled, unpushed worktree:
 
-| Check                                                    | Result                                                                                                                                                                               |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                              | 450 files and 5,904 tests passed in 545.48s.                                                                                                                                         |
-| `pnpm test:contracts`                                    | 77 files and 1,504 tests passed.                                                                                                                                                     |
-| Focused UI E2E                                           | 17/17 passed: component redesign, multi-source review and Tobi-ishi workflow.                                                                                                        |
-| Direct clip manipulation E2E                             | 5/5 passed, including proportional resize and coarse-pointer hit targets.                                                                                                            |
-| Responsive surfaces E2E                                  | 8/8 passed, including theme animation frames and narrow layouts.                                                                                                                     |
-| Focused unit regressions                                 | 111/111 passed across six App/workspace/variant test files.                                                                                                                          |
-| Format, i18n/docs, partitions, lint, typecheck and build | Passed; 3,198 locale keys, 450 Vitest files (77 contracts/373 media), and 350 browser cases partitioned. TimelineEditor remains 589.11 KB and triggers the existing 500 KB advisory. |
-| Hosted verification for the reconciled SHA               | Not run yet; the changes have not been pushed.                                                                                                                                       |
+| Check                                  | Result                                                                                                                                                                                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused interaction/theme E2E          | 52/52 passed across captions, direct clip manipulation, global visual/axe, Professional Cut Desk, and Story workflow UX.                                                                                                                              |
+| Compact-height touch resize regression | 5/5 passed at 1024×720; preview and Story rows remain disjoint and all four 44px targets receive hits.                                                                                                                                                |
+| Native caption persistence regression  | 5/5 passed with durable edit response and reopen assertions.                                                                                                                                                                                          |
+| Theme contrast and keyboard focus      | 1/1 passed after making text/background theme updates atomic; axe reports no contrast violations.                                                                                                                                                     |
+| Local fast-contract and build checks   | `format:check`, `test:i18n` (3,198 keys), `lint`, `typecheck`, `test:contracts` (77 files / 1,504 tests), and `build` passed.                                                                                                                         |
+| Bundle advisory                        | TimelineEditor is 589.37 KB minified, above the existing 500 KB advisory; build succeeds.                                                                                                                                                             |
+| Hosted verification                    | On `e205f3b`, fast-contract, docs-site, native-shell, Windows recovery, all three Render QA platforms and DCO passed. Browser shard 1 reproduced the 1024×720 resize-hit failure; shards 2–4 passed and heavy-media was still running when inspected. |
+| Full Vitest                            | Not rerun after rebasing onto the latest PR commits; the current focused contract suite passed.                                                                                                                                                       |
 
 The prior `main@b630491` Verify, Windows media recovery and Render QA pass in
 [run 42171211968](https://github.com/bynanci/open-film/actions/runs/42171211968).

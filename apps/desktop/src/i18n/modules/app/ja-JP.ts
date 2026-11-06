@@ -1015,7 +1015,7 @@ export default {
         echoRole: "主題の呼応",
         heroRole: "主役",
         supportingRole: "脇役",
-        photoDepthFallback: "PhotoDepth 代替手段: {mode}",
+        photoDepthFallback: "写真は静止したまま表示",
         missingAssets: "不足している素材: {assets}",
         noAssets: "このシーンに割り当てられた素材はありません",
       },

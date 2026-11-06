@@ -960,7 +960,7 @@ export default {
         echoRole: "主題呼應",
         heroRole: "主角",
         supportingRole: "輔助",
-        photoDepthFallback: "PhotoDepth 替代方式: {mode}",
+        photoDepthFallback: "照片保持靜止",
         missingAssets: "缺失素材: {assets}",
         noAssets: "此場景尚未指派素材",
       },

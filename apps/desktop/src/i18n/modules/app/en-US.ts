@@ -1018,7 +1018,7 @@ export default {
         echoRole: "Thematic Echo",
         heroRole: "Hero",
         supportingRole: "Supporting",
-        photoDepthFallback: "PhotoDepth fallback: {mode}",
+        photoDepthFallback: "Photo stays still",
         missingAssets: "Missing assets: {assets}",
         noAssets: "No media assigned to this scene",
       },

@@ -5,7 +5,7 @@ import { OpenFilmApplication } from "@openfilm/application";
 import { expect, test } from "@playwright/test";
 import axe from "axe-core";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
-import { navigate, openFilm } from "./ui-helpers.js";
+import { navigate, openFilm, uiText } from "./ui-helpers.js";
 
 const api = "http://127.0.0.1:4310/api";
 let root: string;
@@ -146,14 +146,21 @@ test("story plan image labels keep readable contrast in both themes", async ({
     .selectOption("expert");
   await navigate(page, "story");
   await page.getByTestId("perspective-tab-graph").click();
-  await page.locator(".plan-storyboard-btn").click();
-  const dialog = page.locator('.modal-backdrop[role="dialog"]');
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".which-image-section").first()).toBeVisible();
-  await expect(
-    dialog.locator(".which-image-section .asset-name").first(),
-  ).toBeVisible();
-
+  const selectors = [
+    ".subtitle",
+    ".scene-idx",
+    ".scene-title",
+    ".source-badge",
+    ".section-label",
+    ".asset-name",
+    ".role-badge",
+    ".depth-fallback-pill",
+    ".duration-badge",
+    ".rationale-text",
+    ".modal-footer .secondary-btn",
+    ".modal-footer .primary-btn",
+    ".close-btn",
+  ];
   const luminance = (color: string) => {
     const channels = color
       .match(/[\d.]+/g)!
@@ -168,26 +175,138 @@ test("story plan image labels keep readable contrast in both themes", async ({
     return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
   };
   for (const theme of ["light", "dark"] as const) {
-    await page.locator("html").evaluate((element, value) => {
-      element.setAttribute("data-theme", value);
-    }, theme);
-    const section = await dialog
-      .locator(".which-image-section")
-      .first()
-      .evaluate((element) => {
-        const text = element.querySelector(".asset-name") ?? element;
+    await page.locator(".settings-toggle").click();
+    const settings = page.getByRole("dialog", {
+      name: uiText("en-US", "app.settings.title"),
+    });
+    await settings
+      .getByLabel(uiText("en-US", "app.settings.theme"))
+      .selectOption(theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await settings
+      .getByRole("button", {
+        name: uiText("en-US", "app.settings.close"),
+      })
+      .click();
+    await page.locator(".plan-storyboard-btn").click();
+    const dialog = page.locator('.modal-backdrop[role="dialog"]');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(".which-image-section").first()).toBeVisible();
+    await expect(
+      dialog.locator(".which-image-section .asset-name").first(),
+    ).toBeVisible();
+    await expect(dialog.locator(".depth-fallback-pill").first()).toHaveText(
+      "Photo stays still",
+    );
+    await expect(dialog.locator(".storyboard-card")).toHaveCount(2);
+    const gridFill = await dialog
+      .locator(".cards-scroller")
+      .evaluate((grid) => {
+        const bounds = grid.getBoundingClientRect();
+        const cards = Array.from(
+          grid.querySelectorAll<HTMLElement>(".storyboard-card"),
+        );
         return {
-          foreground: getComputedStyle(text).color,
-          background: getComputedStyle(element).backgroundColor,
+          leadingSpace: cards[0]!.getBoundingClientRect().left - bounds.left,
+          trailingSpace:
+            bounds.right - cards.at(-1)!.getBoundingClientRect().right,
         };
       });
-    const foreground = luminance(section.foreground);
-    const background = luminance(section.background);
-    expect(
-      (Math.max(foreground, background) + 0.05) /
-        (Math.min(foreground, background) + 0.05),
-      `${theme} story plan asset section contrast`,
-    ).toBeGreaterThanOrEqual(4.5);
+    expect(gridFill.leadingSpace).toBeLessThanOrEqual(1);
+    expect(gridFill.trailingSpace).toBeLessThanOrEqual(1);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect
+      .poll(() =>
+        dialog
+          .locator(".storyboard-card")
+          .first()
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+      )
+      .toBe(theme === "light" ? "rgb(225, 233, 223)" : "rgb(41, 55, 43)");
+    const samples = await dialog.evaluate(
+      (root, targets) =>
+        targets.flatMap((selector) =>
+          Array.from(root.querySelectorAll<HTMLElement>(selector)).map(
+            (element) => {
+              let surface: HTMLElement | null = element;
+              let background = "rgb(0, 0, 0)";
+              while (surface) {
+                const color = getComputedStyle(surface).backgroundColor;
+                if (color !== "rgba(0, 0, 0, 0)" && color !== "transparent") {
+                  background = color;
+                  break;
+                }
+                surface = surface.parentElement;
+              }
+              return {
+                selector,
+                foreground: getComputedStyle(element).color,
+                background,
+              };
+            },
+          ),
+        ),
+      selectors,
+    );
+    expect([...new Set(samples.map((sample) => sample.selector))]).toEqual(
+      selectors,
+    );
+    for (const sample of samples) {
+      const foreground = luminance(sample.foreground);
+      const background = luminance(sample.background);
+      expect(
+        (Math.max(foreground, background) + 0.05) /
+          (Math.min(foreground, background) + 0.05),
+        `${theme} ${sample.selector} contrast (${sample.foreground} on ${sample.background})`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.screenshot({
+      path: test.info().outputPath(`story-plan-modal-${theme}.png`),
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 1024, height: 720 });
+    await expect(dialog).toBeVisible();
+    const compactLayout = await dialog.evaluate((root) => {
+      const dialogElement = root.querySelector<HTMLElement>(".modal-dialog")!;
+      const grid = root.querySelector<HTMLElement>(".cards-scroller")!;
+      const cards = Array.from(
+        grid.querySelectorAll<HTMLElement>(".storyboard-card"),
+      );
+      const primary = root.querySelector<HTMLElement>(".primary-btn")!;
+      const dialogBounds = dialogElement.getBoundingClientRect();
+      const primaryBounds = primary.getBoundingClientRect();
+      return {
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        gridWidth: grid.clientWidth,
+        gridScrollWidth: grid.scrollWidth,
+        cardBounds: cards.map((card) => {
+          const bounds = card.getBoundingClientRect();
+          return { left: bounds.left, right: bounds.right, top: bounds.top };
+        }),
+        primaryRight: primaryBounds.right,
+        dialogRight: dialogBounds.right,
+      };
+    });
+    expect(compactLayout.pageWidth).toBeLessThanOrEqual(
+      compactLayout.viewportWidth,
+    );
+    expect(compactLayout.gridScrollWidth).toBeLessThanOrEqual(
+      compactLayout.gridWidth,
+    );
+    expect(compactLayout.cardBounds).toHaveLength(2);
+    expect(compactLayout.cardBounds[0]!.right).toBeLessThanOrEqual(
+      compactLayout.cardBounds[1]!.left,
+    );
+    expect(compactLayout.primaryRight).toBeLessThanOrEqual(
+      compactLayout.dialogRight,
+    );
+    await page.screenshot({
+      path: test.info().outputPath(`story-plan-modal-${theme}-1024x720.png`),
+      animations: "disabled",
+    });
+    await dialog.locator(".close-btn").click();
+    await page.setViewportSize({ width: 1280, height: 900 });
   }
 });
 
