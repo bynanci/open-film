@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { createId } from "@openfilm/core";
 import type {
   Composition,
   GraphNodeLayout,
@@ -9,6 +10,7 @@ import type {
   MediaAsset,
   Story,
   StoryBeat,
+  StoryConstraint,
   StoryGraph,
   StoryGraphEdge,
   StoryGraphEdgeType,
@@ -184,13 +186,33 @@ const beatDraft = ref<{
   intent: string;
   narration: string;
   visualDirection: string;
+  constraints: StoryConstraint[];
 }>({
   title: "",
   targetDuration: 10,
   intent: "",
   narration: "",
   visualDirection: "",
+  constraints: [],
 });
+
+type MediaCountDraft = number | "";
+type MediaBalanceDraft = {
+  minImages: MediaCountDraft;
+  maxImages: MediaCountDraft;
+  minVideos: MediaCountDraft;
+  maxVideos: MediaCountDraft;
+};
+const mediaBalanceDraft = ref<MediaBalanceDraft>({
+  minImages: "",
+  maxImages: "",
+  minVideos: "",
+  maxVideos: "",
+});
+const coverageKindDraft = ref<"event" | "person">("event");
+const coverageLabelDraft = ref("");
+const coverageMinimumDraft = ref(1);
+const constraintError = ref("");
 
 const ideaDraft = ref<{
   text: string;
@@ -267,9 +289,161 @@ const selectedBeat = computed((): StoryBeat | null => {
   const beatId = selectedNode.value.beatId;
   return props.story.beats.find((b) => b.id === beatId) ?? null;
 });
+const beatCoverageGroups = computed(() =>
+  beatDraft.value.constraints.filter(
+    (constraint) => constraint.type === "coverage-group",
+  ),
+);
+const connectedVisualAssets = computed(() => {
+  if (!selectedNode.value || selectedNode.value.type !== "beat") return [];
+  const assetNodeIds = new Set(
+    graph.value.edges
+      .filter(
+        (edge) =>
+          edge.from === selectedNode.value!.id &&
+          (edge.type === "supports" || edge.type === "contains"),
+      )
+      .map((edge) => edge.to),
+  );
+  const connectedAssetIds = new Set(
+    graph.value.nodes
+      .filter(
+        (node): node is Extract<StoryGraphNode, { type: "asset" }> =>
+          node.type === "asset" && assetNodeIds.has(node.id),
+      )
+      .map((node) => node.assetId),
+  );
+  return props.assets.filter(
+    (asset) =>
+      connectedAssetIds.has(asset.id) &&
+      (asset.mediaType === "image" ||
+        asset.mediaType === "video" ||
+        asset.mediaType === "360-video"),
+  );
+});
 const beatEditingBlocked = computed(
   () => props.editingDisabled || selectedBeat.value?.id !== props.activeBeatId,
 );
+
+function mediaBalanceDraftFor(beat?: StoryBeat): MediaBalanceDraft {
+  const result: MediaBalanceDraft = {
+    minImages: "",
+    maxImages: "",
+    minVideos: "",
+    maxVideos: "",
+  };
+  for (const constraint of beat?.constraints ?? []) {
+    if (constraint.type !== "media-balance") continue;
+    if (constraint.minImages !== undefined)
+      result.minImages =
+        result.minImages === ""
+          ? constraint.minImages
+          : Math.max(result.minImages, constraint.minImages);
+    if (constraint.maxImages !== undefined)
+      result.maxImages =
+        result.maxImages === ""
+          ? constraint.maxImages
+          : Math.min(result.maxImages, constraint.maxImages);
+    if (constraint.minVideos !== undefined)
+      result.minVideos =
+        result.minVideos === ""
+          ? constraint.minVideos
+          : Math.max(result.minVideos, constraint.minVideos);
+    if (constraint.maxVideos !== undefined)
+      result.maxVideos =
+        result.maxVideos === ""
+          ? constraint.maxVideos
+          : Math.min(result.maxVideos, constraint.maxVideos);
+  }
+  return result;
+}
+
+function preparedBeatConstraints(): StoryConstraint[] | undefined {
+  const retained: StoryConstraint[] = beatDraft.value.constraints.filter(
+    (constraint) => constraint.type !== "media-balance",
+  );
+  const balance = mediaBalanceDraft.value;
+  if (
+    balance.minImages !== "" &&
+    balance.maxImages !== "" &&
+    balance.minImages > balance.maxImages
+  ) {
+    constraintError.value = t("app.storyGraph.constraints.minimumAboveMaximum");
+    return undefined;
+  }
+  if (
+    balance.minVideos !== "" &&
+    balance.maxVideos !== "" &&
+    balance.minVideos > balance.maxVideos
+  ) {
+    constraintError.value = t("app.storyGraph.constraints.minimumAboveMaximum");
+    return undefined;
+  }
+  const values = Object.entries(balance).filter(([, value]) => value !== "");
+  if (values.length) {
+    const bounds = Object.fromEntries(values) as {
+      minImages?: number;
+      maxImages?: number;
+      minVideos?: number;
+      maxVideos?: number;
+    };
+    if (
+      Object.values(bounds).some(
+        (value) => !Number.isInteger(value) || value! < 0,
+      )
+    ) {
+      constraintError.value = t("app.storyGraph.constraints.countMustBeWhole");
+      return undefined;
+    }
+    retained.push({ type: "media-balance", version: 1, ...bounds });
+  }
+  constraintError.value = "";
+  return retained;
+}
+
+function addCoverageGroup() {
+  if (
+    !selectedBeat.value ||
+    beatEditingBlocked.value ||
+    !coverageLabelDraft.value.trim() ||
+    !connectedVisualAssets.value.length ||
+    !Number.isInteger(coverageMinimumDraft.value) ||
+    coverageMinimumDraft.value < 1 ||
+    coverageMinimumDraft.value > connectedVisualAssets.value.length
+  )
+    return;
+  const constraints = preparedBeatConstraints();
+  if (!constraints) return;
+  beatDraft.value.constraints = [
+    ...constraints,
+    {
+      type: "coverage-group",
+      version: 1,
+      kind: coverageKindDraft.value,
+      groupId: createId("coverage"),
+      label: coverageLabelDraft.value.trim(),
+      assetIds: connectedVisualAssets.value.map((asset) => asset.id),
+      minimumCount: coverageMinimumDraft.value,
+    },
+  ];
+  coverageLabelDraft.value = "";
+  coverageMinimumDraft.value = 1;
+  void saveBeatChanges();
+}
+
+function removeCoverageGroup(groupId: string) {
+  beatDraft.value.constraints = beatDraft.value.constraints.filter(
+    (constraint) =>
+      constraint.type !== "coverage-group" || constraint.groupId !== groupId,
+  );
+  void saveBeatChanges();
+}
+
+function coverageSourceNames(assetIds: string[]): string {
+  return assetIds
+    .map((id) => props.assets.find((asset) => asset.id === id)?.name ?? id)
+    .join(", ");
+}
 
 // Clip mapping status for selected beat
 const selectedBeatClipMapping = computed(() => {
@@ -495,7 +669,12 @@ function selectNode(nodeId: string) {
         intent: beat.intent ?? "",
         narration: beat.script?.narration ?? "",
         visualDirection: beat.script?.visualDirection ?? "",
+        constraints: JSON.parse(
+          JSON.stringify(beat.constraints ?? []),
+        ) as StoryConstraint[],
       };
+      mediaBalanceDraft.value = mediaBalanceDraftFor(beat);
+      constraintError.value = "";
     }
   } else if (node && node.type === "idea") {
     ideaDraft.value = {
@@ -938,6 +1117,8 @@ async function handleUpdateEdgeType(newType: StoryGraphEdgeType) {
 async function saveBeatChanges() {
   if (!selectedBeat.value || beatEditingBlocked.value || isImeComposing.value)
     return;
+  const constraints = preparedBeatConstraints();
+  if (!constraints) return;
   const updatedBeat: StoryBeat = {
     ...selectedBeat.value,
     title: beatDraft.value.title,
@@ -950,6 +1131,7 @@ async function saveBeatChanges() {
             visualDirection: beatDraft.value.visualDirection.trim(),
           }
         : undefined,
+    constraints,
   };
 
   emit("edit-beat", props.story.id, updatedBeat);
@@ -1773,6 +1955,189 @@ onUnmounted(() => {
               @input="saveBeatChanges"
             />
           </label>
+
+          <section
+            class="inspector-section story-constraints"
+            :aria-label="t('app.storyGraph.constraints.title')"
+            data-testid="story-constraints"
+          >
+            <h4>{{ t("app.storyGraph.constraints.title") }}</h4>
+            <p class="field-hint">
+              {{ t("app.storyGraph.constraints.description") }}
+            </p>
+
+            <form
+              class="coverage-group-form"
+              @submit.prevent="addCoverageGroup"
+            >
+              <label class="field">
+                <span>{{ t("app.storyGraph.constraints.groupKind") }}</span>
+                <select
+                  v-model="coverageKindDraft"
+                  :disabled="beatEditingBlocked"
+                  :aria-label="t('app.storyGraph.constraints.groupKind')"
+                >
+                  <option value="event">
+                    {{ t("app.storyGraph.constraints.event") }}
+                  </option>
+                  <option value="person">
+                    {{ t("app.storyGraph.constraints.person") }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span>{{ t("app.storyGraph.constraints.groupLabel") }}</span>
+                <input
+                  v-model="coverageLabelDraft"
+                  :placeholder="
+                    t('app.storyGraph.constraints.groupLabelPlaceholder')
+                  "
+                  :disabled="beatEditingBlocked"
+                  maxlength="160"
+                  :aria-label="t('app.storyGraph.constraints.groupLabel')"
+                />
+              </label>
+              <label class="field">
+                <span>{{
+                  t("app.storyGraph.constraints.minimumCoverage")
+                }}</span>
+                <input
+                  v-model.number="coverageMinimumDraft"
+                  type="number"
+                  min="1"
+                  :max="Math.max(1, connectedVisualAssets.length)"
+                  step="1"
+                  :disabled="
+                    beatEditingBlocked || !connectedVisualAssets.length
+                  "
+                  :aria-label="t('app.storyGraph.constraints.minimumCoverage')"
+                />
+              </label>
+              <p v-if="!connectedVisualAssets.length" class="field-hint">
+                {{ t("app.storyGraph.constraints.connectAssetsFirst") }}
+              </p>
+              <p v-else class="field-hint">
+                {{
+                  t("app.storyGraph.constraints.connectedAssets", {
+                    count: connectedVisualAssets.length,
+                  })
+                }}
+              </p>
+              <button
+                type="submit"
+                class="secondary-btn small-btn"
+                :disabled="
+                  beatEditingBlocked ||
+                  !coverageLabelDraft.trim() ||
+                  !connectedVisualAssets.length ||
+                  !Number.isInteger(coverageMinimumDraft) ||
+                  coverageMinimumDraft < 1 ||
+                  coverageMinimumDraft > connectedVisualAssets.length
+                "
+              >
+                {{ t("app.storyGraph.constraints.addGroup") }}
+              </button>
+            </form>
+
+            <ul v-if="beatCoverageGroups.length" class="coverage-group-list">
+              <li
+                v-for="group in beatCoverageGroups"
+                :key="group.groupId"
+                class="coverage-group-item"
+              >
+                <div>
+                  <strong>
+                    {{
+                      t(
+                        group.kind === "event"
+                          ? "app.storyGraph.constraints.event"
+                          : "app.storyGraph.constraints.person",
+                      )
+                    }}
+                    · {{ group.label }}
+                  </strong>
+                  <span>
+                    {{
+                      t("app.storyGraph.constraints.minimumOfAssets", {
+                        minimum: group.minimumCount,
+                        count: group.assetIds.length,
+                      })
+                    }}
+                  </span>
+                  <small>{{ coverageSourceNames(group.assetIds) }}</small>
+                </div>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  :aria-label="
+                    t('app.storyGraph.constraints.removeGroup', {
+                      label: group.label,
+                    })
+                  "
+                  :disabled="beatEditingBlocked"
+                  @click="removeCoverageGroup(group.groupId)"
+                >
+                  <Icon name="close" :size="14" />
+                </button>
+              </li>
+            </ul>
+
+            <fieldset
+              class="media-balance-fields"
+              :disabled="beatEditingBlocked"
+            >
+              <legend>
+                {{ t("app.storyGraph.constraints.mediaBalance") }}
+              </legend>
+              <label class="field">
+                <span>{{ t("app.storyGraph.constraints.minImages") }}</span>
+                <input
+                  v-model.number="mediaBalanceDraft.minImages"
+                  type="number"
+                  min="0"
+                  step="1"
+                  :aria-label="t('app.storyGraph.constraints.minImages')"
+                  @change="saveBeatChanges"
+                />
+              </label>
+              <label class="field">
+                <span>{{ t("app.storyGraph.constraints.maxImages") }}</span>
+                <input
+                  v-model.number="mediaBalanceDraft.maxImages"
+                  type="number"
+                  min="0"
+                  step="1"
+                  :aria-label="t('app.storyGraph.constraints.maxImages')"
+                  @change="saveBeatChanges"
+                />
+              </label>
+              <label class="field">
+                <span>{{ t("app.storyGraph.constraints.minVideos") }}</span>
+                <input
+                  v-model.number="mediaBalanceDraft.minVideos"
+                  type="number"
+                  min="0"
+                  step="1"
+                  :aria-label="t('app.storyGraph.constraints.minVideos')"
+                  @change="saveBeatChanges"
+                />
+              </label>
+              <label class="field">
+                <span>{{ t("app.storyGraph.constraints.maxVideos") }}</span>
+                <input
+                  v-model.number="mediaBalanceDraft.maxVideos"
+                  type="number"
+                  min="0"
+                  step="1"
+                  :aria-label="t('app.storyGraph.constraints.maxVideos')"
+                  @change="saveBeatChanges"
+                />
+              </label>
+            </fieldset>
+            <p v-if="constraintError" class="error-notice" role="alert">
+              {{ constraintError }}
+            </p>
+          </section>
 
           <!-- Clip Mapping Section -->
           <div class="inspector-section mapping-box">
@@ -2705,6 +3070,77 @@ onUnmounted(() => {
   color: var(--of-danger);
   font-size: var(--of-font-small);
   margin: var(--of-space-2) 0;
+}
+
+.story-constraints > h4 {
+  margin: 0 0 var(--of-space-1);
+}
+
+.story-constraints .field-hint {
+  margin: 0 0 var(--of-space-2);
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-small);
+  line-height: 1.45;
+}
+
+.coverage-group-form {
+  display: grid;
+  gap: var(--of-space-2);
+}
+
+.coverage-group-list {
+  display: grid;
+  gap: var(--of-space-2);
+  margin: var(--of-space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coverage-group-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--of-space-2);
+  padding: var(--of-space-2);
+  border-radius: var(--of-radius-sm);
+  background: var(--of-surface-2);
+}
+
+.coverage-group-item > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--of-space-1);
+}
+
+.coverage-group-item span,
+.coverage-group-item small {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-small);
+}
+
+.coverage-group-item small {
+  overflow-wrap: anywhere;
+}
+
+.media-balance-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--of-space-2);
+  min-width: 0;
+  margin: var(--of-space-3) 0 0;
+  padding: var(--of-space-2) 0 0;
+  border: 0;
+  border-top: 1px solid var(--of-border-subtle);
+}
+
+.media-balance-fields legend {
+  padding: 0 var(--of-space-1) 0 0;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-small);
+}
+
+.media-balance-fields .field {
+  min-width: 0;
 }
 
 /* Reduced Motion */

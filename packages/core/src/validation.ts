@@ -1447,15 +1447,77 @@ function story(
           "must-exclude",
           "chronological",
           "asset-order",
+          "coverage-group",
+          "media-balance",
         ]);
-        if (type === "chronological")
+        if (type === "chronological") {
           optional(constraint, "enabled", constraintPath, boolean);
-        else
+        } else if (type === "coverage-group") {
+          if (constraint.version !== 1)
+            fail(`${constraintPath}.version`, "expected version 1");
+          choice(constraint.kind, `${constraintPath}.kind`, [
+            "event",
+            "person",
+          ]);
+          receiptIdentifier(constraint.groupId, `${constraintPath}.groupId`);
+          const label = string(constraint.label, `${constraintPath}.label`);
+          if (!label.trim())
+            fail(`${constraintPath}.label`, "expected a non-empty label");
+          if ([...label].length > 160)
+            fail(`${constraintPath}.label`, "expected at most 160 characters");
+          const assetIds = strings(
+            constraint.assetIds,
+            `${constraintPath}.assetIds`,
+            true,
+          );
+          if (!assetIds.length)
+            fail(
+              `${constraintPath}.assetIds`,
+              "expected at least one asset ID",
+            );
+          checkAssetIds(assetIds, `${constraintPath}.assetIds`, knownAssets);
+          dimension(constraint.minimumCount, `${constraintPath}.minimumCount`);
+          if (Number(constraint.minimumCount) > assetIds.length)
+            fail(
+              `${constraintPath}.minimumCount`,
+              "minimum count exceeds the explicit group size",
+            );
+        } else if (type === "media-balance") {
+          if (constraint.version !== 1)
+            fail(`${constraintPath}.version`, "expected version 1");
+          const bounds = [
+            "minImages",
+            "maxImages",
+            "minVideos",
+            "maxVideos",
+          ] as const;
+          if (!bounds.some((key) => constraint[key] !== undefined))
+            fail(constraintPath, "expected at least one media count bound");
+          for (const key of bounds)
+            optional(constraint, key, constraintPath, (value, path) => {
+              const result = number(value, path, 0);
+              if (!Number.isInteger(result))
+                fail(path, "expected a non-negative integer count");
+            });
+          if (
+            constraint.minImages !== undefined &&
+            constraint.maxImages !== undefined &&
+            Number(constraint.minImages) > Number(constraint.maxImages)
+          )
+            fail(`${constraintPath}.maxImages`, "maximum is below minimum");
+          if (
+            constraint.minVideos !== undefined &&
+            constraint.maxVideos !== undefined &&
+            Number(constraint.minVideos) > Number(constraint.maxVideos)
+          )
+            fail(`${constraintPath}.maxVideos`, "maximum is below minimum");
+        } else {
           checkAssetIds(
             strings(constraint.assetIds, `${constraintPath}.assetIds`, true),
             `${constraintPath}.assetIds`,
             knownAssets,
           );
+        }
       });
     });
   });

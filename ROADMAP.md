@@ -86,11 +86,14 @@ A-roll/B-roll coverage and transcript ripple services now have merged
 implementations. Their guides and validation records describe the delivered
 scope; broader workstation and editorial verification still matters.
 
-Further work should make those decisions useful in complete editing workflows,
-cover remaining event/person and media-balance constraints, explain the evidence
-behind suggestions and preserve the user's explicit choices. See the
-[implemented foundations and open tasks](TASKS.md) for current ownership and
-evidence.
+Explicit per-beat event/person coverage and photo/video balance constraints are
+now available from the Story Graph Inspector and preserved through StoryPlan
+preview and acceptance. Solver hard constraints protect selected media, locks,
+and User Pins; infeasible plans fail without rewriting them. See the
+[Story Coverage validation](docs/validation-story-coverage.md) and
+[implemented foundations and open tasks](TASKS.md) for evidence and limits.
+Further work should explain the evidence behind suggestions and continue
+professional editorial review without inferring identity or overriding choices.
 
 ### Finish distribution and real-world verification
 

@@ -966,6 +966,30 @@ export default {
         edgeType: "関係の種類",
         cycleWarning: "循環依存関係が発生するため、この関係を作成できません。",
       },
+      constraints: {
+        title: "ショットの制約",
+        description:
+          "イベント／人物のカバレッジと写真／動画数を明示します。このビートに接続した素材だけを使い、人物の身元は推測しません。",
+        groupKind: "カバレッジの種類",
+        event: "イベント",
+        person: "人物",
+        groupLabel: "グループ名",
+        groupLabelPlaceholder: "例：式典または司会者",
+        minimumCoverage: "使用する素材の最小数",
+        addGroup: "カバレッジグループを追加",
+        connectAssetsFirst:
+          "先にビジュアル素材をこのビートに接続してください。",
+        connectedAssets: "接続済みのビジュアル素材 {count} 件を使用します。",
+        minimumOfAssets: "接続済み素材 {count} 件から {minimum} 件以上を含める",
+        removeGroup: "カバレッジグループ「{label}」を削除",
+        mediaBalance: "ビジュアル素材数",
+        minImages: "写真の最小数",
+        maxImages: "写真の最大数",
+        minVideos: "動画の最小数",
+        maxVideos: "動画の最大数",
+        minimumAboveMaximum: "最小値を最大値より大きくできません。",
+        countMustBeWhole: "素材数は 0 以上の整数にしてください。",
+      },
       storyboard: {
         reviewHint:
           "画像と意図を確認してから、編集の対応するビートに移動します。",

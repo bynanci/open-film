@@ -107,10 +107,33 @@ export interface SceneScriptReviewReceipt {
   acceptedAt: string;
 }
 
+export interface StoryCoverageGroupConstraintV1 {
+  type: "coverage-group";
+  version: 1;
+  /** Membership is explicitly curated by the user; no identity inference is implied. */
+  kind: "event" | "person";
+  groupId: string;
+  label: string;
+  assetIds: string[];
+  minimumCount: number;
+}
+
+export interface StoryMediaBalanceConstraintV1 {
+  type: "media-balance";
+  version: 1;
+  /** Counts unique visual source clips in the beat, not their timeline duration. */
+  minImages?: number;
+  maxImages?: number;
+  minVideos?: number;
+  maxVideos?: number;
+}
+
 export type StoryConstraint =
   | { type: "must-include" | "must-exclude"; assetIds: string[] }
   | { type: "chronological"; enabled?: boolean }
-  | { type: "asset-order"; assetIds: string[] };
+  | { type: "asset-order"; assetIds: string[] }
+  | StoryCoverageGroupConstraintV1
+  | StoryMediaBalanceConstraintV1;
 
 export interface StoryBeat {
   id: string;
