@@ -5,6 +5,7 @@ import type {
   MediaAsset,
   Story,
   StoryBeat,
+  StoryCoverageGroupConstraintV1,
 } from "@openfilm/core";
 import { scoreAsset } from "@openfilm/story";
 
@@ -25,6 +26,13 @@ function fail(message: string): never {
 interface BeatPlan {
   beat: StoryBeat;
   candidates: MediaAsset[];
+  coverageGroups: StoryCoverageGroupConstraintV1[];
+  mediaBalance: {
+    minImages: number;
+    maxImages: number;
+    minVideos: number;
+    maxVideos: number;
+  };
   required: Set<string>;
   selected: MediaAsset[];
   minimum: number;
@@ -32,6 +40,104 @@ interface BeatPlan {
   budget: number;
   orders: string[][];
   chronological: boolean;
+}
+
+type StoryVisualMediaKind = "image" | "video";
+
+function visualMediaKind(asset: MediaAsset): StoryVisualMediaKind | undefined {
+  if (asset.mediaType === "image") return "image";
+  if (asset.mediaType === "video" || asset.mediaType === "360-video")
+    return "video";
+  return undefined;
+}
+
+function mediaCounts(assets: readonly MediaAsset[]): {
+  images: number;
+  videos: number;
+} {
+  return assets.reduce(
+    (counts, asset) => {
+      const kind = visualMediaKind(asset);
+      if (kind === "image") counts.images++;
+      if (kind === "video") counts.videos++;
+      return counts;
+    },
+    { images: 0, videos: 0 },
+  );
+}
+
+function mediaBalanceFor(beat: StoryBeat): BeatPlan["mediaBalance"] {
+  const balance = {
+    minImages: 0,
+    maxImages: Infinity,
+    minVideos: 0,
+    maxVideos: Infinity,
+  };
+  for (const constraint of beat.constraints ?? []) {
+    if (constraint.type !== "media-balance") continue;
+    balance.minImages = Math.max(balance.minImages, constraint.minImages ?? 0);
+    balance.maxImages = Math.min(
+      balance.maxImages,
+      constraint.maxImages ?? Infinity,
+    );
+    balance.minVideos = Math.max(balance.minVideos, constraint.minVideos ?? 0);
+    balance.maxVideos = Math.min(
+      balance.maxVideos,
+      constraint.maxVideos ?? Infinity,
+    );
+  }
+  if (balance.minImages > balance.maxImages)
+    fail(`Beat "${beat.title}" has conflicting image media-balance bounds.`);
+  if (balance.minVideos > balance.maxVideos)
+    fail(`Beat "${beat.title}" has conflicting video media-balance bounds.`);
+  return balance;
+}
+
+function isWithinMediaMaximum(
+  plan: BeatPlan,
+  assets: readonly MediaAsset[],
+): boolean {
+  const counts = mediaCounts(assets);
+  return (
+    counts.images <= plan.mediaBalance.maxImages &&
+    counts.videos <= plan.mediaBalance.maxVideos
+  );
+}
+
+function mediaMaximumFailure(
+  plan: BeatPlan,
+  assets: readonly MediaAsset[],
+): string | undefined {
+  const counts = mediaCounts(assets);
+  if (counts.images > plan.mediaBalance.maxImages)
+    return `Beat "${plan.beat.title}" has selected image clips above its media maximum; preserve selected or locked choices by raising the maximum or revising the constraint.`;
+  if (counts.videos > plan.mediaBalance.maxVideos)
+    return `Beat "${plan.beat.title}" has selected video clips above its media maximum; preserve selected or locked choices by raising the maximum or revising the constraint.`;
+  return undefined;
+}
+
+function unmetCoverageCount(
+  plan: BeatPlan,
+  group: StoryCoverageGroupConstraintV1,
+): number {
+  const memberIds = new Set(group.assetIds);
+  const selectedCount = plan.selected.filter(
+    (asset) => memberIds.has(asset.id) && visualMediaKind(asset) !== undefined,
+  ).length;
+  return Math.max(0, group.minimumCount - selectedCount);
+}
+
+function mediaRequirementNeed(
+  plan: BeatPlan,
+  kind: StoryVisualMediaKind,
+): number {
+  const counts = mediaCounts(plan.selected);
+  return Math.max(
+    0,
+    kind === "image"
+      ? plan.mediaBalance.minImages - counts.images
+      : plan.mediaBalance.minVideos - counts.videos,
+  );
 }
 
 function capacity(asset: MediaAsset): number {
@@ -108,6 +214,11 @@ export function compose(
         constraint.type === "must-exclude" ? constraint.assetIds : [],
       ) ?? [],
     );
+    const coverageGroups = (beat.constraints ?? []).filter(
+      (constraint): constraint is StoryCoverageGroupConstraintV1 =>
+        constraint.type === "coverage-group",
+    );
+    const mediaBalance = mediaBalanceFor(beat);
     const required = new Set(beat.selectedAssetIds ?? []);
     const orders: string[][] = beat.selectedAssetIds?.length
       ? [beat.selectedAssetIds]
@@ -127,6 +238,7 @@ export function compose(
       ...(beat.candidateAssetIds ?? []),
       ...required,
       ...excluded,
+      ...coverageGroups.flatMap((group) => group.assetIds),
     ]) {
       if (!byId.has(id))
         fail(
@@ -183,9 +295,11 @@ export function compose(
       fail(
         `Beat "${beat.title}" needs at least ${minimumDuration.toFixed(2)}s but allows ${maximumDuration.toFixed(2)}s. Increase its maximum or remove required selections.`,
       );
-    return {
+    const plan: BeatPlan = {
       beat,
       candidates,
+      coverageGroups,
+      mediaBalance,
       required,
       selected,
       minimum: minimumDuration,
@@ -194,6 +308,9 @@ export function compose(
       orders,
       chronological,
     };
+    const maximumFailure = mediaMaximumFailure(plan, selected);
+    if (maximumFailure) fail(maximumFailure);
+    return plan;
   });
   if (new Set(story.beats.map((beat) => beat.id)).size !== story.beats.length)
     fail("Story beat IDs must be unique.");
@@ -211,6 +328,20 @@ export function compose(
       fail(
         `Locked asset "${asset.name}" has no usable duration. Inspect it or unlock it.`,
       );
+    const eligiblePlans = plans.filter((plan) =>
+      plan.candidates.some((candidate) => candidate.id === asset.id),
+    );
+    const kind = visualMediaKind(asset);
+    if (
+      kind &&
+      eligiblePlans.length > 0 &&
+      eligiblePlans.every(
+        (plan) => !isWithinMediaMaximum(plan, [...plan.selected, asset]),
+      )
+    )
+      fail(
+        `Locked ${kind} source "${asset.name}" exceeds every eligible beat's media-balance maximum. Preserve it by raising the maximum or revising the constraint.`,
+      );
   }
   const eligibility = new Map(
     locked.map((asset) => [
@@ -224,6 +355,30 @@ export function compose(
         .filter((index) => index >= 0),
     ]),
   );
+  const lockedConstraintPriority = (
+    plan: BeatPlan,
+    asset: MediaAsset,
+  ): number => {
+    const memberCount = mediaCounts(plan.selected);
+    let priority = 0;
+    for (const group of plan.coverageGroups) {
+      if (
+        group.assetIds.includes(asset.id) &&
+        unmetCoverageCount(plan, group) > 0
+      ) {
+        const alternatives = plan.candidates.filter((candidate) =>
+          group.assetIds.includes(candidate.id),
+        ).length;
+        priority += 1000 + 1 / Math.max(1, alternatives);
+      }
+    }
+    const kind = visualMediaKind(asset);
+    if (kind === "image" && memberCount.images < plan.mediaBalance.minImages)
+      priority += 100;
+    if (kind === "video" && memberCount.videos < plan.mediaBalance.minVideos)
+      priority += 100;
+    return priority;
+  };
   locked.sort(
     (a, b) =>
       eligibility.get(a.id)!.length - eligibility.get(b.id)!.length ||
@@ -241,6 +396,10 @@ export function compose(
     const eligible = [...eligibility.get(asset.id)!].sort((a, b) => {
       const left = plans[a]!,
         right = plans[b]!;
+      const priority =
+        lockedConstraintPriority(right, asset) -
+        lockedConstraintPriority(left, asset);
+      if (priority) return priority;
       return (
         Math.max(left.minimum, sumMinimum(left.selected) + minimum(asset)) -
           left.minimum -
@@ -260,6 +419,7 @@ export function compose(
       );
       if (
         nextMinimum > plan.maximum + EPSILON ||
+        !isWithinMediaMaximum(plan, [...plan.selected, asset]) ||
         plans.reduce((sum, current) => sum + current.minimum, 0) -
           oldMinimum +
           nextMinimum >
@@ -296,6 +456,8 @@ export function compose(
       (asset) =>
         !requiredOwners.has(asset.id) || requiredOwners.get(asset.id) === index,
     );
+    const maximumFailure = mediaMaximumFailure(plan, plan.selected);
+    if (maximumFailure) fail(maximumFailure);
   });
   const minimumTotal = plans.reduce((sum, plan) => sum + plan.minimum, 0);
   if (minimumTotal > maximumTotal + EPSILON)
@@ -316,48 +478,131 @@ export function compose(
     capture(a) - capture(b) ||
     a.id.localeCompare(b.id);
   plans.forEach((plan) => plan.candidates.sort(compare));
-  // Backtracking is limited to the assets needed to meet hard beat minima.
-  // Scarcity ordering avoids consuming the sole candidate for a later beat.
+  // Backtracking is limited to candidates needed for duration, coverage and media
+  // count minima. The scarcest unmet requirement is assigned first.
   let visits = 0;
+  type PendingNeed = {
+    plan: BeatPlan;
+    kind: "coverage" | "image-count" | "video-count" | "duration";
+    label: string;
+    missing: number;
+    candidates: MediaAsset[];
+  };
+  const canAdd = (plan: BeatPlan, asset: MediaAsset): boolean => {
+    if (used.has(asset.id)) return false;
+    if (!isWithinMediaMaximum(plan, [...plan.selected, asset])) return false;
+    const nextMinimum = Math.max(
+      plan.minimum,
+      sumMinimum([...plan.selected, asset]),
+    );
+    if (nextMinimum > plan.maximum + EPSILON) return false;
+    return (
+      plans.reduce(
+        (sum, current) =>
+          sum + Math.max(current.minimum, sumMinimum(current.selected)),
+        0,
+      ) -
+        Math.max(plan.minimum, sumMinimum(plan.selected)) +
+        nextMinimum <=
+      maximumTotal + EPSILON
+    );
+  };
+  const pendingNeeds = (): PendingNeed[] => {
+    const needs: PendingNeed[] = [];
+    for (const plan of plans) {
+      for (const group of plan.coverageGroups) {
+        const missing = unmetCoverageCount(plan, group);
+        if (!missing) continue;
+        const members = new Set(group.assetIds);
+        needs.push({
+          plan,
+          kind: "coverage",
+          label: `${group.kind} "${group.label}"`,
+          missing,
+          candidates: plan.candidates.filter(
+            (asset) =>
+              members.has(asset.id) && visualMediaKind(asset) !== undefined,
+          ),
+        });
+      }
+      for (const kind of ["image", "video"] as const) {
+        const missing = mediaRequirementNeed(plan, kind);
+        if (!missing) continue;
+        needs.push({
+          plan,
+          kind: kind === "image" ? "image-count" : "video-count",
+          label: kind,
+          missing,
+          candidates: plan.candidates.filter(
+            (asset) => visualMediaKind(asset) === kind,
+          ),
+        });
+      }
+      if (sumCapacity(plan.selected) + EPSILON < plan.minimum)
+        needs.push({
+          plan,
+          kind: "duration",
+          label: "duration",
+          missing: 1,
+          candidates: plan.candidates,
+        });
+    }
+    return needs
+      .map((need) => ({
+        ...need,
+        candidates: need.candidates.filter((asset) => canAdd(need.plan, asset)),
+      }))
+      .sort(
+        (a, b) =>
+          a.candidates.length - b.candidates.length ||
+          b.missing - a.missing ||
+          plans.indexOf(a.plan) - plans.indexOf(b.plan) ||
+          a.kind.localeCompare(b.kind),
+      );
+  };
   function fillMinima(): boolean {
     if (++visits > 50000)
       fail(
-        "Candidate overlap made minimum-duration selection too complex. Pin selections to individual beats or narrow their candidate lists and compose again.",
+        "Coverage and candidate overlap made constrained selection too complex. Pin selections to individual beats or narrow candidate groups and compose again.",
       );
-    const unfinished = plans.filter(
-      (plan) => sumCapacity(plan.selected) + EPSILON < plan.minimum,
-    );
-    if (!unfinished.length) return true;
-    const plan = unfinished.sort(
-      (a, b) =>
-        a.candidates.filter((asset) => !used.has(asset.id)).length -
-        b.candidates.filter((asset) => !used.has(asset.id)).length,
-    )[0]!;
-    const eligible = plan.candidates.filter(
-      (asset) =>
-        !used.has(asset.id) &&
-        sumMinimum([...plan.selected, asset]) <= plan.maximum + EPSILON &&
-        plans.reduce(
-          (sum, current) =>
-            sum + Math.max(current.minimum, sumMinimum(current.selected)),
-          0,
-        ) -
-          Math.max(plan.minimum, sumMinimum(plan.selected)) +
-          Math.max(plan.minimum, sumMinimum([...plan.selected, asset])) <=
-          maximumTotal + EPSILON,
-    );
-    if (sumCapacity([...plan.selected, ...eligible]) + EPSILON < plan.minimum)
+    const need = pendingNeeds()[0];
+    if (!need) return true;
+    if (need.candidates.length < need.missing) return false;
+    if (
+      need.kind === "duration" &&
+      sumCapacity([...need.plan.selected, ...need.candidates]) + EPSILON <
+        need.plan.minimum
+    )
       return false;
-    for (const candidate of eligible) {
-      plan.selected.push(candidate);
+    for (const candidate of need.candidates) {
+      need.plan.selected.push(candidate);
       used.add(candidate.id);
       if (fillMinima()) return true;
-      plan.selected.pop();
+      need.plan.selected.pop();
       used.delete(candidate.id);
     }
     return false;
   }
   if (!fillMinima()) {
+    for (const plan of plans) {
+      for (const group of plan.coverageGroups) {
+        const missing = unmetCoverageCount(plan, group);
+        if (missing)
+          fail(
+            `Coverage for ${group.kind} "${group.label}" needs ${missing} more visual clip(s) in beat "${plan.beat.title}". Add eligible candidates, reduce the minimum, or resolve locks and exclusions.`,
+          );
+      }
+      const images = mediaRequirementNeed(plan, "image");
+      if (images)
+        fail(
+          `Beat "${plan.beat.title}" needs ${images} more image clip(s) for its media-balance minimum. Add eligible photos or reduce the minimum.`,
+        );
+      const videos = mediaRequirementNeed(plan, "video");
+      if (videos)
+        fail(
+          `Beat "${plan.beat.title}" needs ${videos} more video clip(s) for its media-balance minimum. Add eligible videos or reduce the minimum.`,
+        );
+    }
     const detail = plans
       .filter((plan) => sumCapacity(plan.selected) < plan.minimum)
       .map((plan) => `"${plan.beat.title}" (${plan.minimum}s minimum)`)
@@ -426,6 +671,7 @@ export function compose(
     for (const candidate of plan.candidates) {
       if (used.has(candidate.id)) continue;
       if (selectedPreference >= plan.budget - EPSILON) break;
+      if (!isWithinMediaMaximum(plan, [...plan.selected, candidate])) continue;
       if (selectedMinimum + minimum(candidate) > plan.budget + EPSILON)
         continue;
       plan.selected.push(candidate);

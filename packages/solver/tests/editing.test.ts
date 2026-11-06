@@ -664,6 +664,234 @@ describe("scoped automatic editing", () => {
       expect(current.composition.duration).toBeCloseTo(12);
     }
   });
+  it("more-video regeneration keeps explicit event coverage available", () => {
+    const before = document();
+    before.story.beats[0]!.targetDuration = 8;
+    before.story.beats[0]!.constraints = [
+      {
+        type: "coverage-group",
+        version: 1,
+        kind: "event",
+        groupId: "event:ceremony",
+        label: "Ceremony",
+        assetIds: ["photo"],
+        minimumCount: 1,
+      },
+    ];
+
+    const current = applyTimelineCommand(
+      before,
+      assets,
+      {
+        type: "regenerate-beat",
+        beatId: "intro",
+        mode: "more-video",
+      },
+      {
+        origin: "automatic",
+        timebase: {
+          version: 1,
+          rateNumerator: 30,
+          rateDenominator: 1,
+          dropFrame: false,
+        },
+      },
+    );
+    const selected = clips(current).filter((item) => item.beatId === "intro");
+
+    expect(selected.map((item) => item.assetId)).toContain("photo");
+    expect(selected.some((item) => item.assetId === "video")).toBe(true);
+  });
+  it("counts a protected event clip toward coverage without changing the pinned clip", () => {
+    const before = document();
+    before.story.beats[0]!.targetDuration = 8;
+    before.story.beats[0]!.constraints = [
+      {
+        type: "coverage-group",
+        version: 1,
+        kind: "event",
+        groupId: "event:ceremony",
+        label: "Ceremony",
+        assetIds: ["photo"],
+        minimumCount: 1,
+      },
+      {
+        type: "media-balance",
+        version: 1,
+        minImages: 1,
+        minVideos: 1,
+      },
+    ];
+    clip(before, "photo-clip").userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["inOutRange", "timing"],
+    };
+    const pinned = withoutStart(clip(before, "photo-clip"));
+
+    const current = applyTimelineCommand(
+      before,
+      assets,
+      {
+        type: "regenerate-beat",
+        beatId: "intro",
+        mode: "more-video",
+      },
+      {
+        origin: "automatic",
+        timebase: {
+          version: 1,
+          rateNumerator: 30,
+          rateDenominator: 1,
+          dropFrame: false,
+        },
+      },
+    );
+    const selected = clips(current).filter((item) => item.beatId === "intro");
+
+    expect(withoutStart(clip(current, "photo-clip"))).toEqual(pinned);
+    expect(selected.some((item) => item.assetId === "video")).toBe(true);
+  });
+  it("counts every unique source in a pinned paired photo toward image bounds", () => {
+    const before = document();
+    before.story.beats[0]!.targetDuration = 8;
+    before.story.beats[0]!.constraints = [
+      {
+        type: "media-balance",
+        version: 1,
+        minImages: 2,
+        maxImages: 2,
+        minVideos: 1,
+        maxVideos: 1,
+      },
+    ];
+    clip(before, "photo-clip").userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["inOutRange", "timing"],
+    };
+    clip(before, "photo-clip").layout = {
+      version: 1,
+      preset: "diptych",
+      secondary: { assetId: "alternate" },
+    };
+
+    const current = applyTimelineCommand(
+      before,
+      assets,
+      {
+        type: "regenerate-beat",
+        beatId: "intro",
+        mode: "more-video",
+      },
+      {
+        origin: "automatic",
+        timebase: {
+          version: 1,
+          rateNumerator: 30,
+          rateDenominator: 1,
+          dropFrame: false,
+        },
+      },
+    );
+    const selected = clips(current).filter((item) => item.beatId === "intro");
+    const selectedIds = new Set(
+      selected.flatMap((item) => [
+        item.assetId,
+        ...(item.layout?.secondary ? [item.layout.secondary.assetId] : []),
+      ]),
+    );
+
+    expect(selectedIds.has("photo")).toBe(true);
+    expect(selectedIds.has("alternate")).toBe(true);
+    const selectedAssets = [...selectedIds].map((id) =>
+      assets.find((source) => source.id === id)!,
+    );
+    expect(
+      selectedAssets.filter((source) => source.mediaType === "image"),
+    ).toHaveLength(2);
+    expect(
+      selectedAssets.filter(
+        (source) =>
+          source.mediaType === "video" || source.mediaType === "360-video",
+      ),
+    ).toHaveLength(1);
+  });
+  it("does not remove a duplicate that is the only source meeting event coverage", () => {
+    const before = document();
+    before.story.beats[0]!.constraints = [
+      {
+        type: "coverage-group",
+        version: 1,
+        kind: "event",
+        groupId: "event:ceremony",
+        label: "Ceremony",
+        assetIds: ["video"],
+        minimumCount: 1,
+      },
+    ];
+    const duplicateAssets = assets.map((source) =>
+      ["photo", "video"].includes(source.id)
+        ? { ...source, perceptualHash: "same-frame" }
+        : source,
+    );
+
+    const current = applyTimelineCommand(before, duplicateAssets, {
+      type: "regenerate-beat",
+      beatId: "intro",
+      mode: "remove-repetition",
+    });
+
+    expect(clips(current).some((item) => item.assetId === "video")).toBe(true);
+  });
+  it("does not replace an event member with a similar but ungrouped photo", () => {
+    const before = document();
+    before.story.beats[0]!.constraints = [
+      {
+        type: "coverage-group",
+        version: 1,
+        kind: "event",
+        groupId: "event:ceremony",
+        label: "Ceremony",
+        assetIds: ["photo"],
+        minimumCount: 1,
+      },
+    ];
+    const similarAssets = assets.map((source) =>
+      source.id === "photo" ? { ...source, tags: ["beach"] } : source,
+    );
+
+    const current = applyTimelineCommand(before, similarAssets, {
+      type: "regenerate-beat",
+      beatId: "intro",
+      mode: "replace-similar",
+    });
+
+    expect(clip(current, "photo-clip").assetId).toBe("photo");
+  });
+  it("does not shorten by deleting a clip required for event coverage", () => {
+    const before = document();
+    before.story.beats[0]!.targetDuration = 1;
+    before.story.beats[0]!.constraints = [
+      {
+        type: "coverage-group",
+        version: 1,
+        kind: "event",
+        groupId: "event:ceremony",
+        label: "Ceremony",
+        assetIds: ["video"],
+        minimumCount: 1,
+      },
+    ];
+
+    const current = applyTimelineCommand(before, assets, {
+      type: "regenerate-beat",
+      beatId: "intro",
+      mode: "shorten",
+    });
+
+    expect(clips(current).some((item) => item.assetId === "video")).toBe(true);
+  });
   it("preserves must-include and selected source edits and avoids assets already used by another beat", () => {
     const before = document();
     before.story.beats[0]!.selectedAssetIds = ["video"];

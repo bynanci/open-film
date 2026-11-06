@@ -969,6 +969,29 @@ export default {
         cycleWarning:
           "Cannot create this relationship because it creates a circular dependency.",
       },
+      constraints: {
+        title: "Shot constraints",
+        description:
+          "Set explicit event/person coverage and photo/video counts. Groups use only assets linked to this beat; OpenFilm does not infer identities.",
+        groupKind: "Coverage type",
+        event: "Event",
+        person: "Person",
+        groupLabel: "Group name",
+        groupLabelPlaceholder: "e.g. Ceremony or Host",
+        minimumCoverage: "Minimum sources to include",
+        addGroup: "Add coverage group",
+        connectAssetsFirst: "Connect visual assets to this beat first.",
+        connectedAssets: "Using {count} connected visual assets.",
+        minimumOfAssets: "Include at least {minimum} of {count} linked sources",
+        removeGroup: "Remove coverage group {label}",
+        mediaBalance: "Visual source counts",
+        minImages: "Minimum photos",
+        maxImages: "Maximum photos",
+        minVideos: "Minimum videos",
+        maxVideos: "Maximum videos",
+        minimumAboveMaximum: "A minimum cannot exceed its maximum.",
+        countMustBeWhole: "Media counts must be whole numbers at least zero.",
+      },
       storyboard: {
         reviewHint:
           "Review the images and intent, then locate each beat in Edit.",

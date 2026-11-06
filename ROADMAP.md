@@ -66,15 +66,18 @@ GraphicScenes remain the foundation. See the
 
 ### Make the everyday editing workflow dependable
 
-Build on the completed Professional Cut Desk Phase 1A–1C implementations. Finish
-the remaining Phase 2–4 editing operations, track/audio controls and finishing
-interactions while preserving one saved Composition across General and Expert
-modes, predictable selection, user pins, history and recovery.
+Professional Cut Desk Phases 1A–1C, Phase 2 editing operations and Phase 3 track
+controls have merged implementations. Phase 4A scopes/comparison and Phase 4C
+shortcut profiles have also merged. Remaining Phase 4 work is split into
+deterministic animation (4B), long-form workstation evidence (4D), contract-led
+compound editing (4E) and evidence-led multicamera (4F). Preserve one saved
+Composition across General and Expert modes, predictable selection, user pins,
+history and recovery.
 
 Source/Record transport, sequence waveforms, independent audio timing, precision
-gestures and responsive monitor layouts already have implementations. Remaining
-work should extend those features rather than introduce a second timeline. See
-the [Cut Desk guide](docs/professional-cut-desk.md),
+gestures, responsive monitor layouts, source scopes and shortcut profiles
+already have implementations. Remaining work should extend those features
+rather than introduce a second timeline. See the [Cut Desk guide](docs/professional-cut-desk.md),
 [precision-gesture validation](docs/validation-cut-desk-phase-1b.md) and
 [responsive-workspace validation](docs/validation-cut-desk-phase-1c.md).
 
@@ -93,11 +96,14 @@ A-roll/B-roll coverage and transcript ripple services now have merged
 implementations. Their guides and validation records describe the delivered
 scope; broader workstation and editorial verification still matters.
 
-Further work should make those decisions useful in complete editing workflows,
-cover remaining event/person and media-balance constraints, explain the evidence
-behind suggestions and preserve the user's explicit choices. See the
-[implemented foundations and open tasks](TASKS.md) for current ownership and
-evidence.
+Explicit per-beat event/person coverage and photo/video balance constraints are
+now available from the Story Graph Inspector and preserved through StoryPlan
+preview and acceptance. Solver hard constraints protect selected media, locks,
+and User Pins; infeasible plans fail without rewriting them. See the
+[Story Coverage validation](docs/validation-story-coverage.md) and
+[implemented foundations and open tasks](TASKS.md) for evidence and limits.
+Further work should explain the evidence behind suggestions and continue
+professional editorial review without inferring identity or overriding choices.
 
 ### Finish distribution and real-world verification
 
@@ -110,6 +116,11 @@ The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding
 evidence. CI results do not replace those observations.
+
+The current native-security candidate patches Tokio to `1.53.3` for
+`RUSTSEC-2026-0386`; GLib `RUSTSEC-2024-0429`, the unmaintained proc-macro
+notice, reviewed runtime inputs and all workstation gates remain open. See the
+[candidate audit evidence](docs/validation-native-installer.md#2026-11-06-tokio-patch-candidate).
 
 ## Foundations available on main
 
@@ -136,8 +147,9 @@ release date:
 
 - Broader source and provider integrations, including additional local analysis
   implementations.
-- Archive-scale analysis and background scheduling, plus measured Desktop
-  workspace code splitting. Chronological cursor paging, literal substring
+- Archive-scale analysis and background scheduling, plus native cold-start
+  measurements for the existing Desktop locale/workspace code splitting.
+  Chronological cursor paging, literal substring
   search indexing, and lazy Story Template / PhotoDepth selectors are implemented;
   see the [Catalog scale validation](docs/validation-catalog-scale-benchmark.md)
   and [Catalog search validation](docs/validation-catalog-search-index.md).

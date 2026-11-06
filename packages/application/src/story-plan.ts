@@ -161,18 +161,24 @@ export class StoryPlanService {
     );
 
     // Build draft Story for preview without mutating the project
-    const previewBeats: StoryBeat[] = plan.scenes.map((scene) => ({
-      id: scene.beatId || scene.sceneId,
-      title: scene.title,
-      intent: scene.intent,
-      targetDuration: scene.targetDuration,
-      candidateAssetIds: scene.assets.map((a) => a.assetId),
-      selectedAssetIds: scene.assets.map((a) => a.assetId),
-      script: {
-        narration: scene.narration || "",
-        visualDirection: scene.visualDirection,
-      },
-    }));
+    const previewBeats: StoryBeat[] = plan.scenes.map((scene) => {
+      const sourceBeat = story.beats.find((beat) => beat.id === scene.beatId);
+      return {
+        id: scene.beatId || scene.sceneId,
+        title: scene.title,
+        intent: scene.intent,
+        targetDuration: scene.targetDuration,
+        candidateAssetIds: scene.assets.map((a) => a.assetId),
+        selectedAssetIds: scene.assets.map((a) => a.assetId),
+        ...(sourceBeat?.constraints
+          ? { constraints: structuredClone(sourceBeat.constraints) }
+          : {}),
+        script: {
+          narration: scene.narration || "",
+          visualDirection: scene.visualDirection,
+        },
+      };
+    });
 
     const previewStory: Story = {
       id: `preview-story-${plan.id}`,
@@ -459,6 +465,9 @@ export class StoryPlanService {
     const newBeats: StoryBeat[] = plan.scenes.map((scene) => {
       const newBeatId = createId("beat");
       sceneToBeatId[scene.sceneId] = newBeatId;
+      const sourceBeat = baseStory.beats.find(
+        (beat) => beat.id === scene.beatId,
+      );
       return {
         id: newBeatId,
         title: scene.title,
@@ -466,6 +475,9 @@ export class StoryPlanService {
         targetDuration: scene.targetDuration,
         candidateAssetIds: scene.assets.map((a) => a.assetId),
         selectedAssetIds: scene.assets.map((a) => a.assetId),
+        ...(sourceBeat?.constraints
+          ? { constraints: structuredClone(sourceBeat.constraints) }
+          : {}),
         script: {
           narration: scene.narration || "",
           visualDirection: scene.visualDirection,

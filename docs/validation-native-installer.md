@@ -551,6 +551,44 @@ The audit reports `vulnerabilities.found: false` and zero entries in its vulnera
 
 Using isolated Rust/Cargo 1.99.0 tooling, locked reverse feature trees were inspected for `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` and `aarch64-apple-darwin`; the current lockfile SHA-256 remains `a6d4ca550fcf3db4b851405d650e8d7d8aa74de5e4f160f2eb950ef7cec66142`. These observations improve on the earlier direct-source grep, but do not establish a binary call graph. In c068 main, the GLib code remains unpatched; its gate still requires compatible source remediation or full source-aware control evidence and independent review. Keep all findings visible and re-audit any later candidate against a fresh database. Do not infer a release pass from the standard audit's exit 0.
 
+### 2026-11-06 current-main audit refresh
+
+The exact `main` source inspected was `b6304914a7eb351d8e5d0a0a11b41e163713e20b`.
+With isolated Rust/Cargo 1.99.0 tooling and `cargo-audit 0.22.2`, a new
+`cargo audit --json` on `apps/desktop/src-tauri/Cargo.lock` completed at
+2026-11-06 09:45:07 UTC. The lock SHA-256 is
+`a6d4ca550fcf3db4b851405d650e8d7d8aa74de5e4f160f2eb950ef7cec66142`, unchanged
+from the prior source-aware review; the Tauri manifest and toolchain declaration
+are unchanged from c068 as well. The scan examined 431 locked packages and used
+advisory database commit `26fd2d43f7280a1fb925a3743ec463017afe7119` (1,409
+advisories; last updated `2026-11-05T09:50:49+01:00`). The raw JSON is retained
+at [`rustsec-main-b630491-2026-11-06.json`](https://github.com/bynanci/open-film/blob/main/docs/evidence/native-installer/rustsec-main-b630491-2026-11-06.json),
+SHA-256 `1e7c14faa21b79ab4b72fa0e3f7c0a8acbf6e61e828906c1a544b40845f823dc`.
+
+The report has zero vulnerabilities, two `unsound` advisories (GLib and Tokio)
+and one `unmaintained` notice (`proc-macro-error`). Its scanner settings classify
+`unsound` and `unmaintained` as informational; the ordinary command therefore
+exited 0. This confirms the current lockfile warnings but does not make them
+patched, unreachable by binary proof, or release-approved. The GLib
+`VariantStrIter` source-aware admission gate remains open. No dependency update,
+native build, source reproduction or workstation observation is claimed here.
+
+### 2026-11-06 repeat audit after advisory database update
+
+A second scan of the same `main` candidate `b6304914a7eb351d8e5d0a0a11b41e163713e20b` used isolated Rust/Cargo 1.99.0 tooling and `cargo-audit 0.22.2`. `cargo audit --json` completed at 2026-11-06 16:03:55 UTC against `apps/desktop/src-tauri/Cargo.lock`. The 431-package lockfile remains at SHA-256 `a6d4ca550fcf3db4b851405d650e8d7d8aa74de5e4f160f2eb950ef7cec66142`. The refreshed advisory database is commit `309392b18f6b17022f82c701f300433126901068` (1,422 advisories; last updated `2026-11-06T16:34:32+01:00`). The raw report is retained at [`rustsec-main-b630491-2026-11-06T1603Z.json`](https://github.com/bynanci/open-film/blob/main/docs/evidence/native-installer/rustsec-main-b630491-2026-11-06T1603Z.json), SHA-256 `00f4182c10f7a51abf1b1a47f73b01e309cb95f71a6691d94f86ccfaf7b57eec`.
+
+This repeat scan again found zero vulnerabilities, two `unsound` notices (GLib `RUSTSEC-2024-0429` and Tokio `RUSTSEC-2026-0386`) and one `unmaintained` notice (`proc-macro-error` `RUSTSEC-2024-0370`). The configured policy treats those warning classes as informational, so the command exited 0; the warnings remain open and are not a security or release pass. The lockfile, target graphs, and dependency source were not changed by this evidence refresh. The previously documented GLib source-aware gate and installer/workstation gates remain open.
+
+### 2026-11-06 Tokio patch candidate
+
+PR #120 is rebased on current main `9b33249c3bd60872072c55fac4efac43d6d6e13b`; its Rust dependency source candidate is commit `9bd00b503cbfe7975635ed387ff98904c5fa08d1`. Its only Rust dependency change remains the Tokio package entry in `apps/desktop/src-tauri/Cargo.lock`: `1.53.2` → `1.53.3`, the patched version listed by `RUSTSEC-2026-0386`. The lockfile SHA-256 is `2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698`; Tokio `1.53.3` registry checksum is `ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e`. No unrelated lockfile versions were changed.
+
+An independent re-audit of source candidate `9bd00b503cbfe7975635ed387ff98904c5fa08d1` at 2026-11-06 21:27 UTC using `cargo audit --file apps/desktop/src-tauri/Cargo.lock --json` returned the same result against advisory database `309392b18f6b17022f82c701f300433126901068` (1,422 advisories). It examined 431 packages, reported zero vulnerabilities and no Tokio warning, while retaining GLib `RUSTSEC-2024-0429` and unmaintained `proc-macro-error` `RUSTSEC-2024-0370`. The raw JSON is byte-identical, SHA-256 `37721d09476c72f4e2adaed62f73a7f9ef84849d43918cb858520e64bafdc5fa`. The scanner classifies the remaining notices as informational and exits 0; this does not close the remaining security or release gates.
+
+On the rebased head, `cargo tree --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --target x86_64-unknown-linux-gnu -i tokio` resolves `tokio v1.53.3` through Tauri; `cargo metadata --locked --offline --manifest-path apps/desktop/src-tauri/Cargo.toml --no-deps --format-version 1` and `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check` passed. No first-party Rust `AsyncFd` use was found. The local host has no `glib-2.0.pc`, so native compilation/tests are not available here. Fresh hosted checks and Windows/macOS workstation acceptance remain required; the candidate is unmerged and not admitted for release.
+
+The local `pnpm test:native` attempt passed `cargo fmt --check`, then stopped during Clippy dependency compilation because this Linux host lacks `glib-2.0 >= 2.70` in pkg-config. The chained Rust tests were not reached. This is a host prerequisite failure, not a native-code pass or failure; the exact candidate still needs the hosted native-shell gate.
+
 ### Separate D7B source-repair experiment (not admitted)
 
 An isolated source-repair experiment at `423ccd3af308fe855b0da7f9ab9d0e1e78be8b2a` was audited on 2026-11-04. It is not based on current main `fcc00131c2f2d90d9dd20952dad192a65cceaa31`: it is 219 commits behind and 5 commits ahead, so it is not a release candidate and must be reconciled onto current main before further candidate validation. The reviewed GLib source verifier passed for 121 files, and locked Linux metadata/closure verification passed for 431 dependencies with the source patch and Tokio 1.53.3. The candidate lock SHA-256 is `c0f457e0ab610c0db6c5d4eddc5997f4de3a91e2c832587c956d337b5e7c8161`.

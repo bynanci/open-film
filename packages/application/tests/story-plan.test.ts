@@ -88,6 +88,101 @@ describe("StoryPlanService Application Integration", () => {
     expect(app.project.stories[0]?.title).toBe("Original Cut");
   });
 
+  it("applies authored coverage and media-balance constraints in the Story Plan preview", async () => {
+    const originalStory: Story = {
+      id: "story-plan-constraints",
+      title: "Constraint Preview",
+      targetDuration: 6,
+      maxDuration: 6,
+      beats: [
+        {
+          id: "beat-constraint",
+          title: "Gathering",
+          selectedAssetIds: ["photo-a"],
+          candidateAssetIds: ["photo-a", "photo-b"],
+          targetDuration: 6,
+          constraints: [
+            {
+              type: "coverage-group",
+              version: 1,
+              kind: "event",
+              groupId: "event:gathering",
+              label: "Gathering",
+              assetIds: ["photo-a"],
+              minimumCount: 1,
+            },
+            {
+              type: "media-balance",
+              version: 1,
+              minImages: 1,
+              maxImages: 1,
+            },
+          ],
+        },
+      ],
+    };
+    app.project = { ...app.project, stories: [originalStory] };
+
+    const { compositionPreview } = app.storyPlan.previewPlan(originalStory.id);
+
+    expect(
+      compositionPreview.tracks
+        .flatMap((track) => track.clips)
+        .map((clip) => clip.assetId),
+    ).toContain("photo-a");
+
+    app.project.stories[0]!.beats[0]!.constraints![1] = {
+      type: "media-balance",
+      version: 1,
+      maxImages: 0,
+    };
+    expect(() => app.storyPlan.previewPlan(originalStory.id)).toThrow(
+      /selected image clips above its media maximum/i,
+    );
+  });
+
+  it("carries source-beat constraints into the accepted rough cut", async () => {
+    const sourceConstraints = [
+      {
+        type: "coverage-group" as const,
+        version: 1 as const,
+        kind: "person" as const,
+        groupId: "person:host",
+        label: "Host",
+        assetIds: ["photo-a"],
+        minimumCount: 1,
+      },
+      {
+        type: "media-balance" as const,
+        version: 1 as const,
+        minImages: 1,
+        maxImages: 1,
+      },
+    ];
+    const originalStory: Story = {
+      id: "story-plan-accept-constraints",
+      title: "Constraint Acceptance",
+      targetDuration: 6,
+      maxDuration: 6,
+      beats: [
+        {
+          id: "beat-constraint",
+          title: "Gathering",
+          selectedAssetIds: ["photo-a"],
+          candidateAssetIds: ["photo-a"],
+          targetDuration: 6,
+          constraints: sourceConstraints,
+        },
+      ],
+    };
+    app.project = { ...app.project, stories: [originalStory] };
+
+    const { plan } = app.storyPlan.previewPlan(originalStory.id);
+    const accepted = app.storyPlan.acceptPlan(originalStory.id, plan);
+
+    expect(accepted.story.beats[0]!.constraints).toEqual(sourceConstraints);
+  });
+
   it("acceptPlan creates a new rough cut (新試剪) while preserving the original manual edit untouched", async () => {
     const originalStory: Story = {
       id: "orig-story-manual",

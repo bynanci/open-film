@@ -1,17 +1,19 @@
 # Cut Desk Phase 4C shortcut profiles — validation
 
-- Date: 2026-11-05
-- Feature branch: `codex/cut-desk-phase-4c-shortcut-profiles`
-- Review base: `main` at `92ccf361642f060466b269dc2fcf3ed4d77102b3` (PR #112 merged)
+- Feature merged: 2026-11-05 in [PR #113](https://github.com/bynanci/open-film/pull/113),
+  merge commit [`1bafb5cd4532ce9f9a171499abc8631e4863d1ee`](https://github.com/bynanci/open-film/commit/1bafb5cd4532ce9f9a171499abc8631e4863d1ee).
+- Current integration evidence: PR #119, based on main
+  [`b6304914a7eb351d8e5d0a0a11b41e163713e20b`](https://github.com/bynanci/open-film/commit/b6304914a7eb351d8e5d0a0a11b41e163713e20b).
 
-Phase 4C is isolated from the original mixed worktree and contains only the
-shortcut-profile feature. PR #113 now targets `main`; its diff contains only
-Phase 4C after PR #112 merged as `92ccf36`.
-
-The previous #112 browser shard 4 run hit its 45-minute job limit while
-installing Linux media packages, so the required-lanes check failed because
-that shard was cancelled. The second run exposed an outdated compare-control
-count, fixed in #112 commit `b3f36f6` before the current run.
+The PR #113 Verify run
+([run 42049843903](https://github.com/bynanci/open-film/actions/runs/42049843903))
+passed fast-contract, all four browser shards, heavy-media, native-shell and
+docs checks. Its three-platform Render QA
+([run 42049843580](https://github.com/bynanci/open-film/actions/runs/42049843580))
+and Windows FFmpeg 9 check
+([run 42049843761](https://github.com/bynanci/open-film/actions/runs/42049843761))
+also passed. The later full PR #119 Verify run on the current main base passed
+as well (run 42230170897, linked in the Phase 4A record).
 
 ## Delivered scope
 
@@ -35,28 +37,13 @@ count, fixed in #112 commit `b3f36f6` before the current run.
 - `pnpm test:docs-i18n` — README locales 10; English reference mirrors 160.
 - Targeted ESLint — passed.
 
-## Browser check status
+## Browser and platform status
 
-The profile E2E did not reach its shortcut assertions in two current-base local
-runs. The first run timed out while the welcome screen still showed
-“Opening workspace”; trace data showed successful `/api/workspace` and
-`/api/project` responses, and the welcome action became enabled at the 15-second
-click timeout boundary. A retry timed out while generating the shared
-`professionalCutDeskFixture` in the `beforeAll` hook. Neither attempt reached
-the shortcut assertions, and the cause is unconfirmed; neither is passing
-evidence for this base. The same profile scenario passed once before rebasing
-onto PR #112's final test-host fix. The PR's GitHub checks must provide the
-clean-runner browser validation.
-
-The #113 browser run passed shards 1, 3, and 4. Shard 2 exposed a fixture
-boundary error: values declared in the Node test module are not captured by
-`page.evaluate`. The fixture now passes the default profile and action IDs as
-serializable arguments and rebuilds the pure production resolver from its
-source, with the scope helper supplied in the browser context. Review also
-found letter events using nonstandard `code` values; those now use `KeyJ`-style
-codes. The corrected fixture needs a fresh CI run. A direct
-Windows run is blocked while esbuild resolves Vue's internal packages through
-the local `.pnp.cjs`.
+The PR #113 hosted browser suite passed all four shards after the fixture
+corrections. Earlier local runs that timed out before reaching the shortcut
+assertions are not counted as passing evidence. The corrected fixture passes
+serializable profile data into `page.evaluate` and uses standard `KeyboardEvent`
+codes such as `KeyJ`.
 
 ## Remaining verification
 

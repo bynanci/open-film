@@ -57,6 +57,7 @@ import {
   type MediaAsset,
   type Story,
   type StoryBeat,
+  type StoryConstraint,
   type Track,
   type FilmLook,
   type CaptionCue,
@@ -486,6 +487,82 @@ function clipAssetIds(clip: Clip): string[] {
     clip.assetId,
     ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
   ];
+}
+function beatConstraintDeficits(
+  beat: StoryBeat,
+  assetIds: Iterable<string>,
+  assets: readonly MediaAsset[],
+): Map<string, number> {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const visuals = new Set(
+    [...assetIds].filter((id) => {
+      const type = byId.get(id)?.mediaType;
+      return type === "image" || type === "video" || type === "360-video";
+    }),
+  );
+  const counts = [...visuals].reduce(
+    (result, id) => {
+      const type = byId.get(id)?.mediaType;
+      if (type === "image") result.images++;
+      if (type === "video" || type === "360-video") result.videos++;
+      return result;
+    },
+    { images: 0, videos: 0 },
+  );
+  const deficits = new Map<string, number>();
+  beat.constraints?.forEach((constraint, index) => {
+    if (constraint.type === "coverage-group") {
+      const available = constraint.assetIds.filter((id) =>
+        visuals.has(id),
+      ).length;
+      deficits.set(
+        `coverage:${index}`,
+        Math.max(0, constraint.minimumCount - available),
+      );
+    } else if (constraint.type === "media-balance") {
+      if (constraint.minImages !== undefined)
+        deficits.set(
+          `media:${index}:minImages`,
+          Math.max(0, constraint.minImages - counts.images),
+        );
+      if (constraint.maxImages !== undefined)
+        deficits.set(
+          `media:${index}:maxImages`,
+          Math.max(0, counts.images - constraint.maxImages),
+        );
+      if (constraint.minVideos !== undefined)
+        deficits.set(
+          `media:${index}:minVideos`,
+          Math.max(0, constraint.minVideos - counts.videos),
+        );
+      if (constraint.maxVideos !== undefined)
+        deficits.set(
+          `media:${index}:maxVideos`,
+          Math.max(0, counts.videos - constraint.maxVideos),
+        );
+    }
+  });
+  return deficits;
+}
+function preservesBeatConstraints(
+  beat: StoryBeat,
+  beforeAssetIds: Iterable<string>,
+  afterAssetIds: Iterable<string>,
+  assets: readonly MediaAsset[],
+): boolean {
+  const before = beatConstraintDeficits(beat, beforeAssetIds, assets);
+  const after = beatConstraintDeficits(beat, afterAssetIds, assets);
+  return [...after].every(
+    ([key, deficit]) => deficit <= (before.get(key) ?? 0),
+  );
+}
+function beatSourceAssetIds(
+  document: EditorDocument,
+  beatId: string,
+): string[] {
+  return allClips(document)
+    .filter((clip) => clip.beatId === beatId)
+    .flatMap(clipAssetIds);
 }
 export function findClip(
   document: EditorDocument,
@@ -3167,6 +3244,11 @@ function shorteningPlan(
       a.id.localeCompare(b.id),
   );
   function offer(command: TimelineCommand, reason: string): boolean {
+    const editedClip =
+      "clipId" in command ? findClip(current, command.clipId).clip : undefined;
+    const editedBeat = editedClip?.beatId
+      ? current.story.beats.find((beat) => beat.id === editedClip.beatId)
+      : undefined;
     let next: EditorDocument;
     try {
       next = applyTimelineCommand(current, assets, command, {
@@ -3182,6 +3264,16 @@ function shorteningPlan(
         return false;
       throw error;
     }
+    if (
+      editedBeat &&
+      !preservesBeatConstraints(
+        editedBeat,
+        beatSourceAssetIds(current, editedBeat.id),
+        beatSourceAssetIds(next, editedBeat.id),
+        assets,
+      )
+    )
+      return false;
     const secondsSaved =
       current.composition.duration - next.composition.duration;
     if (secondsSaved < -EPSILON) return false;
@@ -3351,9 +3443,24 @@ function regenerate(
         retained.some((other) => sameContent(asset, other)) &&
         beatLength(document, beatId) - clip.timelineDuration >=
           (beat.minDuration ?? 0) - EPSILON
-      )
-        remove(document, findClip(document, clip.id).clip, assets);
-      else retained.push(asset);
+      ) {
+        const remainingIds = allClips(document)
+          .filter(
+            (candidate) =>
+              candidate.beatId === beatId && candidate.id !== clip.id,
+          )
+          .flatMap(clipAssetIds);
+        if (
+          preservesBeatConstraints(
+            beat,
+            beatSourceAssetIds(document, beatId),
+            remainingIds,
+            assets,
+          )
+        )
+          remove(document, findClip(document, clip.id).clip, assets);
+        else retained.push(asset);
+      } else retained.push(asset);
     }
     return document;
   }
@@ -3376,9 +3483,26 @@ function regenerate(
           scoreAsset(b).score - scoreAsset(a).score ||
           a.id.localeCompare(b.id),
       );
-      const candidate = candidates[0];
-      if (!candidate || similarity(candidate) <= 0) continue;
       const clip = findClip(document, originalClip.id).clip;
+      const beforeAssetIds = beatSourceAssetIds(document, beatId);
+      const candidate = candidates.find((possible) => {
+        if (similarity(possible) <= 0) return false;
+        const afterAssetIds = allClips(document)
+          .filter(
+            (current) => current.beatId === beatId && current.id !== clip.id,
+          )
+          .flatMap(clipAssetIds);
+        afterAssetIds.push(possible.id);
+        if (clip.layout?.secondary)
+          afterAssetIds.push(clip.layout.secondary.assetId);
+        return preservesBeatConstraints(
+          beat,
+          beforeAssetIds,
+          afterAssetIds,
+          assets,
+        );
+      });
+      if (!candidate) continue;
       const afterLength = Math.min(
         clip.timelineDuration,
         sourceDuration(candidate) / (clip.transform?.speed ?? 1),
@@ -3416,15 +3540,119 @@ function regenerate(
               asset.mediaType === "video" || asset.mediaType === "360-video",
           )
         : pool;
+  const coverageAssetIds = new Set(
+    beat.constraints?.flatMap((constraint) =>
+      constraint.type === "coverage-group" ? constraint.assetIds : [],
+    ) ?? [],
+  );
   const candidates = preferred.length
     ? [
         ...new Map(
-          [...preferred, ...pool.filter((asset) => required.has(asset.id))].map(
-            (asset) => [asset.id, asset],
-          ),
+          [
+            ...preferred,
+            ...pool.filter(
+              (asset) =>
+                required.has(asset.id) || coverageAssetIds.has(asset.id),
+            ),
+          ].map((asset) => [asset.id, asset]),
         ).values(),
       ]
     : pool;
+  const protectedAssetIds = new Set(
+    protectedClips.flatMap((clip) => clipAssetIds(clip)),
+  );
+  const protectedVisualCounts = [...protectedAssetIds].reduce(
+    (counts, assetId) => {
+      const source = findAsset(assets, assetId);
+      if (source.mediaType === "image") counts.images++;
+      if (source.mediaType === "video" || source.mediaType === "360-video")
+        counts.videos++;
+      return counts;
+    },
+    { images: 0, videos: 0 },
+  );
+  const regenerationConstraints = beat.constraints?.flatMap(
+    (constraint): StoryConstraint[] => {
+      if (constraint.type === "coverage-group") {
+        const protectedCount = constraint.assetIds.filter((id) =>
+          protectedAssetIds.has(id),
+        ).length;
+        const minimumCount = Math.max(
+          0,
+          constraint.minimumCount - protectedCount,
+        );
+        if (!minimumCount) return [];
+        return [
+          {
+            ...constraint,
+            assetIds: constraint.assetIds.filter((id) =>
+              candidates.some((asset) => asset.id === id),
+            ),
+            minimumCount,
+          },
+        ];
+      }
+      if (constraint.type === "media-balance") {
+        if (
+          constraint.maxImages !== undefined &&
+          protectedVisualCounts.images > constraint.maxImages
+        )
+          fail(
+            "Locked and user-pinned image clips exceed the media-balance maximum. Preserve them by raising the maximum or changing the constraint.",
+          );
+        if (
+          constraint.maxVideos !== undefined &&
+          protectedVisualCounts.videos > constraint.maxVideos
+        )
+          fail(
+            "Locked and user-pinned video clips exceed the media-balance maximum. Preserve them by raising the maximum or changing the constraint.",
+          );
+        return [
+          {
+            ...constraint,
+            ...(constraint.minImages === undefined
+              ? {}
+              : {
+                  minImages: Math.max(
+                    0,
+                    constraint.minImages - protectedVisualCounts.images,
+                  ),
+                }),
+            ...(constraint.maxImages === undefined
+              ? {}
+              : {
+                  maxImages:
+                    constraint.maxImages - protectedVisualCounts.images,
+                }),
+            ...(constraint.minVideos === undefined
+              ? {}
+              : {
+                  minVideos: Math.max(
+                    0,
+                    constraint.minVideos - protectedVisualCounts.videos,
+                  ),
+                }),
+            ...(constraint.maxVideos === undefined
+              ? {}
+              : {
+                  maxVideos:
+                    constraint.maxVideos - protectedVisualCounts.videos,
+                }),
+          },
+        ];
+      }
+      return [
+        "assetIds" in constraint
+          ? {
+              ...constraint,
+              assetIds: constraint.assetIds.filter((id) =>
+                candidates.some((asset) => asset.id === id),
+              ),
+            }
+          : constraint,
+      ];
+    },
+  );
   const desired =
     Math.min(
       beat.maxDuration ?? Infinity,
@@ -3451,16 +3679,7 @@ function regenerate(
             beat.maxDuration === undefined
               ? undefined
               : Math.max(EPSILON, beat.maxDuration - fixedLength),
-          constraints: beat.constraints?.map((constraint) =>
-            "assetIds" in constraint
-              ? {
-                  ...constraint,
-                  assetIds: constraint.assetIds.filter((id) =>
-                    candidates.some((asset) => asset.id === id),
-                  ),
-                }
-              : constraint,
-          ),
+          constraints: regenerationConstraints,
         },
       ],
     };

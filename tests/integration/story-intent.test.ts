@@ -19,8 +19,10 @@ it("saves blank story intents and preserves explicit clearing through language c
     });
     let blank: Story;
     let proposal: Story;
+    let knownAssetId: string;
     try {
       await app.importFiles([join(sources, "01-photo.png")]);
+      knownAssetId = app.catalog.listAssets({ limit: 10 })[0]!.id;
       blank = app.generateStory({
         template: "blank",
         targetDuration: 4,
@@ -44,10 +46,76 @@ it("saves blank story intents and preserves explicit clearing through language c
         body: JSON.stringify(data),
       });
     expect(blank.beats[0]!.intent).toBeUndefined();
-    const renamed = await send(
+    const withCoverage = await send(
       `/stories/${blank.id}`,
       {
         beats: blank.beats.map((beat, index) =>
+          index
+            ? beat
+            : {
+                ...beat,
+                constraints: [
+                  {
+                    type: "coverage-group",
+                    version: 1,
+                    kind: "event",
+                    groupId: "event:ceremony",
+                    label: "Ceremony",
+                    assetIds: [knownAssetId],
+                    minimumCount: 1,
+                  },
+                  {
+                    type: "media-balance",
+                    version: 1,
+                    minImages: 1,
+                    maxImages: 2,
+                  },
+                ],
+              },
+        ),
+      },
+      "PATCH",
+    );
+    expect(withCoverage.status).toBe(200);
+    const coveredStory = (await withCoverage.json()).story as Story;
+    expect(coveredStory.beats[0]!.constraints).toMatchObject([
+      { type: "coverage-group", kind: "event", assetIds: [knownAssetId] },
+      { type: "media-balance", minImages: 1, maxImages: 2 },
+    ]);
+    const beforeUnknownCoverage = await readFile(join(project, "project.json"));
+    const unknownCoverage = await send(
+      `/stories/${blank.id}`,
+      {
+        beats: coveredStory.beats.map((beat, index) =>
+          index
+            ? beat
+            : {
+                ...beat,
+                constraints: [
+                  {
+                    type: "coverage-group",
+                    version: 1,
+                    kind: "person",
+                    groupId: "person:unknown",
+                    label: "Unknown person",
+                    assetIds: ["missing-asset"],
+                    minimumCount: 1,
+                  },
+                ],
+              },
+        ),
+      },
+      "PATCH",
+    );
+    expect(unknownCoverage.status).toBe(400);
+    expect(await readFile(join(project, "project.json"))).toEqual(
+      beforeUnknownCoverage,
+    );
+
+    const renamed = await send(
+      `/stories/${blank.id}`,
+      {
+        beats: coveredStory.beats.map((beat, index) =>
           index ? beat : { ...beat, title: "自分で書いた題名", intent: "" },
         ),
       },
@@ -96,7 +164,14 @@ it("saves blank story intents and preserves explicit clearing through language c
     const stories = (await reopened.json()).project.stories as Story[];
     expect(
       stories.find((story) => story.id === blank.id)!.beats[0],
-    ).toMatchObject({ title: "自分で書いた題名", titleSource: "user" });
+    ).toMatchObject({
+      title: "自分で書いた題名",
+      titleSource: "user",
+      constraints: [
+        { type: "coverage-group", groupId: "event:ceremony" },
+        { type: "media-balance", minImages: 1, maxImages: 2 },
+      ],
+    });
     expect(
       stories.find((story) => story.id === blank.id)!.beats[0]!.intent,
     ).toBeUndefined();

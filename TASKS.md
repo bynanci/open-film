@@ -111,7 +111,28 @@ remain separate acceptance scopes. See the
 
 ### Professional Cut Desk
 
-- [ ] **Phase 4:** finish the remaining finishing interactions and physical workstation checks. Reuse the existing proxy, sequence-waveform and audio-policy implementations.
+- [x] **Phase 4A — source scopes and split-wipe comparison.** Merged in
+      [PR #112](https://github.com/bynanci/open-film/pull/112). Browser scopes
+      describe bounded, pre-look source samples; calibrated display, HDR and
+      hardware-monitor behavior are not included. See the
+      [Phase 4A validation](docs/validation-cut-desk-phase-4a-scopes.md).
+- [ ] **Phase 4B — deterministic animation.** Specify and implement supported
+      keyframed properties and speed ramps with arbitrary-seek evaluation and
+      Monitor/FFmpeg parity. Preserve the existing Composition and user-pin
+      contracts.
+- [x] **Phase 4C — shortcut profiles.** Merged in
+      [PR #113](https://github.com/bynanci/open-film/pull/113). Profiles are
+      validated declarative local preferences, separate from project content.
+      Supported physical keyboard layouts and native OS reservations remain a
+      workstation check. See the
+      [Phase 4C validation](docs/validation-cut-desk-phase-4c-shortcut-profiles.md).
+- [ ] **Phase 4D — long-form evidence.** Add bounded performance telemetry and
+      gather workstation evidence for proxies, high-DPI, pen/trackpad and
+      multichannel audio workflows.
+- [ ] **Phase 4E — compound editing.** Start only after a versioned Composition
+      contract proves the feature cannot introduce a hidden second timeline.
+- [ ] **Phase 4F — multicamera.** Start only with explicit synchronization and
+      source-provenance evidence.
 
 #### Phase 4B — deterministic animation
 
@@ -138,8 +159,10 @@ and workstation checks remain in the verification section below.
 - [x] Implement source-bound onset/downbeat/phrase landmark extraction,
       durable persistence, reopen restoration, and cut-point snap proposals
       ([rhythm pipeline validation](tests/integration/rhythm-pipeline.test.ts), [D3A2 validation](docs/validation-rhythm-analysis-snapping.md)).
-- [ ] Define and implement the remaining general event/person coverage and
-      media-balance constraints without changing user-pinned choices.
+- [x] Define and implement explicit per-beat event/person coverage and
+      media-balance constraints without changing user-pinned choices. Story
+      Graph authoring, StoryPlan preservation, durable project validation, and
+      solver conflict behavior are recorded in the [Story Coverage validation](docs/validation-story-coverage.md).
 
 Continuity diagnostics (D2A), adjacent-scene previews and dip transitions (D2B),
 rhythm proposals (D3A2), A-roll/B-roll coverage (D3B2) and transcript ripple edits
@@ -157,6 +180,11 @@ recorded here and in v1.0 readiness.
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
+- Tokio's `RUSTSEC-2026-0386` is removed in the open PR #120 candidate by the
+  lockfile-only update to patched `1.53.3`; the refreshed audit still reports
+  GLib `RUSTSEC-2024-0429` and unmaintained `proc-macro-error`. This candidate
+  is not merged or release-approved; see the dated evidence in the validation
+  record.
 - [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
       compatible upstream remediation, transitive reachability review and re-audit;
       keep `proc-macro-error` maintenance notices visible.
@@ -231,18 +259,19 @@ change. Discuss their scope before implementation.
       200-row page and keeps only selected dependencies between pages; the
       existing Editor document asset pool is unchanged. See the
       [picker scale validation](docs/validation-catalog-scale-benchmark.md).
-- [ ] Defer the non-English UI message catalogs until their locale is selected.
-      The candidate keeps English in the initial bundle and emits separate
-      Traditional Chinese/Japanese chunks; see the
+- [x] Defer non-English UI message catalogs until the locale is selected.
+      English remains the fallback; current build emits separate Traditional
+      Chinese and Japanese chunks. See the
       [locale loading validation](docs/validation-desktop-locale-loading.md).
-- [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
-      initial JavaScript bundle. The current candidate's entry and static
-      modulepreloads total 887.29 kB minified / 290.42 kB gzip; the prior recorded
-      entry was 1.72 MB / 508 kB. Edit navigation is measured in the browser, but
-      native cold-start evidence is still required before setting a size target.
-      Lazy editor flush and native planner-draft recovery now wait for their
-      async components to become usable; targeted browser regressions cover both.
-      See the [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
+- [x] Lazy-load infrequently used Desktop workspaces. The current entry and
+      static JavaScript preloads total 556.04 kB minified / 181.11 kB gzip, and
+      the synthetic browser flow measured 254 ms to a usable Edit view. Lazy
+      editor flush and native planner-draft recovery wait for their async
+      components. See the
+      [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
+- [ ] Measure cold startup from signed Windows/macOS installer candidates and
+      set an initial-workspace size target from those workstation results. The
+      browser bundle and Vite navigation measurements do not satisfy this gate.
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
 - [ ] Evaluate remote image-to-video adapters against verified APIs, consent,
@@ -261,6 +290,7 @@ what was checked and what still needs physical or editorial validation.
 | Continuity diagnostics and adjacent-scene micro-previews (D2A, D2B)              | [Continuity](docs/validation-continuity-diagnostics.md), [micro-previews and dips](docs/validation-scene-micro-preview-dips.md)                                                               |
 | Source-bound rhythm evidence and accepted snap proposals (D3A2)                  | [Rhythm analysis](docs/validation-rhythm-analysis-snapping.md)                                                                                                                                |
 | A-roll/B-roll coverage commands and narration retention (D3B2)                   | [PR #87](https://github.com/bynanci/open-film/pull/87), [audio policy](docs/validation-audio-policy.md)                                                                                       |
+| Explicit event/person coverage and image/video balance                           | [Story Coverage validation](docs/validation-story-coverage.md)                                                                                                                                |
 | Reliable-timestamp transcript ripple and cross-track retiming (D4)               | [Transcript ripple](docs/validation-transcript-ripple.md)                                                                                                                                     |
 | macOS Darwin cross-process dead-owner detection & boot session verification      | [macOS dead owner recovery](docs/validation-macos-dead-owner.md)                                                                                                                              |
 | Multi-source discovery, manifests, analysis and explicit adoption (D1)           | [Multi-source validation](docs/validation-multi-source-analysis.md)                                                                                                                           |

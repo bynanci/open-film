@@ -116,6 +116,45 @@ test("authors a freeform beat order, opens the mind map, then presents the exist
 
   const firstBeatNode = page.locator(".graph-node.node-beat").first();
   await firstBeatNode.click();
+  await page.locator(".assets-palette .palette-asset-card").first().click();
+  const constraints = page.getByTestId("story-constraints");
+  await expect(constraints).toBeVisible();
+  const coverageKind = constraints.getByRole("combobox").first();
+  await expect(coverageKind).toBeEnabled();
+  await coverageKind.selectOption("person");
+  await constraints.getByLabel("Group name", { exact: true }).fill("Host");
+  await constraints.getByRole("button", { name: "Add coverage group" }).click();
+  await expect
+    .poll(async () => {
+      const response = await request.get(`${base}/project`);
+      const current = (await response.json()).project as { stories: Story[] };
+      return current.stories
+        .find((item) => item.id === story.id)
+        ?.beats.find((beat) => beat.id === story.beats[0]!.id)?.constraints;
+    })
+    .toEqual([
+      expect.objectContaining({
+        type: "coverage-group",
+        kind: "person",
+        label: "Host",
+        minimumCount: 1,
+        assetIds: [expect.any(String)],
+      }),
+    ]);
+  await constraints.getByLabel("Minimum photos", { exact: true }).fill("1");
+  await constraints.getByLabel("Minimum photos", { exact: true }).press("Tab");
+  await expect
+    .poll(async () => {
+      const response = await request.get(`${base}/project`);
+      const current = (await response.json()).project as { stories: Story[] };
+      return current.stories
+        .find((item) => item.id === story.id)
+        ?.beats.find((beat) => beat.id === story.beats[0]!.id)?.constraints;
+    })
+    .toEqual([
+      expect.objectContaining({ type: "coverage-group", kind: "person" }),
+      expect.objectContaining({ type: "media-balance", minImages: 1 }),
+    ]);
   const beatTitle = page
     .locator(".inspector-palette")
     .getByLabel("Beat Title", { exact: true });

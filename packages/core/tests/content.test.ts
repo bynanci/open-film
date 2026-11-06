@@ -99,6 +99,184 @@ describe("additive film content fields", () => {
     };
     expect(validateStory(owned)).toEqual(owned);
   });
+
+  it("round-trips explicit event/person groups and bounded per-beat media balance", () => {
+    const story = {
+      id: "story",
+      title: "Anniversary",
+      beats: [
+        {
+          id: "beat",
+          title: "Gathering",
+          constraints: [
+            {
+              type: "coverage-group",
+              version: 1,
+              kind: "event",
+              groupId: "event:ceremony",
+              label: "Ceremony",
+              assetIds: ["asset-1", "asset-2"],
+              minimumCount: 1,
+            },
+            {
+              type: "coverage-group",
+              version: 1,
+              kind: "person",
+              groupId: "person:host",
+              label: "Host",
+              assetIds: ["asset-3"],
+              minimumCount: 1,
+            },
+            {
+              type: "media-balance",
+              version: 1,
+              minImages: 1,
+              maxImages: 3,
+              minVideos: 1,
+              maxVideos: 2,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      validateStory(story, { assetIds: ["asset-1", "asset-2", "asset-3"] }),
+    ).toEqual(story);
+  });
+
+  it.each([
+    {
+      type: "coverage-group",
+      version: 1,
+      kind: "person",
+      groupId: "person:host",
+      label: "Host",
+      assetIds: ["asset-1"],
+      minimumCount: 2,
+    },
+    {
+      type: "coverage-group",
+      version: 1,
+      kind: "event",
+      groupId: "event:ceremony",
+      label: "Ceremony",
+      assetIds: ["asset-1", "asset-1"],
+      minimumCount: 1,
+    },
+    {
+      type: "coverage-group",
+      version: 1,
+      kind: "event",
+      groupId: "event:ceremony",
+      label: "   ",
+      assetIds: ["asset-1"],
+      minimumCount: 1,
+    },
+    {
+      type: "media-balance",
+      version: 1,
+      minImages: 2,
+      maxImages: 1,
+    },
+    {
+      type: "media-balance",
+      version: 1,
+      minVideos: 1.5,
+    },
+  ])("rejects invalid coverage constraint $type", (constraint) => {
+    expect(() =>
+      validateStory({
+        id: "story",
+        title: "Story",
+        beats: [{ id: "beat", title: "Scene", constraints: [constraint] }],
+      }),
+    ).toThrow("constraints");
+  });
+
+  it("rejects a coverage group that references an asset outside the catalog", () => {
+    expect(() =>
+      validateStory(
+        {
+          id: "story",
+          title: "Story",
+          beats: [
+            {
+              id: "beat",
+              title: "Scene",
+              constraints: [
+                {
+                  type: "coverage-group",
+                  version: 1,
+                  kind: "event",
+                  groupId: "event:ceremony",
+                  label: "Ceremony",
+                  assetIds: ["missing"],
+                  minimumCount: 1,
+                },
+              ],
+            },
+          ],
+        },
+        { assetIds: ["present"] },
+      ),
+    ).toThrow("unknown asset ID");
+  });
+
+  it("rejects duplicate coverage group IDs within a beat", () => {
+    const group = {
+      type: "coverage-group",
+      version: 1,
+      kind: "event",
+      groupId: "event:ceremony",
+      label: "Ceremony",
+      assetIds: ["asset-1"],
+      minimumCount: 1,
+    };
+    expect(() =>
+      validateStory({
+        id: "story",
+        title: "Story",
+        beats: [
+          {
+            id: "beat",
+            title: "Scene",
+            constraints: [group, { ...group, label: "Reception" }],
+          },
+        ],
+      }),
+    ).toThrow("duplicate coverage group ID");
+  });
+
+  it.each([
+    {
+      type: "coverage-group",
+      version: 1,
+      kind: "event",
+      groupId: "event:ceremony",
+      label: "Ceremony",
+      assetIds: ["asset-1"],
+      minimumCount: 1,
+      unexpected: true,
+    },
+    {
+      type: "media-balance",
+      version: 1,
+      minImages: 1,
+      unexpected: true,
+    },
+  ])(
+    "rejects unsupported fields in versioned constraint $type",
+    (constraint) => {
+      expect(() =>
+        validateStory({
+          id: "story",
+          title: "Story",
+          beats: [{ id: "beat", title: "Scene", constraints: [constraint] }],
+        }),
+      ).toThrow("unsupported constraint field");
+    },
+  );
 });
 
 describe("semantic job errors", () => {

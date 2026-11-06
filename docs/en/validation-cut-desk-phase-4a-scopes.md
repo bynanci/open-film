@@ -1,11 +1,22 @@
 # Cut Desk Phase 4A source-frame scopes — validation
 
-Date: 2026-11-05  
-Workspace branch: `codex/cut-desk-phase-4a-scopes`  
-Base revision: `0485b3115c962d9b21f6884536155f4b79393a88` (`origin/main`, fetched 2026-11-05)
+Feature merged: 2026-11-05 in [PR #112](https://github.com/bynanci/open-film/pull/112),
+merge commit [`92ccf361642f060466b269dc2fcf3ed4d77102b3`](https://github.com/bynanci/open-film/commit/92ccf361642f060466b269dc2fcf3ed4d77102b3).
+Current integration evidence: PR #119, based on main
+[`b6304914a7eb351d8e5d0a0a11b41e163713e20b`](https://github.com/bynanci/open-film/commit/b6304914a7eb351d8e5d0a0a11b41e163713e20b).
 
-The catalog-search and Silence Audition PRs are merged. This Phase 4A candidate
-has not been merged to `main`.
+The original PR #112 Verify run
+([run 42041892767](https://github.com/bynanci/open-film/actions/runs/42041892767))
+had three browser shards time out in the `Install native media tools and
+independent timeline parser` setup step, so its aggregate check failed. The
+focused local scope tests below passed. The later
+full PR #119 Verify run on the current main base passed all four browser shards,
+fast-contract, heavy-media, native-shell and docs checks
+([run 42230170897](https://github.com/bynanci/open-film/actions/runs/42230170897));
+its three-platform Render QA also passed
+([run 42230170858](https://github.com/bynanci/open-film/actions/runs/42230170858)).
+This later run verifies the merged code in the full current-base candidate; it
+does not replace physical display acceptance.
 
 ## Delivered scope
 
@@ -37,9 +48,11 @@ has not been merged to `main`.
   dimensions and bounds.
 - `pnpm exec playwright test tests/e2e/professional-cut-desk.spec.ts -g 'samples bounded source-frame scopes|samples a high-resolution photo|split wipe compares Film Look' --workers=1` — 3 tests passed. They sample a synthetic video and a 640×360 photo, check the 512×288 photo sample and four canvases, verify the two Film Look preview states and slider, and confirm that the saved edit is unchanged.
 - `pnpm typecheck` — passed for the candidate branch.
-- Post-merge revalidation against `0485b3115c962d9b21f6884536155f4b79393a88`
-  passed: all 4 scope unit tests, all 3 targeted browser cases, and `pnpm
-typecheck` completed successfully.
+- PR #112's focused Vitest, Playwright and typecheck results are pre-merge
+  candidate evidence. The original hosted run's timeouts are retained above
+  rather than represented as a green PR #112 aggregate.
+- Current-base hosted regression evidence is PR #119's full Verify and
+  three-platform Render QA runs linked above.
 
 ## Remaining Phase 4A work
 

@@ -117,6 +117,33 @@ describe("versioned projects", () => {
     expect(explicit.settings.timebase!.rateNumerator).toBe(30);
   });
 
+  it("round-trips explicit Story constraints through project JSON validation", () => {
+    const value = project();
+    value.stories[0]!.beats[0]!.constraints = [
+      {
+        type: "coverage-group",
+        version: 1,
+        kind: "event",
+        groupId: "event:ceremony",
+        label: "Ceremony",
+        assetIds: ["asset"],
+        minimumCount: 1,
+      },
+      {
+        type: "media-balance",
+        version: 1,
+        minVideos: 1,
+        maxVideos: 2,
+      },
+    ];
+    const assetIds = ["asset"];
+    const json = JSON.stringify(validateProject(value, { assetIds }));
+
+    expect(
+      JSON.stringify(validateProject(JSON.parse(json), { assetIds })),
+    ).toBe(json);
+  });
+
   it("rejects malformed and mismatched durable timebases", () => {
     for (const timebase of [
       null,
