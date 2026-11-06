@@ -1,4 +1,11 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { OpenFilmApplication } from "@openfilm/application";
 import { test, expect } from "@playwright/test";
+import { navigate, openFilm } from "./ui-helpers.js";
+
+const api = "http://127.0.0.1:4310/api";
 test("native preflight failure is readable and keyboard retry opens the existing workspace", async ({
   page,
 }) => {
@@ -96,4 +103,80 @@ test("native recovery remounts the workspace for the replacement connection", as
   await expect(
     page.getByRole("button", { name: /Create Film/i }).first(),
   ).toBeVisible();
+});
+
+test("native retry waits for the lazy planner mount before restoring its draft", async ({
+  page,
+  request,
+}) => {
+  await request.post(`${api}/project/close`, { data: {} });
+  const root = await mkdtemp(join(tmpdir(), "openfilm-native-planner-"));
+  const projectPath = join(root, "planner-recovery.openfilm");
+  try {
+    const app = await OpenFilmApplication.create(
+      projectPath,
+      "Planner recovery",
+    );
+    try {
+      await app.save();
+    } finally {
+      app.close();
+    }
+    await page.addInitScript(() => {
+      (window as unknown as { isTauri: boolean }).isTauri = true;
+      (window as unknown as { runtimeFailed: boolean }).runtimeFailed = false;
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (command: string) => Promise<unknown>;
+          };
+        }
+      ).__TAURI_INTERNALS__ = {
+        invoke: async (command) => {
+          if (command === "native_runtime_start")
+            return { state: "development" };
+          if (command === "native_runtime_status")
+            return (window as unknown as { runtimeFailed: boolean })
+              .runtimeFailed
+              ? { state: "blocked", code: "runtime.serviceExited" }
+              : { state: "development" };
+          return false;
+        },
+      };
+    });
+    await page.goto("/");
+    await openFilm(page, projectPath);
+    await navigate(page, "story");
+    await page.getByTestId("scene-planner-toggle").click();
+    await expect(page.getByTestId("scene-planner")).toBeVisible();
+    await page.getByTestId("scene-plan-title").fill("Retained planner title");
+    await page
+      .getByTestId("scene-plan-brief")
+      .fill("Keep this planning brief.");
+
+    await page.evaluate(() => {
+      (window as unknown as { runtimeFailed: boolean }).runtimeFailed = true;
+    });
+    await expect(page.getByRole("button", { name: "Retry setup" })).toBeVisible(
+      {
+        timeout: 5_000,
+      },
+    );
+    await page.evaluate(() => {
+      (window as unknown as { runtimeFailed: boolean }).runtimeFailed = false;
+    });
+    await page.getByRole("button", { name: "Retry setup" }).click();
+
+    await expect(page.getByTestId("scene-planner")).toBeVisible();
+    await expect(page.getByTestId("scene-plan-title")).toHaveValue(
+      "Retained planner title",
+    );
+    await expect(page.getByTestId("scene-plan-brief")).toHaveValue(
+      "Keep this planning brief.",
+    );
+    await expect(page.locator(".runtime-drafts")).toHaveCount(0);
+  } finally {
+    await request.post(`${api}/project/close`, { data: {} });
+    await rm(root, { recursive: true, force: true });
+  }
 });

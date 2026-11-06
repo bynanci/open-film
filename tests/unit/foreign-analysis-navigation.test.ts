@@ -119,8 +119,19 @@ function host(
   const originalProject = {
     id: "film",
     stories: [{ id: "story", selectedAssetIds: ["spoken-memory"] }],
-    compositions: [{ clips: [{ id: "clip", locked: true, sourceIn: 1.25 }] }],
+    timelines: [
+      {
+        id: "cut",
+        storyId: "story",
+        duration: 8,
+        tracks: [{ id: "video", type: "video", clips: [] }],
+      },
+    ],
   };
+  const project = vue.ref<typeof originalProject | null>(originalProject);
+  const activeComposition = vue.computed(
+    () => project.value?.timelines.at(-1) ?? null,
+  );
   const flush = vi.fn(async () => true);
   const jobs = vue.ref(initialJobs);
   const analysisRecovery = vue.ref<Record<string, AnalysisJobRecoveryState>>(
@@ -143,6 +154,8 @@ function host(
     collectBusy: vue.ref(false),
     analysisRecoveryPending: vue.ref(false),
     timelineEditor: vue.ref({ flush }),
+    editorFlushReady: vue.ref(true),
+    activeComposition,
     beatDirty: vue.ref(false),
     categoryDirty: vue.ref(false),
     scenePlanDraftPresent: vue.ref(false),
@@ -162,7 +175,7 @@ function host(
     notice: vue.ref<unknown>(null),
     message: (key: string) => key,
     post: vi.fn(async () => {}),
-    project: vue.ref<typeof originalProject | null>(originalProject),
+    project,
     projectPath: vue.ref<string | null>("/media/film.openfilm"),
     mediaStatus: vue.ref<unknown>({ assets: [] }),
     checkingMedia: vue.ref(false),

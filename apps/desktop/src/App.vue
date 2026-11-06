@@ -2,7 +2,15 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import {
   initializeLocale,
@@ -25,24 +33,12 @@ import type {
 import { beatTimelineDuration, durationStatus } from "./duration";
 import { hasGraphicSceneAgentReceipt } from "./graphic-scene-agent-receipt";
 import AppLauncher from "./components/AppLauncher.vue";
-import AppSettings from "./components/AppSettings.vue";
 import type { PresetAcceptance } from "@openfilm/application";
 import WorkspaceModeSwitch from "./components/WorkspaceModeSwitch.vue";
 import WorkspaceCommands from "./components/WorkspaceCommands.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
-import ImportPanel from "./components/ImportPanel.vue";
-import ExportWorkspace from "./components/ExportWorkspace.vue";
-import CollectMediaPanel from "./components/CollectMediaPanel.vue";
-import ProxyStoragePanel from "./components/ProxyStoragePanel.vue";
-import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
-import ScenePlanner from "./components/ScenePlanner.vue";
-import StoryScriptReview from "./components/StoryScriptReview.vue";
-import StoryGraphView from "./components/StoryGraphView.vue";
-import StoryboardView from "./components/StoryboardView.vue";
-import PipelineWorkbench, {
-  type WorkbenchMode,
-} from "./components/PipelineWorkbench.vue";
-import CreativeVariantComparisonModal from "./components/CreativeVariantComparisonModal.vue";
+import WorkspaceLoading from "./components/WorkspaceLoading.vue";
+import type { WorkbenchMode } from "./components/PipelineWorkbench.vue";
 import type {
   MediaAsset,
   FilmLook,
@@ -71,12 +67,7 @@ import {
 } from "./api";
 import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
-import TimelineEditor from "./components/TimelineEditor.vue";
-import RelinkMedia from "./components/RelinkMedia.vue";
 import SourceDetails from "./components/SourceDetails.vue";
-import AnalysisJobActions from "./components/AnalysisJobActions.vue";
-import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
-import { nativeBenchmark } from "./nativeBenchmark";
 import {
   preferences,
   getLastWorkspaceForProject,
@@ -91,6 +82,90 @@ import type {
   NativeLocalDraft,
   RetainedNativeDraft,
 } from "./native-draft-recovery";
+import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
+import { nativeBenchmark } from "./nativeBenchmark";
+
+const AppSettings = defineAsyncComponent({
+  loader: () => import("./components/AppSettings.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ImportPanel = defineAsyncComponent({
+  loader: () => import("./components/ImportPanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ExportWorkspace = defineAsyncComponent({
+  loader: () => import("./components/ExportWorkspace.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const CollectMediaPanel = defineAsyncComponent({
+  loader: () => import("./components/CollectMediaPanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ProxyStoragePanel = defineAsyncComponent({
+  loader: () => import("./components/ProxyStoragePanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ProjectVersionsPanel = defineAsyncComponent({
+  loader: () => import("./components/ProjectVersionsPanel.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const ScenePlanner = defineAsyncComponent({
+  loader: () => import("./components/ScenePlanner.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const StoryScriptReview = defineAsyncComponent({
+  loader: () => import("./components/StoryScriptReview.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const StoryGraphView = defineAsyncComponent({
+  loader: () => import("./components/StoryGraphView.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const StoryboardView = defineAsyncComponent({
+  loader: () => import("./components/StoryboardView.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const PipelineWorkbench = defineAsyncComponent({
+  loader: () => import("./components/PipelineWorkbench.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const CreativeVariantComparisonModal = defineAsyncComponent({
+  loader: () => import("./components/CreativeVariantComparisonModal.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+let timelineEditorModulePromise:
+  Promise<typeof import("./components/TimelineEditor.vue")> | undefined;
+function loadTimelineEditor() {
+  return (timelineEditorModulePromise ??=
+    import("./components/TimelineEditor.vue"));
+}
+const TimelineEditor = defineAsyncComponent({
+  loader: loadTimelineEditor,
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const RelinkMedia = defineAsyncComponent({
+  loader: () => import("./components/RelinkMedia.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
+const AnalysisJobActions = defineAsyncComponent({
+  loader: () => import("./components/AnalysisJobActions.vue"),
+  loadingComponent: WorkspaceLoading,
+  delay: 150,
+});
 
 const props = defineProps<{
   nativeDrafts?: RetainedNativeDraft[];
@@ -289,6 +364,37 @@ watch(
 );
 const scenePlannerOpen = ref(false);
 const scenePlanner = ref<InstanceType<typeof ScenePlanner> | null>(null);
+const scenePlannerReady = ref(false);
+let resolveScenePlannerReady: ((mounted: boolean) => void) | undefined;
+let scenePlannerReadyPromise = new Promise<boolean>(
+  (resolve) => (resolveScenePlannerReady = resolve),
+);
+function resetScenePlannerReady() {
+  resolveScenePlannerReady?.(false);
+  scenePlannerReady.value = false;
+  scenePlannerReadyPromise = new Promise<boolean>(
+    (resolve) => (resolveScenePlannerReady = resolve),
+  );
+}
+function markScenePlannerReady() {
+  scenePlannerReady.value = true;
+  resolveScenePlannerReady?.(true);
+  resolveScenePlannerReady = undefined;
+}
+watch(
+  scenePlannerOpen,
+  (open) => {
+    if (!open) resetScenePlannerReady();
+  },
+  { flush: "sync" },
+);
+async function waitForScenePlannerMount() {
+  if (scenePlannerReady.value && scenePlanner.value) return true;
+  const ready = scenePlannerReadyPromise;
+  if (!(await ready)) return false;
+  await nextTick();
+  return !!scenePlanner.value;
+}
 const scenePlanDraftPresent = ref(false);
 let projectMutationVersion = 0;
 const libraryView = ref<"all" | "events" | "duplicates">("all");
@@ -641,6 +747,25 @@ const showRenderedPreview = ref(false);
 const renderedPlayer = ref<HTMLVideoElement | null>(null);
 const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
 const editorMountRequested = ref(false);
+const editorFlushReady = ref(false);
+let resolveEditorReady: ((mounted: boolean) => void) | undefined;
+let editorReadyPromise = new Promise<boolean>(
+  (resolve) => (resolveEditorReady = resolve),
+);
+function resetEditorReady() {
+  resolveEditorReady?.(false);
+  editorFlushReady.value = false;
+  editorReadyPromise = new Promise<boolean>(
+    (resolve) => (resolveEditorReady = resolve),
+  );
+}
+function markEditorReady() {
+  editorFlushReady.value = true;
+  resolveEditorReady?.(true);
+  resolveEditorReady = undefined;
+}
+watch(editorMountRequested, resetEditorReady, { flush: "sync" });
+watch(projectGeneration, resetEditorReady, { flush: "sync" });
 function setWorkspace(workspace: Tab) {
   tab.value = workspace;
   if (workspace === "edit") editorMountRequested.value = true;
@@ -665,6 +790,7 @@ watch(
     // editor flush gate protects pending work before navigation or export.
     // Any stored bytes (even malformed/empty), or an unreadable store, keep the
     // previous eager behavior; only the editor interprets recovery contents.
+    resetEditorReady();
     editorMountRequested.value = false;
     lookOverride.value = undefined;
     outputQuality.value = "standard";
@@ -706,8 +832,29 @@ function editorEdited() {
   if (exportPath.value) exportStale.value = true;
 }
 async function flushEditor() {
-  if (!timelineEditor.value) return true;
-  const saved = await timelineEditor.value.flush();
+  // Empty projects have no composition or TimelineEditor to mount or flush.
+  if (!activeComposition.value) return true;
+  if (
+    !editorFlushReady.value ||
+    typeof timelineEditor.value?.flush !== "function"
+  ) {
+    if (!editorMountRequested.value && !timelineEditor.value) return true;
+    if (!editorMountRequested.value) editorMountRequested.value = true;
+    const ready = editorReadyPromise;
+    await loadTimelineEditor();
+    if (!(await ready)) {
+      error.value = message("feedback.flushFailed");
+      return false;
+    }
+    await nextTick();
+  }
+  const editor = timelineEditor.value;
+  if (!editor) return !editorMountRequested.value;
+  if (!editorFlushReady.value || typeof editor.flush !== "function") {
+    error.value = message("feedback.flushFailed");
+    return false;
+  }
+  const saved = await editor.flush();
   if (!saved) error.value = message("feedback.flushFailed");
   return saved;
 }
@@ -2789,16 +2936,17 @@ async function restoreNativeDrafts() {
     ) {
       scenePlannerOpen.value = true;
       setWorkspace("story");
-      await nextTick();
+      if (!(await waitForScenePlannerMount())) continue;
+      const planner = scenePlanner.value;
       if (
         !owned() ||
         !retained(entry) ||
         scenePlanDraftPresent.value ||
-        !scenePlanner.value ||
+        !planner ||
         plannerBaseline() !== entry.baseline
       )
         continue;
-      scenePlanner.value.restoreNativeDraft(entry.value);
+      planner.restoreNativeDraft(entry.value);
       emit("nativeDraftsRestored", [entry.id]);
     }
     // Manually edited proposal text stays exportable. Old proposals/acceptance IDs never replay.
@@ -3173,6 +3321,7 @@ onUnmounted(() => {
         @close="scenePlannerOpen = false"
         @working="scenePlannerWorking"
         @draft="scenePlanDraftPresent = $event"
+        @ready="markScenePlannerReady"
       />
 
       <RelinkMedia
@@ -4974,6 +5123,7 @@ onUnmounted(() => {
             :jobs="jobs"
             :analysis-recovery="analysisRecovery"
             :recovering-analysis-jobs="recoveringAnalysisJobs"
+            @ready="markEditorReady"
             @relink="openRelink($event)"
             @change="editorChanged"
             @edited="editorEdited"
