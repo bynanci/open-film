@@ -170,6 +170,11 @@ recorded here and in v1.0 readiness.
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
+- Tokio's `RUSTSEC-2026-0386` is removed in the open PR #120 candidate by the
+  lockfile-only update to patched `1.53.3`; the refreshed audit still reports
+  GLib `RUSTSEC-2024-0429` and unmaintained `proc-macro-error`. This candidate
+  is not merged or release-approved; see the dated evidence in the validation
+  record.
 - [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
       compatible upstream remediation, transitive reachability review and re-audit;
       keep `proc-macro-error` maintenance notices visible.

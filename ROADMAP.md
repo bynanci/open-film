@@ -107,6 +107,11 @@ The [installer guide](docs/native-installer.md),
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding
 evidence. CI results do not replace those observations.
 
+The current native-security candidate patches Tokio to `1.53.3` for
+`RUSTSEC-2026-0386`; GLib `RUSTSEC-2024-0429`, the unmaintained proc-macro
+notice, reviewed runtime inputs and all workstation gates remain open. See the
+[candidate audit evidence](docs/validation-native-installer.md#2026-11-06-tokio-patch-candidate).
+
 ## Foundations available on main
 
 These are existing development-branch capabilities, not a list of new v0.4.0
