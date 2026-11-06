@@ -315,6 +315,9 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId("creative-variants-btn")).toBeFocused();
   await page.getByTestId("creative-variants-btn").click();
+  // Reopening triggers an asynchronous list reload that can resize the
+  // centered dialog. Wait for its final layout before computing touch coords.
+  await expect(modal.locator(".variant-card")).toHaveCount(2);
   const touchClose = page
     .getByTestId("creative-variant-modal")
     .locator(".close-btn");
