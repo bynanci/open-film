@@ -584,8 +584,8 @@ watch(
 }
 
 .which-image-section {
-  background: var(--surface-3, #1e1e24);
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  border-radius: var(--of-radius-md);
   padding: 0.5rem;
 }
 

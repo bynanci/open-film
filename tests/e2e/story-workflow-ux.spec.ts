@@ -138,6 +138,59 @@ test("previews authored order, explains invalid fields, and keeps a dismissed dr
   ).toEqual(["先看見一封信 💌", "回到當天", "把結尾留給明天"]);
 });
 
+test("story plan image labels keep readable contrast in both themes", async ({
+  page,
+}) => {
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await navigate(page, "story");
+  await page.getByTestId("perspective-tab-graph").click();
+  await page.locator(".plan-storyboard-btn").click();
+  const dialog = page.locator('.modal-backdrop[role="dialog"]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".which-image-section").first()).toBeVisible();
+  await expect(
+    dialog.locator(".which-image-section .asset-name").first(),
+  ).toBeVisible();
+
+  const luminance = (color: string) => {
+    const channels = color
+      .match(/[\d.]+/g)!
+      .slice(0, 3)
+      .map(Number);
+    const linear = channels.map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  };
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator("html").evaluate((element, value) => {
+      element.setAttribute("data-theme", value);
+    }, theme);
+    const section = await dialog
+      .locator(".which-image-section")
+      .first()
+      .evaluate((element) => {
+        const text = element.querySelector(".asset-name") ?? element;
+        return {
+          foreground: getComputedStyle(text).color,
+          background: getComputedStyle(element).backgroundColor,
+        };
+      });
+    const foreground = luminance(section.foreground);
+    const background = luminance(section.background);
+    expect(
+      (Math.max(foreground, background) + 0.05) /
+        (Math.min(foreground, background) + 0.05),
+      `${theme} story plan asset section contrast`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test("uses keyboard tabs and previews full-size photos and playable video without losing focus", async ({
   page,
 }, info) => {
