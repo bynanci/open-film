@@ -130,3 +130,16 @@ Windows run42132424512 は新 diagnostic parser のみ失敗し、139／140件�
 に収める verbose と hide_banner にし、内部 instance 名に依存せず geometry と pixel format で context
 を確認します。自動 RGBA→YUV と全 context の両 flags は引き続き必須です。新 head の全 gate が必要で、
 赤い run を合格として数えません。
+
+### HDR source oracle の追補
+
+`60f935e` の Verify42133871583 は Ubuntu FFmpeg6 media で369 files／4,374件合格、一件失敗
+（1173.09秒）でした。HDR Film Look の三単位上限に対して四を検出しています。別 platform／local の
+合格結果でこの失敗を合格扱いしません。実 FFmpeg7 graph の matrix 直前 RGBA は `[150,49,25,255]`、
+旧 reference RGB は `[151,51,26]`、output は `[160,60,37]` です。正しい reference の誤差は `[2,1,1]`。
+SDR／HDR は明示的な決定的 RGBA source oracle を共有し、decode 後だけ alpha を除外します。
+output decode と元の三単位上限は維持し、失敗時には actual／expected channels を記録します。
+Ubuntu6 の修正確認は新 hosted run が必要です。local Ubuntu6 実行を主張しません。
+media lane は同じ実 FFmpeg12件を最初に検証し、その後も完全な必須 media suite を実行します。
+約二十分後の色変換失敗を早期に検出し、case／artifact／test budget／aggregate は削除しません。
+local12件は合格し、最終 candidate の結果は PR に記録します。

@@ -514,3 +514,28 @@ stderr capture, and identifies scaler roles from geometry/pixel formats rather
 than internal instance names. It still requires both flags on every configured
 context and the automatic RGBA-to-YUV conversion. These test corrections require
 a fresh final-head complete gate; prior red runs are not counted as passing.
+
+### HDR source-oracle follow-up
+
+Verify [42133871583](https://github.com/bynanci/open-film/actions/runs/42133871583)
+on `60f935e` completed its Ubuntu FFmpeg6 media run with **369 files / 4,374
+tests passed and one HDR Film Look test failed** (1,173.09 seconds): the
+three-unit color metric measured four. The local FFmpeg7 full run and all
+Windows, three-platform Render QA, contract and browser checks remain valid
+for their recorded candidate; they do not turn this media failure into a pass.
+
+Independent inspection of the actual FFmpeg7 HDR graph found pre-matrix RGBA
+`[150,49,25,255]`, while the old fast reference decoded RGB `[151,51,26]`.
+The actual output was `[160,60,37]`; the corrected matrix reference gives
+channel errors `[2,1,1]`, retaining the original three-unit limit. The tests now
+share an explicit deterministic RGBA source oracle for SDR and HDR, omit alpha
+only after decoding, and retain consumer output decoding and all assertions.
+Errors include actual and expected channels for actionable platform diagnosis.
+The Ubuntu6 correction still requires actual hosted verification; no local
+Ubuntu6 runtime is claimed.
+
+The media lane first runs the same 12 actual FFmpeg profile/Film Look cases
+before its full mandatory media suite. This catches a conversion mismatch in
+seconds rather than at the end of a roughly twenty-minute run. No full-suite
+case, evidence upload, test budget or required aggregate is removed. Local
+focused cases pass all 12; final-candidate results remain linked from the PR.

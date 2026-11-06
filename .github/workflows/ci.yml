@@ -53,6 +53,10 @@ jobs:
         run: bash scripts/ci/install-media-tools.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:ci-partition
+      # Catch toolchain color-conversion mismatches before the full media run;
+      # every case still runs again in the unchanged mandatory media suite.
+      - name: Verify deterministic FFmpeg conversion
+        run: pnpm exec vitest run packages/render/tests/export-profile.test.ts packages/render/tests/film-looks.test.ts --maxWorkers=1
       - run: pnpm test:media
         env:
           OPENFILM_GRAPHIC_QA_OUTPUT: ${{ runner.temp }}/graphic-scene-qa
