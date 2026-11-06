@@ -1987,7 +1987,7 @@ button.editor-beat-heading:hover {
   .timeline-editor-contained .editor-mode-context {
     display: grid;
     grid-area: mode;
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: max-content;
     align-items: center;
     gap: var(--of-space-2);
     min-width: 0;
@@ -1998,11 +1998,16 @@ button.editor-beat-heading:hover {
   }
 
   .timeline-editor-contained .editor-mode-hint {
-    min-width: 0;
-    max-width: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    clip: rect(0, 0, 0, 0);
     white-space: nowrap;
+    clip-path: inset(50%);
+    border: 0;
   }
 
   .timeline-editor-contained .editor-save-state {

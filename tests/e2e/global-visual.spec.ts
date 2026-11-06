@@ -297,11 +297,34 @@ for (const locale of locales) {
                   noOverlap &&
                   mode.height <= 48 &&
                   !!hint &&
-                  getComputedStyle(hint).whiteSpace === "nowrap"
+                  getComputedStyle(hint).whiteSpace === "nowrap" &&
+                  hint.getBoundingClientRect().width > 2
                 );
               }),
             )
             .toBe(true);
+        }
+        if (size.width === 1024 && workspace === "edit") {
+          const modeDescription = await page
+            .locator(".editor-mode-context")
+            .evaluate((context) => {
+              const hint =
+                context.querySelector<HTMLElement>(".editor-mode-hint");
+              const activeMode = context.querySelector<HTMLButtonElement>(
+                'button[aria-pressed="true"]',
+              );
+              if (!hint || !activeMode) return null;
+              return {
+                hintWidth: hint.getBoundingClientRect().width,
+                hintText: hint.textContent?.trim(),
+                hintId: hint.id,
+                describedBy: activeMode.getAttribute("aria-describedby"),
+              };
+            });
+          expect(modeDescription).not.toBeNull();
+          expect(modeDescription!.hintWidth).toBeLessThanOrEqual(1);
+          expect(modeDescription!.hintText).toBeTruthy();
+          expect(modeDescription!.describedBy).toBe(modeDescription!.hintId);
         }
         if (size.width === 1280 && workspace === "story") {
           const collapsedScript = page.locator(
