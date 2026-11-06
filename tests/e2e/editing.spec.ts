@@ -190,7 +190,7 @@ async function openTimeline(page: Page) {
   await page.goto("/");
   await navigate(page, "edit");
   await expect(
-    page.getByRole("heading", { name: "Make every moment count." }),
+    page.getByRole("region", { name: "Composition timeline" }),
   ).toBeVisible();
   await saved(page);
 }
@@ -802,11 +802,17 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   await page.setViewportSize({ width: 1024, height: 768 });
   await openTimeline(page);
   await expect(
-    page.getByLabel("Timeline inspector", { exact: true }),
+    page.getByRole("complementary", {
+      name: "Timeline inspector",
+      exact: true,
+    }),
   ).not.toBeVisible();
   await page.locator("#clip-opening-photo").click();
   await expect(
-    page.getByLabel("Timeline inspector", { exact: true }),
+    page.getByRole("complementary", {
+      name: "Timeline inspector",
+      exact: true,
+    }),
   ).toBeVisible();
   const mountedEditor = await page.locator(".timeline-editor").elementHandle();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -821,9 +827,14 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   await expect(error).toBeVisible();
   const englishError = await error.innerText();
   await page.locator(".ui-language select").selectOption("zh-TW");
+  await expect(page.locator(".ui-language select")).toHaveValue("zh-TW");
   await expect(
-    page.getByRole("heading", { name: "讓每個片刻都有意義。" }),
+    page.getByRole("heading", { name: "The moments between" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "影片時間軸", exact: true }),
+  ).toBeVisible();
+  // UI language changes must not rewrite the user's film/story title.
   await expect(error).not.toHaveText(englishError);
   await expect(page.getByLabel("照片時長", { exact: true })).toHaveValue("0");
   await expect(
@@ -833,8 +844,12 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
     }),
   ).toBeVisible();
   await page.locator(".ui-language select").selectOption("ja-JP");
+  await expect(page.locator(".ui-language select")).toHaveValue("ja-JP");
   await expect(
-    page.getByRole("heading", { name: "一つひとつの瞬間を大切に。" }),
+    page.getByRole("heading", { name: "The moments between" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "映像のタイムライン", exact: true }),
   ).toBeVisible();
   await expect(error).toContainText(
     "この変更は素材やストーリーの制限を超えています。",

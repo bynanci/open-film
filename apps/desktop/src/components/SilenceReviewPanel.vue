@@ -1227,8 +1227,8 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: clamp(20px, 4vw, 32px);
   background: var(--of-surface-1);
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-lg);
+  border: 0;
+  border-radius: var(--of-radius-dialog);
   box-shadow: var(--of-shadow-dialog);
 }
 .silence-confirmation p,

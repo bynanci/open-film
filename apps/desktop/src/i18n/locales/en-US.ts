@@ -36,6 +36,9 @@ export default {
   ...transcript,
   scriptReview: {
     heading: "Script suggestions",
+    hasNotes: "Script notes",
+    pendingCount:
+      "No suggestions to review | {count} suggestion to review | {count} suggestions to review",
     description:
       "Review one saved scene field at a time. Changes are saved only when you accept them.",
     field: "Text to review",

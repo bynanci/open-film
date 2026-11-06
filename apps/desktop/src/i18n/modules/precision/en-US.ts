@@ -2,7 +2,14 @@ export default {
   precision: {
     modeLabel: "Editing mode",
     storyMode: "Story",
+    storyModeDescription:
+      "Arrange story beats and the memories within each one.",
     precisionMode: "Precision",
+    precisionModeDescription:
+      "Trim source ranges, split on a frame, and review waveform markers.",
+    transcriptModeDescription:
+      "Correct spoken words and review suggestions without changing the cut.",
+    inspectorObject: "Selected {kind}",
     selectedClip: "Selected clip",
     title: "Precision source editor",
     emptyTitle: "Choose a video or audio clip",
@@ -25,6 +32,12 @@ export default {
       "Analyze audio to display its waveform. Source seeking and trim controls are already available.",
     audioSilent: "No audible peaks in this analyzed source.",
     snap: "Snap",
+    snapChecking:
+      "Checking the source. Snapping will be available when the check finishes.",
+    snapUnavailable:
+      "Snapping becomes available after this source is checked. Trim and seek still work.",
+    snapCheckFailed:
+      "The source could not be verified. Retry the check; if this file is offline or changed, restore it first. Trim and seek still work.",
     snapScope:
       "Speech snapping uses the loaded transcript page; markers and clip edges stay available.",
     snapResult: "Snapped to {type} at {time}",

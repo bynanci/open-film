@@ -5,7 +5,7 @@ import { OpenFilmApplication } from "@openfilm/application";
 import { expect, test, type Page } from "@playwright/test";
 import axe from "axe-core";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
-import { navigate, openFilm } from "./ui-helpers.js";
+import { navigate, openFilm, uiText } from "./ui-helpers.js";
 
 const api = "http://127.0.0.1:4310/api";
 const sizes = [
@@ -568,6 +568,12 @@ test("theme switches keep pipeline labels readable throughout each animation fra
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page
+    .getByRole("combobox", {
+      name: uiText("zh-TW", "app.workspaceMode.label"),
+      exact: true,
+    })
+    .selectOption("expert");
   await expect(page.locator(".bar-stages-track")).toBeVisible();
   await expect(page.locator(".bar-stage-dot")).toHaveCount(5);
   const samples = await page.evaluate(async () => {

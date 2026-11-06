@@ -128,6 +128,7 @@ function fixture(graphBeatSaveTask?: Promise<boolean>) {
     flushEditor: vi.fn(async () => true),
     candidateOffset: vue.ref(0),
     timelineEditor: vue.ref(null),
+    storyReviewPendingCount: vue.ref(0),
     patch: vi.fn(async (_path: string, body: { beats: typeof story.beats }) => {
       savedStory = {
         ...savedStory,

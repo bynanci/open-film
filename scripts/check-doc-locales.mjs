@@ -123,6 +123,7 @@ const ignoredDocDirectories = new Set([
   "ja",
   "superpowers",
 ]);
+const translatedReferenceMirrors = new Set(["ux/designer-audit-2026-11-06.md"]);
 const sourceDocs = collect(docsRoot, ignoredDocDirectories).filter((file) => {
   const rel = path.relative(docsRoot, file).split(path.sep).join("/");
   return (
@@ -135,6 +136,7 @@ const sourceDocs = collect(docsRoot, ignoredDocDirectories).filter((file) => {
 
 for (const source of sourceDocs) {
   const relative = path.relative(docsRoot, source);
+  const normalizedRelative = relative.split(path.sep).join("/");
   const mirror = path.join(docsRoot, "en", relative);
   let sourceText;
   let mirrorText;
@@ -147,9 +149,20 @@ for (const source of sourceDocs) {
     );
     continue;
   }
+  if (translatedReferenceMirrors.has(normalizedRelative)) {
+    if (
+      !sourceText.includes("回合 21–24") ||
+      !mirrorText.includes("rounds 21–24")
+    ) {
+      errors.push(
+        `Translated audit checkpoint is missing in docs/${normalizedRelative} or docs/en/${normalizedRelative}`,
+      );
+    }
+    continue;
+  }
   if (sourceText !== mirrorText) {
     errors.push(
-      `English reference mirror is out of sync: docs/${relative.split(path.sep).join("/")}`,
+      `English reference mirror is out of sync: docs/${normalizedRelative}`,
     );
   }
 }

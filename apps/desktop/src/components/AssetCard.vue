@@ -20,6 +20,22 @@ defineEmits<{
   toggle: [asset: MediaAsset, key: "favorite" | "rejected" | "locked"];
 }>();
 const failed = ref(false);
+const previewAspect = computed(() => {
+  const dimensions = props.asset.dimensions;
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) return 1;
+  return Math.min(1.6, Math.max(0.68, dimensions.width / dimensions.height));
+});
+const previewFit = computed(() => {
+  const dimensions = props.asset.dimensions;
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0)
+    return "cover";
+  const ratio = dimensions.width / dimensions.height;
+  return ratio < 0.68 || ratio > 1.6 ? "contain" : "cover";
+});
+const previewStyle = computed(() => ({
+  "--asset-aspect-ratio": String(previewAspect.value),
+  "--asset-object-fit": previewFit.value,
+}));
 const sourceInfo = computed(() =>
   sourcePresentation(props.asset, { translate: t }),
 );
@@ -55,6 +71,7 @@ watch(
   >
     <button
       class="asset-image-button"
+      :style="previewStyle"
       :aria-label="
         t(`media.card.${choice ? (chosen ? 'remove' : 'select') : 'inspect'}`, {
           name: asset.name,
@@ -87,7 +104,18 @@ watch(
                 : t("media.card.noPreview")
         }}</span>
       </div>
-      <span class="asset-type">{{ t(`media.source.${kind}`) }}</span>
+      <span class="asset-type"
+        ><Icon
+          :name="
+            asset.mediaType === 'video'
+              ? 'play'
+              : asset.mediaType === 'audio'
+                ? 'volume'
+                : 'image'
+          "
+          :size="12"
+        />{{ t(`media.source.${kind}`) }}</span
+      >
       <span v-if="asset.duration !== undefined" class="asset-duration">{{
         formatDuration(asset.duration)
       }}</span>
@@ -123,6 +151,9 @@ watch(
     </button>
     <div class="asset-caption">
       <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
+      <span v-if="asset.state.rejected" class="asset-rejected-mark">
+        {{ t("media.card.rejectedState") }}
+      </span>
     </div>
     <div v-if="!choice" class="asset-actions">
       <button
@@ -136,7 +167,7 @@ watch(
         :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'favorite')"
       >
-        <Icon name="heart" :size="15" />
+        <Icon name="heart" :size="21" />
       </button>
       <button
         :class="{ active: asset.state.locked }"
@@ -149,7 +180,7 @@ watch(
         :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'locked')"
       >
-        <Icon name="lock" :size="15" />
+        <Icon name="lock" :size="21" />
       </button>
       <button
         :class="{ active: asset.state.rejected }"
@@ -162,7 +193,7 @@ watch(
         :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'rejected')"
       >
-        <Icon name="reject" :size="15" />
+        <Icon name="reject" :size="21" />
       </button>
       <span v-if="asset.rating" class="asset-rating"
         ><Icon name="star" :size="11" /> {{ asset.rating }}</span

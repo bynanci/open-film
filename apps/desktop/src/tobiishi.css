@@ -1,0 +1,185 @@
+/* App adapter for the shared garden planes. Media frames and hit areas keep
+   their existing geometry; only independent task surfaces receive a backing. */
+.film-workspace
+  :is(
+    .editor-player-region,
+    .editor-inspector,
+    .asset-inspector,
+    .export-options,
+    .settings-dialog,
+    .storyboard-card,
+    .beat-editor,
+    .project-start,
+    .import-panel
+  )[data-stone] {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+}
+.film-workspace :is(h1, h2, .wordmark) {
+  font-family: var(--of-font-editorial);
+}
+.film-workspace :is(button, input, select, textarea) {
+  font-family: var(--of-font-ui);
+}
+.beat-editor[data-stone] {
+  align-self: start;
+  padding: var(--of-space-6);
+}
+.beat-editor-workspace {
+  display: grid;
+  gap: var(--of-space-6);
+}
+.beat-editor-tools,
+.beat-editor-memories {
+  min-width: 0;
+}
+.beat-editor-memories .candidate-heading {
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+}
+.beat-editor-memories .candidate-guidance {
+  max-width: 52ch;
+}
+@media (min-width: 1600px) {
+  .beat-editor-workspace {
+    grid-template-columns: minmax(0, var(--of-golden-minor)) minmax(
+        0,
+        var(--of-golden-major)
+      );
+    gap: var(--of-space-8);
+    align-items: start;
+  }
+}
+.beat-editor-heading {
+  position: sticky;
+  top: var(--workspace-header-height, 64px);
+  z-index: var(--of-z-sticky);
+  padding-block: var(--of-space-2);
+  background: var(--of-surface-1);
+}
+.story-writing-tools {
+  margin-block: var(--of-space-5);
+  padding-block: var(--of-space-3);
+}
+.story-writing-tools > summary {
+  color: var(--of-text-primary);
+  font-weight: 650;
+}
+.story-writing-tools[open] > summary {
+  margin-bottom: var(--of-space-4);
+}
+.library-filter-reset {
+  flex-shrink: 0;
+}
+.workspace-story .perspective-nav {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.editor-inspector-content {
+  min-width: 0;
+}
+.editor-inspector-tabs [role="tab"] {
+  min-height: 38px;
+  text-align: left;
+  padding-inline: var(--of-space-3);
+}
+.editor-inspector-tabs [aria-selected="true"] {
+  font-weight: 700;
+}
+.editor-clip-badge > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  min-height: 18px;
+}
+@media (max-width: 1200px) {
+  .beat-editor[data-stone] {
+    padding: var(--of-space-4);
+  }
+}
+
+.storyboard-card[data-stone] {
+  --stone-fill: var(--of-surface-1);
+}
+.storyboard-card.active[data-stone] {
+  --stone-fill: var(--of-accent-soft);
+}
+
+.asset-inspector[data-stone],
+.export-options[data-stone] {
+  padding: var(--of-space-5);
+}
+.film-workspace .export-options[data-stone] .export-destination {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+@media (min-width: 1280px) {
+  .workspace-library .library-main:has(> .media-availability.healthy) {
+    display: grid;
+    grid-template-columns: minmax(0, var(--of-golden-major)) minmax(
+        0,
+        var(--of-golden-minor)
+      );
+    gap: var(--of-space-2) var(--of-space-6);
+    align-items: start;
+  }
+  .workspace-library .library-main:has(> .media-availability.healthy) > * {
+    min-width: 0;
+    grid-column: 1 / -1;
+  }
+  .workspace-library .library-main > .media-availability.healthy {
+    grid-column: 1;
+    grid-row: 1;
+    margin-bottom: 0;
+    align-self: center;
+  }
+  .workspace-library
+    .library-main:has(> .media-availability.healthy)
+    > .proxy-storage:not([open]) {
+    grid-column: 2;
+    grid-row: 1;
+    margin-block: 0;
+    border: 0;
+    align-self: center;
+  }
+  .workspace-library .library-main:has(> .proxy-storage[open]) > .healthy {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+  .workspace-export .output-workspace-export .export-options {
+    gap: var(--of-space-3);
+    padding: var(--of-space-4);
+  }
+  .workspace-export .export-options > header h2 {
+    font-size: 24px;
+  }
+  .workspace-export .export-goals {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--of-space-2);
+  }
+  .workspace-export .export-goal {
+    padding: var(--of-space-2) var(--of-space-3);
+    align-items: center;
+  }
+  .workspace-export .export-options .export-destination {
+    display: block;
+  }
+}
+@media (pointer: coarse) {
+  .film-workspace .import-panel :is(button, input, select),
+  .import-panel
+    .field
+    :is(
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+      select
+    ) {
+    min-height: 44px;
+  }
+}

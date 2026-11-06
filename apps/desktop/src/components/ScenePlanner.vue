@@ -223,8 +223,10 @@ function discard() {
 
 <template>
   <section
+    id="scene-planner"
     class="scene-planner"
     data-testid="scene-planner"
+    tabindex="-1"
     :aria-label="t('scenePlan.heading')"
     :aria-busy="working"
   >
@@ -597,15 +599,17 @@ select {
 }
 .scene-plan-thumbnails {
   display: flex;
-  gap: var(--of-space-2);
+  gap: var(--of-space-3);
   margin-bottom: var(--of-space-3);
-  overflow: hidden;
+  overflow-x: auto;
+  padding-bottom: var(--of-space-2);
 }
 .scene-plan-thumbnails img {
   width: 96px;
-  height: 64px;
+  height: 96px;
+  flex-shrink: 0;
   object-fit: cover;
-  border-radius: var(--of-radius-sm);
+  border-radius: var(--of-radius-media);
 }
 .scene-plan-scene-heading > span {
   color: var(--of-text-secondary);

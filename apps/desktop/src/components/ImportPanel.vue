@@ -62,6 +62,7 @@ const props = defineProps<{
   };
 }>();
 const emit = defineEmits<{
+  ready: [projectId: string];
   error: [error: unknown];
   close: [];
   cancel: [];
@@ -2020,6 +2021,7 @@ watch(
 );
 
 onMounted(async () => {
+  emit("ready", props.projectId);
   if (!props.native) return;
   const token = generation;
   const owner = props.projectId;
@@ -2049,6 +2051,9 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="import-panel inline-form"
+    data-stone="entry"
+    data-focus-target="import-panel"
+    tabindex="-1"
     :class="{ 'is-expert': expert }"
     :aria-label="t('app.import.label')"
   >

@@ -5,7 +5,7 @@ import { OpenFilmApplication } from "@openfilm/application";
 import { expect, test } from "@playwright/test";
 import axe from "axe-core";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
-import { navigate, openFilm } from "./ui-helpers.js";
+import { navigate, openFilm, uiText } from "./ui-helpers.js";
 
 const api = "http://127.0.0.1:4310/api";
 let root: string;
@@ -136,6 +136,225 @@ test("previews authored order, explains invalid fields, and keeps a dismissed dr
   expect(
     project.stories.at(-1).beats.map((beat: { title: string }) => beat.title),
   ).toEqual(["先看見一封信 💌", "回到當天", "把結尾留給明天"]);
+});
+
+test("story plan media labels keep readable contrast in both themes", async ({
+  page,
+}) => {
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await navigate(page, "story");
+  await page.getByTestId("perspective-tab-graph").click();
+  const selectors = [
+    ".subtitle",
+    ".scene-idx",
+    ".scene-title",
+    ".source-badge",
+    ".section-label",
+    ".asset-name",
+    ".role-badge",
+    ".depth-fallback-pill",
+    ".duration-badge",
+    ".rationale-text",
+    ".modal-footer .secondary-btn",
+    ".modal-footer .primary-btn",
+    ".close-btn",
+  ];
+  const luminance = (color: string) => {
+    const channels = color
+      .match(/[\d.]+/g)!
+      .slice(0, 3)
+      .map(Number);
+    const linear = channels.map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  };
+  await page.addScriptTag({ content: axe.source });
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator(".settings-toggle").click();
+    const settings = page.getByRole("dialog", {
+      name: uiText("en-US", "app.settings.title"),
+    });
+    await settings
+      .getByLabel(uiText("en-US", "app.settings.theme"))
+      .selectOption(theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await settings
+      .getByRole("button", {
+        name: uiText("en-US", "app.settings.close"),
+      })
+      .click();
+    await page.locator(".plan-storyboard-btn").click();
+    const dialog = page.locator('.modal-backdrop[role="dialog"]');
+    await expect(dialog).toBeVisible();
+    const modalViolations = await dialog.evaluate(async (root) => {
+      const audit = (window as unknown as { axe: typeof axe }).axe;
+      return (
+        await audit.run(root, {
+          runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
+        })
+      ).violations.map((item) => item.id);
+    });
+    expect(modalViolations, `${theme} storyboard modal accessibility`).toEqual(
+      [],
+    );
+    await expect(dialog.locator(".media-section").first()).toBeVisible();
+    await expect(
+      dialog.locator(".media-section .asset-name").first(),
+    ).toBeVisible();
+    await expect(dialog.locator(".depth-fallback-pill").first()).toHaveText(
+      "Photo stays still",
+    );
+    await expect(dialog.locator(".depth-fallback-pill")).toHaveCount(1);
+    const fallbackAssetNames = await dialog
+      .locator(".depth-fallback-pill")
+      .evaluateAll((badges) =>
+        badges.map(
+          (badge) =>
+            badge
+              .closest(".asset-chip")
+              ?.querySelector(".asset-name")
+              ?.textContent?.trim() ?? null,
+        ),
+      );
+    expect(fallbackAssetNames).toEqual(["01-photo.png"]);
+    await expect(dialog.locator(".storyboard-card")).toHaveCount(2);
+    const sceneCards = dialog.locator(".storyboard-card");
+    await expect(dialog.getByRole("article")).toHaveCount(2);
+    expect(
+      await sceneCards.evaluateAll((cards) =>
+        cards.every((card) => !card.hasAttribute("tabindex")),
+      ),
+    ).toBe(true);
+    await dialog.locator(".close-btn").focus();
+    await page.keyboard.press("Tab");
+    await expect(dialog.locator(".modal-footer .secondary-btn")).toBeFocused();
+    await expect(dialog.locator(".media-section .section-label")).toHaveText([
+      "Media",
+      "Media",
+    ]);
+    await expect(dialog.locator(".cards-scroller")).toHaveAccessibleName(
+      "Storyboard scenes",
+    );
+    const gridFill = await dialog
+      .locator(".cards-scroller")
+      .evaluate((grid) => {
+        const bounds = grid.getBoundingClientRect();
+        const cards = Array.from(
+          grid.querySelectorAll<HTMLElement>(".storyboard-card"),
+        );
+        return {
+          leadingSpace: cards[0]!.getBoundingClientRect().left - bounds.left,
+          trailingSpace:
+            bounds.right - cards.at(-1)!.getBoundingClientRect().right,
+        };
+      });
+    expect(gridFill.leadingSpace).toBeLessThanOrEqual(1);
+    expect(gridFill.trailingSpace).toBeLessThanOrEqual(1);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect
+      .poll(() =>
+        dialog
+          .locator(".storyboard-card")
+          .first()
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+      )
+      .toBe(theme === "light" ? "rgb(233, 229, 218)" : "rgb(37, 43, 38)");
+    const samples = await dialog.evaluate(
+      (root, targets) =>
+        targets.flatMap((selector) =>
+          Array.from(root.querySelectorAll<HTMLElement>(selector)).map(
+            (element) => {
+              let surface: HTMLElement | null = element;
+              let background = "rgb(0, 0, 0)";
+              while (surface) {
+                const color = getComputedStyle(surface).backgroundColor;
+                if (color !== "rgba(0, 0, 0, 0)" && color !== "transparent") {
+                  background = color;
+                  break;
+                }
+                surface = surface.parentElement;
+              }
+              return {
+                selector,
+                foreground: getComputedStyle(element).color,
+                background,
+              };
+            },
+          ),
+        ),
+      selectors,
+    );
+    expect([...new Set(samples.map((sample) => sample.selector))]).toEqual(
+      selectors,
+    );
+    for (const sample of samples) {
+      const foreground = luminance(sample.foreground);
+      const background = luminance(sample.background);
+      expect(
+        (Math.max(foreground, background) + 0.05) /
+          (Math.min(foreground, background) + 0.05),
+        `${theme} ${sample.selector} contrast (${sample.foreground} on ${sample.background})`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.screenshot({
+      path: test.info().outputPath(`story-plan-modal-${theme}.png`),
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 1024, height: 720 });
+    await expect(dialog).toBeVisible();
+    const compactLayout = await dialog.evaluate((root) => {
+      const dialogElement = root.querySelector<HTMLElement>(".modal-dialog")!;
+      const grid = root.querySelector<HTMLElement>(".cards-scroller")!;
+      const cards = Array.from(
+        grid.querySelectorAll<HTMLElement>(".storyboard-card"),
+      );
+      const primary = root.querySelector<HTMLElement>(".primary-btn")!;
+      const dialogBounds = dialogElement.getBoundingClientRect();
+      const primaryBounds = primary.getBoundingClientRect();
+      return {
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        gridWidth: grid.clientWidth,
+        gridScrollWidth: grid.scrollWidth,
+        cardBounds: cards.map((card) => {
+          const bounds = card.getBoundingClientRect();
+          return { left: bounds.left, right: bounds.right, top: bounds.top };
+        }),
+        primaryRight: primaryBounds.right,
+        dialogRight: dialogBounds.right,
+      };
+    });
+    expect(compactLayout.pageWidth).toBeLessThanOrEqual(
+      compactLayout.viewportWidth,
+    );
+    expect(compactLayout.gridScrollWidth).toBeLessThanOrEqual(
+      compactLayout.gridWidth,
+    );
+    expect(compactLayout.cardBounds).toHaveLength(2);
+    expect(compactLayout.cardBounds[0]!.right).toBeLessThanOrEqual(
+      compactLayout.cardBounds[1]!.left,
+    );
+    expect(compactLayout.primaryRight).toBeLessThanOrEqual(
+      compactLayout.dialogRight,
+    );
+    await page.screenshot({
+      path: test.info().outputPath(`story-plan-modal-${theme}-1024x720.png`),
+      animations: "disabled",
+    });
+    await dialog.locator(".close-btn").click();
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  await page.locator(".ui-language select").selectOption("ja-JP");
+  await page.locator(".plan-storyboard-btn").click();
+  await expect(
+    page.locator('.modal-backdrop[role="dialog"] .cards-scroller'),
+  ).toHaveAccessibleName(uiText("ja-JP", "app.storyPlan.card.scenesRegion"));
 });
 
 test("uses keyboard tabs and previews full-size photos and playable video without losing focus", async ({
@@ -297,20 +516,19 @@ test("drags graph layout and creates a typed story connection through the expert
   await page
     .getByRole("button", { name: "Fit to content", exact: true })
     .click();
+  // Reveal the full canvas before measuring: viewport-edge clamping can land
+  // on the fixed production toolbar instead of the intended graph node.
+  await page.locator(".graph-main-canvas").evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "nearest" });
+  });
   const sourceBox = await sourceHandle.boundingBox();
   const targetBox = await targetNode.boundingBox();
   expect(sourceBox).not.toBeNull();
   expect(targetBox).not.toBeNull();
   const viewport = page.viewportSize()!;
   const cancelledTargetPoint = {
-    x: Math.min(
-      targetBox!.x + Math.min(8, targetBox!.width / 2),
-      viewport.width - 2,
-    ),
-    y: Math.min(
-      targetBox!.y + Math.min(8, targetBox!.height / 2),
-      viewport.height - 2,
-    ),
+    x: Math.min(targetBox!.x + targetBox!.width / 2, viewport.width - 2),
+    y: Math.min(targetBox!.y + targetBox!.height / 2, viewport.height - 2),
   };
   const projectBeforeCancel = (
     await (await request.get(`${api}/project`)).json()
@@ -363,14 +581,22 @@ test("drags graph layout and creates a typed story connection through the expert
   expect(actualTargetBox).not.toBeNull();
   const actualTargetPoint = {
     x: Math.min(
-      actualTargetBox!.x + Math.min(8, actualTargetBox!.width / 2),
+      actualTargetBox!.x + actualTargetBox!.width / 2,
       viewport.width - 2,
     ),
     y: Math.min(
-      actualTargetBox!.y + Math.min(8, actualTargetBox!.height / 2),
+      actualTargetBox!.y + actualTargetBox!.height / 2,
       viewport.height - 2,
     ),
   };
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest<HTMLElement>(".graph-node")
+          ?.dataset.nodeId,
+      actualTargetPoint,
+    ),
+  ).toBe(assetNodeId);
   await page.mouse.move(actualTargetPoint.x, actualTargetPoint.y, { steps: 8 });
   await page.mouse.up();
 
@@ -416,6 +642,9 @@ test("recovers from an empty search with one action and offers a skip link", asy
     .getByRole("button", { name: "Search", exact: true })
     .click();
   await expect(page.locator(".library-empty")).toBeVisible();
+  await expect(
+    page.locator(".library-empty .empty-state-garden .garden-stone"),
+  ).toHaveCount(6);
   await page
     .locator(".library-empty")
     .getByRole("button", { name: "Clear search and filters" })
@@ -433,9 +662,10 @@ test("opens pipeline stages with the keyboard and returns focus without starting
   page,
   request,
 }) => {
-  const stage = page
-    .locator(".pipeline-status-bar")
-    .getByRole("button", { name: /^2\. / });
+  const stage = page.locator(".pipeline-status-bar .bar-expand-btn");
+  await expect(page.locator(".pipeline-status-bar .bar-stage-dot")).toHaveCount(
+    0,
+  );
   await stage.focus();
   await page.keyboard.press("Enter");
   const drawer = page.getByRole("dialog");
@@ -456,12 +686,13 @@ test("keeps one focused pipeline gate in standard mode and exposes canonical tas
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const storyPlanStage = page
-    .locator(".pipeline-status-bar")
-    .getByRole("button", { name: /^2\. / });
+  const storyPlanStage = page.locator(".pipeline-status-bar .bar-expand-btn");
   await storyPlanStage.click();
   const drawer = page.locator(".pipeline-workbench-container.is-drawer");
   await expect(drawer).toBeVisible();
+  await drawer
+    .getByRole("button", { name: "Previous gate", exact: true })
+    .click();
   await expect(drawer.locator(".gate-summary")).toContainText("Gate 2 of 5");
   await expect(drawer.locator(".workbench-pane-nav")).toHaveCount(0);
   await expect(drawer.locator(".workbench-pane-inspector")).toHaveCount(0);
@@ -578,4 +809,39 @@ test("keeps story setup and storyboard readable in CJK, expanded text and both t
       );
     }
   }
+});
+
+test("keeps long authored scene titles readable in compact review", async ({
+  page,
+}) => {
+  const title = "我們一起走過那些平凡又重要的日子・思い出をつなぐ物語・".repeat(
+    3,
+  );
+  await page.route("**/stories/*/plan/preview", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.plan.scenes[0].title = title;
+    await route.fulfill({ response, json: body });
+  });
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await navigate(page, "story");
+  await page.getByTestId("perspective-tab-graph").click();
+  await page.locator(".plan-storyboard-btn").click();
+  const heading = page.locator(".modal-backdrop .scene-title").first();
+  await expect(heading).toHaveText(title);
+  const bounds = await heading.evaluate((element) => ({
+    visible: element.clientHeight,
+    content: element.scrollHeight,
+    textWidth: element.clientWidth,
+    contentWidth: element.scrollWidth,
+    width: document.documentElement.scrollWidth,
+    viewport: window.innerWidth,
+  }));
+  expect(bounds.content).toBeLessThanOrEqual(bounds.visible + 1);
+  expect(bounds.contentWidth).toBeLessThanOrEqual(bounds.textWidth + 1);
+  expect(bounds.width).toBeLessThanOrEqual(bounds.viewport);
+  await expect(page.locator(".modal-backdrop .adopt-btn")).toBeInViewport();
 });

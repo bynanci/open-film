@@ -1,6 +1,8 @@
 <script setup lang="ts">
 withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 });
 const paths: Record<string, string> = {
+  thirds: "M3 3h18v18H3ZM9 3v18M15 3v18M3 9h18M3 15h18",
+  "safe-frame": "M3 3h18v18H3ZM7 7h10v10H7Z",
   plus: "M12 5v14M5 12h14",
   arrow: "M5 12h14m-6-6 6 6-6 6",
   folder: "M3 7V5h6l2 2h10v13H3Z",

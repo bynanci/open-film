@@ -77,10 +77,14 @@ const name = computed(
         v-if="clip.userOverrides?.isUserPinned"
         data-testid="user-pin-marker"
         :title="t('editor.pins.hint')"
-        ><Icon name="pin" :size="11" />{{ t("editor.pins.pinned") }}</span
+        ><Icon name="pin" :size="12" /><span class="sr-only">{{
+          t("editor.pins.pinned")
+        }}</span></span
       >
-      <span v-if="clip.locked"
-        ><Icon name="lock" :size="11" />{{ t("editor.clip.locked") }}</span
+      <span v-if="clip.locked" :title="t('editor.clip.locked')"
+        ><Icon name="lock" :size="12" /><span class="sr-only">{{
+          t("editor.clip.locked")
+        }}</span></span
       ></span
     ><span class="editor-clip-meta"
       ><strong>{{ name }}</strong

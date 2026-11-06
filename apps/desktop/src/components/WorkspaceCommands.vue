@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
   overflow: auto;
   color: var(--of-text-primary);
   background: var(--of-surface-1);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-dialog);
   box-shadow: var(--of-shadow-dialog);
 }
@@ -189,9 +189,10 @@ h2 {
   gap: var(--of-space-3);
   margin: 0 var(--of-space-4) var(--of-space-3);
   padding-inline: var(--of-space-3);
-  border: 1px solid var(--of-border-control);
-  border-radius: var(--of-radius-md);
-  background: var(--of-bg);
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-2);
+  box-shadow: var(--of-shadow-contact);
   color: var(--of-text-secondary);
 }
 .workspace-command-search:focus-within {
@@ -249,8 +250,7 @@ footer {
 li.selected {
   color: var(--of-accent);
   background: var(--of-accent-soft);
-  border-color: transparent;
-  box-shadow: inset 3px 0 var(--of-accent);
+  box-shadow: var(--of-shadow-raised);
 }
 li.unavailable {
   cursor: default;
@@ -262,6 +262,6 @@ li.unavailable {
 }
 footer {
   padding: var(--of-space-3) var(--of-space-4);
-  border-top: 1px solid var(--of-border-subtle);
+  color: var(--of-text-muted);
 }
 </style>

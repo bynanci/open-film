@@ -3,21 +3,22 @@ import { test, expect } from "@playwright/test";
 
 // Load the production cascade in the same order as main.ts. This small browser
 // fixture isolates focus styling from project data, decoding, and job lifecycle.
+// Inline the shared token source: setContent cannot resolve an entry-point import.
 const styles = await Promise.all(
   [
-    "tokens.css",
-    "style.css",
-    "editor.css",
-    "relink.css",
-    "source.css",
-    "export-report.css",
-    "product.css",
-  ].map((name) =>
-    readFile(
-      new URL(`../../apps/desktop/src/${name}`, import.meta.url),
-      "utf8",
-    ),
-  ),
+    "design/tokens.css",
+    "design/stone-surfaces.css",
+    ...[
+      "style.css",
+      "editor.css",
+      "relink.css",
+      "source.css",
+      "export-report.css",
+      "product.css",
+      "versions.css",
+      "tobiishi.css",
+    ].map((name) => `apps/desktop/src/${name}`),
+  ].map((name) => readFile(new URL(`../../${name}`, import.meta.url), "utf8")),
 );
 
 const states = ["", "selected", "locked", "selected locked"];
@@ -34,7 +35,7 @@ for (const theme of ["dark", "light"] as const) {
       await page.setViewportSize({ width, height });
       await page.setContent(`
         <html data-theme="${theme}"><head><style>${styles.join("\n")}</style></head>
-        <body><div class="timeline-editor timeline-editor-contained">
+        <body><div class="film-workspace"><div class="timeline-editor timeline-editor-contained">
           <div class="editor-clip-lane" role="group" aria-label="Story clips">
             ${states
               .map(
@@ -45,7 +46,7 @@ for (const theme of ["dark", "light"] as const) {
               )
               .join("")}
           </div>
-        </div></body></html>`);
+        </div></div></body></html>`);
 
       for (let index = 0; index < states.length; index++) {
         const clip = page.locator(".editor-clip").nth(index);

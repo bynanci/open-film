@@ -166,6 +166,9 @@ export default {
         "タイムラインの編集は操作が途切れると自動保存されます。保存に失敗しても未保存の変更は復元できます。",
     },
     workspaceMode: {
+      scriptTools: "脚本とシーンの演出",
+      noComposition: "先にストーリーから編集を作成してください。",
+      fitHint: "短縮案を確認してから、フィルムへの反映を選べます。",
       label: "操作モード",
       standard: "一般モード",
       expert: "エキスパートモード",
@@ -500,6 +503,17 @@ export default {
       cancelUpload: "転送をキャンセル",
       originals:
         "元のファイルは変更しません。ブラウザーで選んだファイルはローカルプロジェクトへコピーされます。",
+      completion: {
+        completed: "メディアの取り込みが完了しました",
+        failed: "一部のメディアに対応が必要です",
+        cancelled: "取り込みを停止しました",
+        libraryCounts:
+          "ライブラリ内：{total} 件 · 写真 {photos} 件 · 動画 {videos} 件 · 音声 {audio} 件",
+        attention: "{count} 件のファイルに対応が必要です",
+        organize: "思い出を整理",
+        addMore: "メディアを追加",
+        dismiss: "閉じる",
+      },
     },
     export: {
       label: "フィルムを書き出す",
@@ -516,6 +530,29 @@ export default {
       mp4Hint:
         "現在のカットと編集内容をレンダリングし、MP4 をプロジェクトに保存します。",
       saveMp4: "MP4 を書き出す",
+      reviewSummary: {
+        title: "書き出し前の確認",
+        filmLength: "フィルムの長さ",
+        outputFrame: "出力フレーム",
+        aspectRatio: "画面比率",
+        framing: "フレーミング",
+        quality: "画質",
+        burnedCaptions: "焼き込み字幕",
+        handoffCaptions: "字幕の受け渡し",
+        noCaptionTracks: "保存済みの字幕トラックはありません",
+        firstCaptionHandoff:
+          "最初のトラック：{name} · 対応状況を確認してください",
+        look: "映像のルック",
+        destination: "保存先",
+        projectFolder: "現在のプロジェクトフォルダー",
+        captionTrackUnavailable: "選択した字幕トラックが見つかりません",
+        uniformLook: "全体のルック · {preset} · {strength}",
+        destinations: {
+          resolve: "DaVinci Resolve",
+          finalcut: "Final Cut Pro",
+          premiere: "Adobe Premiere Pro",
+        },
+      },
       destination: "次の編集ソフト",
       compatibility: {
         verified: "編集ソフトで検証済み",
@@ -672,6 +709,7 @@ export default {
       description: "覚えていたい瞬間を集める場所。",
       add: "メディアを追加",
       relink: "メディアを再リンク",
+      findMissing: "オフラインのメディアを探す",
       availability: "メディアの利用状況",
       offlineCount: "{count} 個のファイルがオフラインです",
       offlineHint:
@@ -965,7 +1003,8 @@ export default {
       },
       card: {
         scene: "シーン {number}",
-        whichImage: "使用する素材",
+        scenesRegion: "ストーリーボードのシーン",
+        media: "使用する素材",
         whatExpressed: "表現する内容",
         howPresented: "演出方法",
         howLong: "時間",
@@ -977,7 +1016,7 @@ export default {
         echoRole: "主題の呼応",
         heroRole: "主役",
         supportingRole: "脇役",
-        photoDepthFallback: "PhotoDepth 代替手段: {mode}",
+        photoDepthFallback: "写真は静止したまま表示",
         missingAssets: "不足している素材: {assets}",
         noAssets: "このシーンに割り当てられた素材はありません",
       },
@@ -1258,6 +1297,7 @@ export default {
     variants: {
       modalTitle: "クリエイティブ案と A/B 比較",
       listHeader: "クリエイティブ案",
+      loading: "案を読み込み中…",
       createHeader: "別の案を作成",
       impactHeader: "変更影響のプレビュー",
       plannedChanges: "予定される変更",
@@ -1319,6 +1359,8 @@ export default {
         variantA: "ベースライン (A)",
         variantB: "比較案 (B)",
       },
+      previewA: "プレビューの仮表示 · ベースライン (A)",
+      previewB: "プレビューの仮表示 · 比較案 (B)",
       audio: {
         active: "再生中",
         play: "音声を再生",

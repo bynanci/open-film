@@ -5,6 +5,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
+import { classifyExportWarning } from "../export-warning.js";
 import { formatNumber } from "../i18n";
 const { t } = useI18n();
 const props = defineProps<{
@@ -29,6 +30,18 @@ const metadataOnly = computed(
       props.report.metadataOnlyEdits.length > 0),
 );
 const warnings = computed(() => props.report?.warnings ?? []);
+function warningSummary(warning: string): string | undefined {
+  const key = classifyExportWarning(warning);
+  return key ? t(`media.report.${key}`) : undefined;
+}
+const warningItems = computed(() =>
+  warnings.value.map((warning) => {
+    if (warning === "collect.offline-quality")
+      return { summary: t("collectDelivery.offlineOutput") };
+    const summary = warningSummary(warning);
+    return summary ? { summary, technical: warning } : { summary: warning };
+  }),
+);
 const manualFeatures = computed(() => {
   const edits = props.report?.metadataOnlyEdits;
   if (edits === undefined)
@@ -109,12 +122,17 @@ const requiresVerification = resolveCompatibility.features.some(
         class="export-report-warnings"
         :aria-label="t('media.report.warnings')"
       >
-        <li v-for="(warning, index) in warnings" :key="index">
-          {{
-            warning === "collect.offline-quality"
-              ? t("collectDelivery.offlineOutput")
-              : warning
-          }}
+        <li v-for="(warning, index) in warningItems" :key="index">
+          <p class="export-report-warning-summary">{{ warning.summary }}</p>
+          <details
+            v-if="warning.technical"
+            class="export-report-warning-details"
+          >
+            <summary>{{ t("media.report.technicalDetails") }}</summary>
+            <p class="export-report-warning-technical">
+              {{ warning.technical }}
+            </p>
+          </details>
         </li>
       </ul>
     </details>

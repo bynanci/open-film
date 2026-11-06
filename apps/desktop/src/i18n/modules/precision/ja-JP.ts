@@ -20,7 +20,13 @@ export default {
       "表示されたフレーム区切り記号で、ソースの長さ以内の有効なタイムコードを入力してください。",
     modeLabel: "編集モード",
     storyMode: "ストーリー",
+    storyModeDescription: "ストーリービートと中の素材の順番を整えます。",
     precisionMode: "精密",
+    precisionModeDescription:
+      "ソース範囲をトリムし、フレーム単位で分割して波形マーカーを確認します。",
+    transcriptModeDescription:
+      "カットを変更せずに文字起こしを修正し、提案を確認します。",
+    inspectorObject: "選択中：{kind}",
     selectedClip: "選択中のクリップ",
     title: "精密ソース編集",
     emptyTitle: "動画または音声クリップを選択",
@@ -43,6 +49,11 @@ export default {
       "音声を解析すると波形を表示できます。素材内の移動とトリム操作は、すでに利用できます。",
     audioSilent: "この素材の解析結果に聞き取れる音のピークはありません。",
     snap: "スナップ",
+    snapChecking: "素材を確認しています。確認後にスナップを使えます。",
+    snapUnavailable:
+      "素材の確認後にスナップを使えます。トリムとシークは引き続き利用できます。",
+    snapCheckFailed:
+      "素材を確認できませんでした。再試行してください。オフラインまたは変更済みの場合は復元してください。トリムとシークは引き続き利用できます。",
     snapScope:
       "音声へのスナップには読み込み済みの文字起こしページを使います。マーカーとクリップ端は引き続き利用できます。",
     snapResult: "{time} の{type}にスナップ",

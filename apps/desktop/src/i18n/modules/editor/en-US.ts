@@ -745,6 +745,12 @@ export default {
         "Your unsaved edits were recovered. Retry saving to keep them in your project.",
       conflictRecovered:
         "Your unsaved draft was recovered, and the saved cut has changed. Review the draft before applying it to the latest cut.",
+      conflictNoDraft:
+        "The saved cut changed in another window. There are no unsaved local edits to restore; reload to continue with the latest version.",
+      conflictWithDraft:
+        "Your local edits are still here. The saved cut changed in another window; review your draft before applying it to the latest version.",
+      failedNoDraft:
+        "There are no unsaved local edits waiting to save. Reload the saved cut to continue.",
     },
     duration: {
       feedback: "Film duration feedback",

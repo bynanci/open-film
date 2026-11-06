@@ -21,10 +21,13 @@ function nodes(value: unknown): VNode[] {
 function source() {
   return readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
 }
-function renderReview(storyId = "story", beatId = "beat") {
+function renderReview(storyId = "story", beatId = "beat", authored = true) {
   const template = parse(source()).descriptor.template.content as string;
-  const start = template.indexOf('<div class="beat-script-fields">');
-  const end = template.indexOf('<div class="candidate-heading">', start);
+  const start = template.lastIndexOf(
+    "<details",
+    template.indexOf('class="story-writing-tools"'),
+  );
+  const end = template.indexOf("</details>", start) + "</details>".length;
   const compiled = compileTemplate({
     source: template.slice(start, end),
     id: "script-review",
@@ -51,15 +54,20 @@ function renderReview(storyId = "story", beatId = "beat") {
     module.exports.render(
       {
         t: String,
+        expertMode: false,
         project: { id: "project" },
         activeStory: { id: storyId },
         activeBeat: { id: beatId },
-        beatDraft: { narration: "manual", visualDirection: "direction" },
+        beatDraft: {
+          narration: authored ? "manual" : "",
+          visualDirection: authored ? "direction" : "",
+        },
         beatDirty: true,
         busy: "",
         relinkBusy: false,
         storyReviewBusy: false,
         storyReviewPending: false,
+        storyReviewPendingCount: 0,
         jobs: [],
         flushPending: vi.fn(),
         scriptReviewAccepted: vi.fn(),
@@ -71,6 +79,15 @@ function renderReview(storyId = "story", beatId = "beat") {
 }
 
 describe("Story review integration in the actual App template", () => {
+  it("keeps the review owner mounted inside a closed script disclosure", () => {
+    const rendered = renderReview("story", "beat", false);
+    expect(rendered.find((node) => node.type === "details")!.props?.open).toBe(
+      false,
+    );
+    expect(
+      rendered.find((node) => node.type === "StoryScriptReview"),
+    ).toBeDefined();
+  });
   it("renders a saved-beat review boundary beside the manual script fields", () => {
     const review = renderReview().find(
       (node) => node.type === "StoryScriptReview",

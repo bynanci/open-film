@@ -94,11 +94,14 @@ watch(mode, async (next, previous) => {
   } else if (workbenchOrigin?.isConnected) {
     workbenchOrigin.focus();
   } else {
-    document
-      .querySelector<HTMLButtonElement>(
+    const target =
+      document.querySelector<HTMLButtonElement>(
         `.bar-stage-dot[data-stage="${activeStage.value}"]`,
-      )
-      ?.focus();
+      ) ??
+      document.querySelector<HTMLButtonElement>(
+        ".pipeline-status-bar .bar-expand-btn",
+      );
+    target?.focus();
   }
 });
 const activeStage = ref<WorkbenchStageKey>("produceClips");
@@ -108,6 +111,14 @@ const recipes = ref<PipelineRecipe[]>([]);
 const selectedRecipeId = ref<string>("guided-story-to-video");
 const currentRun = ref<PipelineRun | null>(null);
 const runsList = ref<PipelineRun[]>([]);
+const runStatusLabel = computed(() => {
+  const status = currentRun.value?.status ?? "idle";
+  if (status === "idle") return t("app.pipeline.status.idle");
+  return t(
+    `app.activity.status.${status === "succeeded" ? "completed" : status}`,
+  );
+});
+
 const actionLoading = ref(false);
 const error = ref<string | null>(null);
 
@@ -664,7 +675,7 @@ onUnmounted(() => {
         </button>
 
         <!-- 5-Stage Indicator -->
-        <div class="bar-stages-track">
+        <div v-if="expertMode" class="bar-stages-track">
           <button
             v-for="(stage, idx) in WORKBENCH_STAGES"
             :key="stage.key"
@@ -727,7 +738,7 @@ onUnmounted(() => {
           class="workbench-pill"
           :class="`pill-${currentRun?.status ?? 'idle'}`"
         >
-          {{ currentRun ? currentRun.status : t("app.pipeline.status.idle") }}
+          {{ runStatusLabel }}
         </span>
       </div>
 
@@ -827,7 +838,7 @@ onUnmounted(() => {
             class="workbench-pill"
             :class="`pill-${currentRun?.status ?? 'idle'}`"
           >
-            {{ currentRun ? currentRun.status : t("app.pipeline.status.idle") }}
+            {{ runStatusLabel }}
           </span>
         </div>
 
@@ -2002,7 +2013,8 @@ onUnmounted(() => {
   right: 0;
   height: min(72dvh, 680px);
   box-shadow: var(--of-shadow-dialog);
-  border-top: 1px solid var(--color-border, #33333d);
+  border: 0;
+  border-radius: var(--of-radius-dialog) var(--of-radius-dialog) 0 0;
 }
 
 .pipeline-workbench-container.is-modal {
@@ -2020,7 +2032,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--of-space-4) var(--of-panel-inset);
-  border-bottom: 1px solid var(--color-border, #33333d);
+  border-bottom: 0;
   flex-wrap: wrap;
   gap: var(--of-group-gap);
 }
@@ -2618,16 +2630,18 @@ onUnmounted(() => {
 
 .mini-asset-thumbnails {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
   margin-top: 4px;
 }
 
 .mini-thumb {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   object-fit: cover;
-  border-radius: var(--of-radius-sm);
-  border: 1px solid #444;
+  border-radius: 12px;
+  border: 0;
 }
 
 .audio-audition-card,

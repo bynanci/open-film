@@ -95,7 +95,7 @@ textarea {
   height: 28px;
   object-fit: contain;
   flex-shrink: 0;
-  filter: drop-shadow(0 2px 8px rgba(236, 172, 124, 0.35));
+  filter: drop-shadow(var(--of-shadow-logo));
 }
 .wordmark-text {
   font-weight: 760;
@@ -185,7 +185,7 @@ textarea {
   width: 64px;
   height: 64px;
   object-fit: contain;
-  filter: drop-shadow(0 4px 18px rgba(236, 172, 124, 0.35));
+  filter: drop-shadow(var(--of-shadow-logo));
 }
 .welcome-intro h1 em {
   font-weight: 400;
@@ -262,14 +262,14 @@ textarea {
   font-weight: 550;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  margin-bottom: 21px;
+  gap: var(--of-space-2);
+  margin-bottom: var(--of-space-4);
 }
 .field input,
 .field select,
 .field textarea {
   width: 100%;
-  background: var(--fresh-paper);
+  background-color: var(--fresh-paper);
   border: 1px solid var(--pencil);
   border-radius: var(--of-radius-sm);
   padding: var(--of-space-3);
@@ -600,7 +600,7 @@ textarea {
 }
 .filter-bar > select {
   font-size: var(--of-font-caption);
-  background: none;
+  background-color: transparent;
   border: 0;
   padding: 5px var(--of-space-5) 5px 3px;
   max-width: 150px;
@@ -649,7 +649,7 @@ textarea {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: var(--asset-object-fit, cover);
   transition: transform var(--of-motion-normal);
 }
 .asset-image-button:hover img {
@@ -675,6 +675,8 @@ textarea {
 }
 .asset-type,
 .asset-duration {
+  font-family: var(--of-font-media);
+  font-weight: 600;
   position: absolute;
   color: var(--of-on-media);
   background: var(--of-media-scrim);
@@ -685,8 +687,11 @@ textarea {
   padding: 5px 6px;
 }
 .asset-type {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--of-space-1);
   left: 10px;
-  letter-spacing: 0.09em;
+  letter-spacing: normal;
 }
 .asset-duration {
   right: 10px;
@@ -744,6 +749,7 @@ textarea {
   color: var(--film-orange);
 }
 .asset-rating {
+  margin-inline-start: auto;
   font-size: var(--of-font-caption);
   display: flex;
   align-items: center;
@@ -760,7 +766,7 @@ textarea {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: 6px;
   color: var(--ink);
   background: var(--of-surface-2);
   font-size: 18px;
@@ -892,7 +898,7 @@ textarea {
   justify-content: center;
   color: var(--olive);
   border: 1px solid var(--of-border-subtle);
-  border-radius: 50%;
+  border-radius: 8px;
   margin-bottom: 5px;
 }
 .empty-state h2 {
@@ -1193,7 +1199,7 @@ textarea {
   color: var(--ink, #fff);
   background: var(--panel, #25282d);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--of-shadow-raised);
 }
 .story-selection > label {
   display: flex;
@@ -1204,7 +1210,7 @@ textarea {
   font-size: var(--of-font-base);
   max-width: 300px;
   border: 0;
-  background: none;
+  background-color: transparent;
   font-weight: 550;
   padding: 6px var(--of-space-5) 6px 0;
 }
@@ -1369,10 +1375,12 @@ textarea {
 }
 .cut-select select {
   font-size: var(--of-font-caption);
-  padding: var(--of-space-2);
+  min-height: 36px;
+  padding-block: var(--of-space-2);
+  padding-inline: var(--of-space-3) var(--of-space-8);
   border: 1px solid var(--pencil);
   border-radius: var(--of-radius-sm);
-  background: var(--fresh-paper);
+  background-color: var(--fresh-paper);
 }
 .preview-placeholder,
 .preview-screen {
@@ -1614,11 +1622,11 @@ td {
 }
 .workspace-footer {
   border-top: 1px solid var(--pencil);
-  margin-top: 47px;
-  padding: var(--of-space-5) 0 22px;
+  margin-top: var(--of-section-gap);
+  padding: var(--of-space-5) 0;
   display: flex;
   justify-content: space-between;
-  gap: 25px;
+  gap: var(--of-group-gap);
   font-size: var(--of-font-caption);
   color: var(--of-text-secondary);
   line-height: 1.6;
@@ -2042,7 +2050,7 @@ td {
     max-width: 100%;
   }
   .workspace-footer {
-    margin-top: 35px;
+    margin-top: var(--of-section-gap);
   }
   .busy-indicator {
     right: 15px;

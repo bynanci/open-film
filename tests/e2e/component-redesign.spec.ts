@@ -59,6 +59,406 @@ test.afterAll(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+test("variant review surfaces keep readable contrast in both themes", async ({
+  page,
+  request,
+}) => {
+  const { project } = await (await request.get(`${api}/project`)).json();
+  const story = project.stories.at(-1);
+  const composition = project.timelines.at(-1);
+  expect(story).toBeTruthy();
+  expect(composition).toBeTruthy();
+
+  for (const [index, name] of ["Quiet afternoon", "Longer pause"].entries()) {
+    const response = await request.post(`${api}/creative-variants`, {
+      data: {
+        name,
+        intent: `Reviewable theme contrast sample ${index + 1}`,
+        scope: { type: "film" },
+        baselineStoryId: story.id,
+        baselineCompositionId: composition.id,
+        modifications: {},
+      },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+
+  await navigate(page, "story", "zh-TW");
+  await page.getByTestId("creative-variants-btn").click();
+  const modal = page.getByTestId("creative-variant-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute("aria-modal", "true");
+  await expect(modal).toHaveAttribute(
+    "aria-labelledby",
+    "creative-variant-dialog-title",
+  );
+  await expect(modal.locator(".close-btn")).toBeFocused();
+  await expect(modal.locator(".variant-card")).toHaveCount(2);
+  const touch = await page.context().newCDPSession(page);
+  await touch.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+  expect(
+    await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches),
+  ).toBe(true);
+  const assertTouchTargets = async (selector: string) => {
+    const sizes = await modal.locator(selector).evaluateAll((controls) =>
+      controls
+        .filter((control) => control.getBoundingClientRect().width > 0)
+        .map((control) => {
+          const bounds = control.getBoundingClientRect();
+          return { width: bounds.width, height: bounds.height };
+        }),
+    );
+    expect(sizes.length, `${selector} touch targets`).toBeGreaterThan(0);
+    for (const size of sizes) {
+      expect(size.width, `${selector} target width`).toBeGreaterThanOrEqual(44);
+      expect(size.height, `${selector} target height`).toBeGreaterThanOrEqual(
+        44,
+      );
+    }
+  };
+  const touchTap = async (bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y, radiusX: 1, radiusY: 1, force: 1, id: 1 }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  };
+  await assertTouchTargets(".tab-btn");
+  await assertTouchTargets(".close-btn");
+  await assertTouchTargets(".card-btn");
+
+  const contrastRatio = (foreground: string, background: string) => {
+    const luminance = (value: string) => {
+      const channels = value
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number);
+      const linear = channels.map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+    };
+    const first = luminance(foreground);
+    const second = luminance(background);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  };
+
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator("html").evaluate((element, value) => {
+      element.setAttribute("data-theme", value);
+    }, theme);
+    const cardPair = await modal
+      .locator(".variant-card")
+      .first()
+      .evaluate((card) => ({
+        foreground: getComputedStyle(card.querySelector(".variant-name")!)
+          .color,
+        background: getComputedStyle(card).backgroundColor,
+      }));
+    expect(
+      contrastRatio(cardPair.foreground, cardPair.background),
+      `${theme} theme variant card contrast`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1024, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const dialogBox = await modal
+      .locator(".variants-modal-container")
+      .boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.width).toBeLessThanOrEqual(
+      Math.min(viewport.width * 0.96, 1000) + 1,
+    );
+    expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(
+      viewport.width + 1,
+    );
+    expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(
+      viewport.height + 1,
+    );
+    const bodyWidth = await modal
+      .locator(".variants-modal-body")
+      .evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }));
+    expect(bodyWidth.scrollWidth).toBeLessThanOrEqual(
+      bodyWidth.clientWidth + 1,
+    );
+    await page.screenshot({
+      path: test
+        .info()
+        .outputPath(`variant-review-${viewport.width}x${viewport.height}.png`),
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  const compareButton = modal
+    .locator(".variant-card")
+    .last()
+    .locator(".card-btn")
+    .first();
+  const compareBounds = await compareButton.boundingBox();
+  await touchTap(compareBounds!);
+  await expect(modal.locator(".player-card")).toHaveCount(2);
+  const comparisonBounds = await modal
+    .locator(".variants-modal-container")
+    .boundingBox();
+  expect(comparisonBounds!.width).toBeGreaterThan(1100);
+  await assertTouchTargets(".audio-toggle-btn");
+  const audioA = modal.locator(".audio-toggle-btn").first();
+  const audioB = modal.locator(".audio-toggle-btn").last();
+  const audioBounds = await audioA.boundingBox();
+  await touchTap(audioBounds!);
+  await expect(audioA).toHaveAttribute("aria-pressed", "true");
+  await expect(audioB).toHaveAttribute("aria-pressed", "false");
+  const audioBBounds = await audioB.boundingBox();
+  await touchTap(audioBBounds!);
+  await expect(audioA).toHaveAttribute("aria-pressed", "false");
+  await expect(audioB).toHaveAttribute("aria-pressed", "true");
+  await expect(modal.locator(".tab-btn").nth(2)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  for (const theme of ["light", "dark"] as const) {
+    await page.locator("html").evaluate((element, value) => {
+      element.setAttribute("data-theme", value);
+    }, theme);
+    const playerPairs = await modal
+      .locator(".player-card")
+      .evaluateAll((cards) =>
+        cards.map((card) => ({
+          foreground: getComputedStyle(card.querySelector(".player-label")!)
+            .color,
+          background: getComputedStyle(card).backgroundColor,
+        })),
+      );
+    for (const pair of playerPairs)
+      expect(
+        contrastRatio(pair.foreground, pair.background),
+        `${theme} theme comparison player contrast`,
+      ).toBeGreaterThanOrEqual(4.5);
+  }
+
+  await modal.locator(".tab-btn").nth(1).click();
+  await expect(modal.locator(".tab-btn").nth(1)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await assertTouchTargets(".primary-btn, .secondary-btn");
+  for (const selector of [
+    "#variant-name",
+    "#variant-intent",
+    "#variant-target-duration",
+    "#variant-narration",
+  ]) {
+    const field = modal.locator(selector);
+    await expect(field).toBeVisible();
+    const metrics = await field.evaluate((element) => ({
+      labels: (element as HTMLInputElement).labels?.length ?? 0,
+      height: element.getBoundingClientRect().height,
+    }));
+    expect(metrics.labels, selector).toBe(1);
+    expect(metrics.height, selector).toBeGreaterThanOrEqual(44);
+  }
+  await expect(modal.locator(".radio-group")).toHaveAttribute(
+    "aria-labelledby",
+    "variant-scope-label",
+  );
+  const sectionScope = modal.locator('.radio-group input[value="section"]');
+  await sectionScope.check();
+  const targetBeat = modal.locator("#variant-target-beat");
+  await expect(targetBeat).toBeVisible();
+  expect(
+    await targetBeat.evaluate(
+      (element) => (element as HTMLSelectElement).labels?.length ?? 0,
+    ),
+  ).toBe(1);
+  await modal.locator(".form-submit-row .secondary-btn").click();
+
+  const dialogButtons = modal.getByRole("button");
+  await dialogButtons.last().focus();
+  await page.keyboard.press("Tab");
+  await expect(dialogButtons.first()).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialogButtons.last()).toBeFocused();
+
+  await modal.locator(".tab-btn").nth(1).click();
+  const nameField = modal.locator("input").first();
+  await nameField.focus();
+  await nameField.evaluate((element) => {
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        keyCode: 229,
+        isComposing: true,
+        bubbles: true,
+      }),
+    );
+  });
+  await expect(modal).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modal).toHaveCount(0);
+  await expect(page.getByTestId("creative-variants-btn")).toBeFocused();
+  await page.getByTestId("creative-variants-btn").click();
+  // Reopening triggers an asynchronous list reload that can resize the
+  // centered dialog. Wait for its final layout before computing touch coords.
+  await expect(modal.locator(".variant-card")).toHaveCount(2);
+  const touchClose = page
+    .getByTestId("creative-variant-modal")
+    .locator(".close-btn");
+  await expect(touchClose).toBeVisible();
+  const closeBounds = await touchClose.boundingBox();
+  await touchTap(closeBounds!);
+  await expect(page.getByTestId("creative-variant-modal")).toHaveCount(0);
+  await expect(page.getByTestId("creative-variants-btn")).toBeFocused();
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  await touch.detach();
+});
+
+test("touch closes the reopened variant review without a layout jump", async ({
+  page,
+  request,
+}) => {
+  const { project } = await (await request.get(`${api}/project`)).json();
+  const story = project.stories.at(-1);
+  const composition = project.timelines.at(-1);
+  expect(story).toBeTruthy();
+  expect(composition).toBeTruthy();
+  const variantsResponse = await request.get(`${api}/creative-variants`);
+  expect(variantsResponse.ok()).toBe(true);
+  const expectedVariantCount =
+    ((await variantsResponse.json()).variants as unknown[]).length + 2;
+
+  for (const [index, name] of ["Quiet afternoon", "Longer pause"].entries()) {
+    const response = await request.post(`${api}/creative-variants`, {
+      data: {
+        name,
+        intent: `Touch close layout sample ${index + 1}`,
+        scope: { type: "film" },
+        baselineStoryId: story.id,
+        baselineCompositionId: composition.id,
+        modifications: {},
+      },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+
+  await navigate(page, "story", "zh-TW");
+  const trigger = page.getByTestId("creative-variants-btn");
+  const modal = page.getByTestId("creative-variant-modal");
+  const touch = await page.context().newCDPSession(page);
+  let signalListRequest!: () => void;
+  const listRequestSeen = new Promise<void>((resolve) => {
+    signalListRequest = resolve;
+  });
+  let releaseListRequest!: () => void;
+  const listRequestGate = new Promise<void>((resolve) => {
+    releaseListRequest = resolve;
+  });
+  try {
+    await touch.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 1,
+    });
+    expect(
+      await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches),
+    ).toBe(true);
+
+    await trigger.click();
+    await expect(modal.locator(".variant-card")).toHaveCount(
+      expectedVariantCount,
+    );
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await page.route("**/api/creative-variants", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      signalListRequest();
+      await listRequestGate;
+      await route.fulfill({ response });
+    });
+    await trigger.click();
+    const close = modal.locator(".close-btn");
+    await listRequestSeen;
+    await expect(modal.locator(".variants-grid")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    await expect(modal.locator(".variants-loading")).toBeVisible();
+    const loadingModalBounds = await modal
+      .locator(".variants-modal-container")
+      .boundingBox();
+    const loadingBounds = await close.boundingBox();
+    expect(loadingModalBounds).not.toBeNull();
+    expect(loadingBounds).not.toBeNull();
+    releaseListRequest();
+    await expect(modal.locator(".variant-card")).toHaveCount(
+      expectedVariantCount,
+    );
+    await expect(modal.locator(".variants-grid")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+    await expect(modal.locator(".variants-loading")).toHaveCount(0);
+    const readyModalBounds = await modal
+      .locator(".variants-modal-container")
+      .boundingBox();
+    const readyBounds = await close.boundingBox();
+    expect(readyModalBounds).not.toBeNull();
+    expect(readyBounds).not.toBeNull();
+    expect(
+      Math.abs(readyModalBounds!.height - loadingModalBounds!.height),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(readyBounds!.y - loadingBounds!.y)).toBeLessThanOrEqual(1);
+    expect(readyBounds!.width).toBeGreaterThanOrEqual(44);
+    expect(readyBounds!.height).toBeGreaterThanOrEqual(44);
+    const x = readyBounds!.x + readyBounds!.width / 2;
+    const y = readyBounds!.y + readyBounds!.height / 2;
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y, radiusX: 1, radiusY: 1, force: 1, id: 1 }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await expect(modal).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  } finally {
+    releaseListRequest();
+    await page.unroute("**/api/creative-variants");
+    await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await touch.detach();
+  }
+});
+
 test("keeps the desktop project and utility controls on one row without clipping", async ({
   page,
 }) => {
@@ -219,7 +619,7 @@ for (const theme of ["dark", "light"] as const) {
               ".export-options > header",
               ".export-goals",
               ".export-destination",
-              ".export-destination > .primary",
+              ".export-options > .primary",
             ].map((selector) => {
               const rect = document
                 .querySelector(selector)!
@@ -237,7 +637,7 @@ for (const theme of ["dark", "light"] as const) {
           ),
         );
         await expect(
-          page.locator(".export-destination > .primary"),
+          page.locator(".export-options > .primary"),
           JSON.stringify(positions),
         ).toBeInViewport({ ratio: 1 });
         await page
@@ -245,9 +645,9 @@ for (const theme of ["dark", "light"] as const) {
           .selectOption("zh-TW");
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.evaluate(() => window.scrollTo(0, 0));
-        await expect(
-          page.locator(".export-destination > .primary"),
-        ).toBeInViewport({ ratio: 1 });
+        await expect(page.locator(".export-options > .primary")).toBeInViewport(
+          { ratio: 1 },
+        );
         await page.setViewportSize({ width: 1440, height: 900 });
       }
       expect(
@@ -311,7 +711,22 @@ for (const theme of ["dark", "light"] as const) {
       }));
     });
     expect(violations).toEqual([]);
+    const rootInput = settings.locator(".path-input input");
+    await rootInput.focus();
+    await rootInput.evaluate((element) => {
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          keyCode: 229,
+          isComposing: true,
+          bubbles: true,
+        }),
+      );
+    });
+    await expect(settings).toBeVisible();
+    await settings.locator("select").first().focus();
     await page.keyboard.press("Escape");
+    await expect(settings).toHaveCount(0);
     await expect(page.locator(".settings-toggle")).toBeFocused();
   });
 }

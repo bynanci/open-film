@@ -689,6 +689,11 @@ export default {
       recovered: "已復原未儲存的編輯。請重試儲存，以保留至專案中。",
       conflictRecovered:
         "已復原未儲存的草稿，但已儲存版本已有變更。請先檢查草稿，再套用至最新剪輯。",
+      conflictNoDraft:
+        "另一個視窗已變更儲存版本。目前沒有未儲存的本機編輯可復原；請重新載入最新版本後繼續。",
+      conflictWithDraft:
+        "本機編輯仍保留在此畫面。另一個視窗已變更儲存版本；請先檢視草稿，再套用至最新版本。",
+      failedNoDraft: "目前沒有等待儲存的本機編輯。請重新載入已儲存版本後繼續。",
     },
     duration: {
       feedback: "影片時長狀態",

@@ -25,7 +25,7 @@ for (const transport of ["normal", "held", "lost"] as const) {
       await initialLocale(page);
       await page.goto("/");
       await navigate(page, "edit");
-      await page.getByRole("button", { name: "Sound", exact: true }).click();
+      await page.getByRole("tab", { name: "Sound", exact: true }).click();
       await page
         .getByRole("button", { name: "Generate audio", exact: true })
         .click();

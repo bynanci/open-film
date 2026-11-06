@@ -19,12 +19,23 @@ and the [contributing guide](CONTRIBUTING.md).
 | v1.0                                                               | Release goal                    | Published when the documented readiness criteria are met; the package version alone does not establish a release.     |
 
 The Silence scope below was checked against main
-[`1bafb5cd4532ce9f9a171499abc8631e4863d1ee`](https://github.com/bynanci/open-film/commit/1bafb5cd4532ce9f9a171499abc8631e4863d1ee)
-on 2026-11-05. Durable Jobs and Desktop Review are merged in PRs #107/#108.
+[`d332fb3265077ca08f218f6ba9b6c65d2519eaa2`](https://github.com/bynanci/open-film/commit/d332fb3265077ca08f218f6ba9b6c65d2519eaa2)
+on 2026-11-06. Durable Jobs and Desktop Review are merged in PRs #107/#108.
 Rendered audition is merged in PR #111. Physical workstation and listening
 acceptance remain separate gates.
 
 ## Current focus
+
+### Bring the Tobi-ishi identity into everyday tasks
+
+The current UI candidate shares warm stone tokens and original angular surfaces,
+removes duplicate General-mode progress controls, and gives Inspector categories
+keyboard tabs with essential controls first. Script/direction disclosure and
+Import/Fit/Preview/Relink quick actions reuse existing save, review and ownership
+guards. This is a presentation and workflow refinement over the same project,
+Composition and processing services. Candidate checks and remaining gates belong
+in [TASKS.md](TASKS.md); [design rationale](docs/adr/tobiishi-surfaces.md) records
+the shared application/site boundary.
 
 ### Add reviewed local media-intelligence workflows
 

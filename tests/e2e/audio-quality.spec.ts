@@ -24,7 +24,7 @@ test("reviews decoded MP4 audio, auditions B and accepts through normal saved hi
     await initialLocale(page);
     await page.goto("/");
     await navigate(page, "edit");
-    await page.getByRole("button", { name: "Sound", exact: true }).click();
+    await page.getByRole("tab", { name: "Sound", exact: true }).click();
     await page.locator(".editor-soundtrack-list button").first().click();
     await openAdvancedTools(page);
     await page

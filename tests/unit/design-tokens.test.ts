@@ -2,18 +2,24 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(resolve("apps/desktop/src/tokens.css"), "utf8");
+const css = readFileSync(resolve("design/tokens.css"), "utf8");
+const productCss = readFileSync(
+  resolve("apps/desktop/src/product.css"),
+  "utf8",
+);
 const declarations = (block: string): Record<string, string> =>
   Object.fromEntries(
     [...block.matchAll(/--of-([\w-]+):\s*(#[\da-f]{6});/giu)].map(
       ([, name, value]) => [name!, value!],
     ),
   );
-const dark = declarations(css.match(/:root\s*\{([^}]+)\}/u)![1]!);
-const light = {
-  ...dark,
-  ...declarations(css.match(/:root\[data-theme="light"\]\s*\{([^}]+)\}/u)![1]!),
-};
+const light = declarations(css.match(/:root\s*\{([^}]+)\}/u)![1]!);
+const dark = declarations(
+  css.match(/:root\[data-theme="dark"\][^{]*\{([^}]+)\}/u)![1]!,
+);
+const systemDark = declarations(
+  css.match(/:root\[data-theme="system"\]\s*\{([^}]+)\}/u)![1]!,
+);
 
 function luminance(color: string): number {
   const linear = color
@@ -36,6 +42,7 @@ function contrast(first: string, second: string): number {
 describe.each([
   ["dark", dark],
   ["light", light],
+  ["system dark", systemDark],
 ] as const)("%s product colors", (_name, palette) => {
   it("keeps normal-size text at WCAG AA on every regular surface", () => {
     for (const text of ["text-primary", "text-secondary", "text-muted"])
@@ -81,5 +88,30 @@ describe.each([
       contrast(palette["accent"]!, palette["accent-soft"]!),
       "selected labels",
     ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("Garden Stone defaults", () => {
+  it("uses warm stone as the first-run palette and a local Mincho-capable stack", () => {
+    expect(light.bg).toBe("#f2efe8");
+    expect(light.accent).toBe("#3d6348");
+    expect(css).toMatch(/Hiragino Mincho ProN/u);
+    expect(css).toMatch(/Noto Serif CJK TC/u);
+    expect(css).toMatch(/Yu Mincho/u);
+  });
+  it("keeps system light on the base palette and defines a dark system override", () => {
+    expect(css).toMatch(/color-scheme:\s*light/u);
+    expect(css).toMatch(/prefers-color-scheme:\s*dark/u);
+    expect(systemDark.bg).toBe(dark.bg);
+    expect(systemDark.accent).toBe(dark.accent);
+  });
+  it("centralizes an editorial golden-ratio grid and readable type scale", () => {
+    expect(css).toMatch(/--of-golden-major:\s*1\.618fr/u);
+    expect(css).toMatch(/--of-golden-minor:\s*1fr/u);
+    expect(css).toMatch(/--of-font-caption:\s*0\.8125rem/u);
+    expect(productCss).toContain("var(--of-golden-major)");
+    expect(productCss).toContain("var(--of-golden-minor)");
+    expect(productCss).toContain(".story-room");
+    expect(productCss).toContain(".output-workspace-export");
   });
 });

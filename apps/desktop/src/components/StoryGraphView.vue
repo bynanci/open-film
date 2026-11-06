@@ -2150,22 +2150,24 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--of-space-2);
   padding: var(--of-space-2);
-  border-radius: var(--of-radius-sm);
+  border-radius: var(--of-radius-media);
   background: var(--of-surface-2);
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 0;
 }
 
 .palette-asset-card:hover,
 .palette-asset-card:focus {
-  border-color: var(--of-accent);
+  outline: 2px solid var(--of-focus);
+  outline-offset: 2px;
 }
 
 .asset-thumb {
-  width: 48px;
-  height: 36px;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
   object-fit: cover;
-  border-radius: var(--of-radius-sm);
+  border-radius: 12px;
 }
 
 .asset-info {
@@ -2175,6 +2177,8 @@ onUnmounted(() => {
 }
 
 .asset-name {
+  font-family: var(--of-font-media);
+  font-weight: 600;
   font-size: var(--of-font-caption);
   white-space: nowrap;
   overflow: hidden;
@@ -2480,8 +2484,8 @@ onUnmounted(() => {
   width: 100%;
   height: 120px;
   overflow: hidden;
-  border-top-left-radius: var(--of-radius-md);
-  border-top-right-radius: var(--of-radius-md);
+  border-top-left-radius: var(--of-radius-media);
+  border-top-right-radius: var(--of-radius-media);
 }
 
 .node-asset-img {
@@ -2498,6 +2502,8 @@ onUnmounted(() => {
 }
 
 .node-asset-title {
+  font-family: var(--of-font-media);
+  font-weight: 600;
   font-size: var(--of-font-caption);
   white-space: nowrap;
   overflow: hidden;
@@ -2627,9 +2633,9 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   background: var(--of-surface-3);
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-sm);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  box-shadow: var(--of-shadow-floating);
   max-height: 160px;
   overflow-y: auto;
   z-index: 50;

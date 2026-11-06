@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
 
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   CreativeVariant,
@@ -37,7 +37,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const isVisible = computed(() => props.show ?? props.open ?? false);
+const isVisible = computed(() => props.show === true || props.open === true);
+const modalRef = ref<HTMLElement | null>(null);
+const closeButtonRef = ref<HTMLButtonElement | null>(null);
+let restoreFocusTo: HTMLElement | null = null;
 
 type ModalView = "list" | "create" | "compare";
 
@@ -216,18 +219,47 @@ function selectAudio(channel: "A" | "B") {
   }
 }
 
-function handleKeydown(e: KeyboardEvent) {
-  if (!props.show) return;
-  const target = e.target as HTMLElement | null;
-  const inForm =
-    target &&
-    (target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable);
-  if (inForm) return;
+function closeModal() {
+  emit("close");
+  window.requestAnimationFrame(() => {
+    if (restoreFocusTo?.isConnected)
+      restoreFocusTo.focus({ preventScroll: true });
+  });
+}
 
+function handleKeydown(e: KeyboardEvent) {
+  if (!isVisible.value) return;
+  if (e.isComposing || e.keyCode === 229) return;
   if (e.key === "Escape") {
-    emit("close");
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
+    return;
+  }
+  if (e.key !== "Tab") return;
+
+  const modal = modalRef.value;
+  if (!modal) return;
+  const focusable = Array.from(
+    modal.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => element.getClientRects().length > 0);
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (!first || !last) {
+    e.preventDefault();
+    modal.focus({ preventScroll: true });
+    return;
+  }
+
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || !modal.contains(active))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || !modal.contains(active))) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
@@ -243,10 +275,17 @@ watch(
       }
     }
   },
+  { immediate: true },
 );
 
-onMounted(() => {
+onMounted(async () => {
+  restoreFocusTo =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
   window.addEventListener("keydown", handleKeydown);
+  await nextTick();
+  closeButtonRef.value?.focus({ preventScroll: true });
 });
 
 onUnmounted(() => {
@@ -260,18 +299,30 @@ onUnmounted(() => {
     class="variants-modal-backdrop"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="creative-variant-dialog-title"
     data-testid="creative-variant-modal"
   >
-    <div class="variants-modal-container">
+    <div
+      ref="modalRef"
+      class="variants-modal-container"
+      :class="{
+        'comparison-expanded': currentView === 'compare',
+        'list-view': currentView === 'list',
+      }"
+      tabindex="-1"
+    >
       <!-- Header -->
       <header class="variants-modal-header">
         <div class="header-title-row">
           <Icon name="compare" class="header-icon" />
-          <h2 class="header-title">{{ t("app.variants.modalTitle") }}</h2>
+          <h2 id="creative-variant-dialog-title" class="header-title">
+            {{ t("app.variants.modalTitle") }}
+          </h2>
           <div class="header-tabs">
             <button
               class="tab-btn"
               :class="{ active: currentView === 'list' }"
+              :aria-pressed="currentView === 'list'"
               @click="currentView = 'list'"
             >
               {{ t("app.variants.tabs.list") }}
@@ -279,6 +330,7 @@ onUnmounted(() => {
             <button
               class="tab-btn"
               :class="{ active: currentView === 'create' }"
+              :aria-pressed="currentView === 'create'"
               @click="currentView = 'create'"
             >
               {{ t("app.variants.tabs.create") }}
@@ -287,6 +339,7 @@ onUnmounted(() => {
               v-if="comparison || variants.length > 1"
               class="tab-btn"
               :class="{ active: currentView === 'compare' }"
+              :aria-pressed="currentView === 'compare'"
               @click="currentView = 'compare'"
             >
               {{ t("app.variants.tabs.compare") }}
@@ -294,9 +347,10 @@ onUnmounted(() => {
           </div>
         </div>
         <button
+          ref="closeButtonRef"
           class="close-btn"
           :aria-label="t('app.variants.actions.close')"
-          @click="emit('close')"
+          @click="closeModal"
         >
           ✕
         </button>
@@ -334,7 +388,10 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div v-else class="variants-grid">
+          <div v-else class="variants-grid" :aria-busy="loading">
+            <p v-if="loading" class="variants-loading" role="status">
+              {{ t("app.variants.loading") }}
+            </p>
             <div
               v-for="variant in variants"
               :key="variant.id"
@@ -397,8 +454,11 @@ onUnmounted(() => {
             <div class="form-column">
               <h3>{{ t("app.variants.createHeader") }}</h3>
               <div class="form-field">
-                <label>{{ t("app.variants.fields.name") }} *</label>
+                <label for="variant-name"
+                  >{{ t("app.variants.fields.name") }} *</label
+                >
                 <input
+                  id="variant-name"
                   v-model="formName"
                   type="text"
                   :placeholder="t('app.variants.placeholders.name')"
@@ -407,8 +467,11 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.intent") }} *</label>
+                <label for="variant-intent"
+                  >{{ t("app.variants.fields.intent") }} *</label
+                >
                 <textarea
+                  id="variant-intent"
                   v-model="formIntent"
                   rows="3"
                   :placeholder="t('app.variants.placeholders.intent')"
@@ -417,10 +480,17 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.scope") }}</label>
-                <div class="radio-group">
-                  <label>
+                <span id="variant-scope-label" class="form-field-label">{{
+                  t("app.variants.fields.scope")
+                }}</span>
+                <div
+                  class="radio-group"
+                  role="group"
+                  aria-labelledby="variant-scope-label"
+                >
+                  <label for="variant-scope-section">
                     <input
+                      id="variant-scope-section"
                       v-model="formScopeType"
                       type="radio"
                       value="section"
@@ -428,8 +498,9 @@ onUnmounted(() => {
                     />
                     {{ t("app.variants.scope.sectionOnly") }}
                   </label>
-                  <label>
+                  <label for="variant-scope-film">
                     <input
+                      id="variant-scope-film"
                       v-model="formScopeType"
                       type="radio"
                       value="film"
@@ -441,8 +512,11 @@ onUnmounted(() => {
               </div>
 
               <div v-if="formScopeType === 'section'" class="form-field">
-                <label>{{ t("app.variants.fields.targetBeat") }} *</label>
+                <label for="variant-target-beat"
+                  >{{ t("app.variants.fields.targetBeat") }} *</label
+                >
                 <select
+                  id="variant-target-beat"
                   v-model="formTargetBeatId"
                   @change="handlePreviewImpact"
                 >
@@ -457,8 +531,11 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.targetDuration") }}</label>
+                <label for="variant-target-duration">{{
+                  t("app.variants.fields.targetDuration")
+                }}</label>
                 <input
+                  id="variant-target-duration"
                   v-model.number="formTargetDuration"
                   type="number"
                   min="1"
@@ -469,8 +546,11 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.narration") }}</label>
+                <label for="variant-narration">{{
+                  t("app.variants.fields.narration")
+                }}</label>
                 <textarea
+                  id="variant-narration"
                   v-model="formNarration"
                   rows="2"
                   :placeholder="t('app.variants.placeholders.narration')"
@@ -599,17 +679,25 @@ onUnmounted(() => {
                 </div>
                 <div class="player-view">
                   <div class="video-mock-frame">
-                    <span class="video-placeholder-icon">▶</span>
-                    <span class="video-watermark">Variant A Video</span>
+                    <Icon
+                      class="video-placeholder-icon"
+                      name="play"
+                      :size="24"
+                      aria-hidden="true"
+                    />
+                    <span class="video-watermark">{{
+                      t("app.variants.previewA")
+                    }}</span>
                   </div>
                 </div>
                 <div class="player-controls">
                   <button
                     class="audio-toggle-btn"
                     :class="{ active: activeAudioChannel === 'A' }"
+                    :aria-pressed="activeAudioChannel === 'A'"
                     @click="selectAudio('A')"
                   >
-                    🔊
+                    <Icon name="volume" :size="16" aria-hidden="true" />
                     {{
                       activeAudioChannel === "A"
                         ? t("app.variants.audio.active")
@@ -644,17 +732,25 @@ onUnmounted(() => {
                 </div>
                 <div class="player-view">
                   <div class="video-mock-frame variant-b">
-                    <span class="video-placeholder-icon">▶</span>
-                    <span class="video-watermark">Variant B Video</span>
+                    <Icon
+                      class="video-placeholder-icon"
+                      name="play"
+                      :size="24"
+                      aria-hidden="true"
+                    />
+                    <span class="video-watermark">{{
+                      t("app.variants.previewB")
+                    }}</span>
                   </div>
                 </div>
                 <div class="player-controls">
                   <button
                     class="audio-toggle-btn"
                     :class="{ active: activeAudioChannel === 'B' }"
+                    :aria-pressed="activeAudioChannel === 'B'"
                     @click="selectAudio('B')"
                   >
-                    🔊
+                    <Icon name="volume" :size="16" aria-hidden="true" />
                     {{
                       activeAudioChannel === "B"
                         ? t("app.variants.audio.active")
@@ -779,30 +875,49 @@ onUnmounted(() => {
 }
 
 .variants-modal-container {
-  width: 90vw;
-  max-width: 1240px;
+  box-sizing: border-box;
+  --color-bg-card: var(--of-surface-2);
+  --color-border: var(--of-border-subtle);
+  --color-text-muted: var(--of-text-secondary);
+  width: min(92vw, 980px);
+  max-width: 980px;
   max-height: 90vh;
-  background: var(--color-bg-surface, #1e1e24);
-  color: var(--color-text, #ffffff);
-  border-radius: 8px;
+  background: var(--of-surface-1);
+  color: var(--of-text-primary);
+  border-radius: var(--of-radius-dialog);
+  border: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--of-shadow-dialog);
+  font-family: var(--of-font-ui);
+}
+
+.variants-modal-container.comparison-expanded {
+  width: min(96vw, 1240px);
+  max-width: 1240px;
+}
+
+.variants-modal-container.list-view {
+  height: min(80vh, 720px);
 }
 
 .variants-modal-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--color-border, #333);
+  gap: var(--of-space-3);
+  padding: var(--of-space-4) var(--of-space-6);
+  border-bottom: 0;
+  background: var(--of-surface-2);
 }
 
 .header-title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: var(--of-space-4);
 }
 
 .header-title {
@@ -812,31 +927,35 @@ onUnmounted(() => {
 
 .header-tabs {
   display: flex;
-  gap: 8px;
-  margin-left: 16px;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
+  margin-left: var(--of-space-4);
 }
 
 .tab-btn {
   background: transparent;
-  border: 1px solid var(--color-border, #444);
-  color: var(--color-text-muted, #aaa);
-  padding: 6px 12px;
-  border-radius: 4px;
+  border: 0;
+  color: var(--of-text-secondary);
+  min-height: 40px;
+  padding: var(--of-space-2) var(--of-space-3);
+  border-radius: var(--of-radius-md);
   cursor: pointer;
 }
 
 .tab-btn.active {
-  background: var(--color-accent, #3b82f6);
-  color: #fff;
-  border-color: var(--color-accent, #3b82f6);
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .close-btn {
   background: transparent;
   border: none;
   font-size: 1.25rem;
-  color: var(--color-text-muted, #aaa);
+  color: var(--of-text-secondary);
   cursor: pointer;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--of-radius-md);
 }
 
 .variants-alert {
@@ -847,15 +966,13 @@ onUnmounted(() => {
 }
 
 .error-alert {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .success-alert {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .alert-dismiss {
@@ -866,7 +983,8 @@ onUnmounted(() => {
 }
 
 .variants-modal-body {
-  padding: 24px;
+  min-height: 0;
+  padding: var(--of-space-6);
   overflow-y: auto;
   flex: 1;
 }
@@ -876,27 +994,41 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  gap: var(--of-space-3);
+  margin-bottom: var(--of-space-5);
 }
 
 .variants-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--of-space-4);
+  min-height: 12rem;
+}
+
+.variants-loading {
+  grid-column: 1 / -1;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  color: var(--of-text-secondary);
 }
 
 .variant-card {
-  background: var(--color-bg-card, #26262e);
-  border: 1px solid var(--color-border, #3a3a46);
-  border-radius: 6px;
-  padding: 16px;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  padding: var(--of-space-4);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--of-space-3);
+  box-shadow: var(--of-shadow-soft);
 }
 
 .variant-card.adopted {
-  border-color: #34d399;
+  box-shadow:
+    inset 3px 0 var(--of-success),
+    var(--of-shadow-soft);
 }
 
 .card-header {
@@ -913,23 +1045,24 @@ onUnmounted(() => {
 .status-badge {
   font-size: 0.75rem;
   padding: 2px 8px;
-  border-radius: 12px;
-  background: #444;
+  border-radius: var(--of-radius-sm);
+  background: var(--of-surface-3);
+  color: var(--of-text-secondary);
 }
 
 .status-badge.adopted {
-  background: #065f46;
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .status-badge.compared {
-  background: #1e3a8a;
-  color: #60a5fa;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 .variant-intent {
   font-size: 0.85rem;
-  color: var(--color-text-muted, #bbb);
+  color: var(--of-text-secondary);
   margin: 0;
   flex: 1;
 }
@@ -938,51 +1071,58 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #888;
+  color: var(--of-text-muted);
 }
 
 .card-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
+  margin-top: var(--of-space-2);
 }
 
 .card-btn {
   flex: 1;
-  padding: 6px;
+  min-height: 40px;
+  padding: var(--of-space-2);
   font-size: 0.8rem;
-  border-radius: 4px;
-  border: 1px solid var(--color-border, #444);
-  background: #333;
-  color: #fff;
+  border-radius: var(--of-radius-md);
+  border: 0;
+  background: var(--of-surface-3);
+  color: var(--of-text-primary);
   cursor: pointer;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .adopt-btn {
-  background: #059669;
-  border-color: #059669;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .delete-btn {
-  background: #7f1d1d;
-  border-color: #7f1d1d;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 /* Create Form */
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: var(--of-space-6);
 }
 
 .form-field {
-  margin-bottom: 16px;
+  margin-bottom: var(--of-space-4);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--of-space-2);
 }
 
 .form-field label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.form-field-label {
   font-size: 0.85rem;
   font-weight: 500;
 }
@@ -990,31 +1130,36 @@ onUnmounted(() => {
 .form-field input,
 .form-field textarea,
 .form-field select {
-  background: #111;
-  border: 1px solid #444;
-  color: #fff;
+  background: var(--of-bg);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 8px 12px;
-  border-radius: 4px;
+  min-height: 44px;
+  border-radius: var(--of-radius-md);
   font-size: 0.9rem;
+  box-shadow: inset 0 1px 3px
+    color-mix(in srgb, var(--of-shadow-tint) 12%, transparent);
 }
 
 .radio-group {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: var(--of-space-3) var(--of-space-4);
 }
 
 .form-submit-row {
   display: flex;
-  gap: 12px;
-  margin-top: 20px;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+  margin-top: var(--of-space-5);
 }
 
 .primary-btn {
-  background: var(--color-accent, #3b82f6);
-  color: #fff;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
   border: none;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   cursor: pointer;
   font-weight: 500;
 }
@@ -1025,18 +1170,19 @@ onUnmounted(() => {
 }
 
 .secondary-btn {
-  background: transparent;
-  color: #ccc;
-  border: 1px solid #555;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  border: 0;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   cursor: pointer;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .impact-preview-column {
-  background: #16161c;
-  border: 1px solid #333;
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1046,7 +1192,7 @@ onUnmounted(() => {
 .impact-subtitle {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #aaa;
+  color: var(--of-text-secondary);
   display: block;
   margin-bottom: 6px;
 }
@@ -1056,7 +1202,7 @@ onUnmounted(() => {
   margin: 0;
   padding-left: 20px;
   font-size: 0.85rem;
-  color: #ddd;
+  color: var(--of-text-primary);
 }
 
 .preserved-tags {
@@ -1066,26 +1212,26 @@ onUnmounted(() => {
 }
 
 .preserved-chip {
-  background: #222;
-  border: 1px solid #444;
+  background: var(--of-success-soft);
+  border: 0;
   font-size: 0.75rem;
   padding: 2px 6px;
-  border-radius: 3px;
-  color: #34d399;
+  border-radius: var(--of-radius-sm);
+  color: var(--of-success);
 }
 
 .brief-notice {
   font-size: 0.75rem;
-  color: #f59e0b;
+  color: var(--of-warning);
   margin: 0 0 6px 0;
 }
 
 .locked-warning {
-  background: rgba(245, 158, 11, 0.2);
-  border: 1px solid #f59e0b;
-  color: #fbbf24;
+  background: var(--of-warning-soft);
+  border: 0;
+  color: var(--of-warning);
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.85rem;
   display: flex;
   align-items: center;
@@ -1098,7 +1244,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
-  background: #16161c;
+  background: var(--of-surface-2);
   padding: 12px 16px;
   border-radius: 6px;
 }
@@ -1110,16 +1256,16 @@ onUnmounted(() => {
 }
 
 .selector-box select {
-  background: #111;
-  border: 1px solid #444;
-  color: #fff;
+  background: var(--of-bg);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
 }
 
 .vs-badge {
   font-weight: bold;
-  color: #f59e0b;
+  color: var(--of-warning);
 }
 
 .comparison-players-row {
@@ -1130,13 +1276,15 @@ onUnmounted(() => {
 }
 
 .player-card {
-  background: #22222a;
-  border: 1px solid #3a3a46;
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .player-header {
@@ -1152,28 +1300,29 @@ onUnmounted(() => {
 
 .duration-badge {
   font-size: 0.75rem;
-  background: #333;
+  background: var(--of-surface-3);
+  color: var(--of-text-secondary);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
 }
 
 .delta-badge {
   font-size: 0.75rem;
-  background: #065f46;
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
   padding: 2px 6px;
   border-radius: 4px;
 }
 
 .delta-badge.shorter {
-  background: #1e3a8a;
-  color: #60a5fa;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 .player-view {
   aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 4px;
+  background: var(--of-player);
+  border-radius: var(--of-radius-media);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1183,12 +1332,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  color: #888;
+  gap: var(--of-space-2);
+  color: var(--of-on-media-muted);
 }
 
 .video-placeholder-icon {
-  font-size: 2rem;
+  opacity: 0.8;
 }
 
 .player-controls {
@@ -1198,23 +1347,39 @@ onUnmounted(() => {
 }
 
 .audio-toggle-btn {
-  background: #333;
-  border: 1px solid #555;
-  color: #fff;
+  background: var(--of-surface-3);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   cursor: pointer;
+  box-shadow: var(--of-shadow-soft);
 }
 
 .audio-toggle-btn.active {
-  background: #059669;
-  border-color: #059669;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .audio-rule-notice {
   font-size: 0.75rem;
-  color: #888;
+  color: var(--of-text-muted);
+}
+
+@media (any-pointer: coarse) {
+  .tab-btn,
+  .close-btn,
+  .card-btn,
+  .primary-btn,
+  .secondary-btn,
+  .audio-toggle-btn {
+    min-height: 44px;
+  }
+
+  .close-btn {
+    min-width: 44px;
+  }
 }
 
 /* Section Navigation */
@@ -1223,7 +1388,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
-  background: #181820;
+  background: var(--of-surface-2);
   padding: 10px 16px;
   border-radius: 6px;
 }
@@ -1231,7 +1396,7 @@ onUnmounted(() => {
 .nav-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #aaa;
+  color: var(--of-text-secondary);
 }
 
 .beats-track {
@@ -1241,11 +1406,11 @@ onUnmounted(() => {
 }
 
 .beat-nav-item {
-  background: #262632;
-  border: 1px solid #3c3c4a;
-  color: #ccc;
+  background: var(--of-surface-3);
+  border: 0;
+  color: var(--of-text-primary);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   cursor: pointer;
   display: flex;
@@ -1255,25 +1420,24 @@ onUnmounted(() => {
 }
 
 .beat-nav-item.active {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #fff;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .beat-nav-item.changed {
-  border-color: #f59e0b;
+  box-shadow: inset 0 -2px var(--of-warning);
 }
 
 .changed-indicator {
-  color: #f59e0b;
+  color: var(--of-warning);
   font-size: 0.7rem;
 }
 
 /* Diff Table */
 .diff-summary-card {
-  background: #1a1a22;
-  border: 1px solid #333;
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 16px;
   margin-bottom: 20px;
 }
@@ -1291,17 +1455,17 @@ onUnmounted(() => {
 .diff-table th,
 .diff-table td {
   padding: 8px 12px;
-  border-bottom: 1px solid #2a2a34;
+  border-bottom: 1px solid var(--of-border-subtle);
   text-align: left;
 }
 
 .diff-table th {
-  color: #aaa;
+  color: var(--of-text-secondary);
   font-weight: 500;
 }
 
 .diff-script {
-  color: #999;
+  color: var(--of-text-muted);
   font-size: 0.75rem;
   font-style: italic;
 }
@@ -1313,20 +1477,20 @@ onUnmounted(() => {
 }
 
 .diff-changed {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .diff-identical {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 /* Adopt Decision Banner */
 .adopt-decision-banner {
-  background: #152238;
-  border: 1px solid #1e3a8a;
-  border-radius: 6px;
+  background: var(--of-accent-soft);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 16px 20px;
   display: flex;
   justify-content: space-between;
@@ -1342,19 +1506,24 @@ onUnmounted(() => {
 .checkpoint-notice p {
   margin: 4px 0 0 0;
   font-size: 0.8rem;
-  color: #93c5fd;
+  color: var(--of-accent);
 }
 
 .adopt-action-btn {
-  background: #059669;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
   font-size: 0.95rem;
   padding: 10px 20px;
 }
 
 @media (max-width: 1280px) {
   .variants-modal-container {
-    width: 96vw;
+    width: min(96vw, 980px);
     padding: 16px;
+  }
+
+  .variants-modal-container.comparison-expanded {
+    width: 96vw;
   }
 }
 

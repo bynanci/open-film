@@ -36,6 +36,8 @@ export default {
   ...transcript,
   scriptReview: {
     heading: "腳本建議",
+    hasNotes: "已有腳本筆記",
+    pendingCount: "{count} 項待審閱",
     description: "每次檢視一個已儲存的場景欄位。只有接受建議後才會儲存變更。",
     field: "要檢視的文字",
     generate: "產生修改建議",

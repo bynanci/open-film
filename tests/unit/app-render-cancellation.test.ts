@@ -23,6 +23,12 @@ const emptyRecoveryEnd = source.indexOf(
 );
 if (emptyRecoveryStart < 0 || emptyRecoveryEnd < 0)
   throw new Error("Missing App empty analysis recovery state");
+const completionStart = source.indexOf(
+  "function transitionedImportCompletion(",
+);
+const completionEnd = source.indexOf("\n}", completionStart) + 2;
+if (completionStart < 0 || completionEnd < 2)
+  throw new Error("Missing App import completion transition");
 const names = [
   "run",
   "resetJobView",
@@ -32,6 +38,8 @@ const names = [
   "refreshInitialMedia",
   "refreshJobs",
   "pollJobs",
+  "transitionedImportCompletion",
+  "publishImportCompletion",
   "renderPreview",
   "exportFilm",
   "cancelJob",
@@ -44,6 +52,15 @@ const code = transformSync(
     "let pendingMediaRefresh: { projectId: string; checkStatus: boolean } | undefined;",
     "let mediaRefreshOwner: { pending: NonNullable<typeof pendingMediaRefresh>; completion: Promise<void> } | undefined;",
     source.slice(emptyRecoveryStart, emptyRecoveryEnd),
+    source.slice(completionStart, completionEnd),
+    (() => {
+      const name = "publishImportCompletion";
+      const match = new RegExp(`(?:async )?function ${name}\\(`).exec(source);
+      const start = match?.index ?? -1;
+      const end = source.indexOf("\n}", start) + 2;
+      if (start < 0 || end < 2) throw new Error(`Missing App function ${name}`);
+      return source.slice(start, end);
+    })(),
     ...names.map((name) => {
       const match = new RegExp(`(?:async )?function ${name}\\(`).exec(source);
       const start = match?.index ?? -1;
@@ -97,6 +114,9 @@ function host() {
   const requested = ref<string | null>(null);
   const busy = ref("");
   const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
+  const importCompletion = ref<unknown>(null);
+  const pendingImportCompletion = ref<unknown>(null);
+  const startedImportJobIds = new Set<string>();
   const refreshes = { assets: 0, project: 0 };
   const outputQuality = ref<"standard" | "high-detail">("standard");
   const outputCaptionTrackId = ref<string | null>(null);
@@ -117,6 +137,9 @@ function host() {
     notice,
     renderCancellationRequested: requested,
     cancellingJobs: cancelling,
+    importCompletion,
+    pendingImportCompletion,
+    startedImportJobIds,
     flushPending: async () => true,
     activeComposition: ref({ id: "composition" }),
     lookOverride: ref<FilmLook | undefined>(undefined),

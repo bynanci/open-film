@@ -105,6 +105,10 @@ async function move(page: Page, x: number, y: number, cancel = false) {
   });
   const box = await control.boundingBox();
   expect(box).not.toBeNull();
+  const frame = await page.locator(".editor-composition-frame").boundingBox();
+  expect(frame).not.toBeNull();
+  // This fixture has a 320px-wide composition; pointer deltas are CSS pixels.
+  const viewportScale = frame!.width / 320;
   // The monitor controls intentionally sit above the picture. Start from the
   // exposed lower area so the test exercises the same hit target as a user.
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height * 0.82 };
@@ -123,6 +127,7 @@ async function move(page: Page, x: number, y: number, cancel = false) {
   ).not.toHaveValue("0");
   if (cancel) await page.keyboard.press("Escape");
   await page.mouse.up();
+  return { x: x / viewportScale, y: y / viewportScale };
 }
 
 async function resize(page: Page, x: number, y: number) {
@@ -165,16 +170,16 @@ test("moves a clip with one transaction, cancels safely, and survives Undo/Redo 
   await page
     .getByRole("button", { name: "Adjust picture", exact: true })
     .click();
-  await move(page, 24, 12);
+  const expected = await move(page, 24, 12);
   await expect
     .poll(async () => (await clip(request)).transform?.x ?? 0)
-    .toBeGreaterThan(20);
+    .toBeGreaterThan(0);
   await expect(page.locator(".editor-save-state")).toHaveText("Saved");
   const moved = (await clip(request)).transform!;
   // The browser frame is fractionally scaled to fit its container. The
   // persisted composition-space delta therefore need not be an integer.
-  expect(moved.x).toBeCloseTo(24, 0);
-  expect(moved.y).toBeCloseTo(12, 0);
+  expect(moved.x).toBeCloseTo(expected.x, 0);
+  expect(moved.y).toBeCloseTo(expected.y, 0);
   expect(edits).toHaveLength(1);
   expect(edits[0]).toMatchObject({
     commands: [
@@ -348,6 +353,7 @@ test.describe("coarse pointer", () => {
     request,
   }) => {
     await openFixture(page, request);
+    await page.setViewportSize({ width: 1024, height: 720 });
     await page
       .getByRole("button", { name: "Adjust picture", exact: true })
       .click();
@@ -363,24 +369,69 @@ test.describe("coarse pointer", () => {
       expect(bounds).not.toBeNull();
       expect(bounds!.width, name).toBeGreaterThanOrEqual(44);
       expect(bounds!.height, name).toBeGreaterThanOrEqual(44);
+      const hitTest = await page.evaluate(
+        ({ box }) => {
+          const rect = (selector: string) => {
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            const { x, y, width, height, top, right, bottom, left } =
+              element.getBoundingClientRect();
+            return { x, y, width, height, top, right, bottom, left };
+          };
+          const points = [
+            [box.x + 2, box.y + 2],
+            [box.x + box.width - 2, box.y + 2],
+            [box.x + 2, box.y + box.height - 2],
+            [box.x + box.width - 2, box.y + box.height - 2],
+          ];
+          return {
+            viewport: { width: innerWidth, height: innerHeight },
+            editorWorkspace: rect(".editor-workspace"),
+            editorToolbar: rect(".editor-toolbar"),
+            editorDuration: rect(".editor-duration"),
+            monitorTools: rect(".editor-monitor-tools"),
+            sourceScreen: rect(".editor-source-screen"),
+            sourceCaption: rect(".editor-source-caption"),
+            storyRail: rect(".editor-story-rail"),
+            playerRegion: rect(".editor-player-region"),
+            compositionFrame: rect(".editor-composition-frame"),
+            transformOverlay: rect(".clip-transform-overlay"),
+            scroll: (() => {
+              const player = document.querySelector<HTMLElement>(
+                ".editor-player-region",
+              );
+              return player
+                ? { top: player.scrollTop, height: player.scrollHeight }
+                : null;
+            })(),
+            points: points.map(([x, y]) => {
+              const target = document.elementFromPoint(x!, y!);
+              return {
+                x,
+                y,
+                label: target?.getAttribute("aria-label") ?? null,
+                target: target
+                  ? `${target.tagName.toLowerCase()}.${String(target.className)}`
+                  : null,
+              };
+            }),
+          };
+        },
+        { box: bounds! },
+      );
+      expect(hitTest.playerRegion).not.toBeNull();
+      expect(hitTest.sourceScreen).not.toBeNull();
+      expect(hitTest.storyRail).not.toBeNull();
+      expect(hitTest.sourceScreen!.bottom).toBeLessThanOrEqual(
+        hitTest.playerRegion!.bottom + 0.5,
+      );
+      expect(hitTest.storyRail!.top).toBeGreaterThanOrEqual(
+        hitTest.playerRegion!.bottom - 0.5,
+      );
       expect(
-        await page.evaluate(
-          ({ box, label }) =>
-            [
-              [box.x + 2, box.y + 2],
-              [box.x + box.width - 2, box.y + 2],
-              [box.x + 2, box.y + box.height - 2],
-              [box.x + box.width - 2, box.y + box.height - 2],
-            ].every(
-              ([x, y]) =>
-                document
-                  .elementFromPoint(x!, y!)
-                  ?.getAttribute("aria-label") === label,
-            ),
-          { box: bounds!, label: name },
-        ),
-        `${name} must remain hit-testable across its full target`,
-      ).toBe(true);
+        hitTest.points.map(({ label }) => label),
+        `${name} must remain hit-testable across its full target: ${JSON.stringify(hitTest)}`,
+      ).toEqual([name, name, name, name]);
     }
   });
 });

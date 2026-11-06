@@ -54,15 +54,33 @@ describe("Phase M11B: Creative Variants & A/B Review UI/UX Component", () => {
     expect(content).toContain("checkpoint-notice");
     expect(content).toContain("handleAdopt");
 
-    // Keyboard & IME protection
-    expect(content).toContain('target.tagName === "INPUT"');
-    expect(content).toContain('target.tagName === "TEXTAREA"');
+    // Keyboard dialog contract: Escape closes from form fields, while Tab is
+    // contained inside the modal, IME composition remains untouched, and focus
+    // returns to the opener.
+    expect(content).toContain(
+      "if (e.isComposing || e.keyCode === 229) return;",
+    );
+    expect(content).toContain('if (e.key === "Escape")');
+    expect(content).toContain('if (e.key !== "Tab") return;');
+    expect(content).toContain("modal.contains(active)");
+    expect(content).toContain("closeButtonRef.value?.focus");
+    expect(content).toContain("restoreFocusTo.focus({ preventScroll: true })");
     expect(content).toContain("handleKeydown");
 
     // Responsive design & reduced motion
     expect(content).toContain("@media (max-width: 1280px)");
     expect(content).toContain("@media (max-width: 1024px)");
     expect(content).toContain("@media (prefers-reduced-motion: reduce)");
+
+    // Child surfaces must track the active theme instead of retaining dark
+    // fallbacks beneath the light-theme modal foreground.
+    expect(content).toContain(
+      ".variant-card {\n  background: var(--of-surface-2);",
+    );
+    expect(content).toContain(
+      ".player-card {\n  background: var(--of-surface-2);",
+    );
+    expect(content).toContain("color: var(--of-text-primary);");
   });
 
   it("verifies App.vue integration of Creative Variants button and modal handler", () => {
