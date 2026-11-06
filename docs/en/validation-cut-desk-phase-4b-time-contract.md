@@ -50,17 +50,17 @@ candidate.
 
 - `packages/core/src/sequence.ts`
 - `packages/core/tests/sequence.test.ts`
-- `TASKS.md`
-- `ROADMAP.md`
+- `packages/render/tests/render.test.ts`
 - `docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md`
+- `docs/validation-cut-desk-phase-4b-time-contract.md` and its English mirror
 
 ## Remaining gates
 
-- Run the full contract suite and repository static/build gates on the exact
-  candidate head; inspect any failures rather than treating a skipped lane as a
-  pass.
-- Run the applicable real FFmpeg regression set and compare existing scalar
-  speed output before/after; this slice intends no render change.
+- Hosted Verify and Render QA have not completed for this PR head. The full
+  pinned-font Render QA remains locally blocked by the font-fixture download
+  network error described above.
+- The focused actual FFmpeg regression confirms unchanged scalar-speed frame
+  mapping; the complete renderer/media suite has not been run locally.
 - Add the persisted visual contract only with both Monitor and renderer
   consumers, lock/pin/stale-revision command checks, arbitrary seek evidence,
   synthetic MP4 decode comparison, and save/reopen/Undo/Redo browser coverage.
