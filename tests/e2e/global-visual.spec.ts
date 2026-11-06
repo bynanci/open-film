@@ -243,6 +243,14 @@ for (const locale of locales) {
     ).toBe(true);
     await page.reload();
     await expect(page.locator(".asset-card").first()).toBeVisible();
+    await expect(page.locator(".activity-strip .job-status")).toHaveCount(0);
+    await expect
+      .poll(() => page.locator(".activity-strip .job-summary strong").count())
+      .toBeGreaterThan(0);
+    if (locale === "en-US")
+      await expect(
+        page.locator(".activity-strip .job-summary strong"),
+      ).toHaveText("Import complete");
     const modes = ["library", "story", "edit", "export"] as const;
     for (const [index, workspace] of modes.entries()) {
       await page.locator(".main-nav button").nth(index).click();
@@ -260,6 +268,40 @@ for (const locale of locales) {
             .evaluate((element) => element.getBoundingClientRect().width);
           expect(indexWidth).toBeGreaterThanOrEqual(224);
           expect(indexWidth).toBeLessThanOrEqual(288);
+        }
+        if (size.width >= 1280 && workspace === "edit") {
+          await expect
+            .poll(() =>
+              page.locator(".editor-toolbar").evaluate((toolbar) => {
+                const bounds = (selector: string) => {
+                  const element = toolbar.querySelector(selector);
+                  if (!element) return null;
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    height: rect.height,
+                  };
+                };
+                const mode = bounds(".editor-mode-context");
+                const saved = bounds(".editor-save-state");
+                const actions = bounds(":scope > .editor-actions");
+                if (!mode || !saved || !actions) return false;
+                const noOverlap =
+                  mode.right <= saved.left + 1 &&
+                  saved.right <= actions.left + 1;
+                const hint = toolbar.querySelector(".editor-mode-hint");
+                return (
+                  noOverlap &&
+                  mode.height <= 48 &&
+                  !!hint &&
+                  getComputedStyle(hint).whiteSpace === "nowrap"
+                );
+              }),
+            )
+            .toBe(true);
         }
         if (size.width === 1440 && workspace === "edit") {
           await page
@@ -312,7 +354,7 @@ for (const locale of locales) {
         if (workspace === "export") {
           await page.evaluate(() => window.scrollTo(0, 0));
           await expect(
-            page.locator(".export-destination > .primary"),
+            page.locator(".export-options > .primary"),
           ).toBeInViewport({ ratio: 1 });
         }
         if (workspace === "edit" && locale === "en-US") {

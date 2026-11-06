@@ -135,6 +135,19 @@ describe("actual App workspace command dispatch", () => {
     expect(h.focused()).toBe("story-tab-graph");
     expect(h.workspaceCommandsOpen.value).toBe(false);
   });
+  it("waits for the lazy editor readiness gate before opening fit review", () => {
+    const commandStart = source.indexOf("async function runWorkspaceCommand(");
+    const fitStart = source.indexOf('if (id === "fit-duration"', commandStart);
+    const fitEnd = source.indexOf("\n  }", fitStart);
+    const fitCommand = source.slice(fitStart, fitEnd);
+    expect(fitCommand.indexOf('await changeTab("edit")')).toBeLessThan(
+      fitCommand.indexOf("await flushEditor()"),
+    );
+    expect(fitCommand.indexOf("await flushEditor()")).toBeLessThan(
+      fitCommand.indexOf("openFitReview()"),
+    );
+    expect(fitCommand).toContain("if (!(await flushEditor())) return;");
+  });
   it.each(["project", "generation"])(
     "cancels before navigation when %s changes while closing the dialog",
     async (change) => {

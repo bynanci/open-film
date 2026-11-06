@@ -888,9 +888,10 @@ onUnmounted(() => {
 }
 
 .variant-card {
-  background: var(--color-bg-card, #26262e);
-  border: 1px solid var(--color-border, #3a3a46);
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1132,9 +1133,10 @@ onUnmounted(() => {
 }
 
 .player-card {
-  background: #22222a;
-  border: 1px solid #3a3a46;
-  border-radius: 6px;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-lg);
   padding: 12px;
   display: flex;
   flex-direction: column;

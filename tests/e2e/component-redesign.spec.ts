@@ -219,7 +219,7 @@ for (const theme of ["dark", "light"] as const) {
               ".export-options > header",
               ".export-goals",
               ".export-destination",
-              ".export-destination > .primary",
+              ".export-options > .primary",
             ].map((selector) => {
               const rect = document
                 .querySelector(selector)!
@@ -237,7 +237,7 @@ for (const theme of ["dark", "light"] as const) {
           ),
         );
         await expect(
-          page.locator(".export-destination > .primary"),
+          page.locator(".export-options > .primary"),
           JSON.stringify(positions),
         ).toBeInViewport({ ratio: 1 });
         await page
@@ -245,9 +245,9 @@ for (const theme of ["dark", "light"] as const) {
           .selectOption("zh-TW");
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.evaluate(() => window.scrollTo(0, 0));
-        await expect(
-          page.locator(".export-destination > .primary"),
-        ).toBeInViewport({ ratio: 1 });
+        await expect(page.locator(".export-options > .primary")).toBeInViewport(
+          { ratio: 1 },
+        );
         await page.setViewportSize({ width: 1440, height: 900 });
       }
       expect(

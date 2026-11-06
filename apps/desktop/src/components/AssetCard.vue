@@ -20,6 +20,22 @@ defineEmits<{
   toggle: [asset: MediaAsset, key: "favorite" | "rejected" | "locked"];
 }>();
 const failed = ref(false);
+const previewAspect = computed(() => {
+  const dimensions = props.asset.dimensions;
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) return 1;
+  return Math.min(1.6, Math.max(0.68, dimensions.width / dimensions.height));
+});
+const previewFit = computed(() => {
+  const dimensions = props.asset.dimensions;
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0)
+    return "cover";
+  const ratio = dimensions.width / dimensions.height;
+  return ratio < 0.68 || ratio > 1.6 ? "contain" : "cover";
+});
+const previewStyle = computed(() => ({
+  "--asset-aspect-ratio": String(previewAspect.value),
+  "--asset-object-fit": previewFit.value,
+}));
 const sourceInfo = computed(() =>
   sourcePresentation(props.asset, { translate: t }),
 );
@@ -55,6 +71,7 @@ watch(
   >
     <button
       class="asset-image-button"
+      :style="previewStyle"
       :aria-label="
         t(`media.card.${choice ? (chosen ? 'remove' : 'select') : 'inspect'}`, {
           name: asset.name,

@@ -433,6 +433,17 @@ onUnmounted(() => {
       <h2>{{ t("app.export.title") }}</h2>
       <p>{{ t("app.export.description") }}</p>
     </header>
+    <button
+      v-if="goal === 'watch'"
+      class="primary export-primary-action"
+      data-testid="export-profile-mp4"
+      :disabled="busy || !canExportCropped"
+      @click="
+        emit('export', 'mp4', mp4Profile, cropConfirmed, framePreview?.token)
+      "
+    >
+      <Icon name="download" />{{ t("app.export.saveMp4") }}
+    </button>
     <div class="export-goals" role="group" :aria-label="t('app.export.goal')">
       <button
         class="export-goal"
@@ -460,6 +471,57 @@ onUnmounted(() => {
     <section v-if="goal === 'watch'" class="export-destination">
       <h3>{{ t("app.export.mp4Title") }}</h3>
       <p>{{ t("app.export.mp4Hint") }}</p>
+      <section
+        class="export-review-summary"
+        data-testid="export-review-summary"
+        :aria-label="t('app.export.reviewSummary.title')"
+      >
+        <h4>{{ t("app.export.reviewSummary.title") }}</h4>
+        <dl>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.filmLength") }}</dt>
+            <dd>
+              {{ formatDuration(composition.duration, { fractional: false }) }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.outputFrame") }}</dt>
+            <dd>{{ outputFrameSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.aspectRatio") }}</dt>
+            <dd>{{ outputAspectRatio }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.framing") }}</dt>
+            <dd>{{ t(`exportProfiles.${framing}`) }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.quality") }}</dt>
+            <dd>
+              {{
+                t(
+                  quality === "high-detail"
+                    ? "exportQuality.highDetail"
+                    : "exportQuality.standard",
+                )
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.burnedCaptions") }}</dt>
+            <dd>{{ reviewCaptionSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.look") }}</dt>
+            <dd>{{ reviewLookSummary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t("app.export.reviewSummary.destination") }}</dt>
+            <dd>{{ reviewDestinationSummary }}</dd>
+          </div>
+        </dl>
+      </section>
       <section
         class="export-quality-options"
         :aria-label="t('exportQuality.heading')"
@@ -732,67 +794,6 @@ onUnmounted(() => {
         <p v-if="lookOverride">{{ t("looks.uniformHint") }}</p>
         <p>{{ t("looks.exportOnly") }}</p>
       </fieldset>
-      <section
-        class="export-review-summary"
-        data-testid="export-review-summary"
-        :aria-label="t('app.export.reviewSummary.title')"
-      >
-        <h4>{{ t("app.export.reviewSummary.title") }}</h4>
-        <dl>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.filmLength") }}</dt>
-            <dd>
-              {{ formatDuration(composition.duration, { fractional: false }) }}
-            </dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.outputFrame") }}</dt>
-            <dd>{{ outputFrameSummary }}</dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.aspectRatio") }}</dt>
-            <dd>{{ outputAspectRatio }}</dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.framing") }}</dt>
-            <dd>{{ t(`exportProfiles.${framing}`) }}</dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.quality") }}</dt>
-            <dd>
-              {{
-                t(
-                  quality === "high-detail"
-                    ? "exportQuality.highDetail"
-                    : "exportQuality.standard",
-                )
-              }}
-            </dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.burnedCaptions") }}</dt>
-            <dd>{{ reviewCaptionSummary }}</dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.look") }}</dt>
-            <dd>{{ reviewLookSummary }}</dd>
-          </div>
-          <div>
-            <dt>{{ t("app.export.reviewSummary.destination") }}</dt>
-            <dd>{{ reviewDestinationSummary }}</dd>
-          </div>
-        </dl>
-      </section>
-      <button
-        class="primary export-primary-action"
-        data-testid="export-profile-mp4"
-        :disabled="busy || !canExportCropped"
-        @click="
-          emit('export', 'mp4', mp4Profile, cropConfirmed, framePreview?.token)
-        "
-      >
-        <Icon name="download" />{{ t("app.export.saveMp4") }}
-      </button>
       <section
         class="export-profile-audio"
         :aria-label="t('exportProfiles.audioHeading')"

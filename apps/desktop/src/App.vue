@@ -2843,7 +2843,14 @@ async function runWorkspaceCommand(id: WorkspaceCommandId) {
     await changeTab("edit");
     if (!current() || tab.value !== "edit") return;
     if (id === "render-preview") await renderPreview();
-    else await timelineEditor.value?.openFitReview();
+    else {
+      // Edit may lazily mount TimelineEditor on a project's first visit.
+      // Wait for its existing readiness/flush gate before calling its API.
+      if (!(await flushEditor())) return;
+      if (!current() || tab.value !== "edit") return;
+      await nextTick();
+      await timelineEditor.value?.openFitReview();
+    }
     return;
   }
   const destination = id.startsWith("workspace:")
@@ -3531,13 +3538,22 @@ onUnmounted(() => {
               :size="17"
             />
             <strong>{{ jobTitle(job) }}</strong>
-            <span class="job-status">{{
-              job.status === "running" || job.status === "queued"
-                ? job.type === "import" || (job.progress ?? 0) > 0
-                  ? `${progress(job)}%`
-                  : t("app.activity.inProgress")
-                : t(`app.activity.status.${job.status}`)
-            }}</span>
+            <span
+              v-if="
+                !(
+                  job.status === 'completed' &&
+                  ['import', 'render'].includes(job.type)
+                )
+              "
+              class="job-status"
+              >{{
+                job.status === "running" || job.status === "queued"
+                  ? job.type === "import" || (job.progress ?? 0) > 0
+                    ? `${progress(job)}%`
+                    : t("app.activity.inProgress")
+                  : t(`app.activity.status.${job.status}`)
+              }}</span
+            >
           </div>
           <progress
             v-if="job.status === 'running' || job.status === 'queued'"

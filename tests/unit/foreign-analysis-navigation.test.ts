@@ -21,6 +21,7 @@ if (activeStart < 0 || activeEnd < 0)
   throw new Error("Missing App job navigation state");
 const functions = [
   "run",
+  "jobBlocksProjectSwitch",
   "flushEditor",
   "flushPending",
   "flushProjectPending",
@@ -145,6 +146,9 @@ function host(
     graphBeatSaveTask: undefined,
     computed: vue.computed,
     jobs,
+    startedImportJobIds: new Set<string>(),
+    importCompletion: vue.ref(null),
+    pendingImportCompletion: vue.ref(null),
     analysisRecovery,
     busy: vue.ref(""),
     storyReviewBusy: vue.ref(false),
@@ -232,6 +236,7 @@ describe("project navigation during analysis owned by another process", () => {
       expect(h.buttonDisabled()).toBe(false);
       await h.changeWorkspace();
       expect(h.post).toHaveBeenCalledExactlyOnceWith("/project/close");
+      expect(h.error.value).toBe("");
       expect(h.project.value).toBeNull();
       expect(h.flush).toHaveBeenCalledOnce();
       expect(

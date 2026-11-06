@@ -63,6 +63,16 @@ describe("Phase M11B: Creative Variants & A/B Review UI/UX Component", () => {
     expect(content).toContain("@media (max-width: 1280px)");
     expect(content).toContain("@media (max-width: 1024px)");
     expect(content).toContain("@media (prefers-reduced-motion: reduce)");
+
+    // Child surfaces must track the active theme instead of retaining dark
+    // fallbacks beneath the light-theme modal foreground.
+    expect(content).toContain(
+      ".variant-card {\n  background: var(--of-surface-2);",
+    );
+    expect(content).toContain(
+      ".player-card {\n  background: var(--of-surface-2);",
+    );
+    expect(content).toContain("color: var(--of-text-primary);");
   });
 
   it("verifies App.vue integration of Creative Variants button and modal handler", () => {

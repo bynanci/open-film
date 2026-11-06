@@ -113,7 +113,7 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
         await page.setViewportSize(size);
         await page.evaluate(() => window.scrollTo(0, 0));
         await expect(
-          page.locator(".export-destination > .primary"),
+          page.locator(".export-options > .primary"),
           `${locale} ${choice} ${size.width}`,
         ).toBeInViewport({ ratio: 1 });
         await quality.scrollIntoViewIfNeeded();

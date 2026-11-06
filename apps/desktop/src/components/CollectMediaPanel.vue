@@ -632,9 +632,10 @@ onBeforeUnmount(() => {
   max-width: 58rem;
   margin: var(--of-space-5) auto;
   padding: var(--of-space-5);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-md);
   background: var(--of-surface-1);
+  box-shadow: var(--of-shadow-soft);
 }
 .collect-header,
 .collect-item-heading,
@@ -720,8 +721,9 @@ onBeforeUnmount(() => {
 .collect-summary > div {
   min-width: 0;
   padding: var(--of-space-3);
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-sm);
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background: var(--of-surface-2);
 }
 .collect-summary dt {
   color: var(--of-text-secondary);
@@ -741,8 +743,9 @@ onBeforeUnmount(() => {
   gap: var(--of-space-3);
   min-width: 0;
   padding: var(--of-space-3);
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-sm);
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background: var(--of-surface-2);
 }
 .collect-item-heading > div {
   display: grid;
@@ -808,8 +811,9 @@ onBeforeUnmount(() => {
   gap: var(--of-space-2);
   min-width: 0;
   padding: var(--of-space-4);
-  border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-sm);
+  border: 0;
+  border-radius: var(--of-radius-md);
+  background: var(--of-accent-soft);
 }
 .collect-result a {
   display: inline-flex;

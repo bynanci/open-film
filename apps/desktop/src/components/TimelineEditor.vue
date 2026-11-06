@@ -5949,7 +5949,9 @@ onBeforeUnmount(() => {
                 <p>
                   {{
                     t("precision.inspectorObject", {
-                      kind: t(`app.mediaKind.${selectedAsset.mediaType}`),
+                      kind: t(
+                        `app.import.mediaKind.${selectedAsset.mediaType}`,
+                      ),
                     })
                   }}
                 </p>

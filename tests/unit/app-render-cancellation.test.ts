@@ -32,6 +32,8 @@ const names = [
   "refreshInitialMedia",
   "refreshJobs",
   "pollJobs",
+  "transitionedImportCompletion",
+  "publishImportCompletion",
   "renderPreview",
   "exportFilm",
   "cancelJob",
@@ -97,6 +99,9 @@ function host() {
   const requested = ref<string | null>(null);
   const busy = ref("");
   const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
+  const importCompletion = ref<unknown>(null);
+  const pendingImportCompletion = ref<unknown>(null);
+  const startedImportJobIds = new Set<string>();
   const refreshes = { assets: 0, project: 0 };
   const outputQuality = ref<"standard" | "high-detail">("standard");
   const outputCaptionTrackId = ref<string | null>(null);
@@ -117,6 +122,9 @@ function host() {
     notice,
     renderCancellationRequested: requested,
     cancellingJobs: cancelling,
+    importCompletion,
+    pendingImportCompletion,
+    startedImportJobIds,
     flushPending: async () => true,
     activeComposition: ref({ id: "composition" }),
     lookOverride: ref<FilmLook | undefined>(undefined),

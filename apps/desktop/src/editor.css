@@ -992,13 +992,12 @@ button.editor-beat-heading:hover {
 
 .editor-inspector-tabs {
   display: flex;
+  flex-wrap: wrap;
   max-width: 100%;
   gap: var(--of-space-1);
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   overscroll-behavior-inline: contain;
   scrollbar-width: thin;
-  scroll-snap-type: x proximity;
   margin-bottom: var(--of-space-4);
   padding: var(--of-space-1) 2px var(--of-space-2);
   border: 0;
@@ -1260,8 +1259,8 @@ button.editor-beat-heading:hover {
 
 .editor-inspector-tabs button {
   display: inline-flex;
-  flex: 0 0 auto;
-  min-width: max-content;
+  flex: 1 1 max-content;
+  min-width: 0;
   min-height: 40px;
   align-items: center;
   justify-content: center;
@@ -1271,8 +1270,8 @@ button.editor-beat-heading:hover {
   font-size: var(--of-font-caption);
   line-height: 1.3;
   text-align: center;
-  white-space: nowrap;
-  scroll-snap-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
   transition:
     color var(--of-motion-fast) var(--of-motion-ease),
     background-color var(--of-motion-fast) var(--of-motion-ease);
@@ -1923,6 +1922,56 @@ button.editor-beat-heading:hover {
   letter-spacing: normal;
 }
 
+/* Keep the edit controls on a single, legible stone path at desktop widths.
+   The project heading already names the film, so a second editor heading only
+   steals room from the mode, save state and actions. */
+@media (min-width: 1101px) {
+  .timeline-editor-contained .editor-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    grid-template-areas: "mode save actions";
+    align-items: center;
+    column-gap: var(--of-space-4);
+  }
+
+  .timeline-editor-contained .editor-heading {
+    display: none;
+  }
+
+  .timeline-editor-contained .editor-mode-context {
+    grid-area: mode;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: var(--of-space-3);
+  }
+
+  .timeline-editor-contained .editor-mode-switch {
+    flex-wrap: nowrap;
+  }
+
+  .timeline-editor-contained .editor-mode-hint {
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timeline-editor-contained .editor-save-state {
+    grid-area: save;
+    justify-self: end;
+  }
+
+  .timeline-editor-contained .editor-toolbar > .editor-actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: var(--of-space-2);
+  }
+}
+
 .timeline-editor-contained .editor-duration {
   gap: var(--of-space-2) var(--of-space-4);
   padding: var(--of-space-2) var(--of-space-4);
@@ -1930,6 +1979,20 @@ button.editor-beat-heading:hover {
 
 .timeline-editor-contained .editor-duration-track {
   max-width: 12rem;
+}
+
+@media (max-width: 1100px) {
+  .timeline-editor-contained .editor-toolbar {
+    align-items: flex-start;
+  }
+
+  .timeline-editor-contained .editor-mode-context {
+    flex-basis: min(100%, 24rem);
+  }
+
+  .timeline-editor-contained .editor-mode-hint {
+    max-width: 52ch;
+  }
 }
 
 .timeline-editor-contained .editor-inspector-title {

@@ -22,6 +22,8 @@ const names = [
   "refreshInitialJobs",
   "refreshJobs",
   "pollJobs",
+  "transitionedImportCompletion",
+  "publishImportCompletion",
 ];
 function appFunction(name: string) {
   const declaration = source.includes(`async function ${name}(`)
@@ -84,6 +86,9 @@ function host(
   const jobs = ref<Job[]>([{ ...imported(), id: "first-import" }]);
   const refreshes = { assets: 0, project: 0, media: 0 };
   const importOpen = ref(true);
+  const importCompletion = ref(null);
+  const pendingImportCompletion = ref(null);
+  const startedImportJobIds = new Set<string>();
   const busy = ref("");
   const error = ref<unknown>("");
   const analysisRecovery = ref<Record<string, unknown>>({});
@@ -113,6 +118,9 @@ function host(
     project,
     jobs,
     importOpen,
+    importCompletion,
+    pendingImportCompletion,
+    startedImportJobIds,
     busy,
     error,
     notice: ref<unknown>(null),
@@ -136,7 +144,7 @@ function host(
     storyScriptReview: ref(null),
     post: (path: string, body: unknown) => {
       posts.push({ path, body });
-      return acknowledgement.promise;
+      return acknowledgement.promise.then(() => ({ jobId: "second-import" }));
     },
     message: (key: string) => key,
     reloadAssets: () => {

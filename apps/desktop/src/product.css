@@ -109,12 +109,14 @@ input[type="range"] {
   font-size: var(--of-font-small);
 }
 .secondary {
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   background: var(--of-surface-2);
   color: var(--of-text-primary);
+  box-shadow: var(--of-shadow-contact);
 }
 .secondary:hover:not(:disabled) {
   background: var(--of-surface-3);
+  box-shadow: var(--of-shadow-soft);
 }
 .text-button {
   min-height: 32px;
@@ -854,18 +856,17 @@ label.ui-language {
 }
 .asset-card {
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--of-radius-lg);
-  padding: var(--of-space-2);
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 .asset-card.is-selected,
 .asset-card.is-chosen {
-  border-color: var(--of-accent);
-  background: var(--of-accent-soft);
+  background: transparent;
   box-shadow: none;
 }
 .asset-image-button {
-  aspect-ratio: 1;
+  aspect-ratio: var(--asset-aspect-ratio, 1);
   border-radius: var(--of-radius-media);
   isolation: isolate;
 }
@@ -910,7 +911,7 @@ label.ui-language {
 }
 .asset-card.is-selected .asset-image-button,
 .asset-card.is-chosen .asset-image-button {
-  outline: 2px solid var(--of-accent);
+  outline: 1px solid var(--of-accent);
   outline-offset: 2px;
 }
 .asset-card.is-missing .asset-image-button > img {
@@ -2476,17 +2477,18 @@ label.ui-language {
   align-items: flex-start;
   gap: var(--of-space-3);
   padding: var(--of-space-3);
-  border: 1px solid var(--of-border-strong);
+  border: 0;
   border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
+  box-shadow: var(--of-shadow-contact);
   text-align: left;
 }
 .export-goal > span {
   min-width: 0;
 }
 .export-goal.selected {
-  border-color: var(--of-accent);
   background: var(--of-accent-soft);
+  box-shadow: var(--of-shadow-soft);
 }
 .export-goal strong {
   display: block;
@@ -2568,8 +2570,14 @@ label.ui-language {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-.export-destination > .export-primary-action {
-  margin-top: var(--of-space-3);
+.export-options > .export-primary-action {
+  display: flex;
+  margin: 0 0 var(--of-space-4) auto;
+  min-height: 48px;
+  box-shadow: var(--of-shadow-soft);
+}
+.workspace-export {
+  padding-bottom: calc(var(--of-space-8) + 56px);
 }
 .export-destination h3 {
   margin-bottom: var(--of-space-2);

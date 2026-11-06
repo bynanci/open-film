@@ -505,7 +505,7 @@ export default {
       originals:
         "Originals stay unchanged. Files chosen in a browser are copied into this local project.",
       completion: {
-        completed: "Import complete",
+        completed: "Media added",
         failed: "Import needs attention",
         cancelled: "Import stopped",
         libraryCounts:

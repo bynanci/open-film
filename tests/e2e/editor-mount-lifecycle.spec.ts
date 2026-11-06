@@ -209,6 +209,25 @@ test("defers an untouched editor, then retains selection and history across work
   ).toBe(4);
 });
 
+test("opens Fit review from Library on the first lazy Edit mount", async ({
+  page,
+  request,
+}) => {
+  const project = await prepareProject("First fit review");
+  await open(request, project.path);
+  await page.goto("/");
+  await libraryReady(page);
+  await expect(page.locator(".timeline-editor")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Quick actions" }).click();
+  const commandSearch = page.getByRole("combobox", { name: "Search actions" });
+  await commandSearch.fill("fit to target");
+  await page.getByRole("option", { name: /fit to target/i }).click();
+
+  await expect(page.locator(".workspace-edit")).toBeVisible();
+  await expect(page.locator("#editor-fit-review")).toBeVisible();
+});
+
 test("a project switch does not transfer an activated editor to another project with the same composition ID", async ({
   page,
   request,

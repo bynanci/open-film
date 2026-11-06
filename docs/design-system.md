@@ -119,6 +119,13 @@ media tiles favor their thumbnail rather than an extra framed card. Use the smal
 shared shadow to separate interactive stepping-stone cards without outlining
 them.
 
+Library thumbnails follow the source orientation within a bounded portrait to
+landscape range. Panoramas and very tall frames use containment so the crop does
+not remove the edges of a memory. Media actions sit beneath the image and align
+to a fixed hit-area rhythm; selection is shown on the image itself rather than
+by wrapping another border around the full card. Secondary actions use a quiet
+stone fill and directional contact shadow instead of a permanent control frame.
+
 The top bar groups project identity, preferences and task actions. The project
 switch is an accessible named icon button; the local connection indicator retains
 its text for assistive technology and a hover title. The normal English/Traditional

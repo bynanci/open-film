@@ -31,5 +31,7 @@ for later cultural and architectural research, not as evidence for measurements.
 - [Portland Japanese Garden — Tea Garden](https://japanesegarden.org/garden-spaces/tea-garden/)
 - [Japan Guide — garden elements](https://www.japan-guide.com/e/e2099_elements.html)
 
-All vector planes are original local assets. Public garden images are original
-generated artwork of fictional scenes; see [asset origins](website-assets.md).
+All stepping-stone planes are CSS shapes defined locally and do not reproduce
+the reference gardens. The interface does not include garden photographs or
+third-party garden illustrations. See [third-party components](third-party.md)
+for software and media notices.
