@@ -1,12 +1,14 @@
 # Audio and video pipeline performance
 
-Baseline: `origin/main` at `d332fb3265077ca08f218f6ba9b6c65d2519eaa2`. The measured change is limited to source decoder concurrency while building video preview proxies. Audio proxy decoding, canonical audio policy, mix planning, rendered export encoding, source verification, proxy limits and review/accept behavior are unchanged.
+Baseline: `origin/main` at `d332fb3265077ca08f218f6ba9b6c65d2519eaa2`. The measurements cover two bounded changes: two-thread video proxy decoding and shared decoding for dense repeated source ranges in the legacy FFmpeg render path. Audio proxy decoding, canonical audio policy, explicit sample-clock mix planning, output encoder settings, source verification, proxy limits and review/accept behavior are unchanged.
 
 ## Measurement environment and method
 
 The runner used FFmpeg 7.1.5 on Debian 13, an AMD EPYC 9V45 host with a four-CPU cgroup quota and 32 GiB memory limit. Inputs were local synthetic files, not user media: 20-second 30 fps 4K H.264/AAC (600 frames, 161,135,919 bytes), 20-second 1080p H.264/AAC (41,653,234 bytes), and five-minute stereo 48 kHz FLAC (38,908,680 bytes). Proxy runs used the application’s 640×360 H.264 ultrafast CRF 28 plus source audio path. Each decoder/transcode profile had one warm-up and three measured runs. Repeated seek measurements used 18 shuffled timestamps, each in a new FFmpeg process; the reported latency includes process startup. Peak RSS is FFmpeg’s sampled `VmHWM` from `/proc/<pid>/status` at 5 ms intervals. These figures describe this runner, not a workstation guarantee.
 
 The proxy comparison used the existing video proxy command with input decoder thread counts 1, 2, 4 and auto (`0`); scaling, filter threads, codecs, preset, CRF, audio, timestamps and output settings stayed fixed. The production change selects two input decoder threads for video proxy work. Audio proxy decoding remains at one thread.
+
+The renderer comparison used a separate detached worktree at `1e171284c1d6263fbecf30d996b7210fccf2b158` as the pre-change baseline and the current implementation, with the same synthetic 20-second 4K source, ten contiguous two-second clip ranges, and 640×360 at 30 fps output. Both variants rendered three times with FFmpeg 7.1.5 and the same encoder/filter settings. The reported time is end-to-end `FFmpegRenderer.render` wall time (input decode, filter graph and encode); peak RSS is the maximum sampled FFmpeg `VmHWM` at 30 ms intervals across those runs. The production path groups only repeated, densely covered video ranges from a source, seeks once to the earliest in-point, limits the decoded span, and splits decoded video/audio into independent clip branches. Sparse ranges keep per-clip seeks. Explicit audio timing/automation keeps its canonical sample-clock graph.
 
 ## Results
 
@@ -40,8 +42,17 @@ The one-second GOP increased this fixture’s proxy from 1,381,843 to 1,551,868 
 
 Audio proxy encoding did not benefit from a second decoder thread, and peak memory was already small. The audio path therefore stays unchanged.
 
+| 4K repeated-source render (10 × 2-second ranges) |                                      Pre-change independent inputs | Shared source decode |
+| ------------------------------------------------ | -----------------------------------------------------------------: | -------------------: |
+| Median end-to-end render time                    |                                                          22,675 ms |             5,673 ms |
+| Peak FFmpeg RSS                                  |                                                      1,410,672 KiB |          752,016 KiB |
+| Output frames / dimensions / duration            |                                            600 / 640×360 / 20.00 s |                 Same |
+| Encoded MP4 SHA-256                              | `b0f3b5349439ac404e79325780736f9b6ab4a75e791e4c3561cb7de8828915f5` |            Identical |
+
+Sharing one bounded video decode reduced median render time by 75.0% and peak RSS by 46.7% on this workload. The baseline times were 23,130.73, 22,560.59 and 22,675.31 ms; shared-decode times were 5,956.47, 5,651.38 and 5,672.55 ms. The MP4 hash remained identical in all six runs. Decoding the baseline and optimized outputs produced the same frame-manifest SHA-256 (`df2266fdca04004eaa0a36386c45f4c30af9b73920ede83703a088c962cfe863`) and PCM SHA-256 (`3a6b394e5d3e01a8a03b13c524bc659e82c8fb8645aba91a713b6cacc1200ab0`). The synthetic source hash remained `c3b6af16df2bda57facc5115ac3cc190b0ad713e69f898069a1603d48136b55e`.
+
 ## Decision and validation
 
-Video proxy decoding now uses a bounded two-thread decoder. This captured most of the 4K proxy speedup seen with automatic threading while avoiding automatic thread-pool growth; the unchanged audio path remains single-threaded. The change does not touch the export renderer’s single-thread deterministic encode, audio mix graph, audio timing, source hash checks, file-size/quota enforcement, or stored proxy recipe. Exact proxy bytes and decoded audio/video were unchanged on the measured FFmpeg 7.1.5 fixture.
+Video proxy decoding now uses a bounded two-thread decoder. The legacy render path also shares a bounded source decode when several visual cuts densely cover the same media, then applies each clip’s own trim, speed, gain automation and timeline offset on separate filter branches. Sparse ranges continue using accurate per-clip input seeks so distant cuts do not force decoding the intervening media. Explicit sample-clock audio plans are unchanged. Output encoding, audio mix policy, source hash checks, file-size/quota enforcement and the stored proxy recipe remain unchanged. Exact proxy bytes, rendered MP4 bytes and decoded audio/video were unchanged on the measured FFmpeg 7.1.5 synthetic fixtures.
 
-Focused FFmpeg proxy, HDR/SDR preview and proxy-cache application regressions, followed by lint, typecheck, format and build, are recorded with the commit that carries this profile. Full Vitest, Playwright, native builds, physical workstation profiling, GPU/4K export throughput and long-running memory soak are separate gates; this document does not claim they passed. The next useful profile is an actual 4K export on Windows and macOS, separating input decode, filter graph, output encode and peak memory under concurrent desktop activity.
+Focused FFmpeg proxy, HDR/SDR preview, proxy-cache application, repeated-range render and audio-policy regressions are recorded with the commit that carries this profile. Full Vitest, Playwright, native builds, physical workstation profiling, GPU/4K export throughput and long-running memory soak are separate gates; this document does not claim they passed. The next useful profile is a workstation export on Windows and macOS with real media, separately tracing input decode, filter graph and output encode under concurrent desktop activity.

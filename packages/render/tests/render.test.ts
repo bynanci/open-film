@@ -43,6 +43,167 @@ async function frame(path: string, time: number): Promise<number> {
 }
 
 describe("real FFmpeg preview renderer", () => {
+  it("seeks repeated video ranges while retaining frames and audible source audio", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-input-seek-"),
+    );
+    directories.push(directory);
+    const source = join(directory, "source.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=160x90:rate=12:duration=3",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000:duration=3",
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-c:v",
+      "libx264",
+      "-threads",
+      "1",
+      "-g",
+      "24",
+      "-keyint_min",
+      "24",
+      "-sc_threshold",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-shortest",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "synthetic split source",
+    });
+    const sourceHash = await hashFile(source);
+    const single: Composition = {
+      id: "single-range",
+      storyId: "story",
+      duration: 3,
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "whole-source",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 3,
+              sourceIn: 0,
+              sourceOut: 3,
+            },
+          ],
+        },
+      ],
+    };
+    const split: Composition = {
+      ...single,
+      id: "split-ranges",
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: Array.from({ length: 3 }, (_, index) => ({
+            id: `range-${index}`,
+            assetId: asset.id,
+            timelineStart: index,
+            timelineDuration: 1,
+            sourceIn: index,
+            sourceOut: index + 1,
+          })),
+        },
+      ],
+    };
+    const settings: ProjectSettings = {
+      width: 160,
+      height: 90,
+      frameRate: 12,
+    };
+    const renderer = new FFmpegRenderer();
+    const singleOutput = join(directory, "single.mp4");
+    const splitOutput = join(directory, "split.mp4");
+    await renderer.render(single, [asset], singleOutput, settings);
+    await renderer.render(split, [asset], splitOutput, settings);
+    const decodedFrames = async (path: string) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-threads",
+          "1",
+          "-i",
+          path,
+          "-map",
+          "0:v:0",
+          "-an",
+          "-f",
+          "framemd5",
+          "-hash",
+          "md5",
+          "-",
+        ])
+      ).stdout.toString("utf8");
+    const decodedAudio = async (path: string) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-threads",
+          "1",
+          "-i",
+          path,
+          "-map",
+          "0:a:0",
+          "-acodec",
+          "pcm_s16le",
+          "-ar",
+          "48000",
+          "-ac",
+          "2",
+          "-f",
+          "s16le",
+          "-",
+        ])
+      ).stdout;
+    expect(await decodedFrames(splitOutput)).toBe(
+      await decodedFrames(singleOutput),
+    );
+    const pcm = await decodedAudio(splitOutput);
+    expect(pcm.length).toBeGreaterThanOrEqual(3 * 48_000 * 4 - 4096);
+    for (const startSeconds of [0.25, 0.9, 1.1, 1.9, 2.1, 2.5]) {
+      const startFrame = Math.round(startSeconds * 48_000);
+      let sumSquares = 0;
+      const frameCount = 12_000;
+      for (let frame = startFrame; frame < startFrame + frameCount; frame++) {
+        const offset = frame * 4;
+        const left = pcm.readInt16LE(offset);
+        const right = pcm.readInt16LE(offset + 2);
+        sumSquares += left * left + right * right;
+      }
+      const rms = Math.sqrt(sumSquares / (frameCount * 2));
+      expect(
+        rms,
+        `source audio was lost near ${startSeconds}s`,
+      ).toBeGreaterThan(500);
+    }
+    expect(await hashFile(source)).toBe(sourceHash);
+  });
+
   it.each([
     { frameRate: 24, expectedRate: 24 },
     { frameRate: 25, expectedRate: 25 },

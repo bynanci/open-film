@@ -876,6 +876,120 @@ export class FFmpegRenderer {
           if (!filledPhotoClips.has(clip.id))
             filledPhotoClips.set(clip.id, clip);
       for (const [id, asset] of ambient.assetOverrides) assetMap.set(id, asset);
+      // Nearby ranges from one source share a decoder and fan out through split
+      // filters. Each branch still applies its own source trim and clip edits.
+      const sharedLegacyVisual = new Map<
+        Clip,
+        { input: number; label: string; sourceIn: number }
+      >();
+      const sharedLegacyAudio = new Map<
+        Clip,
+        { input: number; label: string }
+      >();
+      if (!newAudioPath && !audioOnly && !videoOnly) {
+        const clipsByAsset = new Map<
+          string,
+          {
+            asset: MediaAsset;
+            clip: Clip;
+            sourceIn: number;
+            sourceOut: number;
+          }[]
+        >();
+        for (const track of composition.tracks) {
+          if (
+            track.visible === false ||
+            track.type === "audio" ||
+            track.type === "music" ||
+            track.type === "titles"
+          )
+            continue;
+          for (const clip of track.clips) {
+            const asset = assetMap.get(clip.assetId);
+            if (!asset || asset.mediaType === "audio") continue;
+            if (asset.mediaType === "image") continue;
+            validateClip(clip, composition.duration);
+            const { sourceIn, sourceOut } = resolveClipSourceRange(clip, asset);
+            const clips = clipsByAsset.get(asset.id) ?? [];
+            clips.push({ asset, clip, sourceIn, sourceOut });
+            clipsByAsset.set(asset.id, clips);
+          }
+        }
+        for (const ranges of clipsByAsset.values()) {
+          const clips = ranges.map((range) => range.clip);
+          if (clips.length < 2) continue;
+          const minSourceIn = Math.min(
+            ...ranges.map((range) => range.sourceIn),
+          );
+          const maxSourceOut = Math.max(
+            ...ranges.map((range) => range.sourceOut),
+          );
+          const selectedDuration = ranges.reduce(
+            (total, range) => total + range.sourceOut - range.sourceIn,
+            0,
+          );
+          // Avoid decoding a long gap just to share a decoder for sparse cuts.
+          if (maxSourceOut - minSourceIn > selectedDuration * 1.25 + 1)
+            continue;
+          const asset = ranges[0]!.asset;
+          args.push(
+            "-threads",
+            "1",
+            "-an",
+            "-accurate_seek",
+            ...(minSourceIn > 0 ? ["-ss", number(minSourceIn)] : []),
+            "-t",
+            number(maxSourceOut - minSourceIn),
+            ...(await localMediaInputOptions(
+              localPath(asset.uri),
+              options.signal,
+            )),
+            "-i",
+            localPath(asset.uri),
+          );
+          const visualInput = inputIndex++;
+          const visualLabels = clips.map(
+            (_, index) => `sharedVisual${visualInput}_${index}`,
+          );
+          filters.push(
+            `[${visualInput}:v]split=${clips.length}${visualLabels.map((label) => `[${label}]`).join("")}`,
+          );
+          ranges.forEach((range, index) =>
+            sharedLegacyVisual.set(range.clip, {
+              input: visualInput,
+              label: visualLabels[index]!,
+              sourceIn: minSourceIn,
+            }),
+          );
+
+          if (hasAudio(asset)) {
+            args.push(
+              "-threads",
+              "1",
+              "-vn",
+              ...(await localMediaInputOptions(
+                localPath(asset.uri),
+                options.signal,
+              )),
+              "-i",
+              localPath(asset.uri),
+            );
+            const audioInput = inputIndex++;
+            const audioLabels = clips.map(
+              (_, index) => `sharedAudio${audioInput}_${index}`,
+            );
+            filters.push(
+              `[${audioInput}:a]asplit=${clips.length}${audioLabels.map((label) => `[${label}]`).join("")}`,
+            );
+            ranges.forEach((range, index) =>
+              sharedLegacyAudio.set(range.clip, {
+                input: audioInput,
+                label: audioLabels[index]!,
+              }),
+            );
+          }
+        }
+      }
       for (const track of composition.tracks) {
         if (audioOnly && track.type === "titles") continue;
         if (!audioOnly && track.visible === false) continue;
@@ -987,6 +1101,24 @@ export class FFmpegRenderer {
             track.type !== "audio" &&
             track.type !== "music" &&
             asset.mediaType !== "audio";
+          // Unshared legacy visual inputs seek to their exact source range;
+          // dense repeated ranges are handled by one shared source input above.
+          // Explicit audio clocks and still images keep their existing mapping.
+          const sharedVisual = sharedLegacyVisual.get(clip);
+          const seekInputRange =
+            !sharedVisual &&
+            !newAudioPath &&
+            visual &&
+            asset.mediaType !== "image";
+          // AAC packet seeking can change decoded samples at cut boundaries.
+          // Keep audio on an unseeked input while the video decoder seeks.
+          // At source time zero both streams can share the bounded input.
+          const separateAudioInput =
+            seekInputRange && sourceIn > 0 && !videoOnly && hasAudio(asset);
+          const sharedAudio = sharedLegacyAudio.get(clip);
+          const disableVideoInputAudio =
+            seekInputRange &&
+            (separateAudioInput || videoOnly || !hasAudio(asset));
           if (
             (clip.layout || clip.motion) &&
             (track.type !== "video" || asset.mediaType !== "image")
@@ -1000,17 +1132,42 @@ export class FFmpegRenderer {
             );
           if (asset.mediaType === "image")
             args.push("-loop", "1", "-framerate", number(settings.frameRate));
-          args.push(
-            "-threads",
-            "1",
-            ...(await localMediaInputOptions(
+          if (!sharedVisual)
+            args.push(
+              "-threads",
+              "1",
+              ...(await localMediaInputOptions(
+                localPath(asset.uri),
+                options.signal,
+              )),
+              ...(seekInputRange
+                ? [
+                    ...(disableVideoInputAudio ? ["-an"] : []),
+                    "-accurate_seek",
+                    ...(sourceIn > 0 ? ["-ss", number(sourceIn)] : []),
+                    "-t",
+                    number(sourceOut - sourceIn),
+                  ]
+                : []),
+              "-i",
               localPath(asset.uri),
-              options.signal,
-            )),
-            "-i",
-            localPath(asset.uri),
-          );
-          const input = inputIndex++;
+            );
+          const input = sharedVisual?.input ?? inputIndex++;
+          let clipAudioInput = sharedAudio?.input ?? input;
+          if (separateAudioInput) {
+            args.push(
+              "-threads",
+              "1",
+              "-vn",
+              ...(await localMediaInputOptions(
+                localPath(asset.uri),
+                options.signal,
+              )),
+              "-i",
+              localPath(asset.uri),
+            );
+            clipAudioInput = inputIndex++;
+          }
           if (admitted?.has(clip.id)) audioInputs.set(clip.id, input);
           if (visual) {
             const label = `visual${suffix}`;
@@ -1070,7 +1227,7 @@ export class FFmpegRenderer {
                   )
                 : 0;
             const displayedDuration = duration + outgoingTail;
-            let visualInput = `${input}:v`;
+            let visualInput = sharedVisual?.label ?? `${input}:v`;
             if (presentedPhoto) {
               const presentation = await photoPresentationFilters(
                 clip,
@@ -1096,10 +1253,13 @@ export class FFmpegRenderer {
             }
             if (fade > 0 && clip.transition?.type === "crossfade")
               transform.push(`fade=t=in:st=0:d=${number(fade)}:alpha=1`);
-            const trim =
-              asset.mediaType === "image"
+            const trim = sharedVisual
+              ? `trim=start=${number(sourceIn - sharedVisual.sourceIn)}:end=${number(sourceOut - sharedVisual.sourceIn)}`
+              : asset.mediaType === "image"
                 ? `trim=duration=${number(displayedDuration)}`
-                : `trim=start=${number(sourceIn)}:end=${number(sourceOut)}`;
+                : seekInputRange
+                  ? `trim=duration=${number(sourceOut - sourceIn)}`
+                  : `trim=start=${number(sourceIn)}:end=${number(sourceOut)}`;
             filters.push(
               `[${visualInput}]${trim},settb=AVTB,setpts=(PTS-STARTPTS)/${number(presentedPhoto ? 1 : speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
             );
@@ -1142,7 +1302,10 @@ export class FFmpegRenderer {
               ...audioAutomationFilters(clip.audioAutomation, duration),
               `adelay=${resolveClipAudioRange(clip, asset).delayMilliseconds}:all=1`,
             ];
-            filters.push(`[${input}:a]${audioFilters.join(",")}[${label}]`);
+            const audioSource = sharedAudio
+              ? `[${sharedAudio.label}]`
+              : `[${clipAudioInput}:a]`;
+            filters.push(`${audioSource}${audioFilters.join(",")}[${label}]`);
             audioLabels.push(label);
           }
         }
