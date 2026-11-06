@@ -68,3 +68,5 @@ native candidate can be measured with the project benchmark runner; no bundle
 size target is set from this browser-only evidence. This also does not establish
 clean-install, update/rollback, Windows or macOS signing, notarization, or
 installer-candidate evidence from the separate M7 release gate.
+
+The editor flush gate rejects preview/export/navigation while an eagerly requested async TimelineEditor has not mounted. This preserves pending-draft recovery during slow chunk loading. The focused UI/attribution unit suite passed (4 tests); browser slow-network recovery verification remains a separate gate.

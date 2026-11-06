@@ -775,7 +775,13 @@ function editorEdited() {
   if (exportPath.value) exportStale.value = true;
 }
 async function flushEditor() {
-  if (!timelineEditor.value) return true;
+  if (!timelineEditor.value) {
+    if (editorMountRequested.value) {
+      error.value = message("feedback.flushFailed");
+      return false;
+    }
+    return true;
+  }
   const saved = await timelineEditor.value.flush();
   if (!saved) error.value = message("feedback.flushFailed");
   return saved;
