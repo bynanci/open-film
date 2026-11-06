@@ -39,7 +39,11 @@ describe("story-planner", () => {
   it("generates a valid StoryPlan proposal with 5 storyboard dimensions (who, what, how, how long, why)", () => {
     const assets: MediaAsset[] = [
       makeAsset("p1", { name: "Morning Coffee" }),
-      makeAsset("p2", { name: "Mountain Trail" }),
+      makeAsset("p2", {
+        name: "Mountain Trail",
+        uri: "file:///p2.mp4",
+        mediaType: "video",
+      }),
     ];
     const story: Story = {
       id: "s1",
@@ -109,6 +113,10 @@ describe("story-planner", () => {
     // Narrative protection: photo depth fallback without fake depth mask
     expect(scene1.assets[0]?.photoDepthSupported).toBe(false);
     expect(scene1.assets[0]?.photoDepthFallback).toBe("standard-hold");
+
+    const scene2 = plan.scenes[1]!;
+    expect(scene2.assets[0]?.photoDepthSupported).toBeUndefined();
+    expect(scene2.assets[0]?.photoDepthFallback).toBeUndefined();
   });
 
   it("detects and flags unresolved alternative branches as ambiguous with actionable conflict messages", () => {
