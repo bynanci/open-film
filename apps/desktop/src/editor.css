@@ -1970,6 +1970,55 @@ button.editor-beat-heading:hover {
   }
 }
 
+@media (min-width: 901px) and (max-width: 1100px) {
+  .timeline-editor-contained .editor-toolbar {
+    display: grid;
+    grid-template-areas: "mode save actions";
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    align-items: center;
+    column-gap: var(--of-space-3);
+    padding: var(--of-space-2) var(--of-space-4);
+  }
+
+  .timeline-editor-contained .editor-heading {
+    display: none;
+  }
+
+  .timeline-editor-contained .editor-mode-context {
+    display: grid;
+    grid-area: mode;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: var(--of-space-2);
+    min-width: 0;
+  }
+
+  .timeline-editor-contained .editor-mode-switch {
+    flex-wrap: nowrap;
+  }
+
+  .timeline-editor-contained .editor-mode-hint {
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timeline-editor-contained .editor-save-state {
+    grid-area: save;
+    margin: 0;
+  }
+
+  .timeline-editor-contained .editor-toolbar > .editor-actions {
+    display: flex;
+    grid-area: actions;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: var(--of-space-1);
+  }
+}
+
 .timeline-editor-contained .editor-duration {
   gap: var(--of-space-2) var(--of-space-4);
   padding: var(--of-space-2) var(--of-space-4);
@@ -2222,10 +2271,13 @@ button.editor-beat-heading:hover {
 
 @media (min-width: 901px) {
   .timeline-editor.timeline-editor-contained .editor-workspace {
-    height: var(--editor-workspace-height, max(17rem, calc(100dvh - 18rem)));
-    min-height: 17rem;
+    height: max(
+      var(--editor-workspace-height, max(17rem, calc(100dvh - 18rem))),
+      22.5rem
+    );
+    min-height: 22.5rem;
     grid-template-columns: minmax(0, 1fr) 17rem;
-    grid-template-rows: minmax(8rem, 1.45fr) minmax(7rem, 1fr);
+    grid-template-rows: minmax(11rem, 1.6fr) minmax(7rem, 1fr);
     grid-template-areas: "player inspector" "beats beats";
     align-items: stretch;
   }
@@ -2251,8 +2303,8 @@ button.editor-beat-heading:hover {
   }
 
   .timeline-editor-contained .editor-source-screen {
-    min-height: 128px;
-    flex: 1 0 128px;
+    min-height: 8rem;
+    flex: 1 1 8rem;
     border: 0;
     border-radius: var(--of-radius-sm);
   }

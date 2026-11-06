@@ -353,6 +353,7 @@ test.describe("coarse pointer", () => {
     request,
   }) => {
     await openFixture(page, request);
+    await page.setViewportSize({ width: 1024, height: 720 });
     await page
       .getByRole("button", { name: "Adjust picture", exact: true })
       .click();
@@ -368,24 +369,60 @@ test.describe("coarse pointer", () => {
       expect(bounds).not.toBeNull();
       expect(bounds!.width, name).toBeGreaterThanOrEqual(44);
       expect(bounds!.height, name).toBeGreaterThanOrEqual(44);
+      const hitTest = await page.evaluate(
+        ({ box }) => {
+          const rect = (selector: string) => {
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            const { x, y, width, height, top, right, bottom, left } =
+              element.getBoundingClientRect();
+            return { x, y, width, height, top, right, bottom, left };
+          };
+          const points = [
+            [box.x + 2, box.y + 2],
+            [box.x + box.width - 2, box.y + 2],
+            [box.x + 2, box.y + box.height - 2],
+            [box.x + box.width - 2, box.y + box.height - 2],
+          ];
+          return {
+            viewport: { width: innerWidth, height: innerHeight },
+            editorWorkspace: rect(".editor-workspace"),
+            editorToolbar: rect(".editor-toolbar"),
+            editorDuration: rect(".editor-duration"),
+            monitorTools: rect(".editor-monitor-tools"),
+            sourceScreen: rect(".editor-source-screen"),
+            sourceCaption: rect(".editor-source-caption"),
+            storyRail: rect(".editor-story-rail"),
+            playerRegion: rect(".editor-player-region"),
+            compositionFrame: rect(".editor-composition-frame"),
+            transformOverlay: rect(".clip-transform-overlay"),
+            scroll: (() => {
+              const player = document.querySelector<HTMLElement>(
+                ".editor-player-region",
+              );
+              return player
+                ? { top: player.scrollTop, height: player.scrollHeight }
+                : null;
+            })(),
+            points: points.map(([x, y]) => {
+              const target = document.elementFromPoint(x!, y!);
+              return {
+                x,
+                y,
+                label: target?.getAttribute("aria-label") ?? null,
+                target: target
+                  ? `${target.tagName.toLowerCase()}.${String(target.className)}`
+                  : null,
+              };
+            }),
+          };
+        },
+        { box: bounds! },
+      );
       expect(
-        await page.evaluate(
-          ({ box, label }) =>
-            [
-              [box.x + 2, box.y + 2],
-              [box.x + box.width - 2, box.y + 2],
-              [box.x + 2, box.y + box.height - 2],
-              [box.x + box.width - 2, box.y + box.height - 2],
-            ].every(
-              ([x, y]) =>
-                document
-                  .elementFromPoint(x!, y!)
-                  ?.getAttribute("aria-label") === label,
-            ),
-          { box: bounds!, label: name },
-        ),
-        `${name} must remain hit-testable across its full target`,
-      ).toBe(true);
+        hitTest.points.map(({ label }) => label),
+        `${name} must remain hit-testable across its full target: ${JSON.stringify(hitTest)}`,
+      ).toEqual([name, name, name, name]);
     }
   });
 });

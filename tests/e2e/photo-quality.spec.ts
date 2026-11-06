@@ -708,10 +708,14 @@ test("sound preview reloads restored trim and speed on Undo and Redo", async ({
   await expect(soundStart).toHaveCSS("text-align", "end");
   await expect(soundStart).toHaveCSS("min-height", "44px");
   await expect(soundStart).toHaveCSS("border-left-width", "0px");
-  await expect(page.locator(".editor-inspector-tabs")).toHaveCSS(
-    "display",
-    "flex",
-  );
+  const inspectorTabs = page.locator(".editor-inspector-tabs");
+  await expect(inspectorTabs).toHaveCSS("display", "grid");
+  expect(
+    await inspectorTabs.evaluate(
+      (element) =>
+        getComputedStyle(element).gridTemplateColumns.split(" ").length,
+    ),
+  ).toBe(2);
   await page.screenshot({
     path: test.info().outputPath("audio-inspector-1440.png"),
     fullPage: true,

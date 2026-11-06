@@ -5012,7 +5012,8 @@ onBeforeUnmount(() => {
                 class="editor-button"
                 :aria-pressed="showRuleOfThirds"
                 :class="{ selected: showRuleOfThirds }"
-                :title="t('editor.monitor.thirds')"
+                aria-describedby="editor-monitor-guide-note"
+                :title="`${t('editor.monitor.thirds')} · ${t('editor.monitor.previewOnly')}`"
                 @click="showRuleOfThirds = !showRuleOfThirds"
               >
                 <Icon name="thirds" :size="16" />
@@ -5022,16 +5023,19 @@ onBeforeUnmount(() => {
                 class="editor-button"
                 :aria-pressed="showSafeFrame"
                 :class="{ selected: showSafeFrame }"
-                :title="t('editor.monitor.safe')"
+                aria-describedby="editor-monitor-guide-note"
+                :title="`${t('editor.monitor.safe')} · ${t('editor.monitor.previewOnly')}`"
                 @click="showSafeFrame = !showSafeFrame"
               >
                 <Icon name="safe-frame" :size="16" />
                 <span class="sr-only">{{ t("editor.monitor.safe") }}</span>
               </button>
               <kbd aria-label="G">G</kbd>
-              <span class="editor-monitor-guide-note">{{
-                t("editor.monitor.previewOnly")
-              }}</span>
+              <span
+                id="editor-monitor-guide-note"
+                class="sr-only editor-monitor-guide-note"
+                >{{ t("editor.monitor.previewOnly") }}</span
+              >
               <button
                 class="editor-button"
                 :class="{ selected: pictureAdjusting }"

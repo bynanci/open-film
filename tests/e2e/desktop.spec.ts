@@ -348,13 +348,16 @@ test("cancels a real import and keeps the project available", async ({
     expect(project.ok()).toBe(true);
     expect((await project.json()).project.title).toBe("An unfinished import");
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
-    const addMediaActions = page.getByRole("button", {
+    const addMedia = page.getByRole("button", {
       name: "Add media",
       exact: true,
     });
-    await expect(addMediaActions).toHaveCount(2);
-    for (const action of await addMediaActions.all())
-      await expect(action).toBeEnabled();
+    const addFirstMedia = page.getByRole("button", {
+      name: "Add your first media",
+      exact: true,
+    });
+    await expect(addMedia).toBeEnabled();
+    await expect(addFirstMedia).toBeEnabled();
   } finally {
     cleanupFixtures.push(fixture.cleanup);
   }

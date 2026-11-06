@@ -115,6 +115,16 @@ async function prepareReview(page: Page, locale: ProjectContentLocale) {
     name: uiText(locale, "app.import.label"),
     exact: true,
   });
+  // The saved source draft loads asynchronously when the panel is mounted.
+  // Wait for the user-facing picker to be enabled before setting its hidden
+  // input; doing this while the draft is loading is rejected by the component
+  // and is noticeably more likely on Windows runners.
+  await expect(
+    panel.getByRole("button", {
+      name: uiText(locale, "app.import.addFiles"),
+      exact: true,
+    }),
+  ).toBeEnabled();
   const sourcesAdded = page.waitForResponse(
     (response) =>
       response.url().endsWith("/api/import-draft/sources") &&
