@@ -448,18 +448,31 @@ test("Edit imports segment-timed captions, edits the native track, and reopens t
   await page.getByTestId("caption-inspector-tab").click();
   const text = page.getByTestId("caption-text");
   await expect(text).toBeVisible();
+  const captionEdit = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+        `/api/compositions/${fixture.composition.id}/edit` &&
+      response.request().method() === "POST",
+    { timeout: 15_000 },
+  );
   await text.fill("繁體字幕\n第二行");
-  await text.press("Tab");
-  // The native textarea commits on change. Confirm that its durable edit has
-  // reached the application before the following timing/style edits can batch.
+  await text.blur();
+  await expect(text).not.toBeFocused();
+  const captionEditResponse = await captionEdit;
+  expect(captionEditResponse.ok(), await captionEditResponse.text()).toBe(true);
+  // The native textarea commits on change. Confirm the server acknowledged the
+  // command and that its durable edit has reached the saved Composition.
   await expect
-    .poll(async () => {
-      const saved = await get<{ composition: Composition }>(
-        request,
-        `/compositions/${fixture.composition.id}/editor`,
-      );
-      return saved.composition.captionTracks?.[0]?.cues[0]?.text;
-    })
+    .poll(
+      async () => {
+        const saved = await get<{ composition: Composition }>(
+          request,
+          `/compositions/${fixture.composition.id}/editor`,
+        );
+        return saved.composition.captionTracks?.[0]?.cues[0]?.text;
+      },
+      { timeout: 15_000 },
+    )
     .toBe("繁體字幕\n第二行");
   const start = page.getByTestId("caption-start");
   await start.fill("700");

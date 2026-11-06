@@ -59,9 +59,9 @@ These checks do not impose a height cap on authored long content.
 
 ## PR #119 current-head follow-up — 2026-11-06
 
-The current follow-up is reconciled on top of PR #119 head
-`b3daac4fb8bf9819093c2b5291b33ccfa6a858ec`, based on `main`
-`b6304914a7eb351d8e5d0a0a11b41e163713e20b`. The previous exact-head run
+The current follow-up is based on `main`
+`b6304914a7eb351d8e5d0a0a11b41e163713e20b` and includes PR #119 updates through
+`b2e44c776588184661d5e003a358dbdb17bf5251`. The previous exact-head run
 [42190592757](https://github.com/bynanci/open-film/actions/runs/42190592757)
 passed fast-contract, heavy-media, docs-site, native-shell and all three render
 QA platforms. Browser shard 1 failed two direct-clip hit-test checks; Windows
@@ -95,6 +95,30 @@ separate job. The new local regressions exercise the single completion action,
 post-layout resize geometry and current Inspector layout without weakening the
 render, hit-target or import-cancellation behavior.
 
+A follow-up local repetition also showed that the cancellation test waited for a
+transient `Import cancelled` notice even after the durable completion summary
+had changed to `Import stopped`. The test now waits for that persistent status
+and confirms `/api/jobs` contains a terminal cancelled import before checking
+the project and reopening Import. This tests the completed cancellation state
+instead of depending on notification timing.
+
+After the `4da316f` browser failures were corrected, PR branch commit `b2e44c7`
+preserved the monitor controls and added viewport diagnostics. Its Verify run
+[42198971760](https://github.com/bynanci/open-film/actions/runs/42198971760)
+reported three failures in browser shard 1 (`86 passed`): the resize handle
+still extended below the source viewport at 1024×720; the native-caption test
+timed out while the saved cue still had its prior text; and the language test
+expected a welcome tagline in the Edit workspace, whose actual heading is the
+film title. The first is addressed by measuring the source viewport after the
+adjustment toolbar reflows. The caption test now waits for the matching
+`POST /api/compositions/:id/edit` response, checks its status and then checks
+the saved cue. The language test now checks the selected locale, the localized
+timeline region and translated validation feedback. Shards 2–4, fast-contract,
+heavy-media, docs-site, native-shell, Windows media recovery and all Render QA
+platforms passed. The legacy `typescript-and-media` guard failed only because
+it observed `BROWSER_RESULT: failure`; its fast, media and docs results were
+successful.
+
 Local evidence on the reconciled, unpushed worktree:
 
 | Check                                                    | Result                                                                                                                                                                               |
@@ -103,11 +127,11 @@ Local evidence on the reconciled, unpushed worktree:
 | `pnpm test:contracts`                                    | 77 files and 1,504 tests passed.                                                                                                                                                     |
 | Focused UI E2E                                           | 17/17 passed: component redesign, multi-source review and Tobi-ishi workflow.                                                                                                        |
 | Direct clip manipulation E2E                             | 5/5 passed, including proportional resize and coarse-pointer hit targets.                                                                                                            |
-| Exact remote-failure regressions                         | 12/12 passed over 3 repetitions: import cancellation, proportional/coarse-pointer resize, and audio-preview Undo/Redo.                                                               |
+| Exact remote-failure regressions                         | 18/18 passed over 3 repetitions: import cancellation, proportional/coarse-pointer resize, caption persistence, zh-TW/ja-JP switching, and audio-preview Undo/Redo.                   |
 | Responsive surfaces E2E                                  | 8/8 passed, including theme animation frames and narrow layouts.                                                                                                                     |
 | Focused unit regressions                                 | 111/111 passed across six App/workspace/variant test files.                                                                                                                          |
 | Format, i18n/docs, partitions, lint, typecheck and build | Passed; 3,198 locale keys, 450 Vitest files (77 contracts/373 media), and 350 browser cases partitioned. TimelineEditor remains 589.11 KB and triggers the existing 500 KB advisory. |
-| Hosted verification after the exact-head fixes           | Pending; the follow-up commit has not been pushed yet.                                                                                                                               |
+| Hosted verification after the exact-head fixes           | Pending for the final follow-up SHA; the b2e44c7 run still has the three browser-shard-1 failures listed above.                                                                      |
 
 The prior `main@b630491` Verify, Windows media recovery and Render QA pass in
 [run 42171211968](https://github.com/bynanci/open-film/actions/runs/42171211968).
