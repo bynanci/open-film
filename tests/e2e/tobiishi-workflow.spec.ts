@@ -143,6 +143,25 @@ test("keeps the sidebar readable until compact icon navigation activates", async
     ).toBeGreaterThan(1);
   }
 
+  await page.setViewportSize({ width: 1200, height: 900 });
+  const navButtons = sidebar.locator(".main-nav button");
+  await navButtons.nth(1).hover();
+  await expect
+    .poll(() =>
+      navButtons
+        .nth(1)
+        .evaluate((button) => getComputedStyle(button).boxShadow),
+    )
+    .toBe("none");
+  await navButtons.first().hover();
+  await expect
+    .poll(() =>
+      navButtons
+        .first()
+        .evaluate((button) => getComputedStyle(button).boxShadow),
+    )
+    .not.toBe("none");
+
   await page.setViewportSize({ width: 1100, height: 900 });
   expect(
     (await sidebar.boundingBox())!.width,
@@ -152,6 +171,50 @@ test("keeps the sidebar readable until compact icon navigation activates", async
     (await label.boundingBox())!.width,
     "compact navigation label",
   ).toBeLessThanOrEqual(1);
+  const compactNavigation = sidebar.locator(".main-nav button").first();
+  await compactNavigation.focus();
+  const navigationLabel = await compactNavigation.getAttribute("aria-label");
+  await expect(compactNavigation).toHaveAttribute("title", navigationLabel!);
+});
+
+test("announces the scene planner disclosure and restores keyboard focus", async ({
+  page,
+}) => {
+  await navigate(page, "story");
+  const trigger = page.getByTestId("scene-planner-toggle");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger).toHaveAttribute("aria-controls", "scene-planner");
+  await trigger.click();
+  const planner = page.locator("#scene-planner");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(planner).toBeVisible();
+  await expect(planner).toBeFocused();
+  await planner.getByRole("button", { name: "Close planner" }).click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger).toBeFocused();
+});
+
+test("announces the missing-media count in compact Library navigation", async ({
+  page,
+}) => {
+  await page.route("**/api/media/status*", async (route) => {
+    const response = await route.fetch();
+    const status = await response.json();
+    status.assets[0].status = "missing";
+    await route.fulfill({ response, json: status });
+  });
+  await page.getByRole("button", { name: "Check again", exact: true }).click();
+  const library = page.locator(".workspace-sidebar .main-nav button").first();
+  await expect(library).toHaveAttribute(
+    "aria-describedby",
+    "library-nav-attention",
+  );
+  await expect(page.locator("#library-nav-attention")).toHaveText(
+    "1 file is offline",
+  );
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(library).toHaveAttribute("title", "Library");
+  await expect(library).toHaveAttribute("aria-label", "Library");
 });
 
 test("reveals secondary media actions on pointer hover and keyboard focus", async ({
@@ -220,6 +283,24 @@ test("reveals secondary media actions on pointer hover and keyboard focus", asyn
       actions.nth(1).evaluate((button) => getComputedStyle(button).opacity),
     )
     .toBe("1");
+  const reject = actions.nth(2);
+  await reject.click();
+  await expect(card).toHaveClass(/is-rejected/);
+  const rejectedMark = card.locator(".asset-caption .asset-rejected-mark");
+  await expect(rejectedMark).toBeVisible();
+  const [markBounds, thumbnailBounds] = await Promise.all([
+    rejectedMark.boundingBox(),
+    card.locator(".asset-image-button").boundingBox(),
+  ]);
+  expect(markBounds!.y).toBeGreaterThanOrEqual(
+    thumbnailBounds!.y + thumbnailBounds!.height,
+  );
+  expect(
+    await card
+      .locator(".asset-image-button img")
+      .evaluate((image) => Number(getComputedStyle(image).opacity)),
+  ).toBeGreaterThan(0.8);
+  await reject.click();
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
   await cdp.detach();
 });
@@ -298,6 +379,13 @@ test("captures the actual shareable workspace at each product step", async ({
   await navigate(page, "story");
   await page.getByTestId("perspective-tab-storyboard").click();
   await expect(page.locator(".storyboard-view")).toBeVisible();
+  const firstStoryboardMedia = page
+    .locator(".storyboard-view .asset-preview-item")
+    .first();
+  await expect(firstStoryboardMedia).toBeVisible();
+  expect(
+    (await firstStoryboardMedia.boundingBox())!.width,
+  ).toBeGreaterThanOrEqual(180);
   const cards = page.locator(".storyboard-card");
   const readability = await cards.evaluateAll((elements) => {
     const canvas = document.createElement("canvas");
@@ -329,15 +417,106 @@ test("captures the actual shareable workspace at each product step", async ({
         title: contrast(".card-title"),
         timing: contrast(".card-timing"),
         height: card.getBoundingClientRect().height,
+        contentOverflow: card.scrollHeight - card.clientHeight,
       };
     });
   });
   for (const card of readability) {
     expect(card.title, JSON.stringify(card)).toBeGreaterThanOrEqual(4.5);
     expect(card.timing, JSON.stringify(card)).toBeGreaterThanOrEqual(4.5);
-    expect(card.height, JSON.stringify(card)).toBeLessThan(300);
+    expect(card.height, JSON.stringify(card)).toBeLessThanOrEqual(320);
+    expect(card.contentOverflow, JSON.stringify(card)).toBeLessThanOrEqual(1);
   }
-  await page.screenshot({ path: info.outputPath("product-story.png") });
+  const mappingPill = page.locator(".storyboard-card .mapping-pill").first();
+  const mappingShape = await mappingPill.evaluate((pill) => ({
+    radius: Number.parseFloat(getComputedStyle(pill).borderTopLeftRadius),
+    height: pill.getBoundingClientRect().height,
+  }));
+  expect(mappingShape.radius).toBeLessThan(mappingShape.height / 2);
+  await expect(cards.first()).toHaveCSS("border-top-width", "0px");
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const documentWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth,
+    );
+    expect(
+      documentWidth,
+      `Story ${viewport.width}x${viewport.height}`,
+    ).toBeLessThanOrEqual(viewport.width + 1);
+    if (viewport.width === 1920) {
+      const storyboardCardWidth = await cards
+        .first()
+        .evaluate((card) => card.getBoundingClientRect().width);
+      expect(storyboardCardWidth).toBeLessThan(1200);
+    }
+    if (viewport.width === 1280) {
+      await expect(cards.nth(1).locator(".card-title")).toBeInViewport({
+        ratio: 0.8,
+      });
+    }
+    await page.screenshot({
+      path: info.outputPath(
+        `product-story-${viewport.width}x${viewport.height}.png`,
+      ),
+    });
+  }
+  await page.locator("html").evaluate((element) => {
+    element.setAttribute("data-theme", "dark");
+  });
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const darkSecondary = await page
+      .locator(".project-heading-actions .secondary")
+      .evaluate((button) => {
+        const luminance = (color: string) => {
+          const channels = color
+            .match(/[\d.]+/g)!
+            .slice(0, 3)
+            .map(Number);
+          const [red, green, blue] = channels.map((channel) => {
+            const value = channel / 255;
+            return value <= 0.04045
+              ? value / 12.92
+              : ((value + 0.055) / 1.055) ** 2.4;
+          });
+          return red! * 0.2126 + green! * 0.7152 + blue! * 0.0722;
+        };
+        const style = getComputedStyle(button);
+        const values = [
+          luminance(style.color),
+          luminance(style.backgroundColor),
+        ].sort((a, b) => a - b);
+        return (values[1]! + 0.05) / (values[0]! + 0.05);
+      });
+    expect(
+      darkSecondary,
+      `dark theme secondary action contrast at ${viewport.width}×${viewport.height}`,
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(viewport.width + 1);
+    if (viewport.width === 1280) {
+      await expect(cards.nth(1).locator(".card-title")).toBeInViewport({
+        ratio: 0.8,
+      });
+    }
+    await page.screenshot({
+      path: info.outputPath(
+        `product-story-dark-${viewport.width}x${viewport.height}.png`,
+      ),
+    });
+  }
+  await page.locator("html").evaluate((element) => {
+    element.setAttribute("data-theme", "light");
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await navigate(page, "edit");
   await expect(page.locator(".editor-clip").first()).toBeVisible();
   const images = (
@@ -353,7 +532,81 @@ test("captures the actual shareable workspace at each product step", async ({
   )!;
   await page.locator(`[id="clip-${clip.id}"]`).click();
   await expect(page.locator(".editor-source-screen img").first()).toBeVisible();
-  await page.screenshot({ path: info.outputPath("product-edit.png") });
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const documentWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth,
+    );
+    expect(
+      documentWidth,
+      `Edit ${viewport.width}x${viewport.height}`,
+    ).toBeLessThanOrEqual(viewport.width + 1);
+    await expect(page.locator(".editor-workspace")).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath(
+        `product-edit-${viewport.width}x${viewport.height}.png`,
+      ),
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const inspector = page.locator("#timeline-inspector");
+  const photoDuration = inspector.getByRole("spinbutton", {
+    name: "Photo duration",
+  });
+  const initialInspectorBounds = await inspector.boundingBox();
+  const initialFieldBounds = await photoDuration.boundingBox();
+  expect(initialInspectorBounds).not.toBeNull();
+  expect(initialFieldBounds).not.toBeNull();
+  expect(
+    await inspector.evaluate(
+      (panel) => getComputedStyle(panel, "::-webkit-scrollbar").width,
+    ),
+  ).toBe("8px");
+  expect(initialFieldBounds!.y + initialFieldBounds!.height).toBeGreaterThan(
+    initialInspectorBounds!.y + initialInspectorBounds!.height,
+  );
+  await inspector.getByRole("tab", { name: "Clip", exact: true }).focus();
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    if (
+      await photoDuration.evaluate((field) => document.activeElement === field)
+    )
+      break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(photoDuration).toBeFocused();
+  const focusedField = await photoDuration.evaluate((field) => {
+    const panel = document.getElementById("timeline-inspector")!;
+    const fieldRect = field.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    return {
+      top: fieldRect.top,
+      bottom: fieldRect.bottom,
+      panelTop: panelRect.top,
+      panelBottom: panelRect.bottom,
+      scrollTop: panel.scrollTop,
+    };
+  });
+  expect(focusedField.scrollTop).toBeGreaterThan(0);
+  expect(focusedField.top).toBeGreaterThanOrEqual(focusedField.panelTop - 1);
+  expect(focusedField.bottom).toBeLessThanOrEqual(focusedField.panelBottom + 1);
+  await page.screenshot({
+    path: info.outputPath("product-edit-1280x720-inspector-focused.png"),
+  });
+  await photoDuration.fill("3.0");
+  await photoDuration.press("Tab");
+  await expect
+    .poll(async () => {
+      const saved = await project(request);
+      return saved.timelines
+        .flatMap((timeline) => timeline.tracks)
+        .flatMap((track) => track.clips)
+        .find((entry) => entry.id === clip.id)?.timelineDuration;
+    })
+    .toBe(3);
   await expect(page.locator(".pipeline-status-bar .bar-stage-dot")).toHaveCount(
     0,
   );

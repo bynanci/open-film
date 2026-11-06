@@ -1358,6 +1358,8 @@ export default {
         variantA: "ベースライン (A)",
         variantB: "比較案 (B)",
       },
+      previewA: "プレビューの仮表示 · ベースライン (A)",
+      previewB: "プレビューの仮表示 · 比較案 (B)",
       audio: {
         active: "再生中",
         play: "音声を再生",

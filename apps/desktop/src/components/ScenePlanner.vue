@@ -223,8 +223,10 @@ function discard() {
 
 <template>
   <section
+    id="scene-planner"
     class="scene-planner"
     data-testid="scene-planner"
+    tabindex="-1"
     :aria-label="t('scenePlan.heading')"
     :aria-busy="working"
   >

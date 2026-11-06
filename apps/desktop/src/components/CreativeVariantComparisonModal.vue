@@ -314,6 +314,7 @@ onUnmounted(() => {
             <button
               class="tab-btn"
               :class="{ active: currentView === 'list' }"
+              :aria-pressed="currentView === 'list'"
               @click="currentView = 'list'"
             >
               {{ t("app.variants.tabs.list") }}
@@ -321,6 +322,7 @@ onUnmounted(() => {
             <button
               class="tab-btn"
               :class="{ active: currentView === 'create' }"
+              :aria-pressed="currentView === 'create'"
               @click="currentView = 'create'"
             >
               {{ t("app.variants.tabs.create") }}
@@ -329,6 +331,7 @@ onUnmounted(() => {
               v-if="comparison || variants.length > 1"
               class="tab-btn"
               :class="{ active: currentView === 'compare' }"
+              :aria-pressed="currentView === 'compare'"
               @click="currentView = 'compare'"
             >
               {{ t("app.variants.tabs.compare") }}
@@ -440,8 +443,11 @@ onUnmounted(() => {
             <div class="form-column">
               <h3>{{ t("app.variants.createHeader") }}</h3>
               <div class="form-field">
-                <label>{{ t("app.variants.fields.name") }} *</label>
+                <label for="variant-name"
+                  >{{ t("app.variants.fields.name") }} *</label
+                >
                 <input
+                  id="variant-name"
                   v-model="formName"
                   type="text"
                   :placeholder="t('app.variants.placeholders.name')"
@@ -450,8 +456,11 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.intent") }} *</label>
+                <label for="variant-intent"
+                  >{{ t("app.variants.fields.intent") }} *</label
+                >
                 <textarea
+                  id="variant-intent"
                   v-model="formIntent"
                   rows="3"
                   :placeholder="t('app.variants.placeholders.intent')"
@@ -460,10 +469,17 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.scope") }}</label>
-                <div class="radio-group">
-                  <label>
+                <span id="variant-scope-label" class="form-field-label">{{
+                  t("app.variants.fields.scope")
+                }}</span>
+                <div
+                  class="radio-group"
+                  role="group"
+                  aria-labelledby="variant-scope-label"
+                >
+                  <label for="variant-scope-section">
                     <input
+                      id="variant-scope-section"
                       v-model="formScopeType"
                       type="radio"
                       value="section"
@@ -471,8 +487,9 @@ onUnmounted(() => {
                     />
                     {{ t("app.variants.scope.sectionOnly") }}
                   </label>
-                  <label>
+                  <label for="variant-scope-film">
                     <input
+                      id="variant-scope-film"
                       v-model="formScopeType"
                       type="radio"
                       value="film"
@@ -484,8 +501,11 @@ onUnmounted(() => {
               </div>
 
               <div v-if="formScopeType === 'section'" class="form-field">
-                <label>{{ t("app.variants.fields.targetBeat") }} *</label>
+                <label for="variant-target-beat"
+                  >{{ t("app.variants.fields.targetBeat") }} *</label
+                >
                 <select
+                  id="variant-target-beat"
                   v-model="formTargetBeatId"
                   @change="handlePreviewImpact"
                 >
@@ -500,8 +520,11 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.targetDuration") }}</label>
+                <label for="variant-target-duration">{{
+                  t("app.variants.fields.targetDuration")
+                }}</label>
                 <input
+                  id="variant-target-duration"
                   v-model.number="formTargetDuration"
                   type="number"
                   min="1"
@@ -512,8 +535,11 @@ onUnmounted(() => {
               </div>
 
               <div class="form-field">
-                <label>{{ t("app.variants.fields.narration") }}</label>
+                <label for="variant-narration">{{
+                  t("app.variants.fields.narration")
+                }}</label>
                 <textarea
+                  id="variant-narration"
                   v-model="formNarration"
                   rows="2"
                   :placeholder="t('app.variants.placeholders.narration')"
@@ -642,17 +668,25 @@ onUnmounted(() => {
                 </div>
                 <div class="player-view">
                   <div class="video-mock-frame">
-                    <span class="video-placeholder-icon">▶</span>
-                    <span class="video-watermark">Variant A Video</span>
+                    <Icon
+                      class="video-placeholder-icon"
+                      name="play"
+                      :size="24"
+                      aria-hidden="true"
+                    />
+                    <span class="video-watermark">{{
+                      t("app.variants.previewA")
+                    }}</span>
                   </div>
                 </div>
                 <div class="player-controls">
                   <button
                     class="audio-toggle-btn"
                     :class="{ active: activeAudioChannel === 'A' }"
+                    :aria-pressed="activeAudioChannel === 'A'"
                     @click="selectAudio('A')"
                   >
-                    🔊
+                    <Icon name="volume" :size="16" aria-hidden="true" />
                     {{
                       activeAudioChannel === "A"
                         ? t("app.variants.audio.active")
@@ -687,17 +721,25 @@ onUnmounted(() => {
                 </div>
                 <div class="player-view">
                   <div class="video-mock-frame variant-b">
-                    <span class="video-placeholder-icon">▶</span>
-                    <span class="video-watermark">Variant B Video</span>
+                    <Icon
+                      class="video-placeholder-icon"
+                      name="play"
+                      :size="24"
+                      aria-hidden="true"
+                    />
+                    <span class="video-watermark">{{
+                      t("app.variants.previewB")
+                    }}</span>
                   </div>
                 </div>
                 <div class="player-controls">
                   <button
                     class="audio-toggle-btn"
                     :class="{ active: activeAudioChannel === 'B' }"
+                    :aria-pressed="activeAudioChannel === 'B'"
                     @click="selectAudio('B')"
                   >
-                    🔊
+                    <Icon name="volume" :size="16" aria-hidden="true" />
                     {{
                       activeAudioChannel === "B"
                         ? t("app.variants.audio.active")
@@ -842,17 +884,20 @@ onUnmounted(() => {
 
 .variants-modal-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  gap: var(--of-space-3);
+  padding: var(--of-space-4) var(--of-space-6);
   border-bottom: 0;
   background: var(--of-surface-2);
 }
 
 .header-title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: var(--of-space-4);
 }
 
 .header-title {
@@ -862,15 +907,17 @@ onUnmounted(() => {
 
 .header-tabs {
   display: flex;
-  gap: 8px;
-  margin-left: 16px;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
+  margin-left: var(--of-space-4);
 }
 
 .tab-btn {
   background: transparent;
   border: 0;
   color: var(--of-text-secondary);
-  padding: 6px 12px;
+  min-height: 40px;
+  padding: var(--of-space-2) var(--of-space-3);
   border-radius: var(--of-radius-md);
   cursor: pointer;
 }
@@ -886,6 +933,9 @@ onUnmounted(() => {
   font-size: 1.25rem;
   color: var(--of-text-secondary);
   cursor: pointer;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--of-radius-md);
 }
 
 .variants-alert {
@@ -913,7 +963,7 @@ onUnmounted(() => {
 }
 
 .variants-modal-body {
-  padding: 24px;
+  padding: var(--of-space-6);
   overflow-y: auto;
   flex: 1;
 }
@@ -923,13 +973,14 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  gap: var(--of-space-3);
+  margin-bottom: var(--of-space-5);
 }
 
 .variants-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--of-space-4);
 }
 
 .variant-card {
@@ -937,10 +988,10 @@ onUnmounted(() => {
   color: var(--of-text-primary);
   border: 0;
   border-radius: var(--of-radius-lg);
-  padding: 16px;
+  padding: var(--of-space-4);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--of-space-3);
   box-shadow: var(--of-shadow-soft);
 }
 
@@ -995,13 +1046,15 @@ onUnmounted(() => {
 
 .card-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
+  margin-top: var(--of-space-2);
 }
 
 .card-btn {
   flex: 1;
-  padding: 6px;
+  min-height: 40px;
+  padding: var(--of-space-2);
   font-size: 0.8rem;
   border-radius: var(--of-radius-md);
   border: 0;
@@ -1025,17 +1078,21 @@ onUnmounted(() => {
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: var(--of-space-6);
 }
 
 .form-field {
-  margin-bottom: 16px;
+  margin-bottom: var(--of-space-4);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--of-space-2);
 }
 
 .form-field label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.form-field-label {
   font-size: 0.85rem;
   font-weight: 500;
 }
@@ -1047,6 +1104,7 @@ onUnmounted(() => {
   border: 0;
   color: var(--of-text-primary);
   padding: 8px 12px;
+  min-height: 44px;
   border-radius: var(--of-radius-md);
   font-size: 0.9rem;
   box-shadow: inset 0 1px 3px
@@ -1055,13 +1113,15 @@ onUnmounted(() => {
 
 .radio-group {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: var(--of-space-3) var(--of-space-4);
 }
 
 .form-submit-row {
   display: flex;
-  gap: 12px;
-  margin-top: 20px;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+  margin-top: var(--of-space-5);
 }
 
 .primary-btn {
@@ -1069,7 +1129,7 @@ onUnmounted(() => {
   color: var(--of-accent-ink);
   border: none;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   cursor: pointer;
   font-weight: 500;
 }
@@ -1231,8 +1291,8 @@ onUnmounted(() => {
 
 .player-view {
   aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 4px;
+  background: var(--of-player);
+  border-radius: var(--of-radius-media);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1242,12 +1302,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--of-space-2);
   color: var(--of-on-media-muted);
 }
 
 .video-placeholder-icon {
-  font-size: 2rem;
+  opacity: 0.8;
 }
 
 .player-controls {
@@ -1275,6 +1335,21 @@ onUnmounted(() => {
 .audio-rule-notice {
   font-size: 0.75rem;
   color: var(--of-text-muted);
+}
+
+@media (any-pointer: coarse) {
+  .tab-btn,
+  .close-btn,
+  .card-btn,
+  .primary-btn,
+  .secondary-btn,
+  .audio-toggle-btn {
+    min-height: 44px;
+  }
+
+  .close-btn {
+    min-width: 44px;
+  }
 }
 
 /* Section Navigation */

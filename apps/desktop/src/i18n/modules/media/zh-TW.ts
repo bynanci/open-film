@@ -5,6 +5,7 @@ export default {
     card: {
       lockedState: "已鎖定",
       favoriteState: "最愛",
+      rejectedState: "已排除",
       inspect: "檢視 {name}",
       select: "選取 {name}",
       remove: "取消選取 {name}",

@@ -172,6 +172,7 @@ watch(
         :class="{
           active: activeBeatId === beat.id,
           mapped: getBeatClips(beat.id).length > 0,
+          'has-media': !!beat.selectedAssetIds?.length,
         }"
         :aria-current="activeBeatId === beat.id ? 'step' : undefined"
         tabindex="0"
@@ -476,7 +477,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--of-space-4);
-  max-width: 980px;
+  width: 100%;
+  max-width: none;
   position: relative;
   padding-left: var(--of-space-6);
 }
@@ -493,10 +495,10 @@ watch(
   position: relative;
   min-width: 0;
   padding: var(--of-panel-inset);
-  border: 1px solid var(--of-border-subtle);
+  border: 0;
   border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
-  transition: border-color var(--of-motion-fast) var(--of-motion-ease);
+  transition: box-shadow var(--of-motion-normal) var(--of-motion-ease);
 }
 .storyboard-route-marker {
   content: "";
@@ -510,10 +512,10 @@ watch(
   background: var(--of-bg);
 }
 .storyboard-card:hover {
-  border-color: var(--of-border-strong);
+  box-shadow: var(--of-shadow-soft);
 }
 .storyboard-card.active {
-  border-color: var(--of-accent);
+  background: var(--of-accent-soft);
 }
 .storyboard-card.active .storyboard-route-marker {
   border-color: var(--of-accent);
@@ -526,8 +528,16 @@ watch(
 @media (min-width: 1000px) {
   .storyboard-card {
     display: grid;
-    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1fr);
+    width: fit-content;
+    max-width: 100%;
+    align-self: flex-start;
+    grid-template-columns:
+      minmax(240px, min(32vw, 460px))
+      fit-content(64vw);
     gap: var(--of-space-4) var(--of-space-6);
+  }
+  .storyboard-card:not(.has-media) {
+    grid-template-columns: minmax(0, 1fr);
   }
   .card-header {
     grid-column: 1;
@@ -542,10 +552,18 @@ watch(
     grid-column: 2;
     grid-row: 1 / span 3;
   }
+  .storyboard-card:not(.has-media) .card-assets {
+    grid-column: 1;
+    grid-row: 3;
+  }
   .card-footer {
     grid-column: 1;
     grid-row: 3;
     align-self: end;
+  }
+  .storyboard-card:not(.has-media) .card-footer {
+    grid-column: 1;
+    grid-row: 4;
   }
 }
 .card-header {
@@ -580,8 +598,8 @@ watch(
   display: inline-flex;
   gap: var(--of-space-1);
   align-items: center;
-  padding: 3px var(--of-space-2);
-  border-radius: var(--of-radius-round);
+  padding: var(--of-space-1) var(--of-space-2);
+  border-radius: var(--of-radius-sm);
   font-size: var(--of-font-caption);
   line-height: 1.4;
 }
@@ -605,12 +623,15 @@ watch(
   display: flex;
   gap: var(--of-space-3);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--of-border-strong) transparent;
   padding: var(--of-space-1) var(--of-space-1) var(--of-space-2);
   margin-inline: -4px;
 }
 .asset-preview-item {
   display: flex;
-  flex: 0 0 144px;
+  flex: 0 0 clamp(156px, 14vw, 210px);
   min-width: 0;
   flex-direction: column;
   gap: var(--of-space-1);
@@ -794,6 +815,26 @@ watch(
 @media (max-width: 1100px) {
   .storyboard-card {
     padding: var(--of-space-4);
+  }
+}
+@media (min-width: 1000px) and (max-height: 760px) {
+  .storyboard-view {
+    padding-block: var(--of-space-3);
+  }
+  .storyboard-header {
+    margin-bottom: var(--of-space-3);
+  }
+  .storyboard-hint {
+    display: none;
+  }
+  .storyboard-grid {
+    gap: var(--of-space-3);
+  }
+  .storyboard-card {
+    padding: var(--of-space-4);
+  }
+  .asset-preview-item {
+    flex-basis: 150px;
   }
 }
 </style>

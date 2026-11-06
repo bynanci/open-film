@@ -5,6 +5,7 @@ export default {
     card: {
       lockedState: "Locked",
       favoriteState: "Favorite",
+      rejectedState: "Rejected",
       inspect: "Inspect {name}",
       select: "Select {name}",
       remove: "Remove {name}",

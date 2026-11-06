@@ -204,6 +204,11 @@ function uiMessage(value: unknown) {
 }
 type AssetState = "favorite" | "rejected" | "locked";
 const tabs: Tab[] = ["library", "story", "edit", "export", "versions"];
+const compactSidebar = ref(false);
+const compactSidebarQuery = window.matchMedia("(max-width: 1100px)");
+function syncCompactSidebar() {
+  compactSidebar.value = compactSidebarQuery.matches;
+}
 const workspaceIcons: Record<Tab, string> = {
   library: "image",
   story: "layers",
@@ -430,6 +435,7 @@ watch(
 );
 const scenePlannerOpen = ref(false);
 const scenePlanner = ref<InstanceType<typeof ScenePlanner> | null>(null);
+const scenePlannerToggle = ref<HTMLButtonElement | null>(null);
 const scenePlannerReady = ref(false);
 let resolveScenePlannerReady: ((mounted: boolean) => void) | undefined;
 let scenePlannerReadyPromise = new Promise<boolean>(
@@ -446,6 +452,17 @@ function markScenePlannerReady() {
   scenePlannerReady.value = true;
   resolveScenePlannerReady?.(true);
   resolveScenePlannerReady = undefined;
+  if (tab.value === "story")
+    void nextTick(() =>
+      document.getElementById("scene-planner")?.focus({ preventScroll: true }),
+    );
+}
+function closeScenePlanner() {
+  scenePlannerOpen.value = false;
+  if (tab.value === "story")
+    void nextTick(() =>
+      scenePlannerToggle.value?.focus({ preventScroll: true }),
+    );
 }
 watch(
   scenePlannerOpen,
@@ -3178,6 +3195,8 @@ function protectDrafts(event: BeforeUnloadEvent) {
   }
 }
 onMounted(async () => {
+  syncCompactSidebar();
+  compactSidebarQuery.addEventListener("change", syncCompactSidebar);
   stopGardenLighting = startGardenLighting();
   window.addEventListener("beforeunload", protectDrafts);
   await boot();
@@ -3189,6 +3208,7 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeyboard);
 });
 onUnmounted(() => {
+  compactSidebarQuery.removeEventListener("change", syncCompactSidebar);
   stopGardenLighting?.();
   stopGardenLighting = undefined;
   nativeDisposed = true;
@@ -3393,7 +3413,6 @@ onUnmounted(() => {
     <aside
       v-if="project"
       class="workspace-sidebar"
-      :aria-label="t('app.navigation.label')"
       data-testid="workspace-sidebar"
     >
       <nav :aria-label="t('app.navigation.label')" class="main-nav">
@@ -3403,8 +3422,13 @@ onUnmounted(() => {
           type="button"
           :class="{ current: tab === item }"
           :aria-label="t(`app.navigation.${item}`)"
+          :aria-describedby="
+            item === 'library' && missingCount + inaccessibleCount > 0
+              ? 'library-nav-attention'
+              : undefined
+          "
           :aria-current="tab === item ? 'page' : undefined"
-          :title="t(`app.navigation.${item}`)"
+          :title="compactSidebar ? t(`app.navigation.${item}`) : undefined"
           :disabled="!!busy || relinkBusy || collectBusy"
           @click="changeTab(item)"
         >
@@ -3413,7 +3437,20 @@ onUnmounted(() => {
           <span
             v-if="item === 'library' && missingCount + inaccessibleCount > 0"
             class="nav-attention-count"
+            aria-hidden="true"
             >{{ formatNumber(missingCount + inaccessibleCount) }}</span
+          >
+          <span
+            v-if="item === 'library' && missingCount + inaccessibleCount > 0"
+            id="library-nav-attention"
+            class="sr-only"
+            >{{
+              t(
+                "app.library.offlineCount",
+                { count: formatNumber(missingCount + inaccessibleCount) },
+                missingCount + inaccessibleCount,
+              )
+            }}</span
           >
         </button>
       </nav>
@@ -3483,8 +3520,11 @@ onUnmounted(() => {
             }}</button
           ><button
             v-if="tab === 'story'"
+            ref="scenePlannerToggle"
             class="secondary"
             data-testid="scene-planner-toggle"
+            :aria-expanded="scenePlannerOpen"
+            aria-controls="scene-planner"
             :disabled="!!busy || relinkBusy"
             @click="openScenePlanner"
           >
@@ -3525,7 +3565,7 @@ onUnmounted(() => {
         :disabled="!!busy || relinkBusy"
         :prepare="flushPending"
         :accept-plan="acceptScenePlan"
-        @close="scenePlannerOpen = false"
+        @close="closeScenePlanner"
         @working="scenePlannerWorking"
         @draft="scenePlanDraftPresent = $event"
         @ready="markScenePlannerReady"

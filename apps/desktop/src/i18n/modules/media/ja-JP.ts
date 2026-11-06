@@ -5,6 +5,7 @@ export default {
     card: {
       lockedState: "ロック中",
       favoriteState: "お気に入り",
+      rejectedState: "除外済み",
       inspect: "{name} を確認",
       select: "{name} を選択",
       remove: "{name} の選択を解除",

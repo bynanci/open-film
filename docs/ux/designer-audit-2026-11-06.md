@@ -156,3 +156,49 @@ Verified: long CJK scene title at 1024×720 remains fully readable without horiz
 驗證採用現有 component-redesign 與 tobiishi-workflow 瀏覽器套件：淺／深主題對比、觸控目標、頂列排版、播放器狀態保留、快速操作、側欄 breakpoint、素材次要動作、Inspector 鍵盤與工作區截圖。實際執行結果以本次測試輸出為準；Windows IME、高 DPI 與真實混合輸入仍需 workstation QA。
 
 截圖再審發現次要操作列位於檔名前，即使按鈕隱藏仍隔開影像與名稱。已調整為影像 → 檔名 → 次要操作；最後版本上述兩套 Playwright 共 12 項通過。格式、lint 與 typecheck 通過。
+
+## Roundtable re-challenge：回合 21–24
+
+| 回合／角色                 | 新挑戰與證據                                                                        | 修正與驗收                                                                                                                      |
+| -------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 21／Accessibility Reviewer | 暗色主題切換時，Story 的次要按鈕曾出現 1.109:1 對比；文字立即變亮，底色卻仍在過渡。 | 次要按鈕只過渡陰影，主題文字與表面同時更新；瀏覽器測試在切換後立即量測對比至少 4.5:1。                                          |
+| 22／Layout Specialist      | 1280×720 Story 首屏只有第一個 beat，下一個故事標題完全落在畫面下方。                | 只在短桌面高度縮短說明與間距、保留媒體尺寸；E2E 驗證第二個標題至少 80% 進入首屏，其他兩種桌面尺寸維持原節奏。                   |
+| 23／Layout Specialist      | 1280×720 Edit 的照片時長欄位藏在 Inspector 內捲動區，捲軸線索不清楚且鍵盤路徑未測。 | 提升 Inspector 捲動條可見性；E2E 從 Clip 分頁以 Tab 到達欄位，驗證焦點捲入、畫面完整顯示，鍵盤改成 3 秒並確認存入 Composition。 |
+| 24／Component Designer     | Storyboard 仍有卡片外框，狀態 badge 圓角偏圓；Modal 觸控測試未實際觸發按鈕。        | 移除中性外框，以石面底色和路徑節點表示選取，badge 改小圓角；CDP 觸控實際操作 Compare、音訊選擇與關閉，並驗證 44px 目標。        |
+
+這四回合由四個設計／無障礙角色重新挑戰，不是受試者研究。相關 Playwright 套件目前涵蓋暗色對比、1280×720 首屏、Inspector 鍵盤編輯、觸控按鈕與三種桌面截圖；最終通過數以本次 exact-head 測試結果為準。真實觸控硬體、Windows 高 DPI 與讀屏仍需工作站 QA。
+
+### 再挑戰回合 25–26
+
+Component Designer 發現 modal 觸控目標只量高度，未驗證寬度；已改成對 tab、卡片操作、音訊與關閉控制逐一驗證寬高皆至少 44px。Storyboard 狀態標籤的垂直 padding 改用 `--of-space-1` token，保留方正小圓角。
+
+Layout Specialist 發現 Chromium/Linux 的 overlay scrollbar 仍隱藏 Inspector 捲動提示；加入 8px 主題色軌道與滑塊，Playwright 驗證 thumb 寬度及鍵盤捲入後欄位完整可見。暗色 Story 現在另有 1280×720 與 1440×900 對比與溢出驗收。
+
+## 2026-11-06 圓桌挑戰：20 個檢視回合
+
+以 Visual Designer、Layout Specialist、Component Designer、Accessibility Reviewer 四個角色各提出五個可驗證問題，共 20 個 review checkpoint；實作後再由角色逐項 re-challenge。這是專家檢視與合成專案瀏覽器驗證，不是外部受試者研究，也不代表四次以上完整產品重設計。
+
+| 回合 | 角色                   | 挑戰與決定                                                                                              | 狀態／證據                                                                                                                                                                        |
+| ---- | ---------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01   | Visual Designer        | 側欄每個目的地都有陰影，導覽看起來像一列浮起的小卡；改為靜止與 hover 平面，只讓目前目的地保留柔和陰影。 | 已完成；computed box-shadow E2E 檢查 hover 與 current。                                                                                                                           |
+| 02   | Visual Designer        | Library 狀態訊息可能堆成多層提醒；保留匯入摘要、媒體可用性與篩選的任務順序，不另加一層狀態卡。          | 保留現行資訊分組；以 1440×900 Library 截圖檢查，仍需大素材庫人工任務測試。                                                                                                        |
+| 03   | Visual Designer        | 被排除素材若整張圖過暗，使用者會失去內容判讀線索；改為輕度降飽和並保留可讀狀態標籤。                    | 已完成；rejected 與 missing 狀態、圖片透明度及 badge 位置有瀏覽器斷言。                                                                                                           |
+| 04   | Visual Designer        | Edit 的播放器、Inspector 與時間軸在小桌面高度可能相互擠壓。                                             | 已檢查 1280×720；播放器、Inspector、編輯列可見且無水平頁面溢出。原生視窗縮放仍需 workstation QA。                                                                                 |
+| 05   | Visual Designer        | 陰影過多會讓工作區像企業儀表板；只保留當前步驟的層級，其他表面改由色與留白區分。                        | 已完成；側欄 workflow 與主導覽只讓 current 有柔和陰影。                                                                                                                           |
+| 06   | Layout Specialist      | 專案名出現在頂列、頁面又有標題，是否重複？                                                              | 截圖確認頂列表達目前專案／區域，工作區標題表達任務意圖，語意不同，保留兩層。                                                                                                      |
+| 07   | Layout Specialist      | Library 篩選、狀態與搜尋入口分散。                                                                      | 本輪不新增重複工具列；現行從狀態摘要到搜尋／類型篩選的順序保留，需以較大資料集做新手測試。                                                                                        |
+| 08   | Layout Specialist      | Story 的 Compose 主動作與次要操作在不同位置。                                                           | 保留 Compose 靠右且高對比，讓主要下一步容易掃到；較窄視窗的第二列已在 1280×720 截圖確認不裁切。                                                                                   |
+| 09   | Layout Specialist      | 一兩張素材的 Storyboard 卡被拉到整個 1920px 工作區，造成大面積卡片內空白。                              | 已完成；卡片改依內容 fit-content、多素材時內部橫捲；1920px 單素材卡寬度小於 1200px，1280／1440／1920 截圖無頁面溢出。                                                             |
+| 10   | Layout Specialist      | 720px 高度下 Inspector 六個分類是否太密？                                                               | 保留 2×3 佈局，避免橫向捲動隱藏分類；Inspector 左右鍵、Home／End 與收合後重開已由鍵盤 E2E 驗證。                                                                                  |
+| 11   | Component Designer     | Variant 表單標籤需對應實際 input，避免只靠 placeholder。                                                | 已完成；欄位與標籤一對一，Section 專用 beat 欄位也有語意標籤與回歸斷言。                                                                                                          |
+| 12   | Component Designer     | 細小按鈕在觸控與混合輸入設備上難以操作。                                                                | 已完成；Variant 與 Local Presets 使用 `any-pointer: coarse` 最小 44px，模擬觸控 E2E 檢查按鈕高度。真實混合輸入硬體仍待人工驗證。                                                  |
+| 13   | Component Designer     | Modal 表單間距和圓角散落常數，難以維持節奏。                                                            | 已完成；改用既有 spacing／radius tokens，沒有引入新元件框架。                                                                                                                     |
+| 14   | Component Designer     | A/B 預覽使用 emoji 和未翻譯假影片標籤，視覺語彙不一致。                                                 | 已完成；使用既有 Icon 元件與 en-US／zh-TW／ja-JP 文案。                                                                                                                           |
+| 15   | Component Designer     | Modal 切換按鈕與關閉按鈕需有足夠 hit area，且目前視圖不能只靠顏色表示。                                 | 已完成；觸控 hit area 44px，List／Create／Compare 以 `aria-pressed` 表達狀態。                                                                                                    |
+| 16   | Accessibility Reviewer | 中文／日文 IME 組字時 Escape 不能誤關設定視窗。                                                         | 已完成；組字中的 Escape 保留視窗，正常 Escape 仍關閉並還原焦點。                                                                                                                  |
+| 17   | Accessibility Reviewer | Compact workflow 的視覺小字被隱藏後，讀屏也遺失狀態。                                                   | 已完成；complete/current/attention/not-started 狀態保留可讀的 sr-only 文案，attention 仍可見。                                                                                    |
+| 18   | Accessibility Reviewer | Preset 原生 disclosure 點擊面積過小，改成 flex 可能又會隱藏 disclosure marker。                         | 已完成；保留 `list-item` marker、44px 高度，360px viewport E2E 驗證。                                                                                                             |
+| 19   | Accessibility Reviewer | 外層 aside 與內層 nav 使用相同名稱，造成重複 landmark。                                                 | 已完成；只保留具名 nav landmark。                                                                                                                                                 |
+| 20   | Accessibility Reviewer | Compact Library 僅讀到「Library」而漏讀離線數字，或 tooltip 重複。                                      | 已完成／核對；數字 aria-hidden，描述透過在地化 `aria-describedby` 公布；native `title` 僅在 compact mode 使用。CSS `::after` 是目前頁面裝飾標記，沒有讀取 aria-label 的 tooltip。 |
+
+Re-challenge 額外抓到 hover 規則 specificity 較低、Story 卡高度測試使用過時的 300px 門檻，以及 Preset summary 原生 marker 風險。已提高覆寫 specificity、改用內容溢位與 320px 上限驗收、保留原生 marker。原相關套件 18 項通過，並新增 dark contrast、720p Story／Inspector、Modal CDP touch 與焦點復原斷言；兩種主題、三種桌面尺寸均有工作區截圖，其中 Storyboard 另有暗色截圖。建置提示與實機測試狀態另見本輪檢查結果。此分支不是財務估值或五百萬元市值的承諾；本輪可驗證的是操作層級、版面收斂與回歸品質。

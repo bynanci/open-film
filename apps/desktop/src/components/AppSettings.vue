@@ -40,6 +40,8 @@ const root = ref(preferences.projectRoot);
 const previousFocus = document.activeElement as HTMLElement | null;
 function keydown(event: KeyboardEvent) {
   if (event.key === "Escape") {
+    // Preserve Escape while an IME is choosing a candidate.
+    if (event.isComposing || event.keyCode === 229) return;
     event.stopPropagation();
     emit("close");
   }

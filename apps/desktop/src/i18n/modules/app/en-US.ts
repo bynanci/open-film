@@ -1364,6 +1364,8 @@ export default {
         variantA: "Baseline (A)",
         variantB: "Variant (B)",
       },
+      previewA: "Preview placeholder · Baseline (A)",
+      previewB: "Preview placeholder · Variant (B)",
       audio: {
         active: "Playing",
         play: "Play Audio",

@@ -151,6 +151,9 @@ watch(
     </button>
     <div class="asset-caption">
       <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
+      <span v-if="asset.state.rejected" class="asset-rejected-mark">
+        {{ t("media.card.rejectedState") }}
+      </span>
     </div>
     <div v-if="!choice" class="asset-actions">
       <button

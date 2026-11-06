@@ -94,6 +94,51 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   );
   await expect(modal.locator(".close-btn")).toBeFocused();
   await expect(modal.locator(".variant-card")).toHaveCount(2);
+  const touch = await page.context().newCDPSession(page);
+  await touch.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+  expect(
+    await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches),
+  ).toBe(true);
+  const assertTouchTargets = async (selector: string) => {
+    const sizes = await modal.locator(selector).evaluateAll((controls) =>
+      controls
+        .filter((control) => control.getBoundingClientRect().width > 0)
+        .map((control) => {
+          const bounds = control.getBoundingClientRect();
+          return { width: bounds.width, height: bounds.height };
+        }),
+    );
+    expect(sizes.length, `${selector} touch targets`).toBeGreaterThan(0);
+    for (const size of sizes) {
+      expect(size.width, `${selector} target width`).toBeGreaterThanOrEqual(44);
+      expect(size.height, `${selector} target height`).toBeGreaterThanOrEqual(
+        44,
+      );
+    }
+  };
+  const touchTap = async (bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y, radiusX: 1, radiusY: 1, force: 1, id: 1 }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  };
+  await assertTouchTargets(".tab-btn");
+  await assertTouchTargets(".close-btn");
+  await assertTouchTargets(".card-btn");
 
   const contrastRatio = (foreground: string, background: string) => {
     const luminance = (value: string) => {
@@ -166,13 +211,29 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  await modal
+  const compareButton = modal
     .locator(".variant-card")
     .last()
     .locator(".card-btn")
-    .first()
-    .click();
+    .first();
+  const compareBounds = await compareButton.boundingBox();
+  await touchTap(compareBounds!);
   await expect(modal.locator(".player-card")).toHaveCount(2);
+  await assertTouchTargets(".audio-toggle-btn");
+  const audioA = modal.locator(".audio-toggle-btn").first();
+  const audioB = modal.locator(".audio-toggle-btn").last();
+  const audioBounds = await audioA.boundingBox();
+  await touchTap(audioBounds!);
+  await expect(audioA).toHaveAttribute("aria-pressed", "true");
+  await expect(audioB).toHaveAttribute("aria-pressed", "false");
+  const audioBBounds = await audioB.boundingBox();
+  await touchTap(audioBBounds!);
+  await expect(audioA).toHaveAttribute("aria-pressed", "false");
+  await expect(audioB).toHaveAttribute("aria-pressed", "true");
+  await expect(modal.locator(".tab-btn").nth(2)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   for (const theme of ["light", "dark"] as const) {
     await page.locator("html").evaluate((element, value) => {
       element.setAttribute("data-theme", value);
@@ -192,6 +253,42 @@ test("variant review surfaces keep readable contrast in both themes", async ({
         `${theme} theme comparison player contrast`,
       ).toBeGreaterThanOrEqual(4.5);
   }
+
+  await modal.locator(".tab-btn").nth(1).click();
+  await expect(modal.locator(".tab-btn").nth(1)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await assertTouchTargets(".primary-btn, .secondary-btn");
+  for (const selector of [
+    "#variant-name",
+    "#variant-intent",
+    "#variant-target-duration",
+    "#variant-narration",
+  ]) {
+    const field = modal.locator(selector);
+    await expect(field).toBeVisible();
+    const metrics = await field.evaluate((element) => ({
+      labels: (element as HTMLInputElement).labels?.length ?? 0,
+      height: element.getBoundingClientRect().height,
+    }));
+    expect(metrics.labels, selector).toBe(1);
+    expect(metrics.height, selector).toBeGreaterThanOrEqual(44);
+  }
+  await expect(modal.locator(".radio-group")).toHaveAttribute(
+    "aria-labelledby",
+    "variant-scope-label",
+  );
+  const sectionScope = modal.locator('.radio-group input[value="section"]');
+  await sectionScope.check();
+  const targetBeat = modal.locator("#variant-target-beat");
+  await expect(targetBeat).toBeVisible();
+  expect(
+    await targetBeat.evaluate(
+      (element) => (element as HTMLSelectElement).labels?.length ?? 0,
+    ),
+  ).toBe(1);
+  await modal.locator(".form-submit-row .secondary-btn").click();
 
   const dialogButtons = modal.getByRole("button");
   await dialogButtons.last().focus();
@@ -217,6 +314,16 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   await page.keyboard.press("Escape");
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId("creative-variants-btn")).toBeFocused();
+  await page.getByTestId("creative-variants-btn").click();
+  const touchClose = page
+    .getByTestId("creative-variant-modal")
+    .locator(".close-btn");
+  const closeBounds = await touchClose.boundingBox();
+  await touchTap(closeBounds!);
+  await expect(page.getByTestId("creative-variant-modal")).toHaveCount(0);
+  await expect(page.getByTestId("creative-variants-btn")).toBeFocused();
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  await touch.detach();
 });
 
 test("keeps the desktop project and utility controls on one row without clipping", async ({
@@ -471,7 +578,22 @@ for (const theme of ["dark", "light"] as const) {
       }));
     });
     expect(violations).toEqual([]);
+    const rootInput = settings.locator(".path-input input");
+    await rootInput.focus();
+    await rootInput.evaluate((element) => {
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          keyCode: 229,
+          isComposing: true,
+          bubbles: true,
+        }),
+      );
+    });
+    await expect(settings).toBeVisible();
+    await settings.locator("select").first().focus();
     await page.keyboard.press("Escape");
+    await expect(settings).toHaveCount(0);
     await expect(page.locator(".settings-toggle")).toBeFocused();
   });
 }

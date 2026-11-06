@@ -1285,6 +1285,8 @@ export default {
         variantA: "基準方案 (A)",
         variantB: "對照方案 (B)",
       },
+      previewA: "預覽佔位畫面 · 基準方案 (A)",
+      previewB: "預覽佔位畫面 · 對照方案 (B)",
       audio: {
         active: "播放中",
         play: "播放聲音",
