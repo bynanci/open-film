@@ -119,3 +119,14 @@ format、license が合格し、独立 review で blocker はありません。�
 encoder 設定、geometry、繰り返し pixel equality、PCM 許容誤差を緩和していません。
 新 runtime test も Windows FFmpeg9 gate に追加しました。全 local suite と新 head の hosted CI が
 必要で、この限定 test の合格だけで Windows drift の解決を宣言しません。最終結果は PR に記録します。
+
+`ad311ee` の全 local run は447 files／5,879件中5,878合格、一件失敗（592.95秒）でした。
+Film Look の source oracle だけが default YUV rounding を使っていました。実 production graph の
+matrix 直前 RGBA は `[111,79,55,255]`、旧 reference RGB は `[112,78,56]` です。reference source
+変換だけを修正し、元の三 channel units 上限と output decode を維持しました。retro／sport／中間の
+誤差は `[3,1,2]`、`[0,2,0]`、`[0,1,2]` で、matrix と encoder は変更していません。
+Windows run42132424512 は新 diagnostic parser のみ失敗し、139／140件合格でした。保存された二 scope
+各48回の repeated render は全 pixel／channel 差ゼロ、decoded hash も一致しました。log を有界 capture
+に収める verbose と hide_banner にし、内部 instance 名に依存せず geometry と pixel format で context
+を確認します。自動 RGBA→YUV と全 context の両 flags は引き続き必須です。新 head の全 gate が必要で、
+赤い run を合格として数えません。

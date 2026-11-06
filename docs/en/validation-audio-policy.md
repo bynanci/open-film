@@ -495,3 +495,22 @@ The runtime regression also runs in Windows recovery with the pinned FFmpeg9
 runtime. A full local suite and fresh final-head hosted checks are required;
 passing this flag regression alone does not prove the Windows drift resolved.
 The PR records their final outcomes separately from earlier source candidates.
+
+The `ad311ee` integration run completed **447 files / 5,879 tests: 5,878
+passed, one failed** (592.95 s). The failed Film Look oracle decoded its source
+with fast default YUV rounding rather than the deterministic pre-matrix domain.
+An independently tapped production graph measured source RGBA `[111,79,55,255]`
+versus the old reference RGB `[112,78,56]`. Correcting only the reference source
+conversion retains the original three-channel-unit bound and output decoding;
+retro/sport/mid-crossfade errors are respectively `[3,1,2]`, `[0,2,0]` and
+`[0,1,2]` on the local fixture. No matrix or encoder setting was changed.
+
+Windows [42132424512](https://github.com/bynanci/open-film/actions/runs/42132424512)
+failed only the newly added diagnostic parser (139 of 140 tests passed).
+Its two retained font-swap scopes each contain **48 repeated-render probes with
+zero differing pixels/channels and matching decoded hashes**. The test now uses
+verbose configuration logs, suppresses the build banner to stay within bounded
+stderr capture, and identifies scaler roles from geometry/pixel formats rather
+than internal instance names. It still requires both flags on every configured
+context and the automatic RGBA-to-YUV conversion. These test corrections require
+a fresh final-head complete gate; prior red runs are not counted as passing.

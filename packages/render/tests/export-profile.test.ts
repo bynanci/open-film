@@ -84,7 +84,10 @@ describe("profiled FFmpeg exports", () => {
         if (command !== "ffmpeg" || !args.includes("-filter_complex"))
           return actualRunProcess(command, args, options);
         const verbose = [...args];
-        verbose[verbose.indexOf("-v") + 1] = "debug";
+        // These contexts log at verbose; debug can exhaust runProcess's
+        // bounded stderr capture before graph configuration on FFmpeg9.
+        verbose[verbose.indexOf("-v") + 1] = "verbose";
+        verbose.unshift("-hide_banner");
         const result = await actualRunProcess(command, verbose, options);
         diagnostics.push(result.stderr);
         return result;
@@ -119,13 +122,20 @@ describe("profiled FFmpeg exports", () => {
       .split("\n")
       .filter(
         (line) =>
-          /\[(?:Parsed_scale_|auto_scale_)/u.test(line) &&
+          /\bw:\d+ h:\d+ fmt:\S+.* -> w:\d+ h:\d+ fmt:/u.test(line) &&
           /flags:0x[\da-f]+/iu.test(line),
       );
     // Fit, output crop and any auto-inserted RGBA/YUV conversions must all use
     // accurate rounding and bitexact arithmetic (libswscale flags 0x40000/0x80000).
-    expect(configured.length).toBeGreaterThanOrEqual(3);
-    expect(configured.some((line) => line.includes("[auto_scale_"))).toBe(true);
+    expect(
+      configured.length,
+      diagnostics.join("\n").slice(-6000),
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      configured.some((line) =>
+        /\bw:160 h:90 fmt:rgba\b.* -> w:160 h:90 fmt:yuv420p\b/u.test(line),
+      ),
+    ).toBe(true);
     for (const context of configured) {
       const flags = Number.parseInt(
         context.match(/flags:0x([\da-f]+)/iu)![1]!,

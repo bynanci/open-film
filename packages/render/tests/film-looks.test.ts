@@ -352,7 +352,27 @@ it("grades video sources and keeps different looks through a crossfade", async (
     uri: pathToFileURL(video).href,
     name: "source.mp4",
   });
-  const source = sample(await decode(video));
+  // The matrix operates on the deterministically converted source RGBA,
+  // not the decoder's default fast YUV -> RGB rounding. This independent
+  // single-stream conversion matches that pre-matrix domain. Output decoding
+  // and the existing three-channel-unit error bound remain unchanged.
+  const source = sample(
+    (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        video,
+        "-sws_flags",
+        "+accurate_rnd+bitexact",
+        "-pix_fmt",
+        "rgb24",
+        "-f",
+        "rawvideo",
+        "-",
+      ])
+    ).stdout,
+  );
   const first: Clip = {
     ...composition.tracks[0]!.clips[0]!,
     assetId: sourceAsset.id,
