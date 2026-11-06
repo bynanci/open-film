@@ -83,3 +83,13 @@ Current regression verification on 2026-11-06:
 - `pnpm exec playwright test tests/e2e/desktop.spec.ts` — 3 passed, including preview render cancellation during async editor hydration.
 - `pnpm exec playwright test tests/e2e/workspace-shell.spec.ts` — 2 passed, including project switching from an empty Edit workspace.
 - `pnpm exec playwright test tests/e2e/native-runtime.spec.ts` — 4 passed, including retained planner inputs on runtime retry.
+
+The first full GitHub run for `232e29b` exposed two browser-test issues in
+shard 1. The editor lifecycle test still expected the previous immediate
+`Save failed` response; the readiness fence now waits for recovery, persists the
+recovered edit, and then allows export or project switching. That coverage is
+split into separate export and project-switch tests so their pending actions do
+not race each other. The caption workflow test now waits for the textarea's
+change event to reach durable Composition state before issuing later timing and
+style edits. The three focused regressions passed locally, and the caption test
+passed five consecutive local runs. Full-shard CI for this follow-up is pending.
