@@ -11,7 +11,8 @@ run 42272171346](https://github.com/bynanci/open-film/actions/runs/42272171346)
 and [Render QA run
 42272171341](https://github.com/bynanci/open-film/actions/runs/42272171341).
 
-Branch: `codex/cut-desk-phase-4b-visual-keyframes-main` (stacked; local candidate)
+Branch: `codex/cut-desk-phase-4b-visual-keyframes-main` (stacked)
+Candidate head: `e7fb5ec4d9e5ff97454038f853ac04163eb94540`
 
 Status: [draft PR #126](https://github.com/bynanci/open-film/pull/126); CI
 pending and unmerged.
@@ -43,15 +44,15 @@ pending and unmerged.
   The build retains the existing warning that the `TimelineEditor` chunk is
   over 500 kB after minification.
 - `pnpm test:contracts` — passed, 80 files and 1,523 tests.
-- `pnpm test` — passed, 454 files and 5,935 tests in 566.89 seconds (full
-  Vitest suite).
+- `pnpm test` — passed, 455 files and 5,938 tests in 565.04 seconds (full
+  Vitest suite on candidate head `e7fb5ec4d9e5ff97454038f853ac04163eb94540`).
 - The first full run found two existing probes that expected inline
   `-filter_complex`. Updated those probes to read the actual graph from its
   version-appropriate FFmpeg file option, retaining the 128 KiB graph budget
   and scaler-context assertions. Both focused regressions passed; the full
   rerun above is green.
-- `pnpm test:ci-partition` — passed; verified 454 tests partition into 80
-  contract files and 374 media files.
+- `pnpm test:ci-partition` — passed; verified 455 test files partition into 80
+  contract files and 375 media files.
 - `pnpm test:browser-partition` — passed; verified all 358 browser tests are
   assigned across four shards (90, 93, 87 and 88). This checks partitioning,
   not browser execution.
@@ -72,7 +73,7 @@ clip keyframes|multi-track cubic graph larger than Windows command-line limits'`
   render work directory and chooses `-/filter_complex` for FFmpeg 7+ or the
   legacy `-filter_complex_script` for FFmpeg 6.x; the test
   decodes all eight output frames and confirms the source SHA-256 is unchanged.
-- Hosted Windows Render QA on head `042cb4a6ca0df1f8916ece2a36c5777d625b0bfc`
+- Hosted Windows Render QA on prior head `042cb4a6ca0df1f8916ece2a36c5777d625b0bfc`
   [failed](https://github.com/bynanci/open-film/actions/runs/42292162198/job/128148073005)
   because pinned FFmpeg 9.0.2 returned `Unrecognized option
 'filter_complex_script'`. A version-aware option selector now uses FFmpeg's
@@ -104,8 +105,9 @@ keyframes'` — passed; the held-frame preview updates while preserving the
   Native NLE keyframe interchange is not claimed.
 - 4B.3 forward speed ramps remain unimplemented. No audio retiming policy or
   audio behavior is inferred by this visual slice.
-- The updated stacked head must pass all hosted checks before it can be marked
-  validated. The existing #125 time-contract PR is still draft and unmerged.
+- Candidate head `e7fb5ec4d9e5ff97454038f853ac04163eb94540` must pass all hosted
+  checks before it can be marked validated. The existing #125 time-contract PR
+  is still draft and unmerged.
 - No Windows/macOS workstation, GPU/4K, Resolve or listening evidence was
   collected for this candidate.
 - The generic local Render QA harness requires a pinned Noto fixture that this
