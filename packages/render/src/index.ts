@@ -5,7 +5,7 @@ import { renderPresetSnapshots } from "./preset-integrity.js";
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
-import { mkdir, realpath, rm, stat } from "node:fs/promises";
+import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   graphicFrameRanges,
@@ -909,7 +909,7 @@ export class FFmpegRenderer {
       }
     }
     const work = join(dirname(output), `.render-${randomUUID()}`);
-    await mkdir(work);
+    await mkdir(work, { mode: 0o700 });
     const temporaryOutput = join(work, audioOnly ? "mix.wav" : "preview.mp4");
     const args: string[] = [
       "-v",
@@ -1551,19 +1551,25 @@ export class FFmpegRenderer {
         filters.push(
           `anullsrc=r=48000:cl=stereo,atrim=duration=${number(composition.duration)}[aout]`,
         );
+      const filterGraph =
+        // Output -sws_flags does not reach complex-graph scale filters or
+        // their automatically inserted pixel-format conversions. Configure
+        // the graph's swscale defaults as well so identical owned PNG inputs
+        // use deterministic rounding throughout the composed frame.
+        `sws_flags=+accurate_rnd+bitexact;${filters.join(";")}`;
+      const filterGraphPath = join(work, "filter-complex.txt");
+      await writeFile(filterGraphPath, filterGraph, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      });
       args.push(
         "-filter_threads",
         "1",
         "-filter_complex_threads",
         "1",
-        "-sws_flags",
-        "+accurate_rnd+bitexact",
-        "-filter_complex",
-        // Output -sws_flags does not reach complex-graph scale filters or
-        // their automatically inserted pixel-format conversions. Configure
-        // the graph's swscale defaults as well so identical owned PNG inputs
-        // use deterministic rounding throughout the composed frame.
-        `sws_flags=+accurate_rnd+bitexact;${filters.join(";")}`,
+        "-filter_complex_script",
+        filterGraphPath,
       );
       if (options.maximumOutputBytes !== undefined)
         args.push("-fs", String(options.maximumOutputBytes));

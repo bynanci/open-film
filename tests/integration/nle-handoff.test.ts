@@ -2689,7 +2689,17 @@ it("packages freshly measured video and audio handles while leaving stale catalo
 
 it("renders the admitted 64-cue reference within the filter argument budget", async () => {
   const { app, composition } = await fixture();
-  const processes = vi.spyOn(media, "runProcess");
+  const originalRunProcess = media.runProcess;
+  const filterGraphs: string[] = [];
+  const processes = vi
+    .spyOn(media, "runProcess")
+    .mockImplementation(async (command, args, options) => {
+      const result = await originalRunProcess(command, args, options);
+      const scriptIndex = args.indexOf("-filter_complex_script");
+      if (command === "ffmpeg" && scriptIndex >= 0)
+        filterGraphs.push(await readFile(args[scriptIndex + 1]!, "utf8"));
+      return result;
+    });
   composition.graphicScenes = [];
   const track = composition.captionTracks![0]!;
   track.cues = Array.from({ length: 64 }, (_, index) => ({
@@ -2709,14 +2719,13 @@ it("renders the admitted 64-cue reference within the filter argument budget", as
     revision: review.revision,
     mode: review.plan.mode,
   });
-  const graphs = processes.mock.calls
-    .filter(
-      ([command, args]) =>
-        command === "ffmpeg" && args.includes("-filter_complex"),
-    )
-    .map(([, args]) => args[args.indexOf("-filter_complex") + 1]!);
-  expect(graphs).toHaveLength(1);
-  expect(Buffer.byteLength(graphs[0]!)).toBeLessThan(128 * 1024);
+  const graphArguments = processes.mock.calls.filter(
+    ([command, args]) =>
+      command === "ffmpeg" && args.includes("-filter_complex_script"),
+  );
+  expect(graphArguments).toHaveLength(1);
+  expect(filterGraphs).toHaveLength(1);
+  expect(Buffer.byteLength(filterGraphs[0]!)).toBeLessThan(128 * 1024);
   expect(publication.plan.visualRanges).toEqual([
     { startFrame: 0, endFrame: 8 },
   ]);
@@ -2745,7 +2754,7 @@ it("renders the admitted 64-cue reference within the filter argument budget", as
       JSON.stringify(
         {
           selectedCues: track.cues.length,
-          filterArgumentBytes: Buffer.byteLength(graphs[0]!),
+          filterGraphBytes: Buffer.byteLength(filterGraphs[0]!),
           plan: publication.plan,
           measured: proof.measured,
         },

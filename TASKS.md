@@ -113,6 +113,14 @@ remain separate acceptance scopes. See the
 
 - [ ] **Phase 4:** finish the remaining finishing interactions and physical workstation checks. Reuse the existing proxy, sequence-waveform and audio-policy implementations.
 
+#### Phase 4B — deterministic animation
+
+- [x] **4B.1 shared frame-time contract:** draft PR [#125](https://github.com/bynanci/open-film/pull/125), stacked candidate; its recorded exact-head CI passed. It remains unmerged.
+- [ ] **4B.2 visual keyframes:** draft PR [#126](https://github.com/bynanci/open-film/pull/126), stacked on #125. The current local follow-up moves large FFmpeg graphs into a unique temporary script to avoid Windows process command-line limits; hosted checks must rerun on the updated head.
+- [ ] **4B.3 speed ramps:** blocked until source-mapped caption, audio and rhythm consumers are reconciled and an explicit audio policy is approved. Keep existing audio timing unchanged until then.
+
+See the [4B design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md), [shared contract validation](docs/validation-cut-desk-phase-4b-time-contract.md) and [visual keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
+
 Phases 1A–1C, Phase 2 (Roll, Slip, Slide, Insert, Overwrite, Lift, Ripple Delete, Batch edits) and Phase 3 (track controls: target, lock, mute, solo, visibility & persistence) have merged implementations, including precision zoom/pan, snap-bypass gestures, responsive monitor layouts and accessibility controls.
 See the [Cut Desk guide](docs/professional-cut-desk.md),
 [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk-design.md),

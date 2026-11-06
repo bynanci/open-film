@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  clipAnimationFfmpegExpression,
   createExportProfile,
   resolvePreviewClipGeometry,
   resolveCompositionFrame,
@@ -252,6 +253,94 @@ describe("real FFmpeg preview renderer", () => {
     expect(beforeTurn.height).toBeLessThan(afterTurn.height);
     expect(await hashFile(source)).toBe(sourceHash);
   });
+
+  it("renders a multi-track cubic graph larger than Windows command-line limits", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-clip-animation-graph-size-"),
+    );
+    directories.push(directory);
+    const source = join(directory, "synthetic-animation.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=white:s=64x36",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "synthetic-animation.png",
+    });
+    const sourceHash = await hashFile(source);
+    const easing = {
+      kind: "cubic-bezier" as const,
+      x1: 0.42,
+      y1: 0,
+      x2: 0.58,
+      y2: 1,
+    };
+    const keys = (value: (frame: number) => number) =>
+      Array.from({ length: 8 }, (_, frame) => ({
+        frame,
+        value: value(frame),
+        ...(frame < 7 ? { interpolation: easing } : {}),
+      }));
+    const largeAnimation: Composition["tracks"][number]["clips"][number]["animation"] =
+      {
+        version: 1,
+        visualTracks: [
+          { property: "x", keys: keys((frame) => frame * 2) },
+          { property: "y", keys: keys((frame) => -frame) },
+          { property: "scale", keys: keys((frame) => 1 + frame / 16) },
+        ],
+      };
+    const commandLineFilterSize =
+      clipAnimationFfmpegExpression(largeAnimation, "x", 0).length +
+      clipAnimationFfmpegExpression(largeAnimation, "y", 0).length +
+      2 * clipAnimationFfmpegExpression(largeAnimation, "scale", 1).length;
+    expect(commandLineFilterSize).toBeGreaterThan(32767);
+    const composition: Composition = {
+      id: "large-animation-graph",
+      storyId: "story",
+      duration: 0.8,
+      tracks: [
+        {
+          id: "picture",
+          type: "video",
+          clips: [
+            {
+              id: "multi-track-animation",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 0.8,
+              animation: largeAnimation,
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "large-animation-graph.mp4");
+    const settings: ProjectSettings = { width: 64, height: 36, frameRate: 10 };
+    const rendered = await new FFmpegRenderer().render(
+      composition,
+      [asset],
+      output,
+      settings,
+    );
+    const decoded = await decodedGrayFrames(rendered);
+    expect(decoded).toHaveLength(settings.width * settings.height * 8);
+    expect(await hashFile(source)).toBe(sourceHash);
+  }, 30000);
 
   it("seeks repeated video ranges while retaining frames and audible source audio", async () => {
     const directory = await mkdtemp(

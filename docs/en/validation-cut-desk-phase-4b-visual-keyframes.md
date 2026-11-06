@@ -43,7 +43,13 @@ pending and unmerged.
   The build retains the existing warning that the `TimelineEditor` chunk is
   over 500 kB after minification.
 - `pnpm test:contracts` — passed, 80 files and 1,523 tests.
-- `pnpm test` — passed, 454 files and 5,934 tests (full Vitest suite).
+- `pnpm test` — passed, 454 files and 5,935 tests in 566.89 seconds (full
+  Vitest suite).
+- The first full run found two existing probes that expected inline
+  `-filter_complex`. Updated those probes to capture and inspect the actual
+  `-filter_complex_script` used by FFmpeg, retaining the 128 KiB graph budget
+  and scaler-context assertions. Both focused regressions passed; the full
+  rerun above is green.
 - `pnpm test:ci-partition` — passed; verified 454 tests partition into 80
   contract files and 374 media files.
 - `pnpm test:browser-partition` — passed; verified all 358 browser tests are
@@ -58,6 +64,13 @@ pending and unmerged.
 clip keyframes'` — passed with a real synthetic MP4. Decoded frames verify
   clip-local position, opacity, cubic-Bezier scale, rotation, output dimensions
   and unchanged source SHA-256.
+- `vitest run packages/render/tests/render.test.ts -t 'renders deterministic
+clip keyframes|multi-track cubic graph larger than Windows command-line limits'`
+  — passed with a real synthetic MP4. Three eight-key cubic tracks exceed the
+  Windows 32,767-character process command-line limit when expanded as filter
+  expressions. The renderer now writes the generated graph into its unique
+  render work directory and passes FFmpeg `-filter_complex_script`; the test
+  decodes all eight output frames and confirms the source SHA-256 is unchanged.
 - `vitest run tests/unit/record-monitor.test.ts -t 'previews transient clip
 keyframes'` — passed; the held-frame preview updates while preserving the
   saved Composition and existing media resource.
@@ -70,8 +83,13 @@ keyframes'` — passed; the held-frame preview updates while preserving the
 - `pnpm exec playwright test tests/e2e/direct-clip-manipulation.spec.ts
 --workers=1` — passed, all 6 tests, including keyframe save/reopen, direct
   manipulation undo, rejected-write recovery, lock handling and touch sizing.
-- The full repository browser suite has not yet completed on this candidate;
-  the four browser shards will run in hosted Verify for the stacked PR.
+- Hosted Verify run 42287100313 passed fast contracts, native shell, docs and
+  all four browser shards. Windows FFmpeg 9 and Windows/macOS Render QA also
+  passed in runs 42287100329 and 42287100452; heavy media QA also passed. Linux
+  Render QA failed before executing tests because its fixed FFmpeg package
+  installation exceeded the 15-minute job limit (`apt-get install` was
+  terminated). These results predate the filter-script follow-up and cannot
+  validate the updated head; require a fresh Linux Render QA run.
 
 ## Known limits and remaining gates
 
@@ -79,9 +97,8 @@ keyframes'` — passed; the held-frame preview updates while preserving the
   Native NLE keyframe interchange is not claimed.
 - 4B.3 forward speed ramps remain unimplemented. No audio retiming policy or
   audio behavior is inferred by this visual slice.
-- The stacked browser and hosted Verify checks remain required before marking
-  this implementation candidate validated. The existing #125 time-contract PR
-  is still draft and unmerged.
+- The updated stacked head must pass all hosted checks before it can be marked
+  validated. The existing #125 time-contract PR is still draft and unmerged.
 - No Windows/macOS workstation, GPU/4K, Resolve or listening evidence was
   collected for this candidate.
 - The generic local Render QA harness requires a pinned Noto fixture that this

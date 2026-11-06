@@ -81,7 +81,7 @@ describe("profiled FFmpeg exports", () => {
     // the assertions observe configured scaler contexts, not argument text.
     vi.spyOn(mediaModule, "runProcess").mockImplementation(
       async (command, args, options) => {
-        if (command !== "ffmpeg" || !args.includes("-filter_complex"))
+        if (command !== "ffmpeg" || !args.includes("-filter_complex_script"))
           return actualRunProcess(command, args, options);
         const verbose = [...args];
         // These contexts log at verbose; debug can exhaust runProcess's
