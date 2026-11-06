@@ -948,7 +948,7 @@ export default {
       },
       card: {
         scene: "第 {number} 幕",
-        whichImage: "使用素材",
+        media: "使用素材",
         whatExpressed: "表達什麼",
         howPresented: "如何呈現",
         howLong: "時長",

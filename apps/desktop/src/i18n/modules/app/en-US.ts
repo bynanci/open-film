@@ -1006,7 +1006,7 @@ export default {
       },
       card: {
         scene: "Scene {number}",
-        whichImage: "Image / Clip",
+        media: "Media",
         whatExpressed: "Expressed Intent",
         howPresented: "Visual Direction",
         howLong: "Duration",

@@ -287,8 +287,8 @@ watch(
             <!-- 1. Which Image: Asset Thumbnail & Roles -->
             <div class="card-section which-image-section">
               <div class="section-label">
-                <Icon name="image" :size="12" />
-                {{ t("app.storyPlan.card.whichImage") }}
+                <Icon name="film" :size="12" />
+                {{ t("app.storyPlan.card.media") }}
               </div>
               <div v-if="scene.assets.length > 0" class="asset-chips-container">
                 <div

@@ -1003,7 +1003,7 @@ export default {
       },
       card: {
         scene: "シーン {number}",
-        whichImage: "使用する素材",
+        media: "使用する素材",
         whatExpressed: "表現する内容",
         howPresented: "演出方法",
         howLong: "時間",

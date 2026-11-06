@@ -200,6 +200,9 @@ test("story plan image labels keep readable contrast in both themes", async ({
     );
     await expect(dialog.locator(".depth-fallback-pill")).toHaveCount(1);
     await expect(dialog.locator(".storyboard-card")).toHaveCount(2);
+    await expect(
+      dialog.locator(".which-image-section .section-label"),
+    ).toHaveText(["Media", "Media"]);
     const gridFill = await dialog
       .locator(".cards-scroller")
       .evaluate((grid) => {
