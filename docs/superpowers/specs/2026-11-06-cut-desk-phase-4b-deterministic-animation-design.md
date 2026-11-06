@@ -1,7 +1,8 @@
 # Professional Cut Desk Phase 4B — deterministic animation and retiming
 
-**Status:** Approved staged design; 4B.1 implementation candidate  
-**Baseline:** `main` at `b6304914a7eb351d8e5d0a0a11b41e163713e20b`  
+**Status:** Approved staged design; 4B.1 hosted validation passed; 4B.2 implementation candidate
+
+**Baseline:** `main` at `9b33249c3bd60872072c55fac4efac43d6d6e13b`, through draft PR #125 head `1d8712571139d5654eda6bdbccaaac302a06c5a0`
 **Scope:** one versioned clip-time contract, then supported visual keyframes and
 forward speed ramps in separate reviewable increments.
 
@@ -220,6 +221,14 @@ User Pin or dependent timing contract cannot be preserved.
   calling this slice complete.
 
 ### 4B.2 — visual property keyframes
+
+**Implementation candidate:** `codex/cut-desk-phase-4b-visual-keyframes-main`,
+stacked on draft PR #125. This candidate adds strict schema-1.4 persistence,
+typed edit commands, transient Monitor preview, split/trim rebasing and an
+FFmpeg visual consumer for position, scale, rotation and opacity. It deliberately
+does not add a source-time map or alter any audio clock. See
+`docs/validation-cut-desk-phase-4b-visual-keyframes.md` for current evidence and
+remaining gates.
 
 - Add the optional versioned `ClipAnimationV1` model and strict validator in
   the same slice that adds Monitor and FFmpeg consumers, so no persisted key is

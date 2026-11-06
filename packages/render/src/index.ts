@@ -108,7 +108,12 @@ import {
   type AudioAutomation,
   frameAlignedDuration,
   captionFrameRange,
+  clipAnimationFfmpegExpression,
+  clipAnimationMaxFrame,
+  validateClipAnimation,
+  type ClipAnimationProperty,
   type Clip,
+  type ClipAnimationV1,
   type Composition,
   type MediaAsset,
   type ProjectTimebaseV1,
@@ -179,6 +184,63 @@ export interface RenderOptions {
 export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
+
+function animationHasTrack(
+  animation: ClipAnimationV1 | undefined,
+  property: ClipAnimationProperty,
+): boolean {
+  return !!animation?.visualTracks?.some(
+    (track) => track.property === property,
+  );
+}
+
+function animationExpression(
+  clip: Clip,
+  property: ClipAnimationProperty,
+  baseValue: number,
+  frameExpression = "n",
+): string {
+  return clipAnimationFfmpegExpression(
+    clip.animation,
+    property,
+    baseValue,
+    frameExpression,
+  );
+}
+
+function animatedGeometryFilters(
+  clip: Clip,
+  geometry: ReturnType<typeof resolveClipGeometry>,
+  settings: RenderSettings,
+): string[] {
+  const timebase = resolveProjectTimebase(settings);
+  const scaleOnInput = animationExpression(
+    clip,
+    "scale",
+    geometry.scale,
+    `round(on*${timebase.rateNumerator}/(${timebase.rateDenominator}*${number(settings.frameRate)}))`,
+  );
+  const scalePerFrame = animationExpression(
+    clip,
+    "scale",
+    geometry.scale,
+    `round(n*${timebase.rateNumerator}/(${timebase.rateDenominator}*${number(settings.frameRate)}))`,
+  );
+  const rotation = animationExpression(
+    clip,
+    "rotation",
+    geometry.rotation,
+    `round(t*${timebase.rateNumerator}/${timebase.rateDenominator})`,
+  );
+  const downscale = `min(1,${scalePerFrame})`;
+  return [
+    `pad=${settings.width}:${settings.height}:(ow-iw)/2:(oh-ih)/2:color=black@0`,
+    `zoompan=z='max(1,${scaleOnInput})':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s=${settings.width}x${settings.height}:fps=${number(settings.frameRate)}`,
+    `scale=w='max(1,ceil(iw*${downscale}))':h='max(1,ceil(ih*${downscale}))':eval=frame`,
+    `pad=${settings.width}:${settings.height}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`,
+    `rotate='(${rotation})*PI/180':ow=${settings.width}:oh=${settings.height}:c=none`,
+  ];
+}
 
 function finite(value: number, field: string, positive = false): void {
   if (!Number.isFinite(value) || (positive ? value <= 0 : value < 0))
@@ -583,6 +645,22 @@ export class FFmpegRenderer {
           .map((s) => s.clipId),
       );
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+    for (const track of composition.tracks)
+      for (const clip of track.clips) {
+        if (!clip.animation) continue;
+        const asset = assetMap.get(clip.assetId);
+        if (
+          track.type === "audio" ||
+          track.type === "music" ||
+          track.type === "titles" ||
+          asset?.mediaType === "audio"
+        )
+          throw new Error("Clip animation requires a visual media clip.");
+        validateClipAnimation(clip.animation, {
+          maxFrame: clipAnimationMaxFrame(clip, timebase),
+          maxPosition: 4 * Math.max(settings.width, settings.height),
+        });
+      }
     const usedIds = audioOnly
       ? audioSourceAssetIds(
           composition,
@@ -1190,18 +1268,28 @@ export class FFmpegRenderer {
             transform.push(
               `scale=w='min(${settings.width},${settings.height}*(${displayAspect}))':h='min(${settings.height},${settings.width}/(${displayAspect}))'`,
             );
-            if (geometry.scale !== 1)
-              transform.push(
-                `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})`,
-              );
             // Rotation must happen in an alpha-capable format. Otherwise transparent
             // rotated corners become black and diverge from the browser preview.
             transform.push("setsar=1", "format=rgba");
-            if (geometry.rotation)
+            const animatedGeometry =
+              animationHasTrack(clip.animation, "scale") ||
+              animationHasTrack(clip.animation, "rotation");
+            if (animatedGeometry) {
+              transform.push(`fps=${number(settings.frameRate)}:round=near`);
               transform.push(
-                `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
+                ...animatedGeometryFilters(clip, geometry, settings),
               );
-            transform.push(`fps=${number(settings.frameRate)}:round=near`);
+            } else {
+              if (geometry.scale !== 1)
+                transform.push(
+                  `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})`,
+                );
+              if (geometry.rotation)
+                transform.push(
+                  `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
+                );
+              transform.push(`fps=${number(settings.frameRate)}:round=near`);
+            }
             const fade = clip.transition?.duration ?? 0;
             // Extending the outgoing frame through the next fade creates a real overlap
             // without shifting the editable timeline or changing its duration.
@@ -1253,6 +1341,10 @@ export class FFmpegRenderer {
             }
             if (fade > 0 && clip.transition?.type === "crossfade")
               transform.push(`fade=t=in:st=0:d=${number(fade)}:alpha=1`);
+            if (animationHasTrack(clip.animation, "opacity"))
+              transform.push(
+                `geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*${animationExpression(clip, "opacity", 1, `round(T*${resolveProjectTimebase(settings).rateNumerator}/${resolveProjectTimebase(settings).rateDenominator})`)}'`,
+              );
             const trim = sharedVisual
               ? `trim=start=${number(sourceIn - sharedVisual.sourceIn)}:end=${number(sourceOut - sharedVisual.sourceIn)}`
               : asset.mediaType === "image"
@@ -1264,8 +1356,13 @@ export class FFmpegRenderer {
               `[${visualInput}]${trim},settb=AVTB,setpts=(PTS-STARTPTS)/${number(presentedPhoto ? 1 : speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
             );
             const merged = `merged${suffix}`;
+            const animationTimebase = resolveProjectTimebase(settings);
+            const localOutputFrame = `round((t-${number(start)})*${animationTimebase.rateNumerator}/${animationTimebase.rateDenominator})`;
+            const animatedPosition =
+              animationHasTrack(clip.animation, "x") ||
+              animationHasTrack(clip.animation, "y");
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x='round((W-w)/2+${animationExpression(clip, "x", geometry.x, localOutputFrame)})':y='round((H-h)/2+${animationExpression(clip, "y", geometry.y, localOutputFrame)})':eval=${animatedPosition ? "frame" : "init"}:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
 

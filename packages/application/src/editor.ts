@@ -23,6 +23,7 @@ import {
   resolveTitleStyle,
   validateAudioAutomation,
   validateAudioTiming,
+  validateClipAnimation,
   validateClipCoverage,
   createCoverageProposal,
   type CoverageProposal,
@@ -35,6 +36,7 @@ import {
   validateSilenceCutProposal,
   validateRhythmSnapProposal,
   promoteAudioProject,
+  promoteClipAnimationProject,
   validateFilmLook,
   validatePrimaryColorCorrection,
   MAX_TITLE_LENGTH,
@@ -623,6 +625,11 @@ function command(value: unknown, index: number): TimelineCommand {
         );
       break;
     }
+    case "clip.animation.set":
+      fields.push("animation");
+      if (data.animation !== null)
+        nested(data.animation, `${path}.animation`, validateClipAnimation);
+      break;
     case "audio.add":
       fields.push(
         "assetId",
@@ -2403,6 +2410,10 @@ export class TimelineEditor {
             audioAware ? applyTimelineCommandInBatch : applyTimelineCommand
           )(next, assets, compiled, {
             timebase: resolveProjectTimebase(this.application.project.settings),
+            frameSize: {
+              width: this.application.project.settings.width,
+              height: this.application.project.settings.height,
+            },
             origin: automaticCommand(item) ? "automatic" : "direct",
           });
           if (!automaticCommand(item)) {
@@ -2693,41 +2704,45 @@ export class TimelineEditor {
         };
       }
       candidate = validateProject(
-        promoteAudioProject(
-          promotePinnedProject({
-            ...previousProject,
-            ...(durableReceipt
-              ? {
-                  silenceApplyReceipts: [
-                    ...(previousProject.silenceApplyReceipts ?? []),
-                    durableReceipt,
-                  ],
-                }
-              : {}),
-            ...(presetReceipt
-              ? {
-                  presetApplicationReceipts:
-                    this.application.presets.appendReceipt(
-                      previousProject,
-                      presetReceipt,
-                    ),
-                }
-              : {}),
-            ...(directionReceipt
-              ? {
-                  sceneDirectionReceipts: [
-                    ...(previousProject.sceneDirectionReceipts ?? []),
-                    directionReceipt,
-                  ],
-                }
-              : {}),
-            stories: previousProject.stories.map((story) =>
-              story.id === before.story.id ? next.story : story,
-            ),
-            timelines: previousProject.timelines.map((composition) =>
-              composition.id === compositionId ? next.composition : composition,
-            ),
-          }),
+        promoteClipAnimationProject(
+          promoteAudioProject(
+            promotePinnedProject({
+              ...previousProject,
+              ...(durableReceipt
+                ? {
+                    silenceApplyReceipts: [
+                      ...(previousProject.silenceApplyReceipts ?? []),
+                      durableReceipt,
+                    ],
+                  }
+                : {}),
+              ...(presetReceipt
+                ? {
+                    presetApplicationReceipts:
+                      this.application.presets.appendReceipt(
+                        previousProject,
+                        presetReceipt,
+                      ),
+                  }
+                : {}),
+              ...(directionReceipt
+                ? {
+                    sceneDirectionReceipts: [
+                      ...(previousProject.sceneDirectionReceipts ?? []),
+                      directionReceipt,
+                    ],
+                  }
+                : {}),
+              stories: previousProject.stories.map((story) =>
+                story.id === before.story.id ? next.story : story,
+              ),
+              timelines: previousProject.timelines.map((composition) =>
+                composition.id === compositionId
+                  ? next.composition
+                  : composition,
+              ),
+            }),
+          ),
         ),
       );
     } catch (error) {

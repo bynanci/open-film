@@ -20,12 +20,15 @@ import {
   resolvePreviewClipGeometry,
   evaluateAudioGain,
   resolveCompositionFrame,
+  resolveClipFrameRange,
+  clipAnimationMaxFrame,
   resolveProjectTimebase,
   formatSequenceTimecode,
   sequenceFrameAt,
   sequenceTimeAt,
   timebaseKey,
   type Clip,
+  type ClipAnimationV1,
   type CaptionTrack,
   type TitleTextRuns,
   type FrameSize,
@@ -84,6 +87,7 @@ import {
   resolveShortcutAction,
 } from "../shortcut-profiles";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
+import ClipAnimationInspector from "./ClipAnimationInspector.vue";
 import TimecodeField from "./TimecodeField.vue";
 import { sameRateDropFrameChoice } from "../projectTimebase";
 import { analyzeDecodedFrame, type FrameScopeAnalysis } from "../frame-scopes";
@@ -193,6 +197,10 @@ const {
   (value) => emit("change", value),
   () => emit("edited"),
   () => resolveProjectTimebase(props.projectSettings),
+  () => ({
+    width: props.projectSettings.width,
+    height: props.projectSettings.height,
+  }),
 );
 const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
@@ -304,6 +312,20 @@ function command(
   if (focalEditing.value) cancelFocal();
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
+}
+function previewClipAnimation(animation: ClipAnimationV1 | null) {
+  const clip = selectedClip.value;
+  if (!clip || !animation) {
+    clipAnimationPreview.value = null;
+    return;
+  }
+  clipAnimationPreview.value = { clipId: clip.id, animation };
+}
+function commitClipAnimation(animation: ClipAnimationV1 | null) {
+  const clip = selectedClip.value;
+  clipAnimationPreview.value = null;
+  if (!clip || clipAnimationDisabled.value) return;
+  command({ type: "clip.animation.set", clipId: clip.id, animation });
 }
 async function changeUserPin(
   target: import("@openfilm/core").OverrideTarget,
@@ -620,6 +642,50 @@ const lastRecordFrame = computed(() =>
   ),
 );
 const recordFrame = computed(() => recordMonitor.value?.frame ?? 0);
+const clipAnimationPreview = shallowRef<{
+  clipId: string;
+  animation: ClipAnimationV1 | null;
+} | null>(null);
+const clipAnimationFrame = computed(() => {
+  const clip = selectedClip.value;
+  if (!clip) return 0;
+  try {
+    const startFrame = resolveClipFrameRange(
+      clip,
+      projectTimebase.value,
+    ).startFrame;
+    return Math.max(
+      0,
+      Math.min(
+        recordTarget.value ? recordFrame.value - startFrame : 0,
+        clipAnimationMaxFrame(clip, projectTimebase.value),
+      ),
+    );
+  } catch {
+    return 0;
+  }
+});
+const clipAnimationDisabled = computed(() =>
+  (() => {
+    const clip = selectedClip.value;
+    const track = state.value?.composition.tracks.find((entry) =>
+      entry.clips.some((candidate) => candidate.id === clip?.id),
+    );
+    const asset = clip && assetMap.value.get(clip.assetId);
+    return (
+      !clip ||
+      !track ||
+      track.type === "audio" ||
+      track.type === "music" ||
+      track.type === "titles" ||
+      asset?.mediaType === "audio" ||
+      !!clip.locked ||
+      clipSourceLocked.value ||
+      historyBusy.value ||
+      !!track.locked
+    );
+  })(),
+);
 // The editor may publish optimistic drafts while saving. Waveform geometry
 // follows only the last acknowledged document and never becomes an edit owner.
 const savedRecordState = shallowRef<EditorState | null>(null);
@@ -1369,6 +1435,9 @@ const clipOptions = computed(() =>
 const selectedClip = computed(() =>
   allClips.value.find((clip) => clip.id === selectedClipId.value),
 );
+watch(selectedClipId, () => {
+  clipAnimationPreview.value = null;
+});
 const photoPresentationAllowed = computed(
   () =>
     state.value?.composition.tracks.some(
@@ -4633,6 +4702,7 @@ onBeforeUnmount(() => {
                     splitWipeOpen ? splitWipePosition : undefined
                   "
                   :caption-track-id="captionTrackId"
+                  :clip-animation-preview="clipAnimationPreview"
                   v-bind="recordBindings"
                 />
                 <div
@@ -4845,6 +4915,7 @@ onBeforeUnmount(() => {
                   splitWipeOpen ? splitWipePosition : undefined
                 "
                 :caption-track-id="captionTrackId"
+                :clip-animation-preview="clipAnimationPreview"
                 v-bind="recordBindings"
               />
               <div
@@ -6387,6 +6458,14 @@ onBeforeUnmount(() => {
                       {{ t("editor.monitor.resetTransform") }}
                     </button>
                   </div>
+                  <ClipAnimationInspector
+                    :clip="selectedClip"
+                    :frame="clipAnimationFrame"
+                    :timebase="projectTimebase"
+                    :disabled="clipAnimationDisabled"
+                    @preview="previewClipAnimation"
+                    @command="commitClipAnimation"
+                  />
                 </template>
                 <fieldset
                   v-if="controls.visual"

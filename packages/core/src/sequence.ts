@@ -1,11 +1,13 @@
 // Modified by OpenFilm contributors on 2026-10-26. See LICENSE/NOTICE.
 import type {
   Clip,
+  ClipTransform,
   Composition,
   MediaAsset,
   ProjectTimebaseV1,
 } from "./models.js";
 import { sequenceFrameAt, sequenceTimeAt, timebaseRate } from "./timebase.js";
+import { evaluateClipVisualAnimation } from "./clip-animation.js";
 
 export interface ResolvedSequenceClip {
   trackId: string;
@@ -19,6 +21,8 @@ export interface ResolvedSequenceClip {
   localTime: number;
   /** Abstract source position; a held tail may resolve to sourceOut. */
   sourceTime: number;
+  /** Static transform with clip-local keyframes resolved at this output frame. */
+  visualTransform: Pick<ClipTransform, "x" | "y" | "scale" | "rotation">;
   opacity: number;
   visual: boolean;
   audible: boolean;
@@ -313,11 +317,24 @@ export function resolveCompositionFrame(
         range.startFrame,
       );
       const { localTime } = frameTime;
+      const visibleFrameCount = range.endFrame - range.startFrame;
+      const localFrame = Math.min(frameTime.localFrame, visibleFrameCount - 1);
+      const visualState = evaluateClipVisualAnimation(
+        clip.animation,
+        localFrame,
+        clip.transform,
+      );
       const fade = clip.transition?.duration ?? 0;
       const opacity =
         clip.transition?.type === "crossfade" && fade > 0
           ? Math.min(1, localTime / fade)
           : 1;
+      const visualTransform = {
+        x: visualState.x,
+        y: visualState.y,
+        scale: visualState.scale,
+        rotation: visualState.rotation,
+      };
       const resolved: ResolvedSequenceClip = {
         trackId: track.id,
         trackIndex,
@@ -328,7 +345,8 @@ export function resolveCompositionFrame(
         endFrame: displayed.endFrame,
         localTime,
         sourceTime: frameTime.sourceTime,
-        opacity,
+        opacity: opacity * visualState.opacity,
+        visualTransform,
         visual: visualActive,
         audible: audibleActive,
       };

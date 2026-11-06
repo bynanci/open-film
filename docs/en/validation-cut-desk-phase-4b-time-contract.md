@@ -1,9 +1,13 @@
 # Cut Desk Phase 4B.1 — deterministic legacy clip-frame time
 
-Date: 2026-11-06  
-Branch: `codex/cut-desk-phase-4b-contract-design`  
-Base: `b6304914a7eb351d8e5d0a0a11b41e163713e20b` (`main`)  
-Status: local implementation candidate; not merged; hosted validation pending.
+Date: 2026-11-06
+
+Replacement clean-base PR: [#125](https://github.com/bynanci/open-film/pull/125)
+
+Base: `9b33249c3bd60872072c55fac4efac43d6d6e13b` (`main`)
+
+Head: `1d8712571139d5654eda6bdbccaaac302a06c5a0`
+Status: draft and unmerged; all reported GitHub checks passed on this head.
 
 ## Delivered in this slice
 
@@ -43,8 +47,8 @@ Status: local implementation candidate; not merged; hosted validation pending.
 `pnpm test:render-qa` did not complete: its local setup requires the hash-pinned
 Noto test-font fixture. `setup-render-qa.ts fonts-only` failed to fetch that
 fixture because the environment could not reach GitHub (`ENETUNREACH`). No
-un-pinned system-font fallback was used. Hosted checks have not yet run for this
-candidate.
+un-pinned system-font fallback was used. Hosted Render QA passed for Linux,
+Windows and macOS on PR #125.
 
 ## Files
 
@@ -56,9 +60,11 @@ candidate.
 
 ## Remaining gates
 
-- Hosted Verify and Render QA have not completed for this PR head. The full
-  pinned-font Render QA remains locally blocked by the font-fixture download
-  network error described above.
+- Hosted PR #125 checks passed: DCO, fast-contract-check, four browser shards,
+  heavy-media-qa, native-shell, Windows recovery, docs-site, Windows FFmpeg 9,
+  and Render QA on Linux, Windows and macOS. The full pinned-font Render QA
+  remains locally blocked by the font-fixture download network error described
+  above.
 - The focused actual FFmpeg regression confirms unchanged scalar-speed frame
   mapping; the complete renderer/media suite has not been run locally.
 - Add the persisted visual contract only with both Monitor and renderer
@@ -67,3 +73,9 @@ candidate.
 - Keep 4B.3 speed ramps blocked on source-mapped caption/audio/rhythm consumers
   and an explicit audio policy. Do not infer workstation, GPU/4K or target-NLE
   acceptance from automated CI.
+
+## Follow-on implementation
+
+The visual keyframe slice is being developed on a separate stacked branch.
+Its current code, local checks and outstanding end-to-end/hosted gates are
+recorded in `docs/validation-cut-desk-phase-4b-visual-keyframes.md`.

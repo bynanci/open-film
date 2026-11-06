@@ -224,6 +224,33 @@ export interface PhotoMotionV2 extends Omit<
 export type PhotoMotion = PhotoMotionV1 | PhotoMotionV2;
 export type PhotoEasing = PhotoMotion["easing"];
 
+export type ClipAnimationProperty =
+  "x" | "y" | "scale" | "rotation" | "opacity";
+export type ClipAnimationEasing =
+  | "hold"
+  | "linear"
+  | {
+      kind: "cubic-bezier";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    };
+export interface ClipAnimationKeyV1 {
+  frame: number;
+  value: number;
+  interpolation?: ClipAnimationEasing;
+}
+export interface ClipAnimationTrackV1 {
+  property: ClipAnimationProperty;
+  keys: ClipAnimationKeyV1[];
+}
+/** Declarative, clip-local visual animation; evaluated from integer output frames. */
+export interface ClipAnimationV1 {
+  version: 1;
+  visualTracks?: ClipAnimationTrackV1[];
+}
+
 /** Accepted direction evidence is retained in a bounded project history. */
 export const MAX_SCENE_DIRECTION_RECEIPTS = 100;
 /** Durable Apply acknowledgements are bounded inside the project manifest. */
@@ -470,6 +497,8 @@ export interface Clip {
   timelineStart: number;
   timelineDuration: number;
   transform?: ClipTransform;
+  /** Optional frame-addressed visual properties. Absent keeps legacy geometry. */
+  animation?: ClipAnimationV1;
   title?: string;
   titleRuns?: import("./title-runs.js").TitleTextRuns;
   layout?: PhotoLayout;
@@ -530,7 +559,8 @@ export interface Composition {
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;
 
 export interface OpenFilmProject {
-  schemaVersion: typeof PROJECT_SCHEMA_VERSION | "1.1.0" | "1.2.0" | "1.3.0";
+  schemaVersion:
+    typeof PROJECT_SCHEMA_VERSION | "1.1.0" | "1.2.0" | "1.3.0" | "1.4.0";
   id: string;
   title: string;
   createdAt: string;

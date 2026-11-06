@@ -7,6 +7,11 @@ import {
   resolveMappedAutomationWindow,
 } from "./audio-policy.js";
 import { validateClipCoverage } from "./coverage.js";
+import {
+  CLIP_ANIMATION_PROJECT_SCHEMA_VERSION,
+  clipAnimationMaxFrame,
+  validateClipAnimation,
+} from "./clip-animation.js";
 import { MAX_CONTINUITY_RECEIPTS } from "./continuity.js";
 import {
   PINNED_PROJECT_SCHEMA_VERSION,
@@ -36,6 +41,7 @@ import {
   type CaptionCueSource,
   type CaptionTrack,
   type ProjectSettings,
+  type ProjectTimebaseV1,
 } from "./models.js";
 import { resolveProjectTimebase } from "./timebase.js";
 import { validateTitleTextRuns, validateTitleFinishing } from "./title-runs.js";
@@ -151,6 +157,16 @@ function positive(value: unknown, path: string): number {
 function dimension(value: unknown, path: string): void {
   if (!Number.isInteger(positive(value, path)))
     fail(path, "expected a positive integer");
+}
+
+function schemaBefore(current: string, minimum: string): boolean {
+  const actual = current.split(".").map(Number);
+  const floor = minimum.split(".").map(Number);
+  for (let index = 0; index < 3; index++) {
+    if (actual[index]! < floor[index]!) return true;
+    if (actual[index]! > floor[index]!) return false;
+  }
+  return false;
 }
 
 function boolean(value: unknown, path: string): void {
@@ -1486,6 +1502,11 @@ function composition(
   path: string,
   knownAssets?: ReadonlySet<string>,
   beatIds?: ReadonlySet<string>,
+  context?: {
+    schemaVersion?: string;
+    settings?: ProjectSettings;
+    timebase?: ProjectTimebaseV1;
+  },
 ): Composition {
   const data = object(value, path);
   string(data.id, `${path}.id`);
@@ -1704,6 +1725,39 @@ function composition(
         for (const key of ["x", "y", "rotation"])
           optional(transform, key, p, number);
       });
+      optional(clip, "animation", clipPath, (value, p) => {
+        if (track.type === "audio" || track.type === "music")
+          fail(p, "visual animation requires a visual track");
+        if (
+          context?.schemaVersion &&
+          schemaBefore(
+            context.schemaVersion,
+            CLIP_ANIMATION_PROJECT_SCHEMA_VERSION,
+          )
+        )
+          fail(p, "requires project schema 1.4.0");
+        try {
+          validateClipAnimation(value, {
+            ...(context?.timebase
+              ? {
+                  maxFrame: clipAnimationMaxFrame(
+                    clip as unknown as Clip,
+                    context.timebase,
+                  ),
+                }
+              : {}),
+            ...(context?.settings
+              ? {
+                  maxPosition:
+                    4 *
+                    Math.max(context.settings.width, context.settings.height),
+                }
+              : {}),
+          });
+        } catch (error) {
+          fail(p, error instanceof Error ? error.message : "invalid animation");
+        }
+      });
       const automation = clip.audioAutomation as ObjectValue | undefined;
       if (automation?.version === 2) {
         if (Object.hasOwn(clip, "audioTiming"))
@@ -1798,13 +1852,15 @@ export function validateProject(
 ): OpenFilmProject {
   const path = "project";
   const data = object(value, path);
-  if (
-    data.schemaVersion !== PROJECT_SCHEMA_VERSION &&
-    data.schemaVersion !== PINNED_PROJECT_SCHEMA_VERSION &&
-    data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION &&
-    data.schemaVersion !== AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION
-  ) {
-    string(data.schemaVersion, `${path}.schemaVersion`);
+  const schemaVersion = string(data.schemaVersion, `${path}.schemaVersion`);
+  const supportedSchemaVersions = new Set<string>([
+    PROJECT_SCHEMA_VERSION,
+    PINNED_PROJECT_SCHEMA_VERSION,
+    AUDIO_PROJECT_SCHEMA_VERSION,
+    AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION,
+    CLIP_ANIMATION_PROJECT_SCHEMA_VERSION,
+  ]);
+  if (!supportedSchemaVersions.has(schemaVersion)) {
     if (!/^\d+\.\d+\.\d+$/.test(String(data.schemaVersion)))
       fail(
         `${path}.schemaVersion`,
@@ -1816,8 +1872,7 @@ export function validateProject(
     );
   }
   if (
-    data.schemaVersion !== AUDIO_PROJECT_SCHEMA_VERSION &&
-    data.schemaVersion !== AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION &&
+    schemaBefore(schemaVersion, AUDIO_PROJECT_SCHEMA_VERSION) &&
     Array.isArray(data.timelines)
   ) {
     data.timelines.forEach((raw, i) => {
@@ -1848,7 +1903,7 @@ export function validateProject(
     });
   }
   if (
-    data.schemaVersion !== AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION &&
+    schemaBefore(schemaVersion, AUDIO_AUTOMATION_PROJECT_SCHEMA_VERSION) &&
     Array.isArray(data.timelines)
   )
     data.timelines.forEach((raw, i) => {
@@ -1874,6 +1929,26 @@ export function validateProject(
                 );
             });
         });
+    });
+  if (
+    schemaBefore(schemaVersion, CLIP_ANIMATION_PROJECT_SCHEMA_VERSION) &&
+    Array.isArray(data.timelines)
+  )
+    data.timelines.forEach((raw, i) => {
+      const cut = object(raw, `project.timelines[${i}]`);
+      if (!Array.isArray(cut.tracks)) return;
+      cut.tracks.forEach((rawTrack, j) => {
+        const track = object(rawTrack, `project.timelines[${i}].tracks[${j}]`);
+        if (!Array.isArray(track.clips)) return;
+        track.clips.forEach((rawClip, k) => {
+          const clip = object(rawClip, "clip");
+          if (Object.hasOwn(clip, "animation"))
+            fail(
+              `project.timelines[${i}].tracks[${j}].clips[${k}].animation`,
+              "requires project schema 1.4.0",
+            );
+        });
+      });
     });
   if (
     data.schemaVersion === PROJECT_SCHEMA_VERSION &&
@@ -1993,7 +2068,11 @@ export function validateProject(
     const beatIds = new Set(
       storiesById.get(storyId)?.beats.map((beat) => beat.id),
     );
-    composition(entry, timelinePath, knownAssets, beatIds);
+    composition(entry, timelinePath, knownAssets, beatIds, {
+      schemaVersion,
+      settings: settings as unknown as ProjectSettings,
+      timebase: resolveProjectTimebase(settings as unknown as ProjectSettings),
+    });
   });
   projectPresetSnapshots(data as unknown as OpenFilmProject);
   return copyJson(value, path) as OpenFilmProject;

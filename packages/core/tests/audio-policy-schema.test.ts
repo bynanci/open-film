@@ -74,7 +74,7 @@ describe("independent sound capability", () => {
       createRequire(import.meta.url).resolve("eslint"),
     );
     const Ajv = requireTooling("ajv");
-    for (const version of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
+    for (const version of ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"]) {
       const schema = JSON.parse(
         readFileSync(
           new URL(
@@ -87,9 +87,11 @@ describe("independent sound capability", () => {
       delete schema.$schema;
       expect(
         new Ajv({ allErrors: true }).compile(schema)(
-          project(version === "1.3.0" ? version : "1.2.0"),
+          project(
+            version === "1.3.0" || version === "1.4.0" ? version : "1.2.0",
+          ),
         ),
-      ).toBe(version === "1.2.0" || version === "1.3.0");
+      ).toBe(version === "1.2.0" || version === "1.3.0" || version === "1.4.0");
     }
   });
   it("requires project schema 1.3 for persisted automation clocks and promotes without mutating the caller", () => {
@@ -166,12 +168,12 @@ describe("independent sound capability", () => {
     }
     // The promoter receives application-validated projects. This future-header
     // stand-in tests its floor independently of the intentionally closed importer.
-    const future = { ...validateProject(project()), schemaVersion: "1.4.0" };
+    const future = { ...validateProject(project()), schemaVersion: "1.5.0" };
     expect(() => validateProject(future)).toThrow(/schemaVersion/);
     const promoted = promoteAudioProject(
       future as ReturnType<typeof validateProject>,
     );
-    expect(promoted.schemaVersion).toBe("1.4.0");
+    expect(promoted.schemaVersion).toBe("1.5.0");
     expect(promoted.timelines).toEqual(future.timelines);
     expect(promoted).not.toBe(future);
   });
