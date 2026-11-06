@@ -21,4 +21,4 @@ Core Silence31 tests and application/real HTTP Silence23 tests passed. Core plus
 
 ## Limits and next measurements
 
-Whole-project decode/encode latency, peak memory, repeated seeks and Record preparation require separate representative workload profiling before further algorithm changes. This change does not establish improvements in those metrics. Retain FFmpeg native DSP and deterministic rendering until measurements justify another bounded change. No workstation, perceptual listening or4K/GPU acceptance is claimed.
+The follow-up [pipeline profile](validation-media-pipeline-performance.md) measures local synthetic proxy decode, encode, seek and peak RSS. Full export throughput, native Record seek behavior, concurrent workload memory, workstation variability, perceptual listening and4K/GPU acceptance remain unmeasured. Retain FFmpeg native DSP and deterministic rendering until measurements justify another bounded change.
