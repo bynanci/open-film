@@ -305,7 +305,10 @@ onUnmounted(() => {
     <div
       ref="modalRef"
       class="variants-modal-container"
-      :class="{ 'comparison-expanded': currentView === 'compare' }"
+      :class="{
+        'comparison-expanded': currentView === 'compare',
+        'list-view': currentView === 'list',
+      }"
       tabindex="-1"
     >
       <!-- Header -->
@@ -385,7 +388,10 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div v-else class="variants-grid">
+          <div v-else class="variants-grid" :aria-busy="loading">
+            <p v-if="loading" class="variants-loading" role="status">
+              {{ t("app.variants.loading") }}
+            </p>
             <div
               v-for="variant in variants"
               :key="variant.id"
@@ -892,6 +898,10 @@ onUnmounted(() => {
   max-width: 1240px;
 }
 
+.variants-modal-container.list-view {
+  height: min(80vh, 720px);
+}
+
 .variants-modal-header {
   display: flex;
   flex-wrap: wrap;
@@ -973,6 +983,7 @@ onUnmounted(() => {
 }
 
 .variants-modal-body {
+  min-height: 0;
   padding: var(--of-space-6);
   overflow-y: auto;
   flex: 1;
@@ -991,6 +1002,15 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: var(--of-space-4);
+  min-height: 12rem;
+}
+
+.variants-loading {
+  grid-column: 1 / -1;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  color: var(--of-text-secondary);
 }
 
 .variant-card {

@@ -1297,6 +1297,7 @@ export default {
     variants: {
       modalTitle: "クリエイティブ案と A/B 比較",
       listHeader: "クリエイティブ案",
+      loading: "案を読み込み中…",
       createHeader: "別の案を作成",
       impactHeader: "変更影響のプレビュー",
       plannedChanges: "予定される変更",

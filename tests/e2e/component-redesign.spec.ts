@@ -337,6 +337,128 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   await touch.detach();
 });
 
+test("touch closes the reopened variant review without a layout jump", async ({
+  page,
+  request,
+}) => {
+  const { project } = await (await request.get(`${api}/project`)).json();
+  const story = project.stories.at(-1);
+  const composition = project.timelines.at(-1);
+  expect(story).toBeTruthy();
+  expect(composition).toBeTruthy();
+  const variantsResponse = await request.get(`${api}/creative-variants`);
+  expect(variantsResponse.ok()).toBe(true);
+  const expectedVariantCount =
+    ((await variantsResponse.json()).variants as unknown[]).length + 2;
+
+  for (const [index, name] of ["Quiet afternoon", "Longer pause"].entries()) {
+    const response = await request.post(`${api}/creative-variants`, {
+      data: {
+        name,
+        intent: `Touch close layout sample ${index + 1}`,
+        scope: { type: "film" },
+        baselineStoryId: story.id,
+        baselineCompositionId: composition.id,
+        modifications: {},
+      },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+
+  await navigate(page, "story", "zh-TW");
+  const trigger = page.getByTestId("creative-variants-btn");
+  const modal = page.getByTestId("creative-variant-modal");
+  const touch = await page.context().newCDPSession(page);
+  let signalListRequest!: () => void;
+  const listRequestSeen = new Promise<void>((resolve) => {
+    signalListRequest = resolve;
+  });
+  let releaseListRequest!: () => void;
+  const listRequestGate = new Promise<void>((resolve) => {
+    releaseListRequest = resolve;
+  });
+  try {
+    await touch.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 1,
+    });
+    expect(
+      await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches),
+    ).toBe(true);
+
+    await trigger.click();
+    await expect(modal.locator(".variant-card")).toHaveCount(
+      expectedVariantCount,
+    );
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await page.route("**/api/creative-variants", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      signalListRequest();
+      await listRequestGate;
+      await route.fulfill({ response });
+    });
+    await trigger.click();
+    const close = modal.locator(".close-btn");
+    await listRequestSeen;
+    await expect(modal.locator(".variants-grid")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    await expect(modal.locator(".variants-loading")).toBeVisible();
+    const loadingModalBounds = await modal
+      .locator(".variants-modal-container")
+      .boundingBox();
+    const loadingBounds = await close.boundingBox();
+    expect(loadingModalBounds).not.toBeNull();
+    expect(loadingBounds).not.toBeNull();
+    releaseListRequest();
+    await expect(modal.locator(".variant-card")).toHaveCount(
+      expectedVariantCount,
+    );
+    await expect(modal.locator(".variants-grid")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+    await expect(modal.locator(".variants-loading")).toHaveCount(0);
+    const readyModalBounds = await modal
+      .locator(".variants-modal-container")
+      .boundingBox();
+    const readyBounds = await close.boundingBox();
+    expect(readyModalBounds).not.toBeNull();
+    expect(readyBounds).not.toBeNull();
+    expect(
+      Math.abs(readyModalBounds!.height - loadingModalBounds!.height),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(readyBounds!.y - loadingBounds!.y)).toBeLessThanOrEqual(1);
+    expect(readyBounds!.width).toBeGreaterThanOrEqual(44);
+    expect(readyBounds!.height).toBeGreaterThanOrEqual(44);
+    const x = readyBounds!.x + readyBounds!.width / 2;
+    const y = readyBounds!.y + readyBounds!.height / 2;
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y, radiusX: 1, radiusY: 1, force: 1, id: 1 }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await expect(modal).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  } finally {
+    releaseListRequest();
+    await page.unroute("**/api/creative-variants");
+    await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await touch.detach();
+  }
+});
+
 test("keeps the desktop project and utility controls on one row without clipping", async ({
   page,
 }) => {

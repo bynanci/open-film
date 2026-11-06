@@ -1303,6 +1303,7 @@ export default {
     variants: {
       modalTitle: "Creative Variants & A/B Review",
       listHeader: "Creative Variants",
+      loading: "Loading variants…",
       createHeader: "Create New Variant",
       impactHeader: "Change Impact Preview",
       plannedChanges: "Planned Changes",

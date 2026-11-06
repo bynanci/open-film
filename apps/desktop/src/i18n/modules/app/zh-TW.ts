@@ -1224,6 +1224,7 @@ export default {
     variants: {
       modalTitle: "創作方案與 A/B 比較",
       listHeader: "創作方案",
+      loading: "正在載入方案…",
       createHeader: "建立另一個方案",
       impactHeader: "變更影響預覽",
       plannedChanges: "預計變更",

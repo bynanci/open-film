@@ -183,3 +183,47 @@ native system or input device.
 - Real workstation startup/one-hour memory measurements, camera media and audio
   listening checks. Synthetic browser measurements do not replace them.
 - Real DaVinci Resolve import and save/reopen evidence; keep its workstation gate.
+
+## Follow-up — browser shard 4 and variant touch close
+
+Verify run [42260127413](https://github.com/bynanci/open-film/actions/runs/42260127413)
+on PR head `6d051b9458a924bb23d339a94957788f1804d349` completed with browser
+shard 4 failing one Storyboard geometry check (`87 passed`), while fast-contract,
+shards 1–3, heavy-media QA, docs-site and all three Render QA jobs passed. The
+native-shell job was cancelled when the aggregate run ended; it is not passing
+evidence. The failure measured 3px of `scrollHeight` overflow against a 1px
+limit. A local reproduction found that the blurred, translated Tobi-ishi `::after`
+shadow contributes those pixels even though the card's content boxes remain
+inside its bounds. The regression now measures the card's direct content items
+against its padded bounds, excluding only that decorative pseudo-element while
+still enforcing the 1px limit on content overflow.
+
+The same inspection reproduced a separate asynchronous touch issue: the variant
+list response changes the centered modal's layout after the close target has
+been measured. The list grid now reserves a minimum height and exposes a
+localized loading status with `aria-busy`; the coarse-pointer close target
+remains at least 44×44px. A deterministic Playwright regression holds the list
+response, asserts the close button moves no more than 1px, then dispatches a real
+Chromium touch and verifies the modal closes and focus returns to its trigger.
+Exact-head full CI for this follow-up is pending.
+
+### Local verification on the latest PR base
+
+After syncing `ccbd74ef599dc533d424e0bbe797d5360ce224e7`, the follow-up was
+reapplied without changing that commit's content-bound measurement. Local
+verification completed as follows:
+
+| Check                                                 | Result                                                                                                                |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Touch close regression                                | 3/3 passed with the asynchronous list response held and released.                                                     |
+| Component redesign + Tobi-ishi workflow browser specs | 15/15 passed, including modal focus return, 44px touch target, viewport/theme checks and storyboard content bounds.   |
+| Format, localization and documentation                | `format:check` passed; `test:i18n` passed with 3,213 semantic keys; `test:docs-i18n` passed with 169 English mirrors. |
+| Static and contract checks                            | `lint` and `typecheck` passed; `test:contracts` passed (77 files, 1,504 tests).                                       |
+| Build                                                 | Passed. The existing `TimelineEditor` chunk advisory remains at 590.14KB minified, above 500KB.                       |
+
+On the synced PR head `ccbd74e`, hosted Verify run
+[42263471483](https://github.com/bynanci/open-film/actions/runs/42263471483)
+has fast-contract, all four browser shards, docs-site and native-shell successful;
+heavy-media QA is still running. Windows media recovery and Linux, Windows and
+macOS Render QA runs are successful. These checks cover `ccbd74e`, not the
+follow-up commit below it. Exact-head hosted verification remains required.
