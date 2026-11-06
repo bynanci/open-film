@@ -573,6 +573,12 @@ patched, unreachable by binary proof, or release-approved. The GLib
 `VariantStrIter` source-aware admission gate remains open. No dependency update,
 native build, source reproduction or workstation observation is claimed here.
 
+### 2026-11-06 repeat audit after advisory database update
+
+A second scan of the same `main` candidate `b6304914a7eb351d8e5d0a0a11b41e163713e20b` used isolated Rust/Cargo 1.99.0 tooling and `cargo-audit 0.22.2`. `cargo audit --json` completed at 2026-11-06 16:03:55 UTC against `apps/desktop/src-tauri/Cargo.lock`. The 431-package lockfile remains at SHA-256 `a6d4ca550fcf3db4b851405d650e8d7d8aa74de5e4f160f2eb950ef7cec66142`. The refreshed advisory database is commit `309392b18f6b17022f82c701f300433126901068` (1,422 advisories; last updated `2026-11-06T16:34:32+01:00`). The raw report is retained at [`rustsec-main-b630491-2026-11-06T1603Z.json`](https://github.com/bynanci/open-film/blob/main/docs/evidence/native-installer/rustsec-main-b630491-2026-11-06T1603Z.json), SHA-256 `00f4182c10f7a51abf1b1a47f73b01e309cb95f71a6691d94f86ccfaf7b57eec`.
+
+This repeat scan again found zero vulnerabilities, two `unsound` notices (GLib `RUSTSEC-2024-0429` and Tokio `RUSTSEC-2026-0386`) and one `unmaintained` notice (`proc-macro-error` `RUSTSEC-2024-0370`). The configured policy treats those warning classes as informational, so the command exited 0; the warnings remain open and are not a security or release pass. The lockfile, target graphs, and dependency source were not changed by this evidence refresh. The previously documented GLib source-aware gate and installer/workstation gates remain open.
+
 ### Separate D7B source-repair experiment (not admitted)
 
 An isolated source-repair experiment at `423ccd3af308fe855b0da7f9ab9d0e1e78be8b2a` was audited on 2026-11-04. It is not based on current main `fcc00131c2f2d90d9dd20952dad192a65cceaa31`: it is 219 commits behind and 5 commits ahead, so it is not a release candidate and must be reconciled onto current main before further candidate validation. The reviewed GLib source verifier passed for 121 files, and locked Linux metadata/closure verification passed for 431 dependencies with the source patch and Tokio 1.53.3. The candidate lock SHA-256 is `c0f457e0ab610c0db6c5d4eddc5997f4de3a91e2c832587c956d337b5e7c8161`.
