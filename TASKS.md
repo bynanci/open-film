@@ -201,18 +201,19 @@ change. Discuss their scope before implementation.
       200-row page and keeps only selected dependencies between pages; the
       existing Editor document asset pool is unchanged. See the
       [picker scale validation](docs/validation-catalog-scale-benchmark.md).
-- [ ] Defer the non-English UI message catalogs until their locale is selected.
-      The candidate keeps English in the initial bundle and emits separate
-      Traditional Chinese/Japanese chunks; see the
+- [x] Defer non-English UI message catalogs until the locale is selected.
+      English remains the fallback; current build emits separate Traditional
+      Chinese and Japanese chunks. See the
       [locale loading validation](docs/validation-desktop-locale-loading.md).
-- [ ] Evaluate lazy-loading infrequently used Desktop workspaces to reduce the
-      initial JavaScript bundle. The current candidate's entry and static
-      modulepreloads total 887.29 kB minified / 290.42 kB gzip; the prior recorded
-      entry was 1.72 MB / 508 kB. Edit navigation is measured in the browser, but
-      native cold-start evidence is still required before setting a size target.
-      Lazy editor flush and native planner-draft recovery now wait for their
-      async components to become usable; targeted browser regressions cover both.
-      See the [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
+- [x] Lazy-load infrequently used Desktop workspaces. The current entry and
+      static JavaScript preloads total 556.04 kB minified / 181.11 kB gzip, and
+      the synthetic browser flow measured 254 ms to a usable Edit view. Lazy
+      editor flush and native planner-draft recovery wait for their async
+      components. See the
+      [desktop lazy workspace validation](docs/validation-desktop-lazy-workspaces.md).
+- [ ] Measure cold startup from signed Windows/macOS installer candidates and
+      set an initial-workspace size target from those workstation results. The
+      browser bundle and Vite navigation measurements do not satisfy this gate.
 - [ ] Further NLE fidelity for transparent overlays and separately editable
       baked effects/stems, with target-editor evidence.
 - [ ] Evaluate remote image-to-video adapters against verified APIs, consent,

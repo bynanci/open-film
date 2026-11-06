@@ -118,8 +118,9 @@ release date:
 
 - Broader source and provider integrations, including additional local analysis
   implementations.
-- Archive-scale analysis and background scheduling, plus measured Desktop
-  workspace code splitting. Chronological cursor paging, literal substring
+- Archive-scale analysis and background scheduling, plus native cold-start
+  measurements for the existing Desktop locale/workspace code splitting.
+  Chronological cursor paging, literal substring
   search indexing, and lazy Story Template / PhotoDepth selectors are implemented;
   see the [Catalog scale validation](docs/validation-catalog-scale-benchmark.md)
   and [Catalog search validation](docs/validation-catalog-search-index.md).
