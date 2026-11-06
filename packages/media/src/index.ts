@@ -909,6 +909,9 @@ export async function createProxy(
   }
   if (asset.mediaType !== "video" && asset.mediaType !== "360-video") return;
   const filters = await previewVideoFilters(asset, signal);
+  // Bound source decoding for background proxy work. Two decoder threads
+  // materially reduced 1080p/4K preparation time in measured runs while
+  // avoiding the larger and less predictable memory footprint of auto mode.
   await runProcess(
     "ffmpeg",
     [
@@ -916,7 +919,7 @@ export async function createProxy(
       "error",
       "-nostdin",
       "-threads",
-      "1",
+      "2",
       "-filter_threads",
       "1",
       ...(await localMediaInputOptions(localPath(asset.uri), signal)),
