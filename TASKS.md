@@ -112,13 +112,6 @@ remain separate acceptance scopes. See the
 ### Professional Cut Desk
 
 - [ ] **Phase 4:** finish the remaining finishing interactions and physical workstation checks. Reuse the existing proxy, sequence-waveform and audio-policy implementations.
-  - 4B.1 shared deterministic legacy clip-frame contract is in progress on
-    `codex/cut-desk-phase-4b-contract-design`; see the
-    [design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md)
-    and [validation record](docs/validation-cut-desk-phase-4b-time-contract.md).
-  - Visual keyframes and speed ramps remain separate follow-up slices. No
-    persisted animation or retime field is added until Monitor and FFmpeg share
-    tested consumers for it; variable-speed audio policy remains unresolved.
 
 Phases 1A–1C, Phase 2 (Roll, Slip, Slide, Insert, Overwrite, Lift, Ripple Delete, Batch edits) and Phase 3 (track controls: target, lock, mute, solo, visibility & persistence) have merged implementations, including precision zoom/pan, snap-bypass gestures, responsive monitor layouts and accessibility controls.
 See the [Cut Desk guide](docs/professional-cut-desk.md),
