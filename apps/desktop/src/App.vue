@@ -3410,7 +3410,7 @@ onUnmounted(() => {
       @retry="boot"
     />
 
-    <aside
+    <div
       v-if="project"
       class="workspace-sidebar"
       data-testid="workspace-sidebar"
@@ -3462,7 +3462,7 @@ onUnmounted(() => {
           @navigate="navigateWorkflow"
         />
       </section>
-    </aside>
+    </div>
     <main
       v-if="project"
       id="workspace-main"

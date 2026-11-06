@@ -55,11 +55,14 @@ test("shows fixed workspace navigation and adapts it at supported desktop widths
   await openFilm(page, firstProject);
 
   const workspaceLabel = uiText("en-US", "app.navigation.label");
-  const sidebar = page.getByRole("complementary", { name: workspaceLabel });
+  const sidebar = page.getByTestId("workspace-sidebar");
   const navigation = sidebar.getByRole("navigation", {
     name: workspaceLabel,
   });
   await expect(sidebar).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: workspaceLabel }),
+  ).toHaveCount(1);
   await expect(navigation.getByRole("button")).toHaveCount(5);
   await expect(
     navigation.getByRole("button", { name: "Library" }),
