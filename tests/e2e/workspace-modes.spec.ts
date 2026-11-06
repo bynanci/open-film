@@ -104,6 +104,11 @@ test("offers a guided default and remembers the expert workspace without changin
     "open",
     "",
   );
+  const trackControls = page.locator(".cut-desk-track-controls");
+  await expect(trackControls).toBeVisible();
+  const trackButton = trackControls.locator(".track-btn").first();
+  await expect(trackButton).toHaveCSS("width", "30px");
+  await expect(trackButton).toHaveCSS("border-left-width", "0px");
   const after = (await (await request.get(`${api}/project`)).json()).project;
   expect(after).toEqual(before);
   await page.reload();

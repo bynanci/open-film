@@ -105,6 +105,10 @@ async function move(page: Page, x: number, y: number, cancel = false) {
   });
   const box = await control.boundingBox();
   expect(box).not.toBeNull();
+  const frame = await page.locator(".editor-composition-frame").boundingBox();
+  expect(frame).not.toBeNull();
+  // This fixture has a 320px-wide composition; pointer deltas are CSS pixels.
+  const viewportScale = frame!.width / 320;
   // The monitor controls intentionally sit above the picture. Start from the
   // exposed lower area so the test exercises the same hit target as a user.
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height * 0.82 };
@@ -123,6 +127,7 @@ async function move(page: Page, x: number, y: number, cancel = false) {
   ).not.toHaveValue("0");
   if (cancel) await page.keyboard.press("Escape");
   await page.mouse.up();
+  return { x: x / viewportScale, y: y / viewportScale };
 }
 
 async function resize(page: Page, x: number, y: number) {
@@ -165,16 +170,16 @@ test("moves a clip with one transaction, cancels safely, and survives Undo/Redo 
   await page
     .getByRole("button", { name: "Adjust picture", exact: true })
     .click();
-  await move(page, 24, 12);
+  const expected = await move(page, 24, 12);
   await expect
     .poll(async () => (await clip(request)).transform?.x ?? 0)
-    .toBeGreaterThan(20);
+    .toBeGreaterThan(0);
   await expect(page.locator(".editor-save-state")).toHaveText("Saved");
   const moved = (await clip(request)).transform!;
   // The browser frame is fractionally scaled to fit its container. The
   // persisted composition-space delta therefore need not be an integer.
-  expect(moved.x).toBeCloseTo(24, 0);
-  expect(moved.y).toBeCloseTo(12, 0);
+  expect(moved.x).toBeCloseTo(expected.x, 0);
+  expect(moved.y).toBeCloseTo(expected.y, 0);
   expect(edits).toHaveLength(1);
   expect(edits[0]).toMatchObject({
     commands: [

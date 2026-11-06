@@ -3100,10 +3100,17 @@ function measureWorkspace() {
     if (!props.active || !workspace) return;
     const footer = editorElement.value?.querySelector(".editor-shortcuts");
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
+    const dock = document
+      .querySelector(".pipeline-status-bar")
+      ?.getBoundingClientRect();
+    const bottomEdge =
+      dock && dock.height > 0 && dock.top >= 0
+        ? Math.min(window.innerHeight, dock.top)
+        : window.innerHeight;
     const measuredHeight = Math.max(
       editMode.value !== "story" ? 416 : 272,
       Math.floor(
-        window.innerHeight -
+        bottomEdge -
           Math.max(0, workspace.getBoundingClientRect().top) -
           footerHeight -
           16,
@@ -4846,6 +4853,86 @@ onBeforeUnmount(() => {
             </section>
           </div>
           <div v-else-if="!expertMode" class="editor-player-region">
+            <div
+              v-if="
+                playbackAsset &&
+                !playbackUnavailable &&
+                playbackSourceInfo?.previewSupported !== false &&
+                playbackAsset.mediaType !== 'audio'
+              "
+              class="editor-monitor-tools"
+              role="group"
+              :aria-label="t('editor.monitor.controls')"
+            >
+              <label class="sr-only" for="monitor-aspect-guide">{{
+                t("editor.monitor.aspect")
+              }}</label>
+              <select id="monitor-aspect-guide" v-model="monitorAspect">
+                <option
+                  v-for="choice in monitorAspects"
+                  :key="choice.value"
+                  :value="choice.value"
+                >
+                  {{ choice.ratio }} · {{ t(choice.label) }}
+                </option>
+              </select>
+              <button
+                class="editor-button"
+                :aria-pressed="showRuleOfThirds"
+                :class="{ selected: showRuleOfThirds }"
+                :title="t('editor.monitor.thirds')"
+                @click="showRuleOfThirds = !showRuleOfThirds"
+              >
+                <Icon name="thirds" :size="16" />
+                <span class="sr-only">{{ t("editor.monitor.thirds") }}</span>
+              </button>
+              <button
+                class="editor-button"
+                :aria-pressed="showSafeFrame"
+                :class="{ selected: showSafeFrame }"
+                :title="t('editor.monitor.safe')"
+                @click="showSafeFrame = !showSafeFrame"
+              >
+                <Icon name="safe-frame" :size="16" />
+                <span class="sr-only">{{ t("editor.monitor.safe") }}</span>
+              </button>
+              <kbd aria-label="G">G</kbd>
+              <span class="editor-monitor-guide-note">{{
+                t("editor.monitor.previewOnly")
+              }}</span>
+              <button
+                class="editor-button"
+                :class="{ selected: pictureAdjusting }"
+                :aria-pressed="pictureAdjusting"
+                :title="
+                  t(
+                    photoPresentationActive
+                      ? 'editor.picture.presentationHint'
+                      : 'editor.picture.hint',
+                  )
+                "
+                :disabled="!pictureCapable || pictureBlocked"
+                @click="togglePictureAdjustment"
+              >
+                {{ t("editor.picture.toggle") }}
+              </button>
+              <template v-if="pictureAdjusting">
+                <button
+                  class="editor-button"
+                  :disabled="!pictureCapable || pictureBlocked"
+                  @click="resetPicture(true)"
+                >
+                  {{ t("editor.picture.center") }}
+                </button>
+                <button
+                  class="editor-button"
+                  :disabled="!pictureCapable || pictureBlocked"
+                  @click="resetPicture()"
+                >
+                  {{ t("editor.picture.reset") }}
+                </button>
+              </template>
+            </div>
             <div ref="sourceScreenElement" class="editor-source-screen">
               <PrimaryColorFilter
                 :id="primaryColorFilterId"
@@ -5260,74 +5347,6 @@ onBeforeUnmount(() => {
                   playbackAsset.mediaType !== 'audio'
                 "
               >
-                <div
-                  class="editor-monitor-tools"
-                  role="group"
-                  :aria-label="t('editor.monitor.controls')"
-                >
-                  <label class="sr-only" for="monitor-aspect-guide">{{
-                    t("editor.monitor.aspect")
-                  }}</label>
-                  <select id="monitor-aspect-guide" v-model="monitorAspect">
-                    <option
-                      v-for="choice in monitorAspects"
-                      :key="choice.value"
-                      :value="choice.value"
-                    >
-                      {{ choice.ratio }} · {{ t(choice.label) }}
-                    </option>
-                  </select>
-                  <button
-                    class="editor-button"
-                    :aria-pressed="showRuleOfThirds"
-                    @click="showRuleOfThirds = !showRuleOfThirds"
-                  >
-                    {{ t("editor.monitor.thirds") }}
-                  </button>
-                  <button
-                    class="editor-button"
-                    :aria-pressed="showSafeFrame"
-                    @click="showSafeFrame = !showSafeFrame"
-                  >
-                    {{ t("editor.monitor.safe") }}
-                  </button>
-                  <kbd aria-label="G">G</kbd>
-                  <span class="editor-monitor-guide-note">{{
-                    t("editor.monitor.previewOnly")
-                  }}</span>
-                  <button
-                    class="editor-button"
-                    :class="{ selected: pictureAdjusting }"
-                    :aria-pressed="pictureAdjusting"
-                    :title="
-                      t(
-                        photoPresentationActive
-                          ? 'editor.picture.presentationHint'
-                          : 'editor.picture.hint',
-                      )
-                    "
-                    :disabled="!pictureCapable || pictureBlocked"
-                    @click="togglePictureAdjustment"
-                  >
-                    {{ t("editor.picture.toggle") }}
-                  </button>
-                  <template v-if="pictureAdjusting">
-                    <button
-                      class="editor-button"
-                      :disabled="!pictureCapable || pictureBlocked"
-                      @click="resetPicture(true)"
-                    >
-                      {{ t("editor.picture.center") }}
-                    </button>
-                    <button
-                      class="editor-button"
-                      :disabled="!pictureCapable || pictureBlocked"
-                      @click="resetPicture()"
-                    >
-                      {{ t("editor.picture.reset") }}
-                    </button>
-                  </template>
-                </div>
                 <div
                   v-if="showRuleOfThirds || showSafeFrame"
                   class="editor-monitor-guide-layer"

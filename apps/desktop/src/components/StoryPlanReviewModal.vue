@@ -433,16 +433,16 @@ watch(
 }
 
 .modal-dialog {
-  background: var(--surface-1, #1e1e24);
-  color: var(--text-1, #f0f0f4);
-  border-radius: 12px;
-  border: 1px solid var(--border-1, #2e2e38);
+  background: var(--of-surface-1);
+  color: var(--of-text-primary);
+  border-radius: var(--of-radius-dialog);
+  border: 0;
   width: 100%;
   max-width: 1100px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--of-shadow-dialog);
   overflow: hidden;
 }
 
@@ -451,8 +451,8 @@ watch(
   justify-content: space-between;
   align-items: flex-start;
   padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border-1, #2e2e38);
-  background: var(--surface-2, #26262e);
+  border-bottom: 0;
+  background: var(--of-surface-2);
 }
 
 .header-titles h2 {
@@ -483,35 +483,36 @@ watch(
 }
 
 .storyboard-card {
-  background: var(--surface-2, #26262e);
-  border: 1px solid var(--border-1, #363644);
-  border-radius: 8px;
+  background: var(--of-surface-2);
+  border: 0;
+  border-radius: var(--of-radius-lg);
   padding: 1rem;
+  box-shadow: var(--of-shadow-soft);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
+    background-color var(--of-motion-normal) var(--of-motion-ease),
+    box-shadow var(--of-motion-normal) var(--of-motion-ease);
   cursor: pointer;
 }
 
 .storyboard-card:hover,
 .storyboard-card:focus {
-  border-color: var(--accent-1, #5c7cfa);
-  outline: none;
+  background: var(--of-surface-3);
+  box-shadow: var(--of-shadow-hover);
 }
 
 .storyboard-card.selected {
-  border-color: var(--accent-1, #5c7cfa);
-  box-shadow: 0 0 0 2px rgba(92, 124, 250, 0.25);
+  background: var(--of-accent-soft);
+  box-shadow: var(--of-shadow-hover);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border-2, #363644);
+  border-bottom: 0;
   padding-bottom: 0.5rem;
 }
 
@@ -601,11 +602,12 @@ watch(
 }
 
 .asset-thumb {
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
   object-fit: cover;
-  border-radius: 4px;
-  background: #000;
+  border-radius: 12px;
+  background: var(--of-player);
 }
 
 .asset-info {
@@ -616,6 +618,7 @@ watch(
 }
 
 .asset-name {
+  font-family: var(--of-font-media);
   font-size: 0.8rem;
   font-weight: 500;
   white-space: nowrap;

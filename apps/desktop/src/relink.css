@@ -131,7 +131,7 @@
   border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-sm);
   color: var(--of-text-primary);
-  background: var(--of-surface-1);
+  background-color: var(--of-surface-1);
   font-size: var(--of-font-caption);
   font-weight: 400;
 }

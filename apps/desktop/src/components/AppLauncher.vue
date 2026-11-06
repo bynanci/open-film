@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { supportedLocales, formatDate } from "../i18n";
 import { preferences } from "../preferences";
@@ -9,6 +9,7 @@ import {
   PROJECT_TIMEBASE_PRESETS,
 } from "../projectTimebase";
 import Icon from "./Icon.vue";
+import GardenStones from "./GardenStones.vue";
 
 const props = defineProps<{
   busy: boolean;
@@ -35,6 +36,13 @@ const timingEdited = ref(false);
 const timebasePresetId = ref(DEFAULT_PROJECT_TIMEBASE_PRESET_ID);
 const path = ref("");
 const issue = ref("");
+const durationIssueField = ref<"target" | "maximum">();
+const createAction = ref<HTMLButtonElement>();
+const openAction = ref<HTMLButtonElement>();
+const nameInput = ref<HTMLInputElement>();
+const pathInput = ref<HTMLInputElement>();
+const targetInput = ref<HTMLInputElement>();
+const maximumInput = ref<HTMLInputElement>();
 const contentLocales = computed(() => supportedLocales);
 watch(
   [template, () => props.templates],
@@ -54,9 +62,26 @@ watch(
   },
 );
 function changeMode(next: typeof mode.value) {
+  const previous = mode.value;
   mode.value = next;
   path.value = "";
   issue.value = "";
+  durationIssueField.value = undefined;
+  void nextTick(() => {
+    const focusTarget =
+      next === "create"
+        ? nameInput.value
+        : next === "open"
+          ? pathInput.value
+          : previous === "open"
+            ? openAction.value
+            : createAction.value;
+    focusTarget?.focus({ preventScroll: true });
+  });
+}
+function clearIssue() {
+  issue.value = "";
+  durationIssueField.value = undefined;
 }
 async function chooseFolder() {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -65,13 +90,16 @@ async function chooseFolder() {
     if (picked) path.value = picked;
   } catch {
     issue.value = "pickerFailed";
+    void nextTick(() => pathInput.value?.focus({ preventScroll: true }));
   }
 }
 function submit() {
   issue.value = "";
+  durationIssueField.value = undefined;
   if (mode.value === "open") {
     if (!path.value.trim()) {
       issue.value = "pathRequired";
+      void nextTick(() => pathInput.value?.focus({ preventScroll: true }));
       return;
     }
     emit("open", path.value.trim());
@@ -79,15 +107,19 @@ function submit() {
   }
   if (!name.value.trim()) {
     issue.value = "nameRequired";
+    void nextTick(() => nameInput.value?.focus({ preventScroll: true }));
     return;
   }
-  if (
-    !Number.isFinite(target.value) ||
-    !Number.isFinite(maximum.value) ||
-    target.value <= 0 ||
-    maximum.value < target.value
-  ) {
+  if (!Number.isFinite(target.value) || target.value <= 0) {
     issue.value = "durationInvalid";
+    durationIssueField.value = "target";
+    void nextTick(() => targetInput.value?.focus({ preventScroll: true }));
+    return;
+  }
+  if (!Number.isFinite(maximum.value) || maximum.value < target.value) {
+    issue.value = "durationInvalid";
+    durationIssueField.value = "maximum";
+    void nextTick(() => maximumInput.value?.focus({ preventScroll: true }));
     return;
   }
   emit("create", {
@@ -122,64 +154,23 @@ function submit() {
       <h1>{{ t("app.welcome.title") }}</h1>
       <p>{{ t("app.welcome.description") }}</p>
       <div class="launcher-brand-hero" aria-hidden="true">
-        <svg
-          class="launcher-stack-graphic"
-          viewBox="0 0 360 190"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient
-              id="of-hero-top"
-              x1="60"
-              y1="20"
-              x2="300"
-              y2="120"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop offset="0%" stop-color="#c48e63" />
-              <stop offset="100%" stop-color="#593e29" />
-            </linearGradient>
-          </defs>
-          <ellipse
-            cx="180"
-            cy="158"
-            rx="118"
-            ry="18"
-            fill="#090b0d"
-            opacity="0.65"
-          />
-          <polygon
-            points="180,92 316,136 180,180 44,136"
-            fill="#14171c"
-            stroke="#2b313a"
-            stroke-width="1.5"
-          />
-          <polygon
-            points="180,62 316,106 180,150 44,106"
-            fill="#232830"
-            stroke="#3d4552"
-            stroke-width="1.5"
-          />
-          <polygon
-            points="180,26 316,74 180,122 44,74"
-            fill="url(#of-hero-top)"
-            stroke="#e0a477"
-            stroke-opacity="0.55"
-            stroke-width="1.5"
-          />
-          <polygon
-            points="166,57 166,89 204,73"
-            fill="#f7f5f1"
-            fill-opacity="0.9"
-          />
-        </svg>
+        <GardenStones class="launcher-stack-graphic" />
       </div>
       <div v-if="mode === 'welcome'" class="launcher-actions">
-        <button class="primary" :disabled="busy" @click="changeMode('create')">
+        <button
+          ref="createAction"
+          class="primary"
+          :disabled="busy"
+          @click="changeMode('create')"
+        >
           {{ t("app.welcome.create") }}<Icon name="plus" />
         </button>
-        <button class="secondary" :disabled="busy" @click="changeMode('open')">
+        <button
+          ref="openAction"
+          class="secondary"
+          :disabled="busy"
+          @click="changeMode('open')"
+        >
           {{ t("app.welcome.open") }}<Icon name="folder" />
         </button>
       </div>
@@ -239,11 +230,17 @@ function submit() {
           <label class="field"
             >{{ t("app.create.name")
             }}<input
+              ref="nameInput"
               v-model="name"
               name="title"
               :placeholder="t('app.create.namePlaceholder')"
+              :aria-invalid="issue === 'nameRequired'"
+              :aria-describedby="
+                issue === 'nameRequired' ? 'launcher-form-error' : undefined
+              "
               required
               autocomplete="off"
+              @input="clearIssue"
           /></label>
           <div class="create-film-grid">
             <label class="field"
@@ -282,20 +279,46 @@ function submit() {
             <label class="field"
               >{{ t("app.create.target")
               }}<input
+                ref="targetInput"
                 v-model.number="target"
                 type="number"
                 min="1"
+                :aria-invalid="
+                  issue === 'durationInvalid' && durationIssueField === 'target'
+                "
+                :aria-describedby="
+                  issue === 'durationInvalid' && durationIssueField === 'target'
+                    ? 'launcher-form-error'
+                    : undefined
+                "
                 required
-                @input="timingEdited = true"
+                @input="
+                  timingEdited = true;
+                  clearIssue();
+                "
             /></label>
             <label class="field"
               >{{ t("app.create.maximum")
               }}<input
+                ref="maximumInput"
                 v-model.number="maximum"
                 type="number"
                 min="1"
+                :aria-invalid="
+                  issue === 'durationInvalid' &&
+                  durationIssueField === 'maximum'
+                "
+                :aria-describedby="
+                  issue === 'durationInvalid' &&
+                  durationIssueField === 'maximum'
+                    ? 'launcher-form-error'
+                    : undefined
+                "
                 required
-                @input="timingEdited = true"
+                @input="
+                  timingEdited = true;
+                  clearIssue();
+                "
             /></label>
           </div>
           <p class="muted">{{ t("app.create.languageHint") }}</p>
@@ -305,10 +328,16 @@ function submit() {
               >{{ t("app.create.folder") }}
               <div class="path-input">
                 <input
+                  ref="pathInput"
                   v-model="path"
                   name="project-folder"
                   :placeholder="preferences.projectRoot || defaultRoot"
+                  :aria-invalid="issue === 'pickerFailed'"
+                  :aria-describedby="
+                    issue === 'pickerFailed' ? 'launcher-form-error' : undefined
+                  "
                   autocomplete="off"
+                  @input="clearIssue"
                 /><button
                   v-if="native"
                   type="button"
@@ -329,10 +358,18 @@ function submit() {
             >{{ t("app.create.existingFolder") }}
             <div class="path-input">
               <input
+                ref="pathInput"
                 v-model="path"
                 name="project-folder"
                 required
+                :aria-invalid="mode === 'open' && issue === 'pathRequired'"
+                :aria-describedby="
+                  mode === 'open' && issue === 'pathRequired'
+                    ? 'launcher-form-error'
+                    : undefined
+                "
                 autocomplete="off"
+                @input="clearIssue"
               /><button
                 v-if="native"
                 type="button"
@@ -344,7 +381,12 @@ function submit() {
               </button></div
           ></label>
         </template>
-        <p v-if="issue" class="inline-error" role="alert">
+        <p
+          v-if="issue"
+          id="launcher-form-error"
+          class="inline-error"
+          role="alert"
+        >
           {{ t(`app.create.${issue}`) }}
         </p>
         <button class="primary full" type="submit" :disabled="busy">

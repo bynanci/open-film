@@ -70,6 +70,7 @@ import {
   type ExportCompatibilityReport,
 } from "./api";
 import Icon from "./components/Icon.vue";
+import GardenStones from "./components/GardenStones.vue";
 import AssetCard from "./components/AssetCard.vue";
 import TimelineEditor from "./components/TimelineEditor.vue";
 import RelinkMedia from "./components/RelinkMedia.vue";
@@ -77,6 +78,7 @@ import SourceDetails from "./components/SourceDetails.vue";
 import AnalysisJobActions from "./components/AnalysisJobActions.vue";
 import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
 import { nativeBenchmark } from "./nativeBenchmark";
+import { startGardenLighting } from "./garden-lighting";
 import {
   preferences,
   getLastWorkspaceForProject,
@@ -150,7 +152,17 @@ watch([() => project.value?.id, projectGeneration], () => {
   workspaceCommandsOpen.value = false;
 });
 const workspaceHeader = ref<HTMLElement | null>(null);
+const workspaceMain = ref<HTMLElement | null>(null);
 const workspaceHeaderHeight = ref(64);
+async function focusWorkspaceMain(importReady = false) {
+  await nextTick();
+  const importPanel = importReady
+    ? workspaceMain.value?.querySelector<HTMLElement>(
+        '[data-focus-target="import-panel"]',
+      )
+    : null;
+  (importPanel ?? workspaceMain.value)?.focus({ preventScroll: true });
+}
 let headerObserver: ResizeObserver | undefined;
 watch(workspaceHeader, (element) => {
   headerObserver?.disconnect();
@@ -833,6 +845,7 @@ if (native)
     { flush: "sync" },
   );
 let poll: ReturnType<typeof setInterval> | undefined;
+let stopGardenLighting: (() => void) | undefined;
 let polling = false;
 let lastJobSignature = "";
 let jobsGeneration = 0;
@@ -1256,18 +1269,20 @@ async function resetProjectView() {
 }
 async function createFilm(value: FilmCreation) {
   if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
-  await run("creatingProject", async () => {
+  const created = await run("creatingProject", async () => {
     await api.createProject(value);
     await resetProjectView();
     importOpen.value = true;
   });
+  if (created) await focusWorkspaceMain(true);
 }
 async function openProject(path: string) {
   if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
-  await run("openingProject", async () => {
+  const opened = await run("openingProject", async () => {
     await post("/project/open", { path });
     await resetProjectView();
   });
+  if (opened) await focusWorkspaceMain();
 }
 async function beginImport(folder: string) {
   if (relinkBusy.value || !folder.trim()) return;
@@ -2823,6 +2838,7 @@ function protectDrafts(event: BeforeUnloadEvent) {
   }
 }
 onMounted(async () => {
+  stopGardenLighting = startGardenLighting();
   window.addEventListener("beforeunload", protectDrafts);
   await boot();
   await restoreNativeDrafts();
@@ -2833,6 +2849,8 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeyboard);
 });
 onUnmounted(() => {
+  stopGardenLighting?.();
+  stopGardenLighting = undefined;
   nativeDisposed = true;
   nativeBootGeneration++;
   retryNativeBootReady = undefined;
@@ -3076,11 +3094,8 @@ onUnmounted(() => {
       class="workspace-content"
       :class="`workspace-${tab}`"
     >
-      <div
-        class="project-heading"
-        :class="{ 'project-heading-compact': tab === 'edit' }"
-      >
-        <div v-if="tab !== 'edit'">
+      <div v-if="tab !== 'edit'" class="project-heading">
+        <div>
           <span class="eyebrow">{{ t(`app.navigation.${tab}`) }}</span>
           <h1>
             {{
@@ -3569,9 +3584,7 @@ onUnmounted(() => {
                   />
                 </section>
                 <div v-else class="empty-state library-empty">
-                  <span class="empty-symbol"
-                    ><Icon name="film" :size="30"
-                  /></span>
+                  <GardenStones class="empty-state-garden" />
                   <h2>
                     {{
                       libraryFilter === "missing"
@@ -3881,9 +3894,7 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <div v-if="!analyzed" class="empty-state">
-                <span class="empty-symbol"
-                  ><Icon name="grid" :size="30"
-                /></span>
+                <GardenStones class="empty-state-garden" />
                 <h2>
                   {{
                     libraryView === "events"
@@ -4250,7 +4261,7 @@ onUnmounted(() => {
           v-if="!project.stories.length && !storyCreateOpen"
           class="empty-state story-empty"
         >
-          <span class="empty-symbol"><Icon name="film" :size="30" /></span>
+          <GardenStones class="empty-state-garden" />
           <h2>{{ t("app.story.emptyTitle") }}</h2>
           <p>{{ t("app.story.emptyHint") }}</p>
           <button class="primary" @click="openStoryCreate">
@@ -4769,7 +4780,7 @@ onUnmounted(() => {
         class="editing-workflow"
       >
         <div v-if="!activeComposition" class="empty-state">
-          <span class="empty-symbol"><Icon name="film" :size="30" /></span>
+          <GardenStones class="empty-state-garden" />
           <h2>{{ t("app.composition.emptyTitle") }}</h2>
           <p>{{ t("app.composition.emptyHint") }}</p>
           <button class="primary" @click="changeTab('story')">

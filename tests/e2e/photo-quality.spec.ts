@@ -672,6 +672,7 @@ test("sound preview reloads restored trim and speed on Undo and Redo", async ({
   page,
   request,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await createFilm(request, "audio-rate");
   const before = await editor(request);
   const edited = await request.post(
@@ -695,8 +696,26 @@ test("sound preview reloads restored trim and speed on Undo and Redo", async ({
   expect(edited.ok()).toBe(true);
   await openEditor(page);
   await page.getByRole("button", { name: "Sound", exact: true }).click();
-  await page.locator(".editor-soundtrack-list button").first().click();
+  const soundtrackItem = page.locator(".editor-soundtrack-list button").first();
+  await soundtrackItem.click();
   const player = page.locator(".editor-soundtrack-panel audio");
+  await expect(soundtrackItem).toHaveCSS("min-height", "64px");
+  await expect(soundtrackItem).toHaveCSS("border-left-width", "0px");
+  const soundStart = page
+    .locator(".editor-soundtrack-panel")
+    .locator("fieldset .editor-field input[type=number]")
+    .first();
+  await expect(soundStart).toHaveCSS("text-align", "end");
+  await expect(soundStart).toHaveCSS("min-height", "44px");
+  await expect(soundStart).toHaveCSS("border-left-width", "0px");
+  await expect(page.locator(".editor-inspector-tabs")).toHaveCSS(
+    "display",
+    "grid",
+  );
+  await page.screenshot({
+    path: test.info().outputPath("audio-inspector-1440.png"),
+    fullPage: true,
+  });
   await expect
     .poll(() =>
       player.evaluate((audio) => (audio as HTMLAudioElement).readyState),

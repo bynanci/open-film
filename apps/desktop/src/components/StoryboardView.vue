@@ -6,6 +6,7 @@ import { beatTimelineDuration, durationStatus } from "../duration";
 import { formatDuration as duration, formatNumber } from "../i18n";
 import { sourceUrl, thumbnailUrl, type SourceStatus } from "../api";
 import Icon from "./Icon.vue";
+import GardenStones from "./GardenStones.vue";
 
 const props = defineProps<{
   story: Story;
@@ -153,7 +154,7 @@ watch(
       }}</span>
     </header>
     <div v-if="!story.beats.length" class="empty-state storyboard-empty">
-      <span class="empty-symbol"><Icon name="film" :size="30" /></span>
+      <GardenStones class="empty-state-garden" />
       <h3>{{ t("app.storyGraph.storyboard.empty") }}</h3>
     </div>
     <div
@@ -582,7 +583,7 @@ watch(
 }
 .asset-preview-item {
   display: flex;
-  flex: 0 0 128px;
+  flex: 0 0 144px;
   min-width: 0;
   flex-direction: column;
   gap: var(--of-space-1);
@@ -593,18 +594,19 @@ watch(
   justify-content: center;
   position: relative;
   width: 100%;
-  height: 92px;
+  aspect-ratio: 1;
+  height: auto;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-md);
+  border: 0;
+  border-radius: var(--of-radius-media);
   background: var(--of-player);
   color: var(--of-on-media);
   cursor: pointer;
 }
 .thumbnail-wrapper:hover:not(:disabled),
 .thumbnail-wrapper.playing {
-  border-color: var(--of-accent);
+  box-shadow: inset 0 0 0 2px var(--of-accent);
 }
 .thumbnail-wrapper:focus-visible {
   outline: 2px solid var(--of-focus);
@@ -643,6 +645,8 @@ watch(
   background: var(--of-media-scrim);
 }
 .asset-name {
+  font-family: var(--of-font-media);
+  font-weight: 600;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

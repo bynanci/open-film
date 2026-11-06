@@ -155,6 +155,17 @@ async function screenshot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
+async function gridRatio(page: Page, selector: string, majorIndex: number) {
+  const columns = await page.locator(selector).evaluate((element) =>
+    getComputedStyle(element)
+      .gridTemplateColumns.split(" ")
+      .map((value) => Number.parseFloat(value)),
+  );
+  const ratio = columns[majorIndex]! / columns[1 - majorIndex]!;
+  expect(ratio, `${selector} editorial split`).toBeGreaterThan(1.55);
+  expect(ratio, `${selector} editorial split`).toBeLessThan(1.68);
+}
+
 for (const locale of locales) {
   test(`${locale} core screens remain readable at desktop sizes`, async ({
     page,
@@ -167,10 +178,7 @@ for (const locale of locales) {
     await page.addInitScript(
       ({ locale }) => {
         localStorage.setItem("openfilm.uiLocale", locale);
-        localStorage.setItem(
-          "openfilm.preferences.v1",
-          JSON.stringify({ theme: "dark" }),
-        );
+        localStorage.removeItem("openfilm.preferences.v1");
       },
       { locale },
     );
@@ -246,11 +254,81 @@ for (const locale of locales) {
         await expect(page.locator(".beat-list")).toContainText(authoredTitle);
       for (const size of sizes) {
         await page.setViewportSize(size);
+        if (size.width === 1440 && workspace === "story") {
+          const indexWidth = await page
+            .locator(".beat-list")
+            .evaluate((element) => element.getBoundingClientRect().width);
+          expect(indexWidth).toBeGreaterThanOrEqual(224);
+          expect(indexWidth).toBeLessThanOrEqual(288);
+        }
+        if (size.width === 1440 && workspace === "edit") {
+          await page
+            .locator('button[aria-controls="timeline-inspector"]')
+            .click();
+          await expect
+            .poll(() =>
+              page
+                .locator(".editor-workspace")
+                .evaluate((element) =>
+                  element.classList.contains("editor-inspector-collapsed"),
+                ),
+            )
+            .toBe(false);
+          await expect
+            .poll(() =>
+              page.locator(".editor-workspace").evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                const player = element
+                  .querySelector(".editor-player-region")!
+                  .getBoundingClientRect();
+                const inspector = element
+                  .querySelector(".editor-inspector")!
+                  .getBoundingClientRect();
+                const rail = element
+                  .querySelector(".editor-story-rail")!
+                  .getBoundingClientRect();
+                return (
+                  rail.width >= bounds.width - 2 &&
+                  rail.top >= player.bottom - 1 &&
+                  rail.top >= inspector.bottom - 1 &&
+                  inspector.width >= 256 &&
+                  inspector.width <= 336 &&
+                  player.width > inspector.width
+                );
+              }),
+            )
+            .toBe(true);
+          await screenshot(page, info, `${locale}-edit-inspector`);
+          await page
+            .locator('button[aria-controls="timeline-inspector"]')
+            .click();
+        }
+        if (size.width === 1440 && workspace === "export")
+          await gridRatio(
+            page,
+            ".workspace-export .output-workspace-export",
+            0,
+          );
         if (workspace === "export") {
           await page.evaluate(() => window.scrollTo(0, 0));
           await expect(
             page.locator(".export-destination > .primary"),
           ).toBeInViewport({ ratio: 1 });
+        }
+        if (workspace === "edit" && locale === "en-US") {
+          await expect
+            .poll(() =>
+              page.evaluate(() => {
+                const shortcuts = document
+                  .querySelector(".editor-shortcuts")!
+                  .getBoundingClientRect();
+                const dock = document
+                  .querySelector(".pipeline-status-bar")!
+                  .getBoundingClientRect();
+                return shortcuts.bottom <= dock.top + 1;
+              }),
+            )
+            .toBe(true);
         }
         await screenshot(page, info, `${locale}-${workspace}`);
       }

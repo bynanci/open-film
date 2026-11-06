@@ -125,10 +125,16 @@ function removeActiveProfile() {
 <style scoped>
 .shortcut-profiles-panel {
   display: grid;
-  gap: 10px;
+  gap: var(--of-space-3);
   padding: 16px;
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
+  border: 0;
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-2);
+  box-shadow: var(--of-shadow-raised);
+  transition: box-shadow var(--of-motion-normal) var(--of-motion-ease);
+}
+.shortcut-profiles-panel:focus-within {
+  box-shadow: var(--of-shadow-hover);
 }
 
 .shortcut-profiles-panel h3,
@@ -139,7 +145,7 @@ function removeActiveProfile() {
 .shortcut-profile-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--of-space-2);
 }
 
 .shortcut-profile-status[role="alert"] {

@@ -2049,6 +2049,8 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="import-panel inline-form"
+    data-focus-target="import-panel"
+    tabindex="-1"
     :class="{ 'is-expert': expert }"
     :aria-label="t('app.import.label')"
   >

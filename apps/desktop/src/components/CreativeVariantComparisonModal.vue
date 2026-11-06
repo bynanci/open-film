@@ -782,13 +782,14 @@ onUnmounted(() => {
   width: 90vw;
   max-width: 1240px;
   max-height: 90vh;
-  background: var(--color-bg-surface, #1e1e24);
-  color: var(--color-text, #ffffff);
-  border-radius: 8px;
+  background: var(--of-surface-1);
+  color: var(--of-text-primary);
+  border-radius: var(--of-radius-dialog);
+  border: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--of-shadow-dialog);
 }
 
 .variants-modal-header {
@@ -796,7 +797,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  border-bottom: 1px solid var(--color-border, #333);
+  border-bottom: 0;
+  background: var(--of-surface-2);
 }
 
 .header-title-row {

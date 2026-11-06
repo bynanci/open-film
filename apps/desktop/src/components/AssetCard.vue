@@ -87,7 +87,18 @@ watch(
                 : t("media.card.noPreview")
         }}</span>
       </div>
-      <span class="asset-type">{{ t(`media.source.${kind}`) }}</span>
+      <span class="asset-type"
+        ><Icon
+          :name="
+            asset.mediaType === 'video'
+              ? 'play'
+              : asset.mediaType === 'audio'
+                ? 'volume'
+                : 'image'
+          "
+          :size="12"
+        />{{ t(`media.source.${kind}`) }}</span
+      >
       <span v-if="asset.duration !== undefined" class="asset-duration">{{
         formatDuration(asset.duration)
       }}</span>
@@ -121,9 +132,6 @@ watch(
         ></span
       >
     </button>
-    <div class="asset-caption">
-      <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
-    </div>
     <div v-if="!choice" class="asset-actions">
       <button
         :class="{ active: asset.state.favorite }"
@@ -136,7 +144,7 @@ watch(
         :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'favorite')"
       >
-        <Icon name="heart" :size="15" />
+        <Icon name="heart" :size="21" />
       </button>
       <button
         :class="{ active: asset.state.locked }"
@@ -149,7 +157,7 @@ watch(
         :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'locked')"
       >
-        <Icon name="lock" :size="15" />
+        <Icon name="lock" :size="21" />
       </button>
       <button
         :class="{ active: asset.state.rejected }"
@@ -162,11 +170,14 @@ watch(
         :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'rejected')"
       >
-        <Icon name="reject" :size="15" />
+        <Icon name="reject" :size="21" />
       </button>
       <span v-if="asset.rating" class="asset-rating"
         ><Icon name="star" :size="11" /> {{ asset.rating }}</span
       >
+    </div>
+    <div class="asset-caption">
+      <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
     </div>
   </article>
 </template>

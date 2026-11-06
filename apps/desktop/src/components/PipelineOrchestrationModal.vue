@@ -572,15 +572,16 @@ onUnmounted(() => {
 }
 
 .pipeline-modal-card {
-  background: var(--color-bg-panel, #1e1e24);
-  color: var(--color-text, #f0f0f5);
+  background: var(--of-surface-1);
+  color: var(--of-text-primary);
   width: 100%;
   max-width: 960px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.4);
+  border: 0;
+  border-radius: var(--of-radius-dialog);
+  box-shadow: var(--of-shadow-dialog);
   overflow: hidden;
 }
 
@@ -589,7 +590,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border, #33333d);
+  border-bottom: 0;
+  background: var(--of-surface-2);
 }
 
 .pipeline-modal-title {

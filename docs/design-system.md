@@ -1,14 +1,19 @@
-# Editorial media workspace
+# Garden Stone editorial media workspace
 
-OpenFilm uses quiet surfaces and media as the primary content. Story beats and
-duration provide hierarchy. The design is desktop-first and favors readable,
-recoverable actions over dense professional editing controls.
+OpenFilm uses a restrained Japanese garden vocabulary: warm stone surfaces,
+still-water neutrals, moss accents and a path of stepping stones through the
+workflow. Media remains primary; Story beats and duration provide hierarchy.
+The design is desktop-first and favors readable, recoverable actions over dense
+professional editing controls. Shapes stay subtle so the interface remains a
+film workspace rather than a decorative garden illustration.
 
 ## Tokens
 
-`apps/desktop/src/tokens.css` is the source of truth. The default is dark; light and
-system themes use the same semantic roles. Existing component variable names are
-aliases so incremental changes share one palette.
+`apps/desktop/src/tokens.css` is the source of truth. New users start with the
+warm-stone light theme. Existing explicit dark, light and system preferences are
+preserved. System follows the OS theme; both palettes use the same semantic roles.
+Existing component variable names are aliases so incremental changes share one
+palette.
 
 | Role                    | Tokens                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------- |
@@ -19,13 +24,16 @@ aliases so incremental changes share one palette.
 | Status                  | `--of-success`, `--of-warning`, `--of-danger` and corresponding soft surfaces   |
 | Media overlays          | `--of-player`, `--of-on-media`, `--of-on-media-muted`, `--of-media-scrim`       |
 | Geometry                | `--of-space-*`, `--of-radius-sm/md/lg/dialog/round`                             |
+| Elevation and light     | `--of-shadow-soft/raised/hover/floating/dialog/contact`, `--of-shadow-tint`     |
 | Typography              | `--of-font-body/mono/caption/small/base/title`, `--of-line-body/heading`        |
 | Motion and layers       | `--of-motion-fast/normal/ease`, `--of-z-media/sticky/notice/dialog`             |
 
-The Quiet Studio revision uses carbon `#101216`, with cool neutral text and a blue
-accent (`#b6c8ff` in dark and `#3454c5` in light). The light workspace uses pearl
-`#f5f6f8` with white editing surfaces. Decorative borders are quiet hairlines;
-text fields and native selects use the separate `--of-border-control` role.
+The Garden Stone light palette uses warm limestone `#f2efe8`, paper `#fbf9f3`,
+sand `#e9e5da`, ink `#272a24` and a moss accent `#3d6348`. Dark mode keeps a
+quiet charcoal-green workspace with a light moss accent. Stone, sand, moss and
+water colors are also available for restrained decorative details. Controls use
+soft surface fills and shape instead of permanent frames; a strong focus ring
+marks the active keyboard target.
 Palette tests check actual text/surface pairs in both themes; core text targets
 WCAG AA. Focus and control boundaries use stronger contrast than decorative
 hairlines. Media players remain dark in either theme and use dedicated overlay
@@ -38,17 +46,53 @@ disables the remaining transitions.
 
 ## Type and spacing
 
-Use the local system stack, including Traditional Chinese and Japanese fallbacks.
-No downloadable web fonts are required. Body line height is 1.6; headings use
-1.25. The fixed rem scale renders captions at 12px, body at 14px, workspace headings
-at 28px and the Welcome heading at 32px with the default root size. Product headings
-do not grow with window width. Monospace is reserved for timecodes and technical
-paths. Selection, text carets and native scrollbars use the same semantic palette.
+Use a local Mincho-capable system stack, including Traditional Chinese and
+Japanese fallbacks. No downloadable web fonts are required. Body line height is
+1.65; headings use 1.35 to preserve CJK legibility. The fixed rem scale renders
+captions at 13px, small labels at 14px, body at 15px, workspace headings at 28px
+and the Welcome heading at 36px with the default root size. Product headings do not grow with
+window width. Monospace is reserved for timecodes and technical paths. Selection,
+text carets and native scrollbars use the same semantic palette.
 
 The spacing scale is based on 4px increments. Group related controls through
 spacing and surfaces rather than a border around every item. Long story titles
 wrap; durations and small state indicators do not shrink away. Paths show useful
 filenames/trailing context with the complete value available as a tooltip or detail.
+
+### Proportion and alignment
+
+The Welcome and desktop Export compositions use a 1.618:1 visual split, with
+preview taking the larger Export column. Tool layouts use bounded columns:
+Story's index stays between 224px and 288px; the Edit inspector stays near
+256–320px rather than growing with the window. Preview and Inspector occupy
+the upper row, while the Story timeline spans the full lower row. Library's
+inspector similarly has a bounded width so thumbnails retain the available space.
+The navigation path uses a 168px desktop rail and a compact rail at narrower
+widths. Titles, form controls and action groups share edges; durations use tabular
+numerals. These are application layout choices, not traditional garden rules.
+
+The layout uses quiet surfaces and spacing instead of boxes around each region.
+Navigation and selected states use moss-tinted surfaces without decorative
+outlines. Raised surfaces use a very soft shadow only where a panel needs to
+read independently. Form controls retain a visible boundary and every keyboard
+focus retains a high-contrast outline; those affordances are functional.
+
+### Sun-angle shadow model
+
+Raised surfaces share one locally calculated sun direction. OpenFilm approximates
+the seasonal sun arc at a 35° north reference latitude from the system's local
+date and wall clock. It derives azimuth and elevation, projects the cast shadow
+away from the light, and varies offset, softness and intensity by surface height.
+Low morning and evening light produces a longer, softer cast; midday light keeps
+cards close to the surface. In darkness the system returns to a short, quiet
+ambient shadow. A faint light-side edge keeps dark-theme surfaces legible.
+
+Lighting refreshes every 15 minutes and when the app returns to the foreground.
+It makes no location request and sends no data outside the device. Because no
+geolocation is requested, this is a Garden Stone lighting approximation rather
+than a claim of exact local astronomy. Shadow changes use the shared motion token
+and animate smoothly. Reduced-motion preferences set the shared transition
+duration to zero; lighting values still refresh without animated interpolation.
 
 | Context               | Workspace gutter | Panel inset | Major section gap |
 | --------------------- | ---------------- | ----------- | ----------------- |
@@ -58,20 +102,21 @@ filenames/trailing context with the complete value available as a tooltip or det
 
 These map to `--of-workspace-gutter`, `--of-panel-inset` and
 `--of-section-gap`. Related controls use an 8px gap and groups use 12px;
-multiline form fields retain 16px separation. A selected surface uses the blue
-fill/label or a single selected border. Neutral cards use surface separation,
-with fewer nested frames and no double selection outline. The original film
-logo and user-authored media/scene colors are independent of the workspace tint.
+multiline form fields retain 16px separation. Medium and large radii use restrained unequal corners with broad, flat edges, while touch targets and hit areas stay
+rectangular and predictable. A selected surface uses a moss fill and label rather
+than a decorative frame. Neutral cards use surface separation, with fewer nested
+frames and no double selection outline. The original film logo and user-authored
+media/scene colors are independent of the workspace tint.
 
 ## Existing reusable primitives
 
-### Quiet Studio component geometry
+### Garden Stone component geometry
 
-Controls share the 10px medium radius, content panels use the 16px large radius,
-and Settings/command dialogs use the 20px dialog radius. Segmented views use a
-shared inset surface and a raised selected segment; media tiles favor their
-thumbnail rather than an extra framed card. Use the small shared shadow only
-where an independently interactive surface benefits from elevation.
+Controls and workspace surfaces use restrained asymmetric corners and flat
+edges, without oval or capsule silhouettes. Segmented views float on the surface with a moss-filled selected segment;
+media tiles favor their thumbnail rather than an extra framed card. Use the small
+shared shadow to separate interactive stepping-stone cards without outlining
+them.
 
 The top bar groups project identity, preferences and task actions. The project
 switch is an accessible named icon button; the local connection indicator retains
@@ -104,13 +149,25 @@ See [workspace modes](workspace-modes.md) for behavior and acceptance evidence.
   Hover and active states change surface; selected state has shape or indicator
   as well as color. Disabled and loading controls communicate unavailable actions.
 - **Input:** visible label, inherited font, useful focus outline and adjacent
-  validation. Duration and film-language fields explain their scope.
+  validation. Text begins at the reading edge; numeric values and time use
+  right alignment with tabular numerals. Filled, softly rounded surfaces replace
+  permanent outlines, while keyboard focus keeps a high-contrast ring. Duration
+  and film-language fields explain their scope. Editing controls keep a 44px
+  minimum hit area; range and choice inputs retain their compact native shape.
+- **Select:** use the shared token-colored caret and reserved end padding so the
+  current value and open affordance never collide. Filled surfaces distinguish
+  controls from prose; keyboard focus supplies the stronger boundary.
 - **Dialog:** named semantic dialog, initial focus, keyboard containment where
   modal, Escape handling and return focus. Destructive draft actions require an
   explicit decision; routine edits do not.
 - **Media card:** thumbnail, duration, selection/favorite/lock/offline state.
-  Actions remain keyboard-accessible even when visually quiet. Technical metadata
-  belongs in the inspector.
+  Square, edge-to-edge previews use a regular 16px media radius, distinct from
+  the garden-inspired workspace surfaces. A 190px responsive tile floor and 20px
+  grid gutters keep thumbnails large enough to scan. A compact, always-visible
+  action row sits before the two-line filename, using system sans-serif type.
+  Favorite, lock, offline and duration indicators remain explicit. Storyboard
+  strips and compact source previews share the media geometry; timeline clips
+  keep their duration-oriented width. Technical metadata belongs in the inspector.
 - **Story beat:** flexible title/intent, fixed-readable duration, selected count
   and actual timing when composed. Selected and suggested memories are separate.
 - **Timeline clip:** cached lazy thumbnail, stable selected/locked/missing states,
@@ -119,9 +176,15 @@ See [workspace modes](workspace-modes.md) for behavior and acceptance evidence.
   vertically and clip lanes scroll horizontally. Its inspector scrolls separately;
   arrow selection reveals a clip inside those regions without moving the page.
 - **Inspector:** contextual controls for photo, video or audio, collapsible at
-  smaller desktop widths. Unsupported controls are omitted.
+  smaller desktop widths. Its six sections use two columns of borderless selector cards, keeping CJK
+  labels readable within the bounded Inspector width. Soundtrack choices read as rows, and
+  mute/solo/lock controls use the same semantic status colors as the rest of the
+  workspace. Unsupported controls are omitted.
 - **Empty state:** states the next meaningful action, with one direct action to
-  add media, build a story, create a cut or export.
+  add media, build a story, create a cut or export. The local `GardenStones.vue`
+  SVG uses angular, uneven stepping stones following one continuous route on
+  welcome and empty surfaces. Keep it out of dense browsing and editing regions so user
+  media remains the strongest image. No remote artwork or fonts are loaded.
 - **Status:** compact Activity for jobs; inline recovery for validation, missing
   media and save failure. Technical details are progressively disclosed.
 
@@ -143,8 +206,10 @@ removes nonessential transitions. Layouts support 1024px and larger windows, wit
 explicit QA at 1280×720, 1440×900 and 1920×1080.
 
 An open project uses a fixed workspace rail for Library, Story, Edit, Export and
-Versions. The workflow steps remain available below it as guided shortcuts; the
-rail narrows to labeled-by-accessibility icon controls at compact desktop widths.
+Versions. Workspace navigation and workflow steps use filled, borderless cards
+as a path of stepping stones; moss, success and attention colors distinguish
+their states. The rail narrows to labeled-by-accessibility icon controls at
+compact desktop widths.
 Library filters form a horizontal browsing strip so they do not compete with the
 global workspace navigation. The top bar keeps project identity and project
 switching in a consistent location. The last workspace is stored in local UI
@@ -194,3 +259,11 @@ overflow, readable controls and missing keys. Accessibility checks combine token
 contrast tests, browser keyboard assertions and axe checks of rendered core
 screens. Screenshots support human inspection; passing automated checks is not a
 claim that every assistive technology or native platform has been certified.
+
+### Tobi-ishi layout interpretation
+
+See [stepping-stone rationale](garden-path-design.md) for movement,
+spacing, stopping points and the distinction between traditional principles
+and OpenFilm layout choices.
+
+See [editing layout rationale](layout-refinement.md) for pane allocation and reference access limitations.

@@ -83,7 +83,7 @@ export const preferences = reactive({
     : "standard") as WorkspaceMode,
   theme: (["dark", "light", "system"].includes(stored.theme ?? "")
     ? stored.theme
-    : "dark") as ThemePreference,
+    : "light") as ThemePreference,
   get defaultFilmLocale(): SupportedLocale {
     return (
       defaultFilmLocale.value ??

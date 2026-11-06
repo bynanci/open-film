@@ -2002,7 +2002,8 @@ onUnmounted(() => {
   right: 0;
   height: min(72dvh, 680px);
   box-shadow: var(--of-shadow-dialog);
-  border-top: 1px solid var(--color-border, #33333d);
+  border: 0;
+  border-radius: var(--of-radius-dialog) var(--of-radius-dialog) 0 0;
 }
 
 .pipeline-workbench-container.is-modal {
@@ -2020,7 +2021,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--of-space-4) var(--of-panel-inset);
-  border-bottom: 1px solid var(--color-border, #33333d);
+  border-bottom: 0;
   flex-wrap: wrap;
   gap: var(--of-group-gap);
 }
@@ -2618,16 +2619,18 @@ onUnmounted(() => {
 
 .mini-asset-thumbnails {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
   margin-top: 4px;
 }
 
 .mini-thumb {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   object-fit: cover;
-  border-radius: var(--of-radius-sm);
-  border: 1px solid #444;
+  border-radius: 12px;
+  border: 0;
 }
 
 .audio-audition-card,

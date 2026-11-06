@@ -393,8 +393,6 @@ onUnmounted(() => {
       </button>
     </div>
     <section v-if="goal === 'watch'" class="export-destination">
-      <h3>{{ t("app.export.mp4Title") }}</h3>
-      <p>{{ t("app.export.mp4Hint") }}</p>
       <button
         class="primary export-primary-action"
         data-testid="export-profile-mp4"
@@ -405,6 +403,8 @@ onUnmounted(() => {
       >
         <Icon name="download" />{{ t("app.export.saveMp4") }}
       </button>
+      <h3>{{ t("app.export.mp4Title") }}</h3>
+      <p>{{ t("app.export.mp4Hint") }}</p>
       <section
         class="export-quality-options"
         :aria-label="t('exportQuality.heading')"

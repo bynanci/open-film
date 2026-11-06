@@ -297,20 +297,19 @@ test("drags graph layout and creates a typed story connection through the expert
   await page
     .getByRole("button", { name: "Fit to content", exact: true })
     .click();
+  // Reveal the full canvas before measuring: viewport-edge clamping can land
+  // on the fixed production toolbar instead of the intended graph node.
+  await page.locator(".graph-main-canvas").evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "nearest" });
+  });
   const sourceBox = await sourceHandle.boundingBox();
   const targetBox = await targetNode.boundingBox();
   expect(sourceBox).not.toBeNull();
   expect(targetBox).not.toBeNull();
   const viewport = page.viewportSize()!;
   const cancelledTargetPoint = {
-    x: Math.min(
-      targetBox!.x + Math.min(8, targetBox!.width / 2),
-      viewport.width - 2,
-    ),
-    y: Math.min(
-      targetBox!.y + Math.min(8, targetBox!.height / 2),
-      viewport.height - 2,
-    ),
+    x: Math.min(targetBox!.x + targetBox!.width / 2, viewport.width - 2),
+    y: Math.min(targetBox!.y + targetBox!.height / 2, viewport.height - 2),
   };
   const projectBeforeCancel = (
     await (await request.get(`${api}/project`)).json()
@@ -363,14 +362,22 @@ test("drags graph layout and creates a typed story connection through the expert
   expect(actualTargetBox).not.toBeNull();
   const actualTargetPoint = {
     x: Math.min(
-      actualTargetBox!.x + Math.min(8, actualTargetBox!.width / 2),
+      actualTargetBox!.x + actualTargetBox!.width / 2,
       viewport.width - 2,
     ),
     y: Math.min(
-      actualTargetBox!.y + Math.min(8, actualTargetBox!.height / 2),
+      actualTargetBox!.y + actualTargetBox!.height / 2,
       viewport.height - 2,
     ),
   };
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest<HTMLElement>(".graph-node")
+          ?.dataset.nodeId,
+      actualTargetPoint,
+    ),
+  ).toBe(assetNodeId);
   await page.mouse.move(actualTargetPoint.x, actualTargetPoint.y, { steps: 8 });
   await page.mouse.up();
 
@@ -416,6 +423,9 @@ test("recovers from an empty search with one action and offers a skip link", asy
     .getByRole("button", { name: "Search", exact: true })
     .click();
   await expect(page.locator(".library-empty")).toBeVisible();
+  await expect(
+    page.locator(".library-empty .empty-state-garden .garden-stone"),
+  ).toHaveCount(6);
   await page
     .locator(".library-empty")
     .getByRole("button", { name: "Clear search and filters" })
