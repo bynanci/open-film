@@ -297,11 +297,12 @@ test("eagerly recovers a pending local draft before allowing a Story navigation 
   ).toBeNull();
 });
 
-test("blocks Export and project switching while an eager recovery read is pending", async ({
-  page,
-  request,
-}) => {
-  const project = await prepareProject("Delayed recovery");
+async function startEagerRecoveryRead(
+  page: Page,
+  request: APIRequestContext,
+  name: string,
+) {
+  const project = await prepareProject(name);
   await open(request, project.path);
   const state = await readEditor(request);
   await page.addInitScript(
@@ -336,13 +337,66 @@ test("blocks Export and project switching while an eager recovery read is pendin
   page.on("request", (entry) => {
     if (entry.method() === "POST") writes.push(new URL(entry.url()).pathname);
   });
+  await page.goto("/");
+  await readStarted;
+  await libraryReady(page);
+  await expect(page.locator(".editor-save-state")).toHaveText("Opening cut…");
+  return { project, releaseRead, writes };
+}
+
+test("waits for eager recovery before exporting and saves the recovered edit", async ({
+  page,
+  request,
+}) => {
+  const { project, releaseRead, writes } = await startEagerRecoveryRead(
+    page,
+    request,
+    "Delayed export recovery",
+  );
   try {
-    await page.goto("/");
-    await readStarted;
-    await libraryReady(page);
-    await expect(page.locator(".editor-save-state")).toHaveText("Opening cut…");
     await navigate(page, "export");
     await expect(page.locator(".workspace-library")).toBeVisible();
+    expect(writes).toEqual([]);
+    expect(
+      await page.evaluate(
+        (key) => localStorage.getItem(key),
+        project.storageKey,
+      ),
+    ).not.toBeNull();
+  } finally {
+    releaseRead();
+  }
+  await expect(page.locator(".workspace-export")).toBeVisible();
+  expect(
+    (await readEditor(request)).composition.tracks[0]!.clips[0]!
+      .timelineDuration,
+  ).toBe(5);
+  expect(writes).toEqual([`/api/compositions/${compositionId}/edit`]);
+});
+
+test("waits for eager recovery before switching projects", async ({
+  page,
+  request,
+}) => {
+  const { project, releaseRead, writes } = await startEagerRecoveryRead(
+    page,
+    request,
+    "Delayed project-switch recovery",
+  );
+  let releaseClose!: () => void;
+  const closeGate = new Promise<void>((resolve) => {
+    releaseClose = resolve;
+  });
+  let signalClose!: () => void;
+  const closeStarted = new Promise<void>((resolve) => {
+    signalClose = resolve;
+  });
+  await page.route("**/api/project/close", async (route) => {
+    signalClose();
+    await closeGate;
+    await route.continue();
+  });
+  try {
     await page
       .getByRole("button", { name: "Switch project", exact: true })
       .click();
@@ -357,14 +411,23 @@ test("blocks Export and project switching while an eager recovery read is pendin
   } finally {
     releaseRead();
   }
-  await expect(page.locator(".editor-save-state")).toHaveText("Save failed");
-  await navigate(page, "export");
-  await expect(page.locator(".workspace-export")).toBeVisible();
+  try {
+    await closeStarted;
+    expect(
+      (await readEditor(request)).composition.tracks[0]!.clips[0]!
+        .timelineDuration,
+    ).toBe(5);
+    expect(writes).toEqual([
+      `/api/compositions/${compositionId}/edit`,
+      "/api/project/close",
+    ]);
+  } finally {
+    releaseClose();
+  }
+  await expect(page.getByRole("button", { name: "Create Film" })).toBeVisible();
   expect(
-    (await readEditor(request)).composition.tracks[0]!.clips[0]!
-      .timelineDuration,
-  ).toBe(5);
-  expect(writes).toEqual([`/api/compositions/${compositionId}/edit`]);
+    await page.evaluate((key) => localStorage.getItem(key), project.storageKey),
+  ).toBeNull();
 });
 
 test("switching compositions in Edit activates the new editor and preserves its recovery flush gate", async ({

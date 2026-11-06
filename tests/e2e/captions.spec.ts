@@ -451,6 +451,17 @@ test("Edit imports segment-timed captions, edits the native track, and reopens t
   await expect(text).toBeVisible();
   await text.fill("繁體字幕\n第二行");
   await text.press("Tab");
+  // The native textarea commits on change. Confirm that its durable edit has
+  // reached the application before the following timing/style edits can batch.
+  await expect
+    .poll(async () => {
+      const saved = await get<{ composition: Composition }>(
+        request,
+        `/compositions/${fixture.composition.id}/editor`,
+      );
+      return saved.composition.captionTracks?.[0]?.cues[0]?.text;
+    })
+    .toBe("繁體字幕\n第二行");
   const start = page.getByTestId("caption-start");
   await start.fill("700");
   await start.press("Tab");
