@@ -154,6 +154,76 @@ test("keeps the sidebar readable until compact icon navigation activates", async
   ).toBeLessThanOrEqual(1);
 });
 
+test("reveals secondary media actions on pointer hover and keyboard focus", async ({
+  page,
+}) => {
+  const card = page.locator(".asset-card").first();
+  const actions = card.locator(".asset-actions button");
+  await page.mouse.move(0, 0);
+  expect(
+    await page.evaluate(
+      () => matchMedia("(hover: hover) and (pointer: fine)").matches,
+    ),
+  ).toBe(true);
+  await expect
+    .poll(() =>
+      actions.nth(1).evaluate((button) => getComputedStyle(button).opacity),
+    )
+    .toBe("0");
+
+  await card.hover();
+  await expect
+    .poll(() =>
+      actions.nth(1).evaluate((button) => getComputedStyle(button).opacity),
+    )
+    .toBe("1");
+  await page.mouse.move(0, 0);
+  await actions.first().click();
+  await page.mouse.move(0, 0);
+  await expect(actions.first()).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      actions.first().evaluate((button) => getComputedStyle(button).opacity),
+    )
+    .toBe("1");
+  await card.locator(".asset-image-button").focus();
+  await expect
+    .poll(() =>
+      actions.nth(1).evaluate((button) => getComputedStyle(button).opacity),
+    )
+    .toBe("1");
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await expect
+    .poll(() => card.evaluate((node) => node.matches(":focus-within")))
+    .toBe(false);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect
+    .poll(() =>
+      actions
+        .nth(1)
+        .evaluate((button) => getComputedStyle(button).transitionProperty),
+    )
+    .toBe("none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+  expect(
+    await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches),
+  ).toBe(true);
+  await expect
+    .poll(() =>
+      actions.nth(1).evaluate((button) => getComputedStyle(button).opacity),
+    )
+    .toBe("1");
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  await cdp.detach();
+});
+
 test("navigates inspector tabs with the keyboard and restores the collapsed panel", async ({
   page,
   request,

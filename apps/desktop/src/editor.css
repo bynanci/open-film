@@ -2701,6 +2701,13 @@ button.editor-beat-heading:hover {
   accent-color: var(--of-accent);
 }
 
+.precision-snap-guidance {
+  margin: calc(var(--of-space-2) * -1) 0 var(--of-space-2) var(--of-space-8);
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  line-height: 1.4;
+}
+
 .precision-waveform {
   position: relative;
   height: 5rem;

@@ -184,6 +184,18 @@ export default {
       warnings: "書き出しの注意事項",
       warningSummary: "{count} 件の確認項目があります。",
       technical: "書き出しの技術的な詳細",
+      technicalDetails: "互換性の詳細を表示",
+      warningUserPins:
+        "移行先の編集ソフトでは OpenFilm の固定設定は適用されません。読み込み後に選択を確認してください。",
+      warningGraphicScenes:
+        "アニメーション付きグラフィックは移行先で再作成してください。MP4 では合成後の見た目を保てます。",
+      warningTrack:
+        "OTIO はタイトルとオーバーレイの OpenFilm メタデータを保持します。移行先の編集ソフトでは外観やタイミングが表示・再現されない場合があるため、手動で再作成してください。",
+      warningSpeed: "速度変更は移行先の編集ソフトで手動設定してください。",
+      warningDiptych:
+        "書き出しにはメインの写真だけが含まれます。2 枚目の写真は移行先で別レイヤーに追加してください。",
+      warningClipEdits:
+        "このクリップの一部の編集は OpenFilm の情報として保存されます。移行先で再作成してください。",
     },
     compatibility: {
       parserChecked: "ファイル形式は検証済み",

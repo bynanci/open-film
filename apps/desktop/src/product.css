@@ -971,6 +971,25 @@ label.ui-language {
 .asset-actions button:focus-visible {
   opacity: 1;
 }
+@media (hover: hover) and (pointer: fine) {
+  .asset-actions button:not(.active) {
+    opacity: 0;
+    transition: opacity var(--of-motion-fast);
+  }
+  .asset-card:is(:hover, :focus-within) .asset-actions button:not(.active) {
+    opacity: 1;
+  }
+}
+@media (any-pointer: coarse) {
+  .asset-actions button:not(.active) {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asset-actions button:not(.active) {
+    transition: none;
+  }
+}
 .asset-inspector {
   display: flex;
   min-width: 0;
@@ -2676,6 +2695,27 @@ label.ui-language {
 }
 .export-report-details > summary {
   cursor: pointer;
+  color: var(--of-text-secondary);
+}
+.export-report-warnings > li + li {
+  margin-top: var(--of-space-3);
+}
+.export-report-warning-summary,
+.export-report-warning-technical {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.export-report-warning-details {
+  margin-top: var(--of-space-1);
+}
+.export-report-warning-details > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--of-text-secondary);
+}
+.export-report-warning-technical {
+  margin-top: var(--of-space-1);
   color: var(--of-text-secondary);
 }
 .export-result,

@@ -7,6 +7,7 @@ import {
   openFilm,
   openAdvancedExports,
   openAdvancedTools,
+  uiText,
 } from "./ui-helpers.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -635,9 +636,45 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   );
   await expect(report).toContainText("Edits to recreate in Resolve");
   await report.getByText(/Technical export details/).click();
-  await expect(
-    report.getByRole("list", { name: "Export warnings", exact: true }),
-  ).toContainText("METADATA ONLY");
+  await page.locator(".ui-language select").selectOption("zh-TW");
+  const localizedReport = page.locator(".export-report");
+  const localizedWarningList = localizedReport.getByRole("list", {
+    name: uiText("zh-TW", "media.report.warnings"),
+    exact: true,
+  });
+  const localizedWarningItems = localizedWarningList.locator("li");
+  await expect(localizedWarningItems).not.toHaveCount(0);
+  for (const detail of await localizedReport
+    .locator(".export-report-warning-details")
+    .all()) {
+    await detail.locator("summary").click();
+  }
+  const warningMappings = [
+    [/^Foreign NLEs do not enforce user pins/, "warningUserPins"],
+    [/^GraphicScene animation and compositing/, "warningGraphicScenes"],
+    [/^Track .+: (titles|overlay) semantics/, "warningTrack"],
+    [/^Clip .+: native OTIO plays an unretimed cut excerpt/, "warningSpeed"],
+    [/^Clip .+: the native OTIO cut displays primary photo/, "warningDiptych"],
+    [/^Clip .+: .* are METADATA ONLY/, "warningClipEdits"],
+  ] as const;
+  let localizedCategoryCount = 0;
+  for (const item of await localizedWarningItems.all()) {
+    const technicalText = item.locator(".export-report-warning-technical");
+    if ((await technicalText.count()) === 0) continue;
+    const sourceWarning = (await technicalText.textContent()) ?? "";
+    const mapping = warningMappings.find(([source]) =>
+      source.test(sourceWarning),
+    );
+    if (!mapping) continue;
+    localizedCategoryCount++;
+    await expect(item).toContainText(
+      uiText("zh-TW", `media.report.${mapping[1]}`),
+    );
+    await expect(item.locator(".export-report-warning-details")).toHaveCount(1);
+  }
+  expect(localizedCategoryCount).toBeGreaterThan(0);
+  await expect(localizedWarningList).toContainText("METADATA ONLY");
+  await page.locator(".ui-language select").selectOption("en-US");
   const otioPath = await page.locator(".export-result code").textContent();
   const otio = JSON.parse(await readFile(otioPath!, "utf8"));
   expect(otio.OTIO_SCHEMA).toBe("Timeline.1");

@@ -42,6 +42,10 @@ export default {
       "分析音訊後即可顯示波形。現在仍可定位來源時間與調整裁切範圍。",
     audioSilent: "此來源的分析結果沒有可聽見的波峰。",
     snap: "磁吸對齊",
+    snapChecking: "正在檢查素材，完成後即可使用磁吸對齊。",
+    snapUnavailable: "檢查素材後即可使用磁吸對齊；目前仍可修剪與定位。",
+    snapCheckFailed:
+      "素材驗證失敗，請重試檢查；若檔案離線或已變更，請先恢復素材。仍可修剪與定位。",
     snapScope: "語音磁吸對齊使用目前載入的逐字稿頁面；標記與片段邊界仍可使用。",
     snapResult: "已對齊{type}：{time}",
     zoomIn: "放大",

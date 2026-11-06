@@ -103,6 +103,7 @@ const error = shallowRef<unknown>(null);
 const playbackError = ref(false);
 const loading = ref(false);
 const sourceVerified = ref(false);
+const sourceCheckFailed = ref(false);
 const discoveringJobs = ref(false);
 const pending = ref(false);
 // Source changes reset the visible generation, but an outstanding mutation
@@ -443,6 +444,7 @@ function handleError(cause: unknown, readFailed = false) {
     code === "media.missing" ||
     (readFailed && !sourceVerified.value)
   ) {
+    sourceCheckFailed.value = true;
     analysisRead++;
     loading.value = false;
     sourceVerified.value = false;
@@ -457,6 +459,7 @@ async function loadAnalysis(offset = pageOffset.value) {
   const stamp = generation;
   const read = ++analysisRead;
   const assetId = props.asset!.id;
+  sourceCheckFailed.value = false;
   loading.value = true;
   try {
     const result = await api.intelligence(
@@ -468,6 +471,7 @@ async function loadAnalysis(offset = pageOffset.value) {
     if (!current(stamp) || read !== analysisRead) return;
     data.value = result;
     sourceVerified.value = true;
+    sourceCheckFailed.value = false;
     error.value = null;
     pageOffset.value = result.transcriptOffset;
   } catch (cause) {
@@ -1329,6 +1333,7 @@ watch(
     projectActiveJobs.value = [];
     loading.value = false;
     sourceVerified.value = false;
+    sourceCheckFailed.value = false;
     data.value = null;
     snapResult.value = undefined;
     cancelDrag();
@@ -1903,6 +1908,9 @@ defineExpose({
                 v-model="snapEnabled"
                 type="checkbox"
                 :disabled="!sourceVerified"
+                :aria-describedby="
+                  !sourceVerified ? 'precision-snap-guidance' : undefined
+                "
               />{{ t("precision.snap") }}</label
             ><label
               ><input v-model="follow" type="checkbox" />{{
@@ -1914,6 +1922,22 @@ defineExpose({
               }}</label
             >
           </div>
+          <p
+            v-if="!sourceVerified"
+            id="precision-snap-guidance"
+            class="precision-snap-guidance"
+            role="status"
+          >
+            {{
+              t(
+                loading
+                  ? "precision.snapChecking"
+                  : sourceCheckFailed
+                    ? "precision.snapCheckFailed"
+                    : "precision.snapUnavailable",
+              )
+            }}
+          </p>
           <div
             ref="surface"
             class="precision-waveform"

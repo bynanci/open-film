@@ -105,3 +105,23 @@ P1 是阻擋任務或資料風險；P2 是明顯摩擦；P3 是細節精修。�
 Design review and implementation review independently identified single-line scene title truncation in Story Plan review. Titles now wrap in their available space; scene numbers and source indicators retain their own space. Cards keep the existing Tobi-ishi surfaces and spacing.
 
 Verified: long CJK scene title at 1024×720 remains fully readable without horizontal page overflow; the adopt action remains in the viewport. Existing light/dark contrast and Axe WCAG checks pass. This is expert review with synthetic fixtures, not a recruited-user study.
+
+## Tobi-ishi UI enhancement rounds 2–5
+
+### 第 2 輪：素材卡的次要操作
+
+觀察：桌面聯絡表中每張素材卡都常駐顯示最愛、鎖定與排除按鈕，縮圖數量增加時重複圖示搶走素材內容的注意力。修改：精細指標裝置只在 hover 或鍵盤 focus 時顯示未啟用動作，已啟用狀態保持可見；觸控與混合輸入裝置維持操作常駐，並尊重減少動態偏好。驗收：Playwright 驗證滑鼠 hover、鍵盤 focus、已啟用狀態、減少動態偏好，以及 CDP 觸控模擬。
+
+### 第 3 輪：Precision Snap 停用原因
+
+觀察：來源尚未驗證時 Snap 停用，但使用者需要從其他狀態猜測原因。修改：在控制項旁顯示檢查中、尚未可用或來源檢查失敗的本地化說明，並以 aria-describedby 關聯到控制項；專用失敗狀態避免 Provider／背景工作錯誤誤稱素材讀取失敗，修剪與定位仍可使用。驗收：素材變更造成驗證失敗、復原流程的 E2E 確認提示與既有編輯護欄。
+
+### 第 4 輪：Export 相容性警告
+
+觀察：OTIO 相容性警告只有英文技術原文。修改：已知的固定釘選、GraphicScene、標題軌、速度、Diptych 與一般片段編輯，先顯示繁中／英文／日文的簡明提醒；原始警告收在個別技術細節中，未知警告仍保留原文。驗收：Proposal 匯出流程切換到繁中逐項檢查 fixture 內出現的分類，包含帶冒號的片段 ID，展開後仍讀到 METADATA ONLY 的原始細節；7 項分類單元測試覆蓋所有已知類型與未知 fallback。提醒文字明確表示標題與疊加軌的 metadata 不保證目標剪輯軟體會顯示或重建。
+
+### 第 5 輪：重新挑戰邊界狀態
+
+圓桌複查發現素材卡測試需先移除焦點，避免 `:focus-within` 假陽性；減少動態偏好應停用淡入；Snap 失敗提示應與共用錯誤狀態分離；OTIO 警告中的片段 ID 可能含冒號，不能按單一冒號切分。以上均已修正。Playwright Chromium 觸控模擬無法同時呈現主要 fine pointer 與 any-pointer coarse，因此混合輸入裝置需保留 workstation 人工確認。
+
+這些結果來自設計審查與 Playwright 合成專案，不等同外部使用者研究；Export 警告目前依 exporter 英文訊息辨識類別，未知警告保留原文。實機混合觸控／滑鼠行為尚未在 workstation 驗證。

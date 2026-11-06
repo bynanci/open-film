@@ -32,6 +32,12 @@ export default {
       "Analyze audio to display its waveform. Source seeking and trim controls are already available.",
     audioSilent: "No audible peaks in this analyzed source.",
     snap: "Snap",
+    snapChecking:
+      "Checking the source. Snapping will be available when the check finishes.",
+    snapUnavailable:
+      "Snapping becomes available after this source is checked. Trim and seek still work.",
+    snapCheckFailed:
+      "The source could not be verified. Retry the check; if this file is offline or changed, restore it first. Trim and seek still work.",
     snapScope:
       "Speech snapping uses the loaded transcript page; markers and clip edges stay available.",
     snapResult: "Snapped to {type} at {time}",
