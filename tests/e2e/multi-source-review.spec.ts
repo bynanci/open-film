@@ -440,11 +440,15 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
   await expect(accept).toBeVisible();
   let release!: () => void;
   let started!: () => void;
+  let completed!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
   const intercepted = new Promise<void>((resolve) => {
     started = resolve;
+  });
+  const staleResponseCompleted = new Promise<void>((resolve) => {
+    completed = resolve;
   });
   const endpoint = `/api/analysis-runs/${encodeURIComponent(record.run.id)}/review`;
   await page.route(`**${endpoint}?*`, async (route) => {
@@ -454,6 +458,12 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
     ) {
       started();
       await held;
+      try {
+        await route.fulfill({ response });
+      } finally {
+        completed();
+      }
+      return;
     }
     await route.fulfill({ response });
   });
@@ -473,6 +483,7 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
       eventCount,
     );
     release();
+    await staleResponseCompleted;
     await expect(
       panel.locator(`.import-review-result input[value="${event.id}"]`),
     ).toBeVisible();
