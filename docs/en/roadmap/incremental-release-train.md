@@ -85,24 +85,35 @@ release into an OpenFilm desktop release or assign Storytelling milestones an
 OpenFilm version number.
 
 As checked on 2026-11-07, Storytelling `main` is
-[`551ff38920e2085e1d53a7ba777c9680678e9725`](https://github.com/bynanci/storytelling/commit/551ff38920e2085e1d53a7ba777c9680678e9725).
-PR #1, Rust M0 foundation/SDLC, is still a draft at
-[`4c5682c221b8d602ad7bbebe7a4c400c3e1ff95b`](https://github.com/bynanci/storytelling/commit/4c5682c221b8d602ad7bbebe7a4c400c3e1ff95b);
-all listed hosted checks pass, but it is not merged. PR #2, the migration map,
-is a draft at
-[`95291d31c47601181070bf89a28b1a182ddf6ed8`](https://github.com/bynanci/storytelling/commit/95291d31c47601181070bf89a28b1a182ddf6ed8)
-and targets the M0 branch from PR #1; its listed hosted checks pass, but it is
-not merged. See [PR #1](https://github.com/bynanci/storytelling/pull/1) and
-[PR #2](https://github.com/bynanci/storytelling/pull/2).
+[`610ed49673d6f554e539008b34f5fc5479b9dbc1`](https://github.com/bynanci/storytelling/commit/610ed49673d6f554e539008b34f5fc5479b9dbc1).
+The owner merged the three prerequisite deliveries:
 
-The proposed order is:
+- PR #1, Rust M0 foundation/SDLC: head
+  [`4c5682c221b8d602ad7bbebe7a4c400c3e1ff95b`](https://github.com/bynanci/storytelling/commit/4c5682c221b8d602ad7bbebe7a4c400c3e1ff95b), merge
+  [`22279814ff6b147c386186569d7f77f3a803cf8b`](https://github.com/bynanci/storytelling/commit/22279814ff6b147c386186569d7f77f3a803cf8b).
+- PR #2, OpenFilm migration map: head
+  [`95291d31c47601181070bf89a28b1a182ddf6ed8`](https://github.com/bynanci/storytelling/commit/95291d31c47601181070bf89a28b1a182ddf6ed8), merge
+  [`9fb403be811643baf948acdb6d72232d4a6207bb`](https://github.com/bynanci/storytelling/commit/9fb403be811643baf948acdb6d72232d4a6207bb).
+- PR #7, finite read-only M1-01 visual snapshot importer: head
+  [`c2fb478c278550b682efba5f898082e8bcd20e24`](https://github.com/bynanci/storytelling/commit/c2fb478c278550b682efba5f898082e8bcd20e24), merge
+  [`610ed49673d6f554e539008b34f5fc5479b9dbc1`](https://github.com/bynanci/storytelling/commit/610ed49673d6f554e539008b34f5fc5479b9dbc1).
+  Its push and PR-integration runs both passed the required quality/contracts,
+  Linux/Windows/macOS Rust, and required-gates jobs: [push run 42327081582](https://github.com/bynanci/storytelling/actions/runs/42327081582),
+  [PR run 42327143353](https://github.com/bynanci/storytelling/actions/runs/42327143353).
+  This validates only the declared visual mapping profile; it is not an OTIO
+  export, actual FilmCraft handoff, source-byte verification, or release.
 
-1. Review and merge Storytelling PR #1, then review and merge dependent PR #2.
-2. Implement M1-01 as a read-only OpenFilm import. Do not write to the OpenFilm
-   Catalog or duplicate media management.
-3. Implement M1-02 as a bounded OTIO compiler with an explicit loss report.
-4. Validate M1-03 through an actual FilmCraft import, render, save and reopen.
-5. Only then consider a Rust planner feature flag or broader agent integration.
+M1-01 is complete. M1-02 (finite OTIO compiler and explicit loss report) is the
+next implementation milestone; M1-03 still requires actual FilmCraft import,
+render, readback, save and reopen. Neither task is marked complete by M1-01 CI.
+
+The next steps are:
+
+1. Implement M1-02 as a bounded OTIO compiler with an explicit, profile-bound
+   loss report and official parser oracle.
+2. Validate M1-03 through an actual FilmCraft import, render, save and reopen
+   inside an isolated project, without changing the original project.
+3. Only then consider a Rust planner feature flag or broader agent integration.
 
 Keep StoryPlan/solver ownership explicit while the transfer is in progress.
 Before code is copied or rewritten, review Apache-2.0/MIT source provenance and

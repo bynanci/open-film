@@ -199,8 +199,12 @@ and in the long-range v1.0 readiness record.
 - [ ] Prepare and verify only the first `v0.5.0` candidate. Historical scope
       anchors are not tag targets; backport security fixes and run exact-head
       gates before drafting a release.
-- [ ] Review/merge Storytelling M0 PR #1, then dependent migration-map PR #2;
-      keep M1-01 read-only and version its SDK independently from OpenFilm.
+- [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
+      read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
+      are recorded in the [independent Storytelling release track](docs/roadmap/incremental-release-train.md).
+- [ ] Continue with Storytelling M1-02 (finite OTIO and explicit loss report),
+      then validate M1-03 against an actual isolated FilmCraft project. Keep its
+      versioning independent from OpenFilm.
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
