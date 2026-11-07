@@ -1,14 +1,26 @@
-# OpenFilm v1.0.0 readiness
+# OpenFilm stable-release readiness
 
-The delivery foundation for **v1.0.0** is being established through progressive, verified increments. Core engine milestones and verified baselines are merged into main, while remaining editing increments, workstation validation, and distribution gates are tracked under their respective owners.
+This page records the long-range v1.0 objective; it does not approve a tag.
+As of 2026-11-07, the latest public source release is v0.4.0, while root,
+Desktop, Tauri and Cargo metadata report 1.0.0. The proposed OpenFilm sequence
+begins at v0.5.0, continues through v0.8.0, and reserves v1.0.0 for native
+distribution readiness. No candidate SHA is frozen. See the
+[current release gates](../validation-release-gates.md) and
+[incremental release train](incremental-release-train.md). Main is
+[`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c).
+The 1.0.0 metadata is not release approval. Storytelling maintains a separate
+repository and release track.
 
-For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md) and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md). Status was reconciled against [`main`](https://github.com/bynanci/open-film/commit/main); dated validation records retain the results of their original runs.
+For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
+and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
+Status was reconciled against the exact main SHA above; dated validation records
+retain the results of their original runs.
 
 ## Release & Version Status
 
-- **Codebase Package Version**: `1.0.0` (declared in `package.json`).
-- **GitHub Published Release**: `v0.4.0` (latest published tag on GitHub Releases).
-- **Current Merged PRs / Feature Baseline**:
+- **Package metadata**: root, Desktop, Tauri and Cargo currently declare 1.0.0; this is build metadata, not a selected release tag.
+- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0; no candidate SHA or tag is approved yet. Storytelling maintains a separate release track.
+- **Selected merged feature baseline (through PR #99, with recent changes noted below)**:
   - PR #64: D6A managed proxy queue, eviction, rebuild, and health UI.
   - PR #69: Windows workflow recovery for issues #66–#68 (FFmpeg frame sync, atomic sync, benchmark quiescence).
   - PR #70: CI contract and media lane separation.
@@ -34,10 +46,18 @@ For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/b
   - PR #96: Cut Desk Phase 2 (professional edit semantics: Roll, Slip, Slide, Insert, Overwrite, Lift, Batch).
   - PR #97: Cut Desk Phase 3 (track controls: target, lock, mute, solo, visibility & persistence).
   - PR #98: PR 4.1 (macOS Darwin cross-process dead-owner detection & boot session verification).
-  - PR #99: Finalize v1.0.0 readiness, native distribution, and roadmap alignment.
+  - PR #99: Finalize the long-range readiness ledger and roadmap alignment.
+  - PR #120: Patch Tokio to 1.53.3; GLib unsoundness remains under review.
+  - PR #119: Merge Tobi-ishi workspace and control-panel UX; exact-head hosted checks passed, while workstation and NLE gates remain open.
+  - PR #121: Add explicit event/person coverage constraints with source-consistent asset balance.
+  - PR #126: Merge deterministic visual keyframes and bounded opacity rendering.
   - Cut Desk Phase 2/3 command persistence integration, external asset resolution, and atomic Undo/Redo regression.
   - D3B2, D4, D2A, D2B review-and-apply HTTP API routes and desktop UI workflow completion.
   - D3A2 real audio rhythm analysis producer (FFmpeg PCM onset/downbeat/phrase extraction), durable persistence, project reload recovery, and cut-point snap cut lifecycles.
+- **Current release gate audit**: See [release gates](../validation-release-gates.md)
+  for the 2026-11-07 evidence snapshot and source-only versus installer criteria.
+- **Incremental releases**: See [release train](incremental-release-train.md) for
+  proposed OpenFilm scope cut lines and the independent Storytelling M0/M1 path.
 - **Physical Workstation Acceptance**: Issue #7 remains the owner for physical hardware observations (Windows 10/popopc, external drives, calibrated displays, acoustic listening, Resolve roundtrip, 4K/GPU performance).
 
 ## Delivery owners status
@@ -85,12 +105,12 @@ For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/b
 | Video Output       | Strict byte-for-byte decoded RGB equality, bitexact colorspace, crop parity      | Subjective film look fidelity and pacing reviews                        |
 | Story Adoption     | Hash-pinned candidate proposals, immutable receipts, undo/reopen safety          | Editorial satisfaction with generated story arcs                        |
 
-## Scope, Platforms, and Known Limitations for v1.0.0
+## Long-range scope, platforms, and known limitations
 
 ### Included Platforms
 
 - **Web / Browser**: Chromium-based modern browsers with File System Access API and IndexedDB persistence.
-- **Desktop (CLI / Server / Native Shell)**: Linux (x86_64), macOS (arm64), and Windows (x86_64).
+- **Desktop (CLI / Server / Native Shell)**: intended targets are Linux (x86_64), macOS (arm64), and Windows (x86_64). This list is not installer acceptance evidence; see the platform gates.
 
 ### Key Features
 
@@ -106,7 +126,7 @@ For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/b
 ### Known Limitations
 
 - Physical workstation observations (Issue #7) await physical hardware execution (Windows 10/popopc, external drives, calibrated displays, Resolve NLE roundtrip).
-- Release distribution uses signed/hashed manual package updates with rollback (Option A); in-app background auto-update feed is deferred to post-v1.
+- Signed manual packages and rollback are the intended distribution model, but signing, candidate packages, update failure recovery and uninstall behavior are not configured or validated. In-app background updates remain deferred.
 
 ## Contributing to release readiness
 
@@ -126,6 +146,8 @@ private media and credentials do not belong in public reports. Follow the
 for the development workflow.
 
 ## Release exit conditions
+
+See the [current release gate policy](../validation-release-gates.md); the conditions below remain the long-range acceptance checklist.
 
 - The accepted included contracts above have no unresolved correctness blocker;
   task owners, architecture, validation and compatibility disclosures agree.

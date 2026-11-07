@@ -96,6 +96,8 @@ const concepts = keepExisting([
 ]);
 
 const validation = keepExisting([
+  guide("分階段發行計畫", "en/roadmap/incremental-release-train"),
+  guide("發佈門檻盤點", "en/validation-release-gates"),
   guide("穩定版驗證", "en/validation-stable-release"),
   guide("故事圖譜驗證", "en/validation-story-graph"),
   guide("故事提案驗證", "en/validation-story-plan"),
@@ -151,6 +153,8 @@ const englishAdditionalDocs = keepExisting([
   guide("MP4 compression quality", "en/export-quality"),
 ]);
 const englishValidation = keepExisting([
+  guide("Incremental release train", "en/roadmap/incremental-release-train"),
+  guide("Release gate audit", "en/validation-release-gates"),
   guide("Stable release validation", "en/validation-stable-release"),
   guide("Story Graph validation", "en/validation-story-graph"),
   guide("Story proposal validation", "en/validation-story-plan"),

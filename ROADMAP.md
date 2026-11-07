@@ -5,7 +5,9 @@ and an editable film. Development focuses on a reliable local workflow, clear
 editing decisions and portable projects.
 
 This page describes the project direction. See [TASKS.md](TASKS.md) for current
-work and [v1.0 readiness](docs/roadmap/v1-readiness.md) for release criteria.
+work, the [incremental release train](docs/roadmap/incremental-release-train.md)
+for separate product/version tracks, and [v1.0 readiness](docs/roadmap/v1-readiness.md)
+for long-range release criteria.
 Suggestions and contributions are welcome through [GitHub Issues](https://github.com/bynanci/open-film/issues)
 and the [contributing guide](CONTRIBUTING.md).
 
@@ -18,24 +20,33 @@ and the [contributing guide](CONTRIBUTING.md).
 | Native installers                                                  | In progress                     | Packaging tools exist, but distributable installers still require platform, dependency and installation verification. |
 | v1.0                                                               | Release goal                    | Published when the documented readiness criteria are met; the package version alone does not establish a release.     |
 
-The Silence scope below was checked against main
-[`d332fb3265077ca08f218f6ba9b6c65d2519eaa2`](https://github.com/bynanci/open-film/commit/d332fb3265077ca08f218f6ba9b6c65d2519eaa2)
-on 2026-11-06. Durable Jobs and Desktop Review are merged in PRs #107/#108.
-Rendered audition is merged in PR #111. Physical workstation and listening
-acceptance remain separate gates.
+The proposed OpenFilm sequence is `v0.5.0` → `v0.6.0` → `v0.7.0` → `v0.8.0`,
+with `v1.0.0` reserved for native distribution readiness. These are staged
+planning labels, not release tags or frozen candidates. Storytelling has its
+own version track. See the [release train](docs/roadmap/incremental-release-train.md)
+and [current release gate audit](docs/validation-release-gates.md).
+
+The current release status was reconciled against main
+[5f737a6c8f35dce48e213370ff27900962c9304c](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
+on 2026-11-07. Historical feature records keep their original candidate dates.
+
+Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
+is merged in PR #111. Physical workstation and listening acceptance remain
+separate gates.
 
 ## Current focus
 
 ### Bring the Tobi-ishi identity into everyday tasks
 
-The current UI candidate shares warm stone tokens and original angular surfaces,
-removes duplicate General-mode progress controls, and gives Inspector categories
-keyboard tabs with essential controls first. Script/direction disclosure and
-Import/Fit/Preview/Relink quick actions reuse existing save, review and ownership
-guards. This is a presentation and workflow refinement over the same project,
-Composition and processing services. Candidate checks and remaining gates belong
-in [TASKS.md](TASKS.md); [design rationale](docs/adr/tobiishi-surfaces.md) records
-the shared application/site boundary.
+PR #119 merged the warm stone tokens and original angular surfaces, removed
+duplicate General-mode progress controls, and added keyboard Inspector tabs with
+essential controls first. Script/direction disclosure and Import/Fit/Preview/
+Relink quick actions reuse existing save, review and ownership guards. This is
+a presentation and workflow refinement over the same project, Composition and
+processing services. Its exact-head CI passed; real workstation, display-scale
+and NLE gates remain in [TASKS.md](TASKS.md). The
+[design rationale](docs/adr/tobiishi-surfaces.md) records the shared
+application/site boundary.
 
 ### Add reviewed local media-intelligence workflows
 
@@ -81,10 +92,12 @@ rather than introduce a second timeline. See the [Cut Desk guide](docs/professio
 [precision-gesture validation](docs/validation-cut-desk-phase-1b.md) and
 [responsive-workspace validation](docs/validation-cut-desk-phase-1c.md).
 
-Cut Desk Phase 4B is progressing in separate reviewable stages: the shared
-frame-time contract merged in PR [#125](https://github.com/bynanci/open-film/pull/125)
-at `7add4762fe8174d76f43b863375ea39b73121e76`; visual keyframes are in draft PR
-[#126](https://github.com/bynanci/open-film/pull/126), awaiting exact-head checks.
+Cut Desk 4B.1 shared frame-time contract merged in PR
+[#125](https://github.com/bynanci/open-film/pull/125). 4B.2 visual keyframes
+merged in PR [#126](https://github.com/bynanci/open-film/pull/126), feature head
+`b4aba4c4bb70b8cb03edd54342f1b94cec649245`, with exact-head hosted checks
+passed; main merge is
+[`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c).
 Speed ramps remain gated on source-mapped caption/audio/rhythm consumers and an
 explicit audio policy. See the [4B contract evidence](docs/validation-cut-desk-phase-4b-time-contract.md)
 and [visual-keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
@@ -118,10 +131,11 @@ The [installer guide](docs/native-installer.md),
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding
 evidence. CI results do not replace those observations.
 
-The current native-security candidate patches Tokio to `1.53.3` for
-`RUSTSEC-2026-0386`; GLib `RUSTSEC-2024-0429`, the unmaintained proc-macro
-notice, reviewed runtime inputs and all workstation gates remain open. See the
-[candidate audit evidence](docs/validation-native-installer.md#2026-11-06-tokio-patch-candidate).
+PR [#120](https://github.com/bynanci/open-film/pull/120) merged on 2026-11-06
+and patches Tokio to 1.53.3. The current dependency report no longer lists
+RUSTSEC-2026-0386; GLib RUSTSEC-2024-0429 and the unmaintained proc-macro
+notice remain open. See the [release gate audit](docs/validation-release-gates.md)
+and [merged audit disposition](docs/validation-native-installer.md#2026-11-07-merged-disposition).
 
 ## Foundations available on main
 
