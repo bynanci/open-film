@@ -134,7 +134,10 @@ evidence. CI results do not replace those observations.
 PR [#120](https://github.com/bynanci/open-film/pull/120) merged on 2026-11-06
 and patches Tokio to 1.53.3. The current dependency report no longer lists
 RUSTSEC-2026-0386; GLib RUSTSEC-2024-0429 and the unmaintained proc-macro
-notice remain open. See the [release gate audit](docs/validation-release-gates.md)
+notice remain open. A provenance-pinned upstream GLib backport is under
+validation on branch `codex/native-glib-0429-current`; the Linux optimized
+controls and independent review have not passed, so the security gate remains
+open. See the [release gate audit](docs/validation-release-gates.md)
 and [merged audit disposition](docs/validation-native-installer.md#2026-11-07-merged-disposition).
 
 ## Foundations available on main

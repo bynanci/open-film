@@ -19,7 +19,12 @@ permissions:
   contents: read
   actions: read
 jobs:
+  security-admission:
+    uses: ./.github/workflows/native-security.yml
+    with:
+      candidate_sha: ${{ github.sha }}
   candidate:
+    needs: security-admission
     runs-on: ${{ inputs.platform }}
     timeout-minutes: 45
     env:
