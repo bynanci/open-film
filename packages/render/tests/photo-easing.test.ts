@@ -3,6 +3,23 @@ import { evaluatePhotoEasing, type PhotoBezierEasingV1 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
 import * as render from "../src/index.js";
 
+function parseFfmpegPrintSamples(text: string): number[] {
+  const sampleLine =
+    /^(?:\[Parsed_perspective_\d+\s+@\s+[^\]]+\]\s*)?(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$/u;
+  return text.split(/\r?\n/u).flatMap((line) => {
+    const match = sampleLine.exec(line.trim());
+    return match ? [Number(match[1])] : [];
+  });
+}
+
+it("parses FFmpeg perspective print values with either supported log prefix", () => {
+  expect(
+    parseFfmpegPrintSamples(
+      "0.000000\r\n[Parsed_perspective_0 @ 000001234567] 1.000000\r\nnot a sample 2.0\r\n",
+    ),
+  ).toEqual([0, 1]);
+});
+
 it("matches bounded core easing in actual FFmpeg perspective expressions including endpoint-flat and exponent-form handles", async () => {
   const points = [
     [0.25, 0.1, 0.25, 1],
@@ -47,17 +64,18 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       ],
       { timeoutMs: 15000 },
     );
-    // FFmpeg builds route print() diagnostics to different streams by host.
-    const parseSamples = (text: string) =>
-      [...text.matchAll(/^(-?[0-9]+\.[0-9]+)\s*$/gmu)].map((match) =>
-        Number(match[1]),
-      );
-    const stdoutSamples = parseSamples(stdout.toString("utf8"));
-    const stderrSamples = parseSamples(stderr);
+    // FFmpeg builds route print() diagnostics to different streams and may
+    // include the filter context prefix in platform-specific log formats.
+    const stdoutSamples = parseFfmpegPrintSamples(stdout.toString("utf8"));
+    const stderrSamples = parseFfmpegPrintSamples(stderr);
     const samples = [...stdoutSamples, ...stderrSamples];
     expect(
       samples,
-      `FFmpeg print() samples: stdout=${stdoutSamples.length}, stderr=${stderrSamples.length}`,
+      [
+        `FFmpeg print() samples: stdout=${stdoutSamples.length}, stderr=${stderrSamples.length}`,
+        `stdout tail=${JSON.stringify(stdout.toString("utf8").slice(-800))}`,
+        `stderr tail=${JSON.stringify(stderr.slice(-800))}`,
+      ].join("; "),
     ).toHaveLength(257);
     expect(samples[0]).toBe(0);
     expect(samples[256]).toBe(1);

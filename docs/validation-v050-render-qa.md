@@ -103,26 +103,40 @@ previous candidate evidence. This gate is separate from the GLib
 The first valid hosted matrix on `0e38878f3f7fe555e7b769fb197a86f2891c0aa6`
 ([run 42381329547](https://github.com/bynanci/open-film/actions/runs/42381329547))
 passed Linux and macOS. Windows decoded the same MP4 and passed its 55 other
-selected checks, but `photo-easing.test.ts` captured FFmpeg `print()` values
-only from `stderr`; this Windows build emitted them to `stdout`, producing an
-empty sample list. The regression now reads both streams without relaxing its
-257-sample, endpoint or per-frame error assertions. That matrix is a recorded
-failure, not acceptance; the changed test requires a fresh exact-head rerun.
+selected checks, but the easing test parsed only `stderr`; that run established
+the need to read both streams. The next exact-head matrix on
+`c4f302b6e0db9c513d71979050a4f8b197c46e23`
+([run 42382091334](https://github.com/bynanci/open-film/actions/runs/42382091334))
+again passed Linux/macOS and decoded Windows MP4 evidence, but its pinned Windows
+FFmpeg produced no lines matching the numeric-only parser in either captured
+stream. The report records 55/56 Windows checks passed; this is a test-output
+format failure, not evidence that the render differs. The regression now accepts
+only a bare numeric line or FFmpeg's `Parsed_perspective_N` context prefix,
+including exponent values, and reports bounded stream tails if extraction still
+fails. It retains all 257 samples, endpoint and per-frame tolerance assertions.
+The new parser fixture and actual FFmpeg regression pass locally; exact-head
+Windows rerun is still required.
+
+The same Verify run 42382091374 passed fast-contract, heavy-media, five of six
+browser shards, native-shell and docs-site. Browser shard 1 failed the caption
+safe-area persistence scenario: text/time/font writes were accepted but its
+bottom margin remained the original `0.12` instead of the requested `0.18`.
+The CI trace confirms the style command batch omitted that final margin edit.
+The same browser shard passed once in a local full-suite run, so this remains an
+unresolved ordering/reproduction issue rather than a confirmed product fix.
 
 ## Local evidence and outstanding verification
 
 The selected existing v0.5 render regression files previously passed locally as
 **7 files / 55 tests** on Debian 13 x64 with Node 24.19.0, pnpm 11.19.0 and system
-FFmpeg/FFprobe 7.1.5. The complete candidate-specific selection passed
-**8 files / 56 tests** with all four candidate-pinned Noto font files and OFL.
+FFmpeg/FFprobe 7.1.5. The complete candidate-specific selection now passes
+**8 files / 57 tests** with all four candidate-pinned Noto font files and OFL.
 It produced decoded synthetic evidence with 180 frames, nine timestamp/color
 samples, AAC decode and unchanged source hashes. Local FFmpeg/FFprobe are still
 system 7.1.5 rather than the pinned Ubuntu 6.1.1 package; this is diagnostic
 evidence, not hosted pinned admission. The pinned Linux package and Windows/macOS
 runners remain hosted-only gates.
 
-The new exact-head workflow has not yet completed for this updated PR. Record
-its actual run ID, job results and artifact identities here after CI terminates.
-Do not treat the successful main D7A matrix or the candidate's earlier Verify run
-as a substitute. No workstation verification, GLib approval, merge, tag or
-publication is claimed.
+A new exact-head Render QA and Verify run must be recorded after these changes.
+Do not treat prior candidate runs or main's D7A matrix as a substitute. No
+workstation verification, GLib approval, merge, tag or publication is claimed.

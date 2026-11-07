@@ -1364,14 +1364,18 @@ behavior or its dependency lock.
       with source hashes, frame count, PTS/RGB samples and AAC evidence.
 - [x] Require a strict exact-head, same-run, same-attempt report inventory and
       retain only bounded path-free JSON.
-- [x] Local pinned-font run: 8 files / 56 tests passed on Debian 13 with system
+- [x] Local pinned-font run: 8 files / 57 tests passed on Debian 13 with system
       FFmpeg/FFprobe 7.1.5; this does not exercise the pinned Ubuntu package.
 - [ ] Obtain a successful exact-head hosted Linux/Windows/macOS matrix and final
       evidence aggregator on the updated PR #129 head.
-- [x] Diagnose the first hosted matrix's Windows-only `photo-easing` failure:
-      FFmpeg emitted `print()` measurements on stdout while the regression read
-      stderr only. The regression now checks both streams with all 257 sample,
-      endpoint and tolerance assertions retained; exact-head rerun is pending.
+- [x] Diagnose the Windows `photo-easing` output mismatch from two exact-head
+      runs: c4's report had zero numeric-only matches in either stream. The parser
+      now accepts only bare values or FFmpeg perspective-context lines, has a
+      parser fixture and bounded failure diagnostics, and retains all 257 sample,
+      endpoint and tolerance assertions. Fresh exact-head CI is still pending.
+- [ ] Resolve the c4 browser shard 1 caption safe-area persistence failure before
+      claiming full Verify: CI trace omitted the final bottom-margin command; one
+      local full-suite run passed, so reproduce and verify before changing scope.
 - [ ] Close the GLib advisory through independent review and rerun security
       checks on any resulting candidate head; this is separate from Render QA.
 - [ ] Complete release-owner review. No merge, tag, publication, installer or

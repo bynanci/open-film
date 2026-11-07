@@ -795,13 +795,15 @@ exact test inventory and same-run evidence for the exact PR head. See the
 [candidate validation](docs/validation-v050-render-qa.md) and
 [PR #129](https://github.com/bynanci/open-film/pull/129).
 
-Local validation passed 8 files / 56 tests with pinned fonts; local FFmpeg
-remains an unpinned Debian package. The hosted exact-head matrix and evidence
-aggregator must still pass. Its first Windows run exposed a test stream-routing
-assumption, which was corrected without weakening assertions and awaits a new
-exact-head run. GLib advisory disposition, release-owner review and
-native/workstation checks remain independent gates. The public latest release
-remains v0.4.0.
+Local validation now passes 8 files / 57 tests with pinned fonts; local FFmpeg
+remains an unpinned Debian package. The hosted c4 Windows job decoded the
+candidate MP4 and passed 55/56 checks, but the FFmpeg print parser still found no
+numeric-only values; a stricter context-aware parser now has a fixture and needs
+exact-head hosted verification. c4 Verify also had one browser failure where the
+caption safe-area bottom edit was absent from the saved command batch; one local
+full-suite run passed, so this still needs targeted reproduction. GLib advisory
+disposition, release-owner review and native/workstation checks remain separate
+gates. The public latest release remains v0.4.0.
 
 ## Next milestone — workstation evidence and delivery
 
