@@ -20,15 +20,24 @@ validate the updated candidate.
 Main's D7A workflow and evidence suite are not a compatible backport. Main
 `73f9df9810770d52cab0cc2978e55ef8301f884e` adds a newer Render QA entry point,
 metrics and renderer consumers that are absent from the historical release
-tree. Main also changed the macOS FFmpeg pin to `ffmpeg-full` for its newer
-`zscale` requirement. v0.5.0 instead preserves the pins already present in its
-own `fixtures/render-qa/toolchain.json`, adding only the explicit Homebrew formula
-name and revision needed to admit that existing bottle. Its filter admission
-requires the v0.5-used `tonemap` filter and does not require main-only `zscale`.
+tree. Inspection found that v0.5.0's `hdrToneMapFilter` also uses `zscale`, and
+the existing `film-looks.test.ts` contains a real HDR tone-map regression. The
+original macOS pinned `ffmpeg` lacked `zscale`; PR #129 exact-head run
+[42386120211](https://github.com/bynanci/open-film/actions/runs/42386120211)
+confirmed `No such filter: 'zscale'`.
+
+The macOS QA pin therefore uses main's reviewed Homebrew `ffmpeg-full`
+9.0.2_1 bottle and fixed formula, and requires both `zscale` and `tonemap`.
+FFmpeg remains version 9.0.2; the change affects the CI test tool only. It
+adds no application runtime dependency and leaves `pnpm-lock.yaml` unchanged.
+Source and license scope are recorded in
+`fixtures/render-qa/darwin-ffmpeg-full-review.json`. That file is a static
+package review, not runtime installation evidence or distribution approval.
 
 The v0.5 test harness reuses the existing pinned font inventory and
-`render-qa-policy.ts` assertions. It adds no runtime or development dependencies;
-`pnpm-lock.yaml` is unchanged.
+`render-qa-policy.ts` assertions. It adds no runtime or development dependency
+and does not change `pnpm-lock.yaml`. The existing renderer uses `zscale`; the
+macOS QA binary now supplies that required filter at the same FFmpeg version.
 
 ## Hosted matrix and commands
 
@@ -54,6 +63,7 @@ Hosted execution is:
 ```bash
 pnpm install --frozen-lockfile
 pnpm exec tsx scripts/ci/setup-render-qa.ts hosted-tools "$RUNNER_TEMP/openfilm-v050-tools"
+export OPENFILM_RENDER_QA_OUTPUT="$(mktemp -d)"
 pnpm test:render-qa:release --reporter=default --reporter=json \
   --outputFile.json="$RUNNER_TEMP/openfilm-v050-vitest.json"
 pnpm exec tsx scripts/ci/release-render-qa-v050.ts write \
@@ -119,9 +129,9 @@ repeated endpoint message; Windows parsed 0/257 because its FFmpeg used the
 `[Eval @ …]` prefix. The 257-sample, endpoint and tolerance assertions correctly
 failed on both hosts. However, all three hosts decoded the composite MP4 to 180
 frames and passed the nine PTS/RGB, AAC, source-hash and other report checks.
-The parser now recognizes bare values, `Parsed_perspective_N` and `Eval`
-contexts, and the regression uses `-loglevel repeat+info` so duplicate samples
-are preserved in the log. It does not infer or synthesize missing samples.
+The first parser correction recognized bare values, `Parsed_perspective_N` and
+`Eval` contexts, but the next run showed that FFmpeg could still emit a
+platform-dependent number of `print()` evaluations.
 
 The same exact-head Verify run
 [42383763684](https://github.com/bynanci/open-film/actions/runs/42383763684)
@@ -136,16 +146,51 @@ passed after it; it still checks persisted cue/track values, Undo, Redo, save an
 reopen. This branch has not yet completed the full browser suite after that
 change.
 
+The following exact-head run
+[42386120211](https://github.com/bynanci/open-film/actions/runs/42386120211) on
+`83a27ca3162d223f4c1c8fcd952112673ab4b34b` exposed remaining gaps. Linux and
+Windows each passed 56/57 tests but collected 256 and 258 easing log values;
+macOS passed 54/57, with the same 258-value issue, missing `zscale`, and an
+ambient fixture whose source pixel was not deterministic. The macOS job log
+recorded a failed suite while its check run was green, so its result gate was
+not trustworthy. The updated workflow delegates stage checking to a tested
+TypeScript function.
+
+The easing regression now limits input with `trim=end_frame=257`, disables
+progress noise in FFmpeg's diagnostic log, and independently checks output
+frame count through `-progress pipe:1`. It retains exactly 257 easing samples,
+endpoints and the 5.1e-7 per-frame tolerance; it never synthesizes or drops a
+sample. The ambient fixture explicitly converts to RGB and asserts its decoded
+source pixel before measuring fill output. The macOS QA pin now requires both
+HDR filters, as described above.
+
+Verify [42386120251](https://github.com/bynanci/open-film/actions/runs/42386120251)
+on that prior head passed fast-contract, all six browser shards, native-shell and
+docs-site. Heavy media failed on the same easing assertion. Dependency Security,
+Windows Recovery and DCO also passed on that head; these results do not validate
+the fixes below.
+
 ## Local evidence and outstanding verification
 
 The selected existing v0.5 render regression files previously passed locally as
 **7 files / 55 tests** on Debian 13 x64 with Node 24.19.0, pnpm 11.19.0 and system
-FFmpeg/FFprobe 7.1.5. The complete candidate-specific selection now passes
-**8 files / 57 tests** with all four candidate-pinned Noto font files and OFL,
-including the updated repeated-sample regression and decoded composite synthetic
+FFmpeg/FFprobe 7.1.5. The complete candidate-specific selection passes
+**8 files / 57 tests** with all four hash-verified candidate Noto font files and
+OFL, including the bounded easing regression and decoded composite synthetic
 evidence. Local FFmpeg/FFprobe remain system 7.1.5 rather than the pinned Ubuntu
 6.1.1 package; this is diagnostic evidence, not hosted pinned admission. The
 pinned Linux package and Windows/macOS runners remain hosted-only gates.
+
+On 2026-11-07, the complete local media suite passed **304 files / 3,658 tests**;
+the contract suite passed **52 files / 1,183 tests**; and the focused easing,
+ambient-fill and candidate-gate tests passed **3 files / 23 tests**. Format,
+lint, typecheck, i18n checks, docs locale checks and `pnpm build` also passed.
+The build emits the existing advisory that the main client chunk exceeds
+500 kB; the build succeeds. The local candidate MP4 receipt records 160×90,
+180 decoded frames at 30000/1001, nine PTS/RGB samples, mono AAC at 48 kHz,
+288,768 decoded sample frames and matching before/after SHA-256 for all four
+synthetic sources. This receipt was generated locally under `/tmp` and is not a
+hosted or retained release artifact.
 
 A new exact-head Render QA and Verify run must be recorded after these changes.
 Do not treat prior candidate runs or main's D7A matrix as a substitute. No

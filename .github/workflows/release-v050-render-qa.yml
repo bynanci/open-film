@@ -86,11 +86,10 @@ jobs:
           RENDER_OUTCOME: ${{ steps.suite.outcome }}
           EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
-        run: |
-          [[ "$SETUP_OUTCOME" == success ]]
-          [[ "$RENDER_OUTCOME" == success ]]
-          [[ "$EVIDENCE_OUTCOME" == success ]]
-          [[ "$UPLOAD_OUTCOME" == success ]]
+        run: >-
+          pnpm exec tsx scripts/ci/release-render-qa-v050.ts require-outcomes
+          "$SETUP_OUTCOME" "$RENDER_OUTCOME" "$EVIDENCE_OUTCOME"
+          "$UPLOAD_OUTCOME"
   render-qa-complete:
     name: v0.5.0 Render QA complete
     if: always()

@@ -11,6 +11,7 @@ import {
   admitReleaseV050RequiredFilters,
   releaseV050RenderQaPlatforms,
   releaseV050RenderQaTestFiles,
+  requireReleaseV050RenderQaOutcomes,
   summarizeReleaseV050VitestReport,
   validateReleaseV050RenderQaReports,
   verifyReleaseV050PinnedBytes,
@@ -168,6 +169,26 @@ const expected = {
     "darwin-arm64": "success",
   },
 };
+
+it("fails closed unless every render QA platform stage succeeds", () => {
+  expect(() =>
+    requireReleaseV050RenderQaOutcomes([
+      "success",
+      "success",
+      "success",
+      "success",
+    ]),
+  ).not.toThrow();
+  for (const outcomes of [
+    ["success", "failure", "success", "success"],
+    ["success", "success", "success", "skipped"],
+    ["success", "success", "success"],
+    ["success", "success", "success", "success", "unexpected"],
+  ])
+    expect(() => requireReleaseV050RenderQaOutcomes(outcomes)).toThrow(
+      /render suite|artifact upload|exactly four/iu,
+    );
+});
 
 it("accepts one complete exact-run report for each pinned platform", () => {
   expect(
@@ -338,15 +359,16 @@ it("reduces the actual Vitest JSON to an exact path-free test inventory", () => 
   expect(JSON.stringify(summary)).not.toContain("/checkout");
 });
 
-it("admits the candidate FFmpeg feature set without main-only zscale requirements", () => {
+it("admits the FFmpeg filters used by the candidate HDR renderer", () => {
   expect(
     admitReleaseV050RequiredFilters(
-      " .S tonemap V->V Tone map\n .S scale V->V Scale\n",
+      " .S zscale V->V Color conversion\n .S tonemap V->V Tone map\n .S scale V->V Scale\n",
     ).map((filter) => filter.name),
-  ).toEqual(["tonemap"]);
+  ).toEqual(["zscale", "tonemap"]);
   for (const output of [
     " .S scale V->V Scale",
     " .S other V->V mentions tonemap",
+    " .S tonemap V->V Tone map",
     " .S tonemap A->A Wrong media type",
   ])
     expect(() => admitReleaseV050RequiredFilters(output)).toThrow(
@@ -359,7 +381,7 @@ it("admits only the candidate's exact macOS formula and bottle", () => {
   const formula = {
     formulae: [
       {
-        name: "ffmpeg",
+        name: pin.formula,
         tap: "homebrew/core",
         versions: { stable: pin.version },
         revision: 1,

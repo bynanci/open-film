@@ -2,20 +2,17 @@ import { expect, it } from "vitest";
 import { evaluatePhotoEasing, type PhotoBezierEasingV1 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
 import * as render from "../src/index.js";
+import { ffmpegExpressionValues } from "../../../tests/helpers/ffmpeg-expression-log.js";
 
-function parseFfmpegPrintSamples(text: string): number[] {
-  const sampleLine =
-    /^(?:\[(?:Parsed_perspective_\d+|Eval)\s+@\s+[^\]]+\]\s*)?(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$/u;
-  return text.split(/\r?\n/u).flatMap((line) => {
-    const match = sampleLine.exec(line.trim());
-    return match ? [Number(match[1])] : [];
-  });
-}
-
-it("parses FFmpeg perspective print values with either supported log prefix", () => {
+it("parses only FFmpeg expression values from supported contexts", () => {
   expect(
-    parseFfmpegPrintSamples(
-      "0.000000\r\n[Parsed_perspective_0 @ 000001234567] 1.000000\r\n[Eval @ 000001234567] 0.500000\r\nnot a sample 2.0\r\n",
+    ffmpegExpressionValues(
+      [
+        "0.000000",
+        "[Eval @ 0x0000000123456789] 1.000000",
+        "[Parsed_perspective_0 @ 000001234567] 0.5",
+        "encoder frame 257 bitrate 8.5",
+      ].join("\n"),
     ),
   ).toEqual([0, 1, 0.5]);
 });
@@ -48,12 +45,16 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
         "-hide_banner",
         "-loglevel",
         "repeat+info",
+        "-nostats",
         "-f",
         "lavfi",
         "-i",
         "color=blue:s=16x16:r=30:d=9",
         "-vf",
-        `format=gbrp,perspective=x0='print(${expression})':y0=0:x1=W:y1=0:x2=0:y2=H:x3=W:y3=H:sense=destination:eval=frame:interpolation=cubic`,
+        // Bound evaluations before the output limit can prefetch another frame.
+        "format=gbrp,trim=end_frame=257,perspective=x0='print(" +
+          expression +
+          ")':y0=0:x1=W:y1=0:x2=0:y2=H:x3=W:y3=H:sense=destination:eval=frame:interpolation=cubic",
         "-frames:v",
         "257",
         "-threads",
@@ -61,22 +62,19 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
         "-f",
         "null",
         "-",
+        "-progress",
+        "pipe:1",
       ],
       { timeoutMs: 15000 },
     );
-    // FFmpeg builds route print() diagnostics to different streams and may
-    // include the filter context prefix in platform-specific log formats.
-    const stdoutSamples = parseFfmpegPrintSamples(stdout.toString("utf8"));
-    const stderrSamples = parseFfmpegPrintSamples(stderr);
-    const samples = [...stdoutSamples, ...stderrSamples];
-    expect(
-      samples,
-      [
-        `FFmpeg print() samples: stdout=${stdoutSamples.length}, stderr=${stderrSamples.length}`,
-        `stdout tail=${JSON.stringify(stdout.toString("utf8").slice(-800))}`,
-        `stderr tail=${JSON.stringify(stderr.slice(-800))}`,
-      ].join("; "),
-    ).toHaveLength(257);
+    const samples = ffmpegExpressionValues(stderr);
+    const stdoutText = stdout.toString("utf8");
+    const outputFrames = [...stdoutText.matchAll(/^frame=(\d+)$/gmu)].map(
+      (match) => Number(match[1]),
+    );
+    expect(outputFrames.at(-1)).toBe(257);
+    expect(stdoutText).toMatch(/^progress=end$/mu);
+    expect(samples).toHaveLength(257);
     expect(samples[0]).toBe(0);
     expect(samples[256]).toBe(1);
     for (const [index, value] of samples.entries())

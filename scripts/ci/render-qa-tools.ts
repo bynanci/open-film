@@ -261,9 +261,7 @@ export function admitRequiredQaFilters(stdout: string) {
         ] as const,
     ),
   );
-  // v0.5.0 predates the main-branch HDR zscale QA surface. Keep its released
-  // renderer gate to the tone-map filter used by the candidate test selection.
-  const required = ["tonemap"];
+  const required = ["zscale", "tonemap"];
   if (required.some((name) => !filters.has(name)))
     throw new Error("Render QA tool lacks required HDR filters.");
   return required.map((name) => filters.get(name)!);

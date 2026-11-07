@@ -1356,24 +1356,35 @@ validation records retain their original branch identities and historical runs.
 Scope: [candidate Render QA validation](docs/validation-v050-render-qa.md) and
 [Draft PR #129](https://github.com/bynanci/open-film/pull/129). This adds a
 release-branch-specific three-platform gate without changing v0.5.0 renderer
-behavior or its dependency lock.
+behavior or the application dependency lock.
 
-- [x] Reuse the candidate's existing Linux, Windows and macOS FFmpeg pins and
-      exact CJK font/license hashes; admit only candidate-required filters.
+- [x] Keep the candidate's Linux and Windows FFmpeg pins and exact CJK
+      font/license hashes. Pin same-version macOS Homebrew ffmpeg-full 9.0.2_1
+      because the v0.5 HDR renderer and existing HDR regression require zscale;
+      record static package/license review separately from runtime admission.
 - [x] Run the v0.5 renderer regression selection and a decoded synthetic MP4
       with source hashes, frame count, PTS/RGB samples and AAC evidence.
 - [x] Require a strict exact-head, same-run, same-attempt report inventory and
       retain only bounded path-free JSON.
-- [x] Local pinned-font run: 8 files / 57 tests passed on Debian 13 with system
-      FFmpeg/FFprobe 7.1.5; this does not exercise the pinned Ubuntu package.
+- [x] Local complete `pnpm test:media`: 304 files / 3,658 tests passed;
+      `pnpm test:contracts`: 52 files / 1,183 tests passed; focused easing,
+      ambient-fill and candidate-gate tests: 3 files / 23 tests passed.
+- [x] Local format, lint, typecheck, i18n, docs locale checks and production
+      build passed. Build still reports the existing >500 kB client chunk
+      advisory; it does not fail the build.
 - [ ] Obtain a successful exact-head hosted Linux/Windows/macOS matrix and final
       evidence aggregator on the updated PR #129 head.
-- [x] Diagnose Linux and Windows `photo-easing` evidence failures. Linux FFmpeg
-      compressed a repeated endpoint log entry (256/257 parsed); Windows emitted
-      `[Eval @ …]` lines (0/257 parsed). The regression now requests repeat logs,
-      parses the observed FFmpeg prefixes and retains all sample, endpoint and
-      tolerance assertions. Full local candidate Render QA passes 8 files / 57
-      tests on system FFmpeg 7.1.5; exact pinned-host verification remains open.
+- [x] Diagnose candidate head 83a's Linux/Windows/macOS easing results (256,
+      258 and 258 values); bound FFmpeg input to 257 frames, assert decoded
+      output count with progress output, and retain the exact sample, endpoint
+      and tolerance checks.
+- [x] Fix macOS zscale admission, the ambient source fixture's color-conversion
+      nondeterminism, and the Render QA outcome guard that had reported a failed
+      suite as green. Unit coverage rejects failed/skipped stage outcomes.
+- [x] Local candidate Render QA passes 8 files / 57 tests with all four
+      hash-verified candidate Noto fonts and OFL on Debian 13 / FFmpeg 7.1.5,
+      including decoded synthetic MP4 evidence. The pinned Linux tool package
+      and Windows/macOS hosts remain unverified on the corrected head.
 - [x] Reproduce the c4 browser shard 1 caption safe-area loss with a held font
       save acknowledgement. The old control reset an in-progress bottom margin
       from 18 to 12; the selected-track local draft now survives that ack. The

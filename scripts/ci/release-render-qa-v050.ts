@@ -670,6 +670,20 @@ async function checkPlatformReports(directory: string): Promise<void> {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
+export function requireReleaseV050RenderQaOutcomes(
+  outcomes: readonly string[],
+): void {
+  const stages = ["setup", "render suite", "evidence", "artifact upload"];
+  if (outcomes.length !== stages.length)
+    throw new Error("Render QA expected exactly four stage outcomes");
+  const failed = stages.filter((_, index) => outcomes[index] !== "success");
+  if (failed.length > 0) {
+    throw new Error(
+      "Render QA stages did not all succeed: " + failed.join(", "),
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (command === "write") {
@@ -686,8 +700,12 @@ async function main(): Promise<void> {
       );
     return checkPlatformReports(args[0]!);
   }
+  if (command === "require-outcomes") {
+    requireReleaseV050RenderQaOutcomes(args);
+    return;
+  }
   throw new Error(
-    "Usage: release-render-qa-v050.ts <write|check> <absolute paths>",
+    "Usage: release-render-qa-v050.ts <write|check|require-outcomes> <arguments>",
   );
 }
 

@@ -788,21 +788,28 @@ No separate timeline or project-schema migration is introduced.
 
 The first staged source candidate remains a Draft and is not a release. Its
 historical renderer is tested through a candidate-specific Linux/Windows/macOS
-Render QA matrix using the tool and font pins already on its release branch.
-Main's later D7A suite is not used as evidence for this source tree. The hosted
-workflow verifies decoded synthetic output, source identity, PTS, pixels, audio,
-exact test inventory and same-run evidence for the exact PR head. See the
+Render QA matrix. Linux and Windows retain the branch's FFmpeg pins; macOS uses
+same-version Homebrew ffmpeg-full 9.0.2_1 because the existing v0.5 HDR
+renderer and regression require zscale. This is a CI-only tool pin and does
+not change the application lockfile. Main's later D7A suite is not used as
+evidence for this source tree. The hosted workflow verifies decoded synthetic
+output, source identity, PTS, pixels, audio, exact test inventory and same-run
+evidence for the exact PR head. See the
 [candidate validation](docs/validation-v050-render-qa.md) and
 [PR #129](https://github.com/bynanci/open-film/pull/129).
 
-Local validation passes 8 files / 57 tests with the candidate fonts and system
-FFmpeg 7.1.5. Exact-head run 42383763652 on `9398258` passed macOS but exposed two
-test-evidence format gaps: Linux suppressed one repeated endpoint sample, while
-Windows used an `[Eval @ …]` prefix. The updated regression enables repeated
-FFmpeg logs and parses both observed prefixes without reducing the 257-sample,
-endpoint or tolerance assertions. The same run's decoded synthetic output had
-180 frames, nine PTS/RGB checkpoints, AAC audio and unchanged source hashes on all
-three hosts; Linux and Windows still failed the strict test inventory.
+Local validation passes 8 files / 57 candidate Render QA tests with all four
+hash-verified candidate fonts and system FFmpeg 7.1.5. The decoded synthetic
+MP4 is 160×90, 180 frames at 30000/1001 with nine PTS/RGB checkpoints, AAC
+48 kHz audio, and four unchanged source hashes. The complete media suite passes
+304 files / 3,658 tests; contracts pass 52 files / 1,183 tests. Format, lint,
+typecheck, i18n, docs locale checks and production build pass. The build retains
+an existing large-client-chunk advisory. These local results do not exercise
+the pinned hosted package or substitute for exact-head cross-platform CI.
+
+Exact-head run 42383763652 on `9398258` passed
+macOS but exposed logging-format issues. The first correction did not resolve
+the platform-dependent `print()` sample count.
 
 Verify 42383763684 passed fast-contract, native-shell, docs-site and all six
 browser shards, but heavy-media failed only on that same photo-easing evidence
@@ -811,9 +818,18 @@ reproduced the c4 caption safe-area failure: a held font-size save acknowledgeme
 reset a pending bottom-margin entry from 18 to 12. The historical candidate now
 keeps safe-area input in a selected-track local draft, as already done on main;
 the targeted browser workflow passed with its saved-value, Undo/Redo and reopen
-assertions intact. Full local candidate Render QA passes 8 files / 57 tests, and
-the focused delayed-ack browser test passes. A fresh exact-head hosted Verify and
-three-platform Render QA are still required. GLib advisory disposition,
+assertions intact.
+
+Exact-head run 42386120211 on `83a27ca` confirmed Linux/Windows/macOS easing
+counts of 256/258/258. macOS also lacked `zscale` and had a nondeterministic
+ambient source fixture; its failed suite was incorrectly marked green by the
+platform guard. The current change bounds easing input, independently asserts
+257 output frames, uses the main-reviewed same-version macOS FFmpeg build,
+stabilizes the ambient RGB fixture and tests the outcome gate in TypeScript.
+These fixes pass locally, but exact-head hosted verification is still required.
+Verify 42386120251 on that head passed fast-contract, six browser shards,
+native-shell and docs-site; heavy-media failed on the easing assertion.
+Dependency Security, Windows Recovery and DCO passed. GLib disposition,
 release-owner review and native/workstation checks remain separate gates. The
 public latest release remains v0.4.0.
 
