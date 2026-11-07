@@ -12,6 +12,8 @@ Changes use release versions; the project schema has its own version.
   monitor manipulation; later slices remain explicitly incomplete.
 - This source-only candidate is not published. Exact-head candidate validation,
   the GLib advisory disposition, and release-owner review are still open.
+- A separate three-platform Render QA workflow now uses the historical
+  candidate tool pins; exact-head hosted results remain pending.
 
 ## 0.5.0 — Story workflow and cinematic finishing
 

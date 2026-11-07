@@ -60,6 +60,8 @@
     },
     "darwin-arm64": {
       "version": "9.0.2",
+      "formula": "ffmpeg",
+      "revision": 1,
       "packageVersion": "9.0.2_1",
       "formulaCommit": "e1b76dede00f5b34ee6488722499c7de7964daf1",
       "formulaSha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",

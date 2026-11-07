@@ -784,6 +784,23 @@ combined gate status and preserved original feature evidence. The `v0.4.0` tag
 is the latest stable release; current `main` is the unreleased development base.
 No separate timeline or project-schema migration is introduced.
 
+## v0.5.0 source-only candidate — staged verification
+
+The first staged source candidate remains a Draft and is not a release. Its
+historical renderer is tested through a candidate-specific Linux/Windows/macOS
+Render QA matrix using the tool and font pins already on its release branch.
+Main's later D7A suite is not used as evidence for this source tree. The hosted
+workflow verifies decoded synthetic output, source identity, PTS, pixels, audio,
+exact test inventory and same-run evidence for the exact PR head. See the
+[candidate validation](docs/validation-v050-render-qa.md) and
+[PR #129](https://github.com/bynanci/open-film/pull/129).
+
+Local validation passed 8 files / 56 tests with pinned fonts; local FFmpeg
+remains an unpinned Debian package. The hosted exact-head matrix and evidence
+aggregator must still pass. GLib advisory disposition, release-owner review and
+native/workstation checks remain independent gates. The public latest release
+remains v0.4.0.
+
 ## Next milestone — workstation evidence and delivery
 
 Complete Windows/macOS clean-machine runtime/installer validation and audited

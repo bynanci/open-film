@@ -1350,3 +1350,25 @@ The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature
 validation records retain their original branch identities and historical runs.
+
+## v0.5.0 source-only candidate — Render QA gate
+
+Scope: [candidate Render QA validation](docs/validation-v050-render-qa.md) and
+[Draft PR #129](https://github.com/bynanci/open-film/pull/129). This adds a
+release-branch-specific three-platform gate without changing v0.5.0 renderer
+behavior or its dependency lock.
+
+- [x] Reuse the candidate's existing Linux, Windows and macOS FFmpeg pins and
+      exact CJK font/license hashes; admit only candidate-required filters.
+- [x] Run the v0.5 renderer regression selection and a decoded synthetic MP4
+      with source hashes, frame count, PTS/RGB samples and AAC evidence.
+- [x] Require a strict exact-head, same-run, same-attempt report inventory and
+      retain only bounded path-free JSON.
+- [x] Local pinned-font run: 8 files / 56 tests passed on Debian 13 with system
+      FFmpeg/FFprobe 7.1.5; this does not exercise the pinned Ubuntu package.
+- [ ] Obtain a successful exact-head hosted Linux/Windows/macOS matrix and final
+      evidence aggregator on the updated PR #129 head.
+- [ ] Close the GLib advisory through independent review and rerun security
+      checks on any resulting candidate head; this is separate from Render QA.
+- [ ] Complete release-owner review. No merge, tag, publication, installer or
+      workstation certification follows from this QA implementation alone.
