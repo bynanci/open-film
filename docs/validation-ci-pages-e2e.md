@@ -139,7 +139,7 @@ required before closing this follow-up. Their exact base/head/run results are
 recorded in the integrating pull request, preserving the original failed run.
 This evidence does not change the stable version or any workstation gate.
 
-## 2026-11-07 follow-up — shard the long transcript suite by test
+## 2026-11-07 follow-up — deterministic test-list balancing
 
 The exact-head browser reports for Draft PR #130
 ([Verify 42400014568](https://github.com/bynanci/open-film/actions/runs/42400014568))
@@ -147,21 +147,37 @@ contained 358 passing browser cases across six shards, with no skips, failures,
 flaky retries or unexpected results. Browser shard 6's complete job took 8m35s,
 including runner setup. Its 26
 `transcript-productivity.spec.ts` cases accounted for 343.0s of reported test
-time, and the GitHub annotation reported 5.7m for that file.
+time; the GitHub annotation attributed 5.7m to that file.
 
-The cause was the file-level `beforeAll` fixture: although Playwright was already
-configured with `fullyParallel: true`, its default suite mode kept these shared-
-setup cases together during sharding. A baseline `--list --shard=n/6` check
-reproduced the concentration: all 26 cases were in shard 6 and none were in
-shards 1–5.
+The first PR #131 attempt marked the transcript suite `mode: "parallel"` and
+appeared to split its focused-only inventory 5/5/5/5/5/1. That result did not
+represent the full suite. The subsequent complete run
+([Verify 42403889374](https://github.com/bynanci/open-film/actions/runs/42403889374))
+passed all 358 cases, but still placed all 26 transcript cases on shard 6
+(335.4s of test time). Its test durations were 289.1s, 483.8s, 322.4s, 302.9s,
+225.1s and 416.9s for shards 1–6. The full-suite report exposed that a
+file-filtered shard listing can give misleading boundaries: Playwright's
+standard sharding selects contiguous groups in discovery order, and this spec
+appears near the end of the inventory. The earlier `beforeAll` root-cause
+hypothesis was not supported and the first change did not fix the full-suite
+concentration.
 
-The follow-up marks this suite `mode: "parallel"`. Its existing `workers: 1`
-setting remains enforced, so tests still serialize against each runner's
-project service. Every shard gets its own CI runner and fixture lifecycle. No
-assertion, timeout, retry rule, media source or workflow gate changed. The
-post-change Playwright inventory assigns 5/5/5/5/5/1 transcript cases across
-the six shards. Six actual local shard invocations passed all 26 cases; reported
-durations were 1m18s, 56.7s, 58.0s, 1m12s, 1m12s and 18.4s respectively. These
-local serial-run measurements establish fixture and project isolation; they do
-not claim a hosted whole-suite speedup. The new exact-head hosted results are
-recorded by Draft PR #131 when its checks finish.
+The current follow-up creates deterministic per-test Playwright `--test-list`
+files by round-robin assignment from the full candidate discovery. Each of the
+six isolated CI jobs executes its assigned list with one worker and records its
+matrix identity in report metadata. The fast preflight runs Playwright discovery
+for every generated list and requires exact, disjoint coverage of the complete
+inventory; the transcript file must appear in multiple lists. The results gate
+checks source SHA, matrix identity, full passing status, and each report's exact
+assigned test IDs. No application, media, timeout, retry or assertion behavior
+changed, and no dependency was upgraded.
+
+Local preflight evidence on the current draft branch: `pnpm
+test:browser-partition` verified 358 cases with list sizes 60/60/60/60/59/59
+and transcript distribution 4/4/4/5/5/4. Explicit shard-list generation and
+Playwright `--list --test-list` discovery returned 60 and 59 cases for lists 1
+and 6. The focused validator unit suite passed 18/18; `pnpm typecheck` and
+`pnpm lint` passed. These checks establish correct list selection and coverage,
+not actual browser execution or a runtime improvement. Full exact-head browser
+execution and wall-clock comparison for the new lists remain pending on Draft
+PR #131; do not close the task until those results are reviewed.

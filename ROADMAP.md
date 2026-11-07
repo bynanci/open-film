@@ -183,10 +183,11 @@ The [installer guide](docs/native-installer.md),
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding
 evidence. CI results do not replace those observations.
 
-The browser CI keeps one worker per isolated runner and now shards the
-Transcript Productivity suite at individual test boundaries. This removes the
-prior single-shard concentration without increasing shared-server concurrency
-or weakening assertions; see the [E2E shard validation](docs/validation-ci-pages-e2e.md).
+The active E2E distribution follow-up keeps one worker per isolated runner and
+builds deterministic per-test Playwright lists from full discovery. Its preflight
+checks exact six-way coverage and confirms the Transcript Productivity tests are
+distributed across runners. Exact-head browser execution and wall-clock impact
+remain pending on Draft PR #131; see the [E2E shard validation](docs/validation-ci-pages-e2e.md).
 
 PR [#120](https://github.com/bynanci/open-film/pull/120) merged on 2026-11-06
 and patches Tokio to 1.53.3. The current dependency report no longer lists

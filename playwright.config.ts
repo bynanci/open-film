@@ -8,6 +8,7 @@ export default defineConfig({
   timeout: 120_000,
   metadata: {
     sourceCandidate: process.env.OPENFILM_QA_CANDIDATE_SHA ?? "local",
+    browserShard: process.env.OPENFILM_QA_BROWSER_SHARD ?? "local",
   },
   reporter: process.env.CI ? [["list"], ["github"]] : "list",
   use: {
