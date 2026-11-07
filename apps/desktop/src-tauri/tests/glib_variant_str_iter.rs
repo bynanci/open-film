@@ -44,11 +44,11 @@ fn glib_nth() {
         assert_eq!(value.array_iter_str().unwrap().nth(index), expected);
     }
     let mut iter = value.array_iter_str().unwrap();
-    assert_eq!(iter.nth(0), Some("first"));
+    assert_eq!(iter.next(), Some("first"));
     assert_eq!(iter.nth(usize::MAX), None);
-    assert_eq!(iter.nth(0), None);
+    assert_eq!(iter.next(), None);
     let empty = Vec::<String>::new().to_variant();
-    assert_eq!(empty.array_iter_str().unwrap().nth(0), None);
+    assert_eq!(empty.array_iter_str().unwrap().next(), None);
 }
 
 #[test]
