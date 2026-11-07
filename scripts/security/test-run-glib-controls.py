@@ -45,6 +45,30 @@ class SupervisorTests(unittest.TestCase):
     def test_unattributed_crash_is_not_reproduction(self):
         self.assertEqual(m.classify(dict(returncode=-signal.SIGSEGV,timeout=False,stdout=b'',stderr=b''),baseline=True),'crash-unattributed')
 
+    def test_gdb_null_argument_register_format_attributes_affected_crash(self):
+        trace='''Thread 2 received signal SIGSEGV, Segmentation fault.
+#0  __strlen_evex () at strlen-evex-base.S:81
+#1  0x00005555555cd40c in <glib::variant_iter::VariantStrIter as core::iter::traits::iterator::Iterator>::next ()
+rdi            0x0                 0
+'''
+        self.assertTrue(m.null_pointer_diagnostic(trace,returncode=0,timeout=False))
+
+    def test_gdb_diagnostic_rejects_non_null_register(self):
+        trace='''Thread 2 received signal SIGSEGV, Segmentation fault.
+#0  __strlen_evex () at strlen-evex-base.S:81
+#1  0x00005555555cd40c in <glib::variant_iter::VariantStrIter as core::iter::traits::iterator::Iterator>::next ()
+rdi            0x1                 1
+'''
+        self.assertFalse(m.null_pointer_diagnostic(trace,returncode=0,timeout=False))
+
+    def test_gdb_diagnostic_rejects_unrelated_null_strlen_crash(self):
+        trace='''Thread 2 received signal SIGSEGV, Segmentation fault.
+#0  __strlen_evex () at strlen-evex-base.S:81
+#1  unrelated_crate::read_value ()
+rdi            0x0                 0
+'''
+        self.assertFalse(m.null_pointer_diagnostic(trace,returncode=0,timeout=False))
+
     def valid(self):
         passing=[dict(method=n,outcome='passed',executableSHA256='a'*64) for n in m.METHODS]
         return dict(nativeBuild=dict(returncode=0,timeout=False),compiler='rustc 1.99.0 (test)\nrelease: 1.99.0\nhost: x86_64-unknown-linux-gnu\n',profile=copy.deepcopy(m.PROFILE),

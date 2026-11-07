@@ -55,6 +55,19 @@ def compare_graphs(actual,registry,actual_lock,registry_lock):
     return True
 
 
+def capture_current_registry_control(control,output,manifest_text,original_lock,must):
+    parsed=tomllib.loads(manifest_text);require('patch' not in parsed,'registry control retains a Cargo patch')
+    (control/'Cargo.toml').write_text(manifest_text)
+    (control/'Cargo.lock').write_bytes(original_lock)
+    command=['cargo','+1.99.0','metadata','--format-version','1','--filter-platform',closure.TARGET,
+             '--manifest-path',str(control/'Cargo.toml')]
+    raw=must(command,'current-registry-metadata',control.parent)
+    current=json.loads(raw);current_lock=(control/'Cargo.lock').read_bytes()
+    (output/'current-registry-Cargo.toml').write_text(manifest_text)
+    (output/'current-registry-Cargo.lock').write_bytes(current_lock)
+    return current,current_lock
+
+
 def capture_audits(repository,output):
     repository=Path(repository).resolve();output=Path(output).resolve();output.mkdir(parents=True,exist_ok=True)
     record=dict(schemaVersion=1,candidateSHA=closure.candidate(repository),verified=False,dbFresh=False,reports={},errors=[],currentRegistryGraphEquivalent=False)
@@ -92,19 +105,13 @@ def capture_audits(repository,output):
             control=Path(private)/'src-tauri'
             shutil.copytree(repository/closure.APP,control,ignore=shutil.ignore_patterns('target','gen','resources'))
             text=(control/'Cargo.toml').read_text();require(text.count(PATCH_SECTION)==1,'unexpected source patch declaration')
-            text=text.replace(PATCH_SECTION,'');parsed=tomllib.loads(text);require('patch' not in parsed,'extra registry control patch')
-            (control/'Cargo.toml').write_text(text)
-            # Seed with the immutable historical registry lock, then replay the
-            # same authorized Tokio update. Cargo regenerates every lock field.
-            # Seeding from the path lock would reselect broad-bound serializer
-            # edges when GLib changes source, even with identical package versions.
-            (control/'Cargo.lock').write_bytes(original)
+            text=text.replace(PATCH_SECTION,'')
+            # Main already pins the reviewed Tokio fix. Start from its exact
+            # registry lock and let metadata add the newly declared Linux test
+            # dependency to the root package. `cargo update -p tokio` can
+            # reselect unrelated broad-bound edges and invalidate the control.
             record['currentRegistrySeedSHA256']=source.LOCK_SHA
-            must(['cargo','+1.99.0','update','-p','tokio','--precise','1.53.3','--manifest-path',str(control/'Cargo.toml')],'current-registry-update',Path(private))
-            (output/'current-registry-Cargo.toml').write_text(text)
-            raw=must(['cargo','+1.99.0','metadata','--format-version','1','--filter-platform',closure.TARGET,'--manifest-path',str(control/'Cargo.toml')],'current-registry-metadata',Path(private))
-            current=json.loads(raw);current_lock=(control/'Cargo.lock').read_bytes()
-            (output/'current-registry-Cargo.lock').write_bytes(current_lock)
+            current,current_lock=capture_current_registry_control(control,output,text,original,must)
             record['currentRegistryGraphEquivalent']=compare_graphs(metadata,current,lock,current_lock)
             record['currentRegistryLockSHA256']=source.sha(current_lock)
             record['currentRegistryManifestSHA256']=source.sha(text.encode())

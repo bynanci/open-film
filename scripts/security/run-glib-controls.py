@@ -56,6 +56,14 @@ def classify(record,baseline=False):
     return 'blocked-failure'
 
 
+def null_pointer_diagnostic(text,returncode,timeout):
+    if returncode!=0 or timeout:return False
+    fault=re.search(r'(?m)^#0\s+.*(?:^|\s)\S*strlen\S*\b',text)
+    affected=re.search(r'(?m)^#\d+\s+.*(?:glib::variant_iter::VariantStrIter|CStr::from_ptr)',text)
+    null_argument=re.search(r'(?im)^\s*rdi\s+0x0(?:\s|$)',text)
+    return 'SIGSEGV' in text and fault is not None and affected is not None and null_argument is not None
+
+
 def diagnose(executable,method,output,env):
     # A signal alone is insufficient attribution. Retain a debugger rerun and
     # require a null pointer at the affected iterator/CStr stack before admitting.
@@ -63,9 +71,7 @@ def diagnose(executable,method,output,env):
     record=capture(['gdb','--batch','-ex','run','-ex','bt 30','-ex','info registers','--args',str(executable),'--exact',method,'--nocapture','--test-threads=1'],
                    executable.parent,output/('diagnosis-'+method),timeout=60,env=env)
     text=(record['stdout']+record['stderr']).decode(errors='replace')
-    verified=(record['returncode']==0 and not record['timeout'] and 'SIGSEGV' in text and
-              ('glib::variant_iter::VariantStrIter' in text or 'CStr::from_ptr' in text) and
-              re.search(r'(?:s|ptr|p|rdi)\s*(?:=|:)\s*0x0\b',text) is not None)
+    verified=null_pointer_diagnostic(text,record['returncode'],record['timeout'])
     return dict(verified=verified,process=serial(record),reason='strict null-pointer/affected-stack diagnostic' if verified else 'crash requires independent attribution')
 
 

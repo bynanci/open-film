@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
 import importlib.util
+import json
 from pathlib import Path
+import tempfile
 import unittest
 
 HERE=Path(__file__).resolve().parent
@@ -35,5 +37,21 @@ class CurrentRegistryTests(unittest.TestCase):
         self.registry['packages'][1]['source']=None;self.refuse()
     def test_current_registry_wrong_glib_checksum(self):
         self.registry_lock=self.registry_lock.replace(m.source.ARCHIVE_SHA.encode(),b'0'*64);self.refuse()
+
+    def test_registry_control_reuses_baseline_lock_without_updating_other_packages(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);control=root/'src-tauri';control.mkdir();output=root/'evidence';output.mkdir()
+            commands=[]
+            def must(command,name,cwd):
+                commands.append((command,name,cwd))
+                return json.dumps(self.registry).encode()
+            current,current_lock=m.capture_current_registry_control(
+                control,output,'[package]\nname="openfilm-desktop"\n',self.registry_lock,must)
+            self.assertEqual(len(commands),1)
+            self.assertIn('metadata',commands[0][0])
+            self.assertNotIn('update',commands[0][0])
+            self.assertEqual(current_lock,self.registry_lock)
+            self.assertEqual((output/'current-registry-Cargo.lock').read_bytes(),self.registry_lock)
+            self.assertTrue(m.compare_graphs(self.actual,current,self.actual_lock,current_lock))
 
 if __name__=='__main__':unittest.main()
