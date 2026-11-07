@@ -25,7 +25,7 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       curve,
       "min(1,max(0,(on-1)/256))",
     );
-    const { stderr } = await runProcess(
+    const { stdout, stderr } = await runProcess(
       "ffmpeg",
       [
         "-hide_banner",
@@ -47,13 +47,21 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       ],
       { timeoutMs: 15000 },
     );
-    const values = [...stderr.matchAll(/^(-?[0-9]+\.[0-9]+)\s*$/gmu)].map(
-      (match) => Number(match[1]),
-    );
-    expect(values).toHaveLength(257);
-    expect(values[0]).toBe(0);
-    expect(values[256]).toBe(1);
-    for (const [index, value] of values.entries())
+    // FFmpeg builds route print() diagnostics to different streams by host.
+    const parseSamples = (text: string) =>
+      [...text.matchAll(/^(-?[0-9]+\.[0-9]+)\s*$/gmu)].map((match) =>
+        Number(match[1]),
+      );
+    const stdoutSamples = parseSamples(stdout.toString("utf8"));
+    const stderrSamples = parseSamples(stderr);
+    const samples = [...stdoutSamples, ...stderrSamples];
+    expect(
+      samples,
+      `FFmpeg print() samples: stdout=${stdoutSamples.length}, stderr=${stderrSamples.length}`,
+    ).toHaveLength(257);
+    expect(samples[0]).toBe(0);
+    expect(samples[256]).toBe(1);
+    for (const [index, value] of samples.entries())
       expect(
         Math.abs(value - evaluatePhotoEasing(curve, index / 256)),
       ).toBeLessThanOrEqual(5.1e-7);

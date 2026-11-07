@@ -797,7 +797,9 @@ exact test inventory and same-run evidence for the exact PR head. See the
 
 Local validation passed 8 files / 56 tests with pinned fonts; local FFmpeg
 remains an unpinned Debian package. The hosted exact-head matrix and evidence
-aggregator must still pass. GLib advisory disposition, release-owner review and
+aggregator must still pass. Its first Windows run exposed a test stream-routing
+assumption, which was corrected without weakening assertions and awaits a new
+exact-head run. GLib advisory disposition, release-owner review and
 native/workstation checks remain independent gates. The public latest release
 remains v0.4.0.
 

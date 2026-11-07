@@ -100,6 +100,15 @@ Dependency Security, Windows Recovery and DCO. Any head update invalidates the
 previous candidate evidence. This gate is separate from the GLib
 `RUSTSEC-2024-0429` disposition and from physical workstation checks.
 
+The first valid hosted matrix on `0e38878f3f7fe555e7b769fb197a86f2891c0aa6`
+([run 42381329547](https://github.com/bynanci/open-film/actions/runs/42381329547))
+passed Linux and macOS. Windows decoded the same MP4 and passed its 55 other
+selected checks, but `photo-easing.test.ts` captured FFmpeg `print()` values
+only from `stderr`; this Windows build emitted them to `stdout`, producing an
+empty sample list. The regression now reads both streams without relaxing its
+257-sample, endpoint or per-frame error assertions. That matrix is a recorded
+failure, not acceptance; the changed test requires a fresh exact-head rerun.
+
 ## Local evidence and outstanding verification
 
 The selected existing v0.5 render regression files previously passed locally as

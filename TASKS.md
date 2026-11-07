@@ -1368,6 +1368,10 @@ behavior or its dependency lock.
       FFmpeg/FFprobe 7.1.5; this does not exercise the pinned Ubuntu package.
 - [ ] Obtain a successful exact-head hosted Linux/Windows/macOS matrix and final
       evidence aggregator on the updated PR #129 head.
+- [x] Diagnose the first hosted matrix's Windows-only `photo-easing` failure:
+      FFmpeg emitted `print()` measurements on stdout while the regression read
+      stderr only. The regression now checks both streams with all 257 sample,
+      endpoint and tolerance assertions retained; exact-head rerun is pending.
 - [ ] Close the GLib advisory through independent review and rerun security
       checks on any resulting candidate head; this is separate from Render QA.
 - [ ] Complete release-owner review. No merge, tag, publication, installer or
