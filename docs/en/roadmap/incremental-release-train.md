@@ -1,7 +1,7 @@
 # Incremental release train
 
 Plan reviewed on 2026-11-07 against main
-[`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c).
+[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e).
 This schedules source releases as separate, cumulative milestones. It is not a
 record of releases already published.
 
@@ -13,6 +13,18 @@ record of releases already published.
   and Cargo metadata saying `1.0.0` is not publication evidence.
 - Main has accumulated work through the proposed `v0.8.0` scope. Publishing
   multiple tags from current main would ship the same full feature set repeatedly.
+- A first, source-only `v0.5.0` candidate is being prepared in Draft PR
+  [#129](https://github.com/bynanci/open-film/pull/129), based on the historical
+  PR #75 scope anchor on dedicated branch `release/v0.5.0` at
+  `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. Candidate head is
+  `1f2e23d62ae61959167ad5c3994a0077efecd39f`; exact-head Verify
+  [42364751023](https://github.com/bynanci/open-film/actions/runs/42364751023),
+  dependency security [42364751028](https://github.com/bynanci/open-film/actions/runs/42364751028),
+  Windows recovery [42364751027](https://github.com/bynanci/open-film/actions/runs/42364751027)
+  and DCO [42364749311](https://github.com/bynanci/open-film/actions/runs/42364749311)
+  passed. The historical branch predates the three-platform Render QA workflow,
+  so no candidate Render QA result exists; GLib security disposition remains
+  open. It is not frozen, approved, tagged or published.
 
 ## Proposed staged sequence
 
@@ -29,8 +41,12 @@ candidate or approved tag target.
 - Historical scope anchor: after PR #75, commit
   [`d5a286ed9250872e8eb9b1c3e40adb926f913d34`](https://github.com/bynanci/open-film/commit/d5a286ed9250872e8eb9b1c3e40adb926f913d34).
 - Distribution target: source archive only; no installer claim.
-- Candidate work: create a versioned release branch, align every package/Tauri/Cargo
-  version surface, backport required security fixes, then run the full candidate gates.
+- Candidate work: this is underway in Draft PR #129. The candidate aligns the
+  package/Tauri/Cargo version surfaces and backports reviewed dependency fixes.
+  Verify, dependency security, Windows recovery and DCO passed on its exact SHA.
+  Candidate-bound three-platform Render QA and independent GLib review remain
+  open. Keep the PR in draft until the full candidate gates and independent
+  review are complete.
 
 ### v0.6.0 — Rhythm, continuity and precision editing
 
@@ -60,7 +76,7 @@ candidate or approved tag target.
   deterministic frame-time/visual-keyframe editing with Monitor/FFmpeg parity.
   PR #119's Tobi-ishi workflow also passes exact-head hosted CI; workstation and
   NLE acceptance remain separate. PR #121 adds event/person coverage constraints.
-- Historical scope anchor: current main
+- Historical scope anchor: main snapshot
   [`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c), including merged PR #126.
 - Distribution target: source archive only. This scope does not close native
   installer or physical workstation gates.
@@ -148,9 +164,11 @@ expand a second NLE before the Storytelling host path is proven.
 
 ## Current blockers before the first staged release
 
-- No `v0.5.0` candidate branch or tag exists. The historical anchor predates
-  the Tokio patch and cannot be tagged without a security refresh and exact-SHA
-  validation.
+- The v0.5.0 candidate branch and Draft PR #129 exist, but the candidate is not
+  frozen or approved. Its Verify, advisory, Windows recovery and DCO checks
+  passed; three-platform Render QA is absent on this historical branch. The
+  anchor predates the Tokio patch and cannot be tagged; candidate-bound render
+  evidence and a security disposition are still required.
 - GLib `RUSTSEC-2024-0429` remains an unsoundness finding; the existing audit's
   successful default exit does not close it.
 - Dependabot alerts are disabled, and required-check enforcement has not been

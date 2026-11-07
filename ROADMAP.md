@@ -27,8 +27,14 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[5f737a6c8f35dce48e213370ff27900962c9304c](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
-on 2026-11-07. Historical feature records keep their original candidate dates.
+[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e)
+on 2026-11-07. Draft PR [#129](https://github.com/bynanci/open-film/pull/129)
+prepares the first source-only candidate on a dedicated release branch. Its
+Exact-head Verify, dependency advisory, Windows recovery and DCO checks have
+passed on the PR #129 candidate. It is not frozen, approved, tagged or published.
+The historical candidate has no three-platform Render QA run, and GLib review
+remains open. Historical feature records keep their original SHAs and validation
+dates.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
 is merged in PR #111. Physical workstation and listening acceptance remain

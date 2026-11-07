@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">OpenFilm release readiness evidence snapshot</title>
-  <desc id="desc">On main at 5f737a6, source CI, rendering and Windows recovery passed. The latest public version is 0.4.0 while package metadata says 1.0.0. The latest dependency audit has no vulnerability findings but leaves one unsound GLib advisory and one unmaintained dependency. Native installers and physical workstation claims have not been validated.</desc>
+  <desc id="desc">On main at 73f9df9, source CI, rendering and Windows recovery passed. The latest public version is 0.4.0 while package metadata says 1.0.0. Draft PR 129 has passing Verify, dependency advisory, Windows recovery and DCO checks. Candidate Render QA and the GLib unsound advisory remain open. Native installers and physical workstation claims have not been validated.</desc>
   <defs>
     <style>
       .bg { fill:#f5f7fa; }
@@ -26,11 +26,11 @@
   </defs>
   <rect class="bg" width="1200" height="720" rx="24"/>
   <text class="head" x="48" y="54">Release readiness evidence</text>
-  <text class="subtitle" x="48" y="82">Snapshot: main 5f737a6 · 2026-11-07 · evidence links and exact runs are listed in the audit document</text>
+  <text class="subtitle" x="48" y="82">Snapshot: main 73f9df9 · 2026-11-07 · evidence links and exact runs are listed in the audit document</text>
 
   <rect class="card green" x="48" y="120" width="530" height="206" rx="18"/>
   <text class="label" x="74" y="158">Source CI</text>
-  <text class="status status-green" x="74" y="187">PASS · main SHA 5f737a6</text>
+  <text class="status status-green" x="74" y="187">PASS · main SHA 73f9df9</text>
   <text class="text" x="74" y="220">Main: Verify, Render QA, Windows recovery, Pages</text>
   <text class="text" x="74" y="246">PR #126 feature head: all hosted checks passed</text>
   <text class="text" x="74" y="272">Includes six browser shards, media and native gates</text>
@@ -38,16 +38,16 @@
 
   <rect class="card amber" x="622" y="120" width="530" height="206" rx="18"/>
   <text class="label" x="648" y="158">Version decision</text>
-  <text class="status status-amber" x="648" y="187">PLAN · staged release; no candidate frozen</text>
+  <text class="status status-amber" x="648" y="187">DRAFT · Verify passed; release gates remain</text>
   <text class="text" x="648" y="220">Published source release: v0.4.0</text>
-  <text class="text" x="648" y="246">First planned source stage: v0.5.0</text>
-  <text class="text" x="648" y="272">v0.6.0–v0.8.0 follow; Storytelling is separate</text>
-  <text class="note" x="648" y="302">Metadata says 1.0.0; it does not approve a release</text>
+  <text class="text" x="648" y="246">Draft PR #129 · candidate head 1f2e23d</text>
+  <text class="text" x="648" y="272">Render QA and GLib review remain open</text>
+  <text class="note" x="648" y="302">No tag or release has been approved or published</text>
 
   <rect class="card amber" x="48" y="360" width="530" height="206" rx="18"/>
   <text class="label" x="74" y="398">Dependency security</text>
   <text class="status status-amber" x="74" y="427">REVIEW · default audit exits successfully</text>
-  <text class="text" x="74" y="460">0 known vulnerabilities in audited lockfiles</text>
+  <text class="text" x="74" y="460">No vuln alerts; GLib unsound finding remains</text>
   <text class="text" x="74" y="486">GLib RUSTSEC-2024-0429 unsound finding remains</text>
   <text class="text" x="74" y="512">proc-macro-error unmaintained; alerts are disabled</text>
   <text class="note" x="74" y="542">Require fresh candidate audit and explicit disposition</text>
@@ -61,5 +61,5 @@
   <text class="note" x="648" y="542">Do not claim installer or hardware certification</text>
 
   <rect class="footer" x="48" y="608" width="1104" height="70" rx="16"/>
-  <text class="footer-text" x="76" y="650">Decision: source CI is green; broad stable release is not approved. Native installer distribution is blocked.</text>
+  <text class="footer-text" x="76" y="650">Decision: candidate needs Render QA and security review. Native installers remain blocked.</text>
 </svg>
