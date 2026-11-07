@@ -603,6 +603,7 @@ const pendingSourceSeek = ref<number>();
 const sourceError = ref("");
 const titlePreviewFailed = ref(false);
 const titlePreviewRetry = ref(0);
+const titlePreviewAutoRetryRevision = ref<string | null>(null);
 const unsupportedSpeedMessage = "speed";
 const playing = ref(false);
 const graphicSceneSelection = ref({ sceneId: "", nodeId: "" });
@@ -1027,10 +1028,17 @@ const sourcePlaybackKey = computed(
     `${playbackAsset.value?.id}:${playbackAsset.value?.uri}:${props.sourceVersion ?? 0}`,
 );
 watch(
-  [selectedClipId, () => state.value?.revision, () => props.sourceVersion],
+  [
+    () => props.projectId,
+    () => props.compositionId,
+    selectedClipId,
+    () => state.value?.revision,
+    () => props.sourceVersion,
+  ],
   () => {
     directionPreview.value = null;
     titlePreviewFailed.value = false;
+    titlePreviewAutoRetryRevision.value = null;
   },
 );
 const selectedBeat = computed(() =>
@@ -2295,6 +2303,49 @@ const playbackClip = computed(() => {
     selectedClip.value
   );
 });
+function titlePreviewLoaded() {
+  titlePreviewFailed.value = false;
+}
+function titlePreviewErrored(event: Event) {
+  const image = event.currentTarget;
+  const current = state.value;
+  const clip = playbackClip.value;
+  if (
+    !(image instanceof HTMLImageElement) ||
+    !image.isConnected ||
+    !current?.revision ||
+    !clip?.title
+  )
+    return;
+
+  const failedUrl = new URL(
+    image.currentSrc || image.src,
+    window.location.href,
+  );
+  const currentUrl = new URL(
+    titlePreviewUrl(
+      props.compositionId,
+      clip.id,
+      current.revision,
+      props.projectId,
+    ),
+    window.location.href,
+  );
+  if (failedUrl.href !== currentUrl.href) return;
+
+  const retryContext = JSON.stringify([
+    props.projectId,
+    props.compositionId,
+    current.revision,
+  ]);
+  if (titlePreviewAutoRetryRevision.value !== retryContext) {
+    titlePreviewAutoRetryRevision.value = retryContext;
+    titlePreviewFailed.value = false;
+    titlePreviewRetry.value++;
+    return;
+  }
+  titlePreviewFailed.value = true;
+}
 const focalSessionKey = computed(() =>
   JSON.stringify([
     props.projectId,
@@ -3583,8 +3634,8 @@ onBeforeUnmount(() => {
                     "
                     :clip="playbackClip"
                     :source-time="sourceTime"
-                    @load="titlePreviewFailed = false"
-                    @error="titlePreviewFailed = true"
+                    @load="titlePreviewLoaded"
+                    @error="titlePreviewErrored"
                   />
                   <NativeCaptionPreview
                     v-if="
@@ -3708,8 +3759,8 @@ onBeforeUnmount(() => {
                     :clip="playbackClip"
                     :source-time="sourceTime"
                     :player="sourcePlayer"
-                    @load="titlePreviewFailed = false"
-                    @error="titlePreviewFailed = true"
+                    @load="titlePreviewLoaded"
+                    @error="titlePreviewErrored"
                   />
                   <NativeCaptionPreview
                     v-if="
