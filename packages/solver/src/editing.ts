@@ -19,6 +19,14 @@ import {
   validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
+  validateClipAnimation,
+  clipAnimationMaxFrame,
+  splitClipAnimationAtFrame,
+  trimClipAnimationToFrameCount,
+  resolveClipFrameRange,
+  sequenceFrameAt,
+  sequenceTimeAt,
+  type ClipAnimationV1,
   validateTitleStyle,
   validateTitleTextRuns,
   type TitleTextRuns,
@@ -211,6 +219,11 @@ export type TimelineCommand =
   | { type: "clip.split"; clipId: string; sourceTime: number }
   | { type: "duration"; clipId: string; duration: number }
   | { type: "speed"; clipId: string; speed: number }
+  | {
+      type: "clip.animation.set";
+      clipId: string;
+      animation: ClipAnimationV1 | null;
+    }
   | { type: "volume"; clipId: string; volume: number; audioReviewId?: string }
   | {
       type: "transform";
@@ -779,9 +792,24 @@ function resize(
   duration: number,
   assets: MediaAsset[],
   reconcileOverlays = true,
+  timebase?: import("@openfilm/core").ProjectTimebaseV1,
 ): void {
   finite(duration, "Clip duration", 0, true);
   const { track } = findClip(document, clip.id);
+  if (clip.animation && duration < clip.timelineDuration - EPSILON) {
+    if (!timebase)
+      fail(
+        "Shortening an animated clip requires the authoritative project timebase.",
+      );
+    const range = resolveClipFrameRange(
+      { ...clip, timelineDuration: duration },
+      timebase,
+    );
+    clip.animation = trimClipAnimationToFrameCount(
+      clip.animation,
+      range.endFrame - range.startFrame,
+    );
+  }
   constrainAudioAutomation(clip, duration);
   if (track.timing === "overlay") {
     if (clip.timelineStart + duration > document.composition.duration + EPSILON)
@@ -844,6 +872,7 @@ function replace(
   clip: Clip,
   assetId: string,
   reconcileOverlays = true,
+  timebase?: import("@openfilm/core").ProjectTimebaseV1,
 ): void {
   const old = findAsset(assets, clip.assetId),
     asset = findAsset(assets, assetId);
@@ -881,7 +910,7 @@ function replace(
   clip.sourceIn = 0;
   clip.sourceOut = duration * speed;
   finite(clip.sourceOut, "Resulting source out", 0, true);
-  resize(document, clip, duration, assets, reconcileOverlays);
+  resize(document, clip, duration, assets, reconcileOverlays, timebase);
 }
 function beatLength(document: EditorDocument, beatId: string): number {
   return allClips(document)
@@ -1458,6 +1487,7 @@ function applyTimelineCommandInternal(
         command,
         deferred,
         !constrained,
+        context,
       );
   if (constrained) {
     if (!context.timebase)
@@ -1524,6 +1554,7 @@ function applyTimelineCommandRaw(
   command: TimelineCommand,
   deferred = false,
   reconcileOverlays = true,
+  context: TimelineEditContext = {},
 ): EditorDocument {
   const next = structuredClone(document);
   if (command.type === "user-pin.set" || command.type === "user-pin.resolve")
@@ -1832,6 +1863,7 @@ function applyTimelineCommandRaw(
         { type: "clip.split", clipId: clip.id, sourceTime },
         deferred,
         reconcileOverlays,
+        context,
       );
     }
     if (proposal.targetEdge === "out") {
@@ -1843,6 +1875,7 @@ function applyTimelineCommandRaw(
         { type: "trim", clipId: clip.id, sourceIn, sourceOut },
         deferred,
         reconcileOverlays,
+        context,
       );
     }
     if (proposal.targetEdge === "in") {
@@ -1856,6 +1889,7 @@ function applyTimelineCommandRaw(
         { type: "trim", clipId: clip.id, sourceIn: newSourceIn, sourceOut },
         deferred,
         reconcileOverlays,
+        context,
       );
     }
     fail(`Unsupported rhythm snap targetEdge: "${proposal.targetEdge}".`);
@@ -1869,6 +1903,7 @@ function applyTimelineCommandRaw(
         sub,
         deferred,
         reconcileOverlays,
+        context,
       );
     }
     return current;
@@ -2261,6 +2296,30 @@ function applyTimelineCommandRaw(
   const pendingCaptions = deferred ? next.composition.captionTracks : undefined;
   if (deferred) delete next.composition.captionTracks;
   switch (command.type) {
+    case "clip.animation.set": {
+      if (
+        track.type === "audio" ||
+        track.type === "music" ||
+        asset.mediaType === "audio"
+      )
+        fail("Visual keyframes require a visual clip.");
+      if (command.animation === null) delete clip.animation;
+      else {
+        clip.animation = validateClipAnimation(command.animation, {
+          ...(context.timebase
+            ? { maxFrame: clipAnimationMaxFrame(clip, context.timebase) }
+            : {}),
+          ...(context.frameSize
+            ? {
+                maxPosition:
+                  4 *
+                  Math.max(context.frameSize.width, context.frameSize.height),
+              }
+            : {}),
+        });
+      }
+      break;
+    }
     case "presentation": {
       if (
         track.type === "audio" ||
@@ -2530,6 +2589,31 @@ function applyTimelineCommandRaw(
         );
       const rightStart = clip.timelineStart + leftDuration;
       finite(rightStart, "Right split timeline start", 0);
+      let animationSplit:
+        ReturnType<typeof splitClipAnimationAtFrame> | undefined;
+      if (clip.animation) {
+        if (!context.timebase)
+          fail(
+            "Splitting an animated clip requires the authoritative project timebase.",
+          );
+        const frameRange = resolveClipFrameRange(clip, context.timebase);
+        const absoluteSplitFrame = sequenceFrameAt(
+          rightStart,
+          context.timebase,
+          "nearest",
+        );
+        if (
+          Math.abs(
+            sequenceTimeAt(absoluteSplitFrame, context.timebase) - rightStart,
+          ) > 1e-7
+        )
+          fail("Animated clips can only be split on an exact project frame.");
+        animationSplit = splitClipAnimationAtFrame(
+          clip.animation,
+          absoluteSplitFrame - frameRange.startFrame,
+          frameRange.endFrame - frameRange.startFrame,
+        );
+      }
       const originalClip = structuredClone(clip),
         leftAutomation = originalClip.audioAutomation
           ? mapAudioAutomationForClipWindow(originalClip, 0, leftDuration)
@@ -2556,12 +2640,14 @@ function applyTimelineCommandRaw(
         timelineStart: rightStart,
         timelineDuration: rightDuration,
         ...(rightAutomation ? { audioAutomation: rightAutomation } : {}),
+        ...(animationSplit?.right ? { animation: animationSplit.right } : {}),
       };
       // A transition belongs to the original incoming edge, not the new internal cut.
       delete right.transition;
       clip.sourceIn = sourceIn;
       clip.sourceOut = command.sourceTime;
       clip.timelineDuration = leftDuration;
+      if (animationSplit?.left) clip.animation = animationSplit.left;
       if (leftAutomation) clip.audioAutomation = leftAutomation;
       track.clips.splice(track.clips.indexOf(clip) + 1, 0, right);
       // No ripple: the two halves retain the original end, gaps and track positions.
@@ -2586,6 +2672,7 @@ function applyTimelineCommandRaw(
         (command.sourceOut - command.sourceIn) / (clip.transform?.speed ?? 1),
         assets,
         reconcileOverlays,
+        context.timebase,
       );
       break;
     }
@@ -2598,7 +2685,14 @@ function applyTimelineCommandRaw(
       clip.sourceOut =
         (clip.sourceIn ?? 0) + command.duration * (clip.transform?.speed ?? 1);
       finite(clip.sourceOut, "Resulting source out", clip.sourceIn ?? 0, true);
-      resize(next, clip, command.duration, assets, reconcileOverlays);
+      resize(
+        next,
+        clip,
+        command.duration,
+        assets,
+        reconcileOverlays,
+        context.timebase,
+      );
       break;
     case "speed": {
       finite(command.speed, "Speed", 0, true);
@@ -2612,6 +2706,7 @@ function applyTimelineCommandRaw(
         (bounds.sourceOut - bounds.sourceIn) / command.speed,
         assets,
         reconcileOverlays,
+        context.timebase,
       );
       break;
     }
@@ -2737,7 +2832,15 @@ function applyTimelineCommandRaw(
       const oldAssetId = clip.assetId;
       if (command.type === "delete")
         remove(next, clip, assets, reconcileOverlays);
-      else replace(next, assets, clip, command.assetId, reconcileOverlays);
+      else
+        replace(
+          next,
+          assets,
+          clip,
+          command.assetId,
+          reconcileOverlays,
+          context.timebase,
+        );
       if (
         beat?.selectedAssetIds?.includes(oldAssetId) &&
         !allClips(next).some(

@@ -58,7 +58,8 @@ export function validateAudioEdit(
   after: EditorDocument,
   assets: readonly MediaAsset[],
   commands: readonly TimelineCommand[],
-  context: Required<TimelineEditContext>,
+  context: Required<Pick<TimelineEditContext, "origin" | "timebase">> &
+    Pick<TimelineEditContext, "frameSize">,
 ): void {
   const leaves = flattenCommands(commands);
   const previous = clips(before),

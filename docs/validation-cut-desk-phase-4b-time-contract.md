@@ -1,10 +1,13 @@
 # Cut Desk Phase 4B.1 — deterministic legacy clip-frame time
 
-- Date: 2026-11-06
-- Branch: `codex/cut-desk-phase-4b-contract-main-sync`
-- Base: `9b33249c3bd60872072c55fac4efac43d6d6e13b` (`main`)
-- Code-validation head: `1d8712571139d5654eda6bdbccaaac302a06c5a0`
-- Status: Draft PR #125. Hosted checks passed on the code-validation head; this follow-up updates validation evidence only.
+Date: 2026-11-06
+Implementation: [PR #125](https://github.com/bynanci/open-film/pull/125), merged
+in main at [`7add4762fe8174d76f43b863375ea39b73121e76`](https://github.com/bynanci/open-film/commit/7add4762fe8174d76f43b863375ea39b73121e76).
+Code-validation head: `1d8712571139d5654eda6bdbccaaac302a06c5a0`; final PR head with
+refreshed evidence: `1e58038d1bb933956290a0d275eef2c5f2ae7aa0`.
+The implementation was developed against main at
+`9b33249c3bd60872072c55fac4efac43d6d6e13b`; PR #125's hosted verification below
+passed on its exact final head before merge.
 
 ## Delivered in this slice
 
@@ -37,15 +40,15 @@
   mirrors found.
 - `vitest run packages/render/tests/render.test.ts -t 'honors trim, speed, audio volume, title and crossfade while preserving source bytes'`
   — 1 actual FFmpeg MP4 regression passed (23 cases deselected by the focused
-  filter). The test checks resolver source positions at frames 3 and 8 against
-  decoded red/black frames and verifies source hash preservation.
+  filter). It checks resolver source positions at frames 3 and 8 against decoded
+  red/black frames and verifies source hash preservation.
 - `git diff --check` — passed.
 
-`pnpm test:render-qa` did not complete locally: its setup requires the
-hash-pinned Noto test-font fixture, and `setup-render-qa.ts fonts-only` could not
-fetch it because this environment could not reach GitHub (`ENETUNREACH`). No
-un-pinned system-font fallback was used. Hosted Render QA completed successfully
-for exact head `1d8712571139d5654eda6bdbccaaac302a06c5a0`.
+`pnpm test:render-qa` did not complete locally: setup requires the hash-pinned
+Noto test-font fixture, and `setup-render-qa.ts fonts-only` could not fetch it
+because the environment could not reach GitHub (`ENETUNREACH`). No unpinned
+system-font fallback was used. Hosted Render QA passed for Linux, Windows and
+macOS on the final PR #125 head.
 
 ## Files
 
@@ -57,11 +60,29 @@ for exact head `1d8712571139d5654eda6bdbccaaac302a06c5a0`.
 
 ## Remaining gates
 
-- Hosted Verify run [42272171346](https://github.com/bynanci/open-film/actions/runs/42272171346), Render QA run [42272171341](https://github.com/bynanci/open-film/actions/runs/42272171341), and Windows media recovery run [42272171311](https://github.com/bynanci/open-film/actions/runs/42272171311) all passed for the exact head above.
-- The full pinned-font Render QA is not available locally because the font-fixture download failed; hosted Render QA covers that gate. The complete renderer/media suite was not run locally.
+- Final PR #125 head `1e58038d1bb933956290a0d275eef2c5f2ae7aa0` passed DCO
+  ([run 42305593855](https://github.com/bynanci/open-film/actions/runs/42305593855)),
+  Verify fast-contract, all four browser shards, heavy-media, native-shell and
+  docs-site
+  ([run 42305596300](https://github.com/bynanci/open-film/actions/runs/42305596300)),
+  three-platform Render QA
+  ([run 42305596301](https://github.com/bynanci/open-film/actions/runs/42305596301)),
+  and Windows FFmpeg 9
+  ([run 42305596411](https://github.com/bynanci/open-film/actions/runs/42305596411)).
+  Native-shell completed in 29m42s. The complete renderer/media suite was not
+  run locally; hosted heavy-media QA passed.
+- The focused actual FFmpeg regression confirms unchanged scalar-speed frame
+  mapping and source-hash preservation. Local pinned-font Render QA remains
+  blocked by the network error described above.
 - Add the persisted visual contract only with both Monitor and renderer
   consumers, lock/pin/stale-revision command checks, arbitrary seek evidence,
   synthetic MP4 decode comparison, and save/reopen/Undo/Redo browser coverage.
 - Keep 4B.3 speed ramps blocked on source-mapped caption/audio/rhythm consumers
   and an explicit audio policy. Do not infer workstation, GPU/4K or target-NLE
   acceptance from automated CI.
+
+## Follow-on implementation
+
+The visual keyframe slice is under review in PR #126, based on the merged
+4B.1 contract. Its implementation, validation and remaining gates are recorded
+in `docs/validation-cut-desk-phase-4b-visual-keyframes.md`.

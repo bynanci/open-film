@@ -17,6 +17,7 @@ import {
 import type { EditorDocument, TimelineCommand } from "./editing.js";
 export interface TimelineEditContext {
   timebase?: ProjectTimebaseV1;
+  frameSize?: { width: number; height: number };
   origin?: "direct" | "automatic" | "history" | "restore";
 }
 export function pinConflict(
@@ -141,7 +142,8 @@ export function applyOverridePolicy(
   before: EditorDocument,
   after: EditorDocument,
   commands: readonly TimelineCommand[],
-  context: Required<TimelineEditContext>,
+  context: Required<Pick<TimelineEditContext, "origin" | "timebase">> &
+    Pick<TimelineEditContext, "frameSize">,
 ): EditorDocument {
   const next = structuredClone(after);
   if (context.origin === "history" || context.origin === "restore") return next;

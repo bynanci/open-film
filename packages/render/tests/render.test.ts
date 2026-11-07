@@ -5,9 +5,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  clipAnimationFfmpegExpression,
   createExportProfile,
   resolvePreviewClipGeometry,
+  resolveCompositionFrame,
   resolveClipFrameTime,
+  resolveProjectTimebase,
   type Composition,
   type MediaAsset,
   type ProjectSettings,
@@ -43,7 +46,340 @@ async function frame(path: string, time: number): Promise<number> {
   return result.stdout[0]!;
 }
 
+async function decodedGrayFrames(path: string): Promise<Buffer> {
+  return (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-map",
+      "0:v:0",
+      "-an",
+      "-vf",
+      "format=gray",
+      "-f",
+      "rawvideo",
+      "-",
+    ])
+  ).stdout;
+}
+
+function grayBounds(
+  pixels: Buffer,
+  width: number,
+  height: number,
+  threshold = 170,
+) {
+  let left = width,
+    right = -1,
+    top = height,
+    bottom = -1;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      if (pixels[y * width + x]! >= threshold) {
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
+  return right < left
+    ? { x: 0, y: 0, width: 0, height: 0 }
+    : { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+}
+
 describe("real FFmpeg preview renderer", () => {
+  it("renders deterministic clip keyframes for position, scale, rotation and opacity", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-clip-animation-"),
+    );
+    directories.push(directory);
+    const source = join(directory, "synthetic-animation.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x36:r=10:d=2",
+      "-vf",
+      "drawbox=x=20:y=14:w=24:h=8:color=white:t=fill",
+      "-c:v",
+      "libx264",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "synthetic-animation.mp4",
+    });
+    const sourceHash = await hashFile(source);
+    const animation: Composition = {
+      id: "animation",
+      storyId: "story",
+      duration: 2,
+      tracks: [
+        {
+          id: "picture",
+          type: "video",
+          clips: [
+            {
+              id: "move-and-fade",
+              assetId: asset.id,
+              sourceIn: 0,
+              sourceOut: 1,
+              timelineStart: 0,
+              timelineDuration: 1,
+              animation: {
+                version: 1,
+                visualTracks: [
+                  {
+                    property: "x",
+                    keys: [
+                      { frame: 0, value: -16 },
+                      { frame: 9, value: 16 },
+                    ],
+                  },
+                  {
+                    property: "opacity",
+                    keys: [
+                      {
+                        frame: 0,
+                        value: 1,
+                        interpolation: {
+                          kind: "cubic-bezier",
+                          x1: 0.42,
+                          y1: 0,
+                          x2: 0.58,
+                          y2: 1,
+                        },
+                      },
+                      { frame: 9, value: 0.5 },
+                    ],
+                  },
+                ],
+              },
+            },
+            {
+              id: "scale-and-turn",
+              assetId: asset.id,
+              sourceIn: 1,
+              sourceOut: 2,
+              timelineStart: 1,
+              timelineDuration: 1,
+              animation: {
+                version: 1,
+                visualTracks: [
+                  {
+                    property: "scale",
+                    keys: [
+                      {
+                        frame: 0,
+                        value: 1,
+                        interpolation: {
+                          kind: "cubic-bezier",
+                          x1: 0.42,
+                          y1: 0,
+                          x2: 0.58,
+                          y2: 1,
+                        },
+                      },
+                      { frame: 9, value: 1.5 },
+                    ],
+                  },
+                  {
+                    property: "rotation",
+                    keys: [
+                      { frame: 0, value: 0 },
+                      { frame: 9, value: 90 },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const settings: ProjectSettings = {
+      width: 64,
+      height: 36,
+      frameRate: 10,
+      timebase: {
+        version: 1,
+        rateNumerator: 10,
+        rateDenominator: 1,
+        dropFrame: false,
+      },
+    };
+    const resolved = [19, 0, 9, 10, 4].map((frameNumber) =>
+      resolveCompositionFrame(
+        animation,
+        [asset],
+        frameNumber,
+        resolveProjectTimebase(settings),
+      ),
+    );
+    expect(resolved[0]!.primary).toMatchObject({
+      visualTransform: { scale: 1.5, rotation: 90 },
+    });
+    expect(resolved[1]!.primary).toMatchObject({
+      visualTransform: { x: -16 },
+      opacity: 1,
+    });
+    expect(resolved[2]!.primary).toMatchObject({
+      visualTransform: { x: 16 },
+      opacity: 0.5,
+    });
+
+    const output = join(directory, "animated.mp4");
+    await new FFmpegRenderer().render(animation, [asset], output, settings);
+    const decoded = await decodedGrayFrames(output);
+    const sourceDecoded = await decodedGrayFrames(source);
+    const frameSize = settings.width * settings.height;
+    expect(decoded).toHaveLength(frameSize * 20);
+    const pixel = (frameNumber: number, x: number, y: number) =>
+      decoded[frameNumber * frameSize + y * settings.width + x]!;
+    const firstOpacitySample = pixel(0, 16, 18);
+    const middleOpacitySample = pixel(4, 32, 18);
+    const finalOpacitySample = pixel(9, 48, 18);
+    const sourcePixel = (frameNumber: number, x: number, y: number) =>
+      sourceDecoded[frameNumber * frameSize + y * settings.width + x]!;
+    const expectedOpacitySample = (frameNumber: number, x: number) => {
+      const resolvedFrame = resolveCompositionFrame(
+        animation,
+        [asset],
+        frameNumber,
+        resolveProjectTimebase(settings),
+      );
+      const clip = resolvedFrame.primary!;
+      const sourceX = x - Math.round(clip.visualTransform.x ?? 0);
+      return sourcePixel(frameNumber, sourceX, 18) * (clip.opacity ?? 1);
+    };
+    expect(firstOpacitySample).toBeGreaterThan(220);
+    expect(middleOpacitySample).toBeLessThan(firstOpacitySample);
+    expect(middleOpacitySample).toBeGreaterThan(finalOpacitySample);
+    expect(finalOpacitySample).toBeGreaterThan(80);
+    expect(finalOpacitySample).toBeLessThan(190);
+    expect(
+      Math.abs(firstOpacitySample - expectedOpacitySample(0, 16)),
+    ).toBeLessThan(20);
+    expect(
+      Math.abs(middleOpacitySample - expectedOpacitySample(4, 32)),
+    ).toBeLessThan(20);
+    expect(
+      Math.abs(finalOpacitySample - expectedOpacitySample(9, 48)),
+    ).toBeLessThan(20);
+    const beforeTurn = grayBounds(
+      decoded.subarray(10 * frameSize, 11 * frameSize),
+      64,
+      36,
+    );
+    const afterTurn = grayBounds(
+      decoded.subarray(19 * frameSize, 20 * frameSize),
+      64,
+      36,
+    );
+    expect(beforeTurn.width).toBeGreaterThan(afterTurn.width);
+    expect(beforeTurn.height).toBeLessThan(afterTurn.height);
+    expect(await hashFile(source)).toBe(sourceHash);
+  });
+
+  it("renders a multi-track cubic graph larger than Windows command-line limits", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-clip-animation-graph-size-"),
+    );
+    directories.push(directory);
+    const source = join(directory, "synthetic-animation.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=white:s=64x36",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "synthetic-animation.png",
+    });
+    const sourceHash = await hashFile(source);
+    const easing = {
+      kind: "cubic-bezier" as const,
+      x1: 0.42,
+      y1: 0,
+      x2: 0.58,
+      y2: 1,
+    };
+    const keys = (value: (frame: number) => number) =>
+      Array.from({ length: 8 }, (_, frame) => ({
+        frame,
+        value: value(frame),
+        ...(frame < 7 ? { interpolation: easing } : {}),
+      }));
+    const largeAnimation: Composition["tracks"][number]["clips"][number]["animation"] =
+      {
+        version: 1,
+        visualTracks: [
+          { property: "x", keys: keys((frame) => frame * 2) },
+          { property: "y", keys: keys((frame) => -frame) },
+          { property: "scale", keys: keys((frame) => 1 + frame / 16) },
+        ],
+      };
+    const commandLineFilterSize =
+      clipAnimationFfmpegExpression(largeAnimation, "x", 0).length +
+      clipAnimationFfmpegExpression(largeAnimation, "y", 0).length +
+      2 * clipAnimationFfmpegExpression(largeAnimation, "scale", 1).length;
+    expect(commandLineFilterSize).toBeGreaterThan(32767);
+    const composition: Composition = {
+      id: "large-animation-graph",
+      storyId: "story",
+      duration: 0.8,
+      tracks: [
+        {
+          id: "picture",
+          type: "video",
+          clips: [
+            {
+              id: "multi-track-animation",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 0.8,
+              animation: largeAnimation,
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "large-animation-graph.mp4");
+    const settings: ProjectSettings = { width: 64, height: 36, frameRate: 10 };
+    const rendered = await new FFmpegRenderer().render(
+      composition,
+      [asset],
+      output,
+      settings,
+    );
+    const decoded = await decodedGrayFrames(rendered);
+    expect(decoded).toHaveLength(settings.width * settings.height * 8);
+    expect(await hashFile(source)).toBe(sourceHash);
+  }, 30000);
+
   it("seeks repeated video ranges while retaining frames and audible source audio", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "openfilm-render-input-seek-"),

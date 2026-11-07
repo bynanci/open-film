@@ -255,6 +255,62 @@ describe("shared clip frame-time resolution", () => {
 });
 
 describe("pure composition frame resolution", () => {
+  it("resolves saved visual keyframes at arbitrary seeks without retaining prior values", () => {
+    const saved = composition([
+      clip({
+        timelineDuration: 0.5,
+        transform: { x: 12, scale: 1 },
+        animation: {
+          version: 1,
+          visualTracks: [
+            {
+              property: "x",
+              keys: [
+                { frame: 0, value: -40 },
+                { frame: 9, value: 50 },
+              ],
+            },
+            {
+              property: "opacity",
+              keys: [
+                { frame: 0, value: 0.5 },
+                { frame: 9, value: 1 },
+              ],
+            },
+          ],
+        },
+      }),
+    ]);
+    const expected = new Map(
+      [0, 4, 9, 2, 4].map((frame) => {
+        const resolved = resolveCompositionFrame(
+          saved,
+          [video],
+          frame,
+          timebase,
+        ).primary!;
+        return [
+          frame,
+          { transform: resolved.visualTransform, opacity: resolved.opacity },
+        ] as const;
+      }),
+    );
+    for (const frame of [9, 2, 0, 4, 9]) {
+      const resolved = resolveCompositionFrame(
+        saved,
+        [video],
+        frame,
+        timebase,
+      ).primary!;
+      expect({
+        transform: resolved.visualTransform,
+        opacity: resolved.opacity,
+      }).toEqual(expected.get(frame));
+    }
+    expect(expected.get(4)?.transform.x).toBe(0);
+    expect(expected.get(4)?.opacity).toBeCloseTo(0.5 + (4 / 9) * 0.5);
+  });
+
   it("resolves rounded first/last ticks, source speed, and half-open gaps", () => {
     const saved = composition([
       clip({

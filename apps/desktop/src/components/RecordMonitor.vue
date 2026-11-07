@@ -31,6 +31,7 @@ import {
   timebaseKey,
   timebaseRate,
   type Clip,
+  type ClipAnimationV1,
   type Composition,
   type MediaAsset,
   type ProjectSettings,
@@ -64,7 +65,29 @@ const props = defineProps<{
   /** Optional Film Look bypass view clipped to the left side of the Record preview. */
   splitWipePercent?: number;
   captionTrackId?: string | null;
+  /** Ephemeral inspector preview; never mutates or persists the saved Composition. */
+  clipAnimationPreview?: {
+    clipId: string;
+    animation: ClipAnimationV1 | null;
+  } | null;
 }>();
+const compositionForResolve = computed(() => {
+  const preview = props.clipAnimationPreview;
+  if (!preview) return props.composition;
+  let found = false;
+  const tracks = props.composition.tracks.map((track) => ({
+    ...track,
+    clips: track.clips.map((clip) => {
+      if (clip.id !== preview.clipId) return clip;
+      found = true;
+      if (preview.animation) return { ...clip, animation: preview.animation };
+      const withoutAnimation = { ...clip };
+      delete withoutAnimation.animation;
+      return withoutAnimation;
+    }),
+  }));
+  return found ? { ...props.composition, tracks } : props.composition;
+});
 type IssueCode =
   | "record.not-ready"
   | "record.source-missing"
@@ -557,7 +580,7 @@ function publishIssue(code: IssueCode, entry?: ResolvedSequenceClip) {
 }
 function resolve(frame: number) {
   return resolveCompositionFrame(
-    props.composition,
+    compositionForResolve.value,
     props.assets,
     frame,
     timebase.value,
@@ -975,7 +998,7 @@ function geometry(
 ) {
   const entry = resource.entry;
   const geometry = resolvePreviewClipGeometry(
-    entry.clip.transform,
+    entry.visualTransform,
     assetDisplayDimensions(entry.asset) ?? props.settings,
     props.settings,
     props.settings,
@@ -994,6 +1017,13 @@ function geometry(
       },
       bypassLook,
     ),
+  };
+}
+function resolvedPhotoClip(resource: Resource): Clip {
+  const clip = resource.entry.clip;
+  return {
+    ...clip,
+    transform: { ...clip.transform, ...resource.entry.visualTransform },
   };
 }
 const titles = computed(() => {
@@ -1086,6 +1116,11 @@ watch(
 watch(
   () => props.sourceStatuses,
   () => reconcile(),
+  { flush: "sync", deep: true },
+);
+watch(
+  () => props.clipAnimationPreview,
+  () => reconcile(transport.frame.value, false, true),
   { flush: "sync", deep: true },
 );
 watch(
@@ -1228,7 +1263,7 @@ defineExpose({
               <PhotoPresentationPreview
                 :data-bank="bankRole(resource)"
                 :data-clip-id="resource.entry.clip.id"
-                :clip="resource.entry.clip"
+                :clip="resolvedPhotoClip(resource)"
                 :assets="assets"
                 :frame="settings"
                 :viewport="settings"
@@ -1317,7 +1352,7 @@ defineExpose({
             />
             <PhotoPresentationPreview
               v-else
-              :clip="resource.entry.clip"
+              :clip="resolvedPhotoClip(resource)"
               :assets="assets"
               :frame="settings"
               :viewport="settings"

@@ -38,6 +38,7 @@ export function useTimelineEditor(
   changed: (state: EditorState) => void,
   edited: () => void,
   projectTimebase?: () => ProjectTimebaseV1,
+  projectFrameSize?: () => { width: number; height: number },
 ) {
   const { t } = useI18n();
   const state = shallowRef<EditorState | null>(null);
@@ -222,6 +223,7 @@ export function useTimelineEditor(
         ...applyTimelineCommand(next, next.assets, compiled, {
           origin: "history",
           timebase: projectTimebase?.(),
+          frameSize: projectFrameSize?.(),
         }),
       };
       for (const track of next.composition.tracks)

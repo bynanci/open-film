@@ -3,6 +3,7 @@
 export * from "./models.js";
 export * from "./timebase.js";
 export * from "./sequence.js";
+export * from "./clip-animation.js";
 export * from "./sequence-waveform.js";
 export * from "./export-profile.js";
 export * from "./geometry.js";

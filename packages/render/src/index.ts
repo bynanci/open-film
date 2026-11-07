@@ -1,11 +1,17 @@
 import { compileAudioMixPlan } from "./audio-plan.js";
 export { compileAudioMixPlan } from "./audio-plan.js";
 import { renderPresetSnapshots } from "./preset-integrity.js";
+import { getFilterGraphFileOption } from "./filter-graph-cli.js";
+import {
+  compileClipOpacityFilters,
+  MAX_CLIP_OPACITY_COMMAND_BYTES_PER_RENDER,
+  MAX_CLIP_OPACITY_SAMPLES_PER_RENDER,
+} from "./clip-opacity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
-import { mkdir, realpath, rm, stat } from "node:fs/promises";
+import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   graphicFrameRanges,
@@ -108,7 +114,12 @@ import {
   type AudioAutomation,
   frameAlignedDuration,
   captionFrameRange,
+  clipAnimationFfmpegExpression,
+  clipAnimationMaxFrame,
+  validateClipAnimation,
+  type ClipAnimationProperty,
   type Clip,
+  type ClipAnimationV1,
   type Composition,
   type MediaAsset,
   type ProjectTimebaseV1,
@@ -179,6 +190,63 @@ export interface RenderOptions {
 export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
+
+function animationHasTrack(
+  animation: ClipAnimationV1 | undefined,
+  property: ClipAnimationProperty,
+): boolean {
+  return !!animation?.visualTracks?.some(
+    (track) => track.property === property,
+  );
+}
+
+function animationExpression(
+  clip: Clip,
+  property: ClipAnimationProperty,
+  baseValue: number,
+  frameExpression = "n",
+): string {
+  return clipAnimationFfmpegExpression(
+    clip.animation,
+    property,
+    baseValue,
+    frameExpression,
+  );
+}
+
+function animatedGeometryFilters(
+  clip: Clip,
+  geometry: ReturnType<typeof resolveClipGeometry>,
+  settings: RenderSettings,
+): string[] {
+  const timebase = resolveProjectTimebase(settings);
+  const scaleOnInput = animationExpression(
+    clip,
+    "scale",
+    geometry.scale,
+    `round(on*${timebase.rateNumerator}/(${timebase.rateDenominator}*${number(settings.frameRate)}))`,
+  );
+  const scalePerFrame = animationExpression(
+    clip,
+    "scale",
+    geometry.scale,
+    `round(n*${timebase.rateNumerator}/(${timebase.rateDenominator}*${number(settings.frameRate)}))`,
+  );
+  const rotation = animationExpression(
+    clip,
+    "rotation",
+    geometry.rotation,
+    `round(t*${timebase.rateNumerator}/${timebase.rateDenominator})`,
+  );
+  const downscale = `min(1,${scalePerFrame})`;
+  return [
+    `pad=${settings.width}:${settings.height}:(ow-iw)/2:(oh-ih)/2:color=black@0`,
+    `zoompan=z='max(1,${scaleOnInput})':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s=${settings.width}x${settings.height}:fps=${number(settings.frameRate)}`,
+    `scale=w='max(1,ceil(iw*${downscale}))':h='max(1,ceil(ih*${downscale}))':eval=frame`,
+    `pad=${settings.width}:${settings.height}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`,
+    `rotate='(${rotation})*PI/180':ow=${settings.width}:oh=${settings.height}:c=none`,
+  ];
+}
 
 function finite(value: number, field: string, positive = false): void {
   if (!Number.isFinite(value) || (positive ? value <= 0 : value < 0))
@@ -583,6 +651,22 @@ export class FFmpegRenderer {
           .map((s) => s.clipId),
       );
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+    for (const track of composition.tracks)
+      for (const clip of track.clips) {
+        if (!clip.animation) continue;
+        const asset = assetMap.get(clip.assetId);
+        if (
+          track.type === "audio" ||
+          track.type === "music" ||
+          track.type === "titles" ||
+          asset?.mediaType === "audio"
+        )
+          throw new Error("Clip animation requires a visual media clip.");
+        validateClipAnimation(clip.animation, {
+          maxFrame: clipAnimationMaxFrame(clip, timebase),
+          maxPosition: 4 * Math.max(settings.width, settings.height),
+        });
+      }
     const usedIds = audioOnly
       ? audioSourceAssetIds(
           composition,
@@ -831,7 +915,7 @@ export class FFmpegRenderer {
       }
     }
     const work = join(dirname(output), `.render-${randomUUID()}`);
-    await mkdir(work);
+    await mkdir(work, { mode: 0o700 });
     const temporaryOutput = join(work, audioOnly ? "mix.wav" : "preview.mp4");
     const args: string[] = [
       "-v",
@@ -853,6 +937,8 @@ export class FFmpegRenderer {
     let videoLabel = "base";
     let inputIndex = 0;
     let sequence = 0;
+    let opacitySampleCount = 0;
+    let opacityCommandBytes = 0;
     let retainWork = false;
     const pendingTitles: Array<() => Promise<void>> = [];
     try {
@@ -1190,18 +1276,28 @@ export class FFmpegRenderer {
             transform.push(
               `scale=w='min(${settings.width},${settings.height}*(${displayAspect}))':h='min(${settings.height},${settings.width}/(${displayAspect}))'`,
             );
-            if (geometry.scale !== 1)
-              transform.push(
-                `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})`,
-              );
             // Rotation must happen in an alpha-capable format. Otherwise transparent
             // rotated corners become black and diverge from the browser preview.
             transform.push("setsar=1", "format=rgba");
-            if (geometry.rotation)
+            const animatedGeometry =
+              animationHasTrack(clip.animation, "scale") ||
+              animationHasTrack(clip.animation, "rotation");
+            if (animatedGeometry) {
+              transform.push(`fps=${number(settings.frameRate)}:round=near`);
               transform.push(
-                `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
+                ...animatedGeometryFilters(clip, geometry, settings),
               );
-            transform.push(`fps=${number(settings.frameRate)}:round=near`);
+            } else {
+              if (geometry.scale !== 1)
+                transform.push(
+                  `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})`,
+                );
+              if (geometry.rotation)
+                transform.push(
+                  `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
+                );
+              transform.push(`fps=${number(settings.frameRate)}:round=near`);
+            }
             const fade = clip.transition?.duration ?? 0;
             // Extending the outgoing frame through the next fade creates a real overlap
             // without shifting the editable timeline or changing its duration.
@@ -1253,6 +1349,17 @@ export class FFmpegRenderer {
             }
             if (fade > 0 && clip.transition?.type === "crossfade")
               transform.push(`fade=t=in:st=0:d=${number(fade)}:alpha=1`);
+            const opacityPlan = compileClipOpacityFilters(
+              clip.animation,
+              resolveProjectTimebase(settings),
+              `openfilmOpacity${suffix}`,
+              MAX_CLIP_OPACITY_SAMPLES_PER_RENDER - opacitySampleCount,
+              MAX_CLIP_OPACITY_COMMAND_BYTES_PER_RENDER - opacityCommandBytes,
+            );
+            opacitySampleCount += opacityPlan.sampleCount;
+            opacityCommandBytes += opacityPlan.byteCount;
+            if (opacityPlan.filters.length)
+              transform.push("format=rgba", ...opacityPlan.filters);
             const trim = sharedVisual
               ? `trim=start=${number(sourceIn - sharedVisual.sourceIn)}:end=${number(sourceOut - sharedVisual.sourceIn)}`
               : asset.mediaType === "image"
@@ -1264,8 +1371,13 @@ export class FFmpegRenderer {
               `[${visualInput}]${trim},settb=AVTB,setpts=(PTS-STARTPTS)/${number(presentedPhoto ? 1 : speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
             );
             const merged = `merged${suffix}`;
+            const animationTimebase = resolveProjectTimebase(settings);
+            const localOutputFrame = `round((t-${number(start)})*${animationTimebase.rateNumerator}/${animationTimebase.rateDenominator})`;
+            const animatedPosition =
+              animationHasTrack(clip.animation, "x") ||
+              animationHasTrack(clip.animation, "y");
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x='round((W-w)/2+${animationExpression(clip, "x", geometry.x, localOutputFrame)})':y='round((H-h)/2+${animationExpression(clip, "y", geometry.y, localOutputFrame)})':eval=${animatedPosition ? "frame" : "init"}:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
 
@@ -1454,19 +1566,26 @@ export class FFmpegRenderer {
         filters.push(
           `anullsrc=r=48000:cl=stereo,atrim=duration=${number(composition.duration)}[aout]`,
         );
+      const filterGraph =
+        // Output -sws_flags does not reach complex-graph scale filters or
+        // their automatically inserted pixel-format conversions. Configure
+        // the graph's swscale defaults as well so identical owned PNG inputs
+        // use deterministic rounding throughout the composed frame.
+        `sws_flags=+accurate_rnd+bitexact;${filters.join(";")}`;
+      const filterGraphPath = join(work, "filter-complex.txt");
+      await writeFile(filterGraphPath, filterGraph, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      });
+      const filterGraphFileOption = await getFilterGraphFileOption();
       args.push(
         "-filter_threads",
         "1",
         "-filter_complex_threads",
         "1",
-        "-sws_flags",
-        "+accurate_rnd+bitexact",
-        "-filter_complex",
-        // Output -sws_flags does not reach complex-graph scale filters or
-        // their automatically inserted pixel-format conversions. Configure
-        // the graph's swscale defaults as well so identical owned PNG inputs
-        // use deterministic rounding throughout the composed frame.
-        `sws_flags=+accurate_rnd+bitexact;${filters.join(";")}`,
+        filterGraphFileOption,
+        filterGraphPath,
       );
       if (options.maximumOutputBytes !== undefined)
         args.push("-fs", String(options.maximumOutputBytes));

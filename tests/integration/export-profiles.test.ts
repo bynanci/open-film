@@ -923,7 +923,11 @@ describe("professional profile exports", () => {
               const result = await actualRunProcess(command, args, options);
               if (
                 command === "ffmpeg" &&
-                args.includes("-filter_complex") &&
+                args.some(
+                  (arg) =>
+                    arg === "-/filter_complex" ||
+                    arg === "-filter_complex_script",
+                ) &&
                 args.includes("libx264")
               ) {
                 const output = scope!.output(args.at(-1)!);
@@ -1200,7 +1204,11 @@ describe("professional profile exports", () => {
             const result = await actualRunProcess(command, args, options);
             if (
               command === "ffmpeg" &&
-              args.includes("-filter_complex") &&
+              args.some(
+                (arg) =>
+                  arg === "-/filter_complex" ||
+                  arg === "-filter_complex_script",
+              ) &&
               args.includes("libx264")
             ) {
               const index = renders.length;

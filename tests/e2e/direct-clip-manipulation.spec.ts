@@ -219,6 +219,77 @@ test("moves a clip with one transaction, cancels safely, and survives Undo/Redo 
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
+test("edits clip keyframes in the existing Cut Desk and preserves them through Undo/Redo/reopen", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  page.setDefaultTimeout(15_000);
+  const fixture = await openFixture(page, request);
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await expect(page.getByRole("heading", { name: "Keyframes" })).toBeVisible();
+  await page.getByLabel("Property", { exact: true }).selectOption("x");
+  await page.getByLabel("Position X", { exact: true }).fill("24");
+  await page.getByRole("button", { name: "Add keyframe", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).animation?.visualTracks?.[0]?.keys)
+    .toEqual([{ frame: 0, value: 24, interpolation: "linear" }]);
+
+  const timecode = page.getByLabel("Sequence timecode", { exact: true });
+  await timecode.fill("00:00:02:00");
+  await timecode.press("Enter");
+  await expect(page.locator(".record-monitor")).toHaveAttribute(
+    "data-frame",
+    "48",
+  );
+  await page.getByLabel("Position X", { exact: true }).fill("80");
+  await page.getByRole("button", { name: "Add keyframe", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).animation?.visualTracks?.[0]?.keys)
+    .toEqual([
+      { frame: 0, value: 24, interpolation: "linear" },
+      { frame: 48, value: 80, interpolation: "linear" },
+    ]);
+
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).animation)
+    .toMatchObject({
+      visualTracks: [
+        {
+          property: "x",
+          keys: [{ frame: 0, value: 24, interpolation: "linear" }],
+        },
+      ],
+    });
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).animation)
+    .toBeUndefined();
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).animation?.visualTracks?.[0]?.keys)
+    .toHaveLength(1);
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  const savedAnimation = (await clip(request)).animation;
+  expect(savedAnimation?.visualTracks?.[0]?.keys).toHaveLength(2);
+
+  await request.post(`${base}/project/close`);
+  expect(
+    (
+      await request.post(`${base}/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  expect((await clip(request)).animation).toEqual(savedAnimation);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
 test("resizes a clip proportionally through one atomic transaction", async ({
   page,
   request,

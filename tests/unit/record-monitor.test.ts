@@ -262,6 +262,7 @@ async function mount(
     sourceVersion: 0,
     active: true,
     bypassLook: false,
+    clipAnimationPreview: null,
     ref: (value: MonitorHandle) => {
       if (value) transport = value;
     },
@@ -650,6 +651,45 @@ it("preserves renderer visual order, exact source times, geometry and transition
       expect(JSON.stringify(player.props.style)).toContain("rotate(90deg)");
     }
   }
+  expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("previews transient clip keyframes at the held frame without mutating the saved composition", async () => {
+  const saved = cut();
+  const before = JSON.stringify(saved);
+  const m = await mount(saved);
+  const player = m.banks().find((node) => node.props["data-clip-id"] === "a")!;
+
+  m.props.clipAnimationPreview = {
+    clipId: "a",
+    animation: {
+      version: 1,
+      visualTracks: [
+        { property: "x", keys: [{ frame: 0, value: 48 }] },
+        { property: "scale", keys: [{ frame: 0, value: 1.5 }] },
+        { property: "opacity", keys: [{ frame: 0, value: 0.5 }] },
+      ],
+    },
+  };
+  await settle();
+
+  expect(
+    m.banks().find((node) => node.props["data-clip-id"] === "a"),
+    JSON.stringify({
+      banks: m.banks().map((node) => node.props["data-clip-id"]),
+      issues: m.issues,
+    }),
+  ).toBe(player);
+  expect(player.props.style).toMatchObject({
+    transform: expect.stringContaining("translate(20%, 0%)"),
+  });
+  expect(player.props.style).toMatchObject({
+    transform: expect.stringContaining("scale(1.5)"),
+  });
+  const layer = m
+    .nodes()
+    .find((node) => node.props["data-record-layer"] === "a")!;
+  expect((layer.props.style as { opacity: number }).opacity).toBe(0.5);
   expect(JSON.stringify(saved)).toBe(before);
 });
 

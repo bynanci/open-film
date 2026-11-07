@@ -165,6 +165,53 @@ async function fixture() {
 }
 
 describe("durable timeline editor", () => {
+  it("accepts and durably persists validated visual keyframe edits", async () => {
+    const { app, editor, path } = await fixture();
+    const before = editor.get("timeline");
+    const animation = {
+      version: 1 as const,
+      visualTracks: [
+        {
+          property: "x" as const,
+          keys: [
+            { frame: 0, value: 24, interpolation: "linear" as const },
+            { frame: 90, value: 72, interpolation: "hold" as const },
+          ],
+        },
+      ],
+    };
+    const saved = await editor.edit("timeline", {
+      baseRevision: before.revision,
+      commands: [
+        { type: "clip.animation.set", clipId: "photo-clip", animation },
+      ],
+    });
+
+    expect(
+      saved.composition.tracks[0]!.clips.find(
+        (clip) => clip.id === "photo-clip",
+      )?.animation,
+    ).toEqual(animation);
+    expect(JSON.parse(await readFile(path, "utf8")).schemaVersion).toBe(
+      "1.4.0",
+    );
+    expect(
+      JSON.parse(await readFile(path, "utf8")).timelines[0].tracks[0].clips[1]
+        .animation,
+    ).toEqual(animation);
+
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(app.directory);
+    applications.add(reopened);
+    expect(
+      new TimelineEditor(reopened)
+        .get("timeline")
+        .composition.tracks[0]!.clips.find((clip) => clip.id === "photo-clip")
+        ?.animation,
+    ).toEqual(animation);
+  });
+
   it.each<[string, TimelineCommand]>([
     ["trim", { type: "trim", clipId: "video-clip", sourceIn: 1, sourceOut: 5 }],
     ["speed", { type: "speed", clipId: "video-clip", speed: 2 }],
@@ -467,6 +514,19 @@ describe("durable timeline editor", () => {
         { type: "trim", clipId: "video-clip", sourceIn: 2, sourceOut: 99 },
         { type: "transform", clipId: "video-clip", scale: -1 },
         { type: "transform", clipId: "video-clip" },
+        {
+          type: "clip.animation.set",
+          clipId: "photo-clip",
+          animation: {
+            version: 1,
+            visualTracks: [
+              {
+                property: "x",
+                keys: [{ frame: 0, value: 24, unexpected: true }],
+              },
+            ],
+          },
+        },
         { type: "reorder", clipId: "video-clip", toIndex: 0.5 },
         { type: "transition", clipId: "video-clip", transition: "dissolve" },
         {
