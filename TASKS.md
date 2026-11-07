@@ -1368,14 +1368,17 @@ behavior or its dependency lock.
       FFmpeg/FFprobe 7.1.5; this does not exercise the pinned Ubuntu package.
 - [ ] Obtain a successful exact-head hosted Linux/Windows/macOS matrix and final
       evidence aggregator on the updated PR #129 head.
-- [x] Diagnose the Windows `photo-easing` output mismatch from two exact-head
-      runs: c4's report had zero numeric-only matches in either stream. The parser
-      now accepts only bare values or FFmpeg perspective-context lines, has a
-      parser fixture and bounded failure diagnostics, and retains all 257 sample,
-      endpoint and tolerance assertions. Fresh exact-head CI is still pending.
-- [ ] Resolve the c4 browser shard 1 caption safe-area persistence failure before
-      claiming full Verify: CI trace omitted the final bottom-margin command; one
-      local full-suite run passed, so reproduce and verify before changing scope.
+- [x] Diagnose Linux and Windows `photo-easing` evidence failures. Linux FFmpeg
+      compressed a repeated endpoint log entry (256/257 parsed); Windows emitted
+      `[Eval @ …]` lines (0/257 parsed). The regression now requests repeat logs,
+      parses the observed FFmpeg prefixes and retains all sample, endpoint and
+      tolerance assertions. Full local candidate Render QA passes 8 files / 57
+      tests on system FFmpeg 7.1.5; exact pinned-host verification remains open.
+- [x] Reproduce the c4 browser shard 1 caption safe-area loss with a held font
+      save acknowledgement. The old control reset an in-progress bottom margin
+      from 18 to 12; the selected-track local draft now survives that ack. The
+      targeted browser test passed and retains persistence, Undo/Redo and reopen
+      assertions. Full exact-head browser/Verify remains open.
 - [ ] Close the GLib advisory through independent review and rerun security
       checks on any resulting candidate head; this is separate from Render QA.
 - [ ] Complete release-owner review. No merge, tag, publication, installer or

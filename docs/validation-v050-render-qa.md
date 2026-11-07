@@ -109,33 +109,43 @@ the need to read both streams. The next exact-head matrix on
 ([run 42382091334](https://github.com/bynanci/open-film/actions/runs/42382091334))
 again passed Linux/macOS and decoded Windows MP4 evidence, but its pinned Windows
 FFmpeg produced no lines matching the numeric-only parser in either captured
-stream. The report records 55/56 Windows checks passed; this is a test-output
-format failure, not evidence that the render differs. The regression now accepts
-only a bare numeric line or FFmpeg's `Parsed_perspective_N` context prefix,
-including exponent values, and reports bounded stream tails if extraction still
-fails. It retains all 257 samples, endpoint and per-frame tolerance assertions.
-The new parser fixture and actual FFmpeg regression pass locally; exact-head
-Windows rerun is still required.
+stream. The report records 55/56 Windows checks passed; this was a test-output
+format failure, not evidence that the render differed.
 
-The same Verify run 42382091374 passed fast-contract, heavy-media, five of six
-browser shards, native-shell and docs-site. Browser shard 1 failed the caption
-safe-area persistence scenario: text/time/font writes were accepted but its
-bottom margin remained the original `0.12` instead of the requested `0.18`.
-The CI trace confirms the style command batch omitted that final margin edit.
-The same browser shard passed once in a local full-suite run, so this remains an
-unresolved ordering/reproduction issue rather than a confirmed product fix.
+Run [42383763652](https://github.com/bynanci/open-film/actions/runs/42383763652)
+on exact head `93982583e1481b54f71c9e1d8b4f0d24560a8cd0` passed macOS. Linux
+parsed 256/257 actual FFmpeg `print()` values because FFmpeg compressed the
+repeated endpoint message; Windows parsed 0/257 because its FFmpeg used the
+`[Eval @ …]` prefix. The 257-sample, endpoint and tolerance assertions correctly
+failed on both hosts. However, all three hosts decoded the composite MP4 to 180
+frames and passed the nine PTS/RGB, AAC, source-hash and other report checks.
+The parser now recognizes bare values, `Parsed_perspective_N` and `Eval`
+contexts, and the regression uses `-loglevel repeat+info` so duplicate samples
+are preserved in the log. It does not infer or synthesize missing samples.
+
+The same exact-head Verify run
+[42383763684](https://github.com/bynanci/open-film/actions/runs/42383763684)
+passed fast-contract, native-shell, docs-site and all six browser shards. Heavy
+media had 3,656/3,657 tests pass; its only failure was the same 256/257
+photo-easing log assertion. The c4 browser failure was reproduced with a
+deterministically held font-size acknowledgement: the safe-area input reset from
+18 to 12 before it could be submitted. Candidate `TimelineEditor.vue` now keeps
+the safe-area form draft local until its value changes, matching the established
+main-branch behavior. The targeted end-to-end test went red before this fix and
+passed after it; it still checks persisted cue/track values, Undo, Redo, save and
+reopen. This branch has not yet completed the full browser suite after that
+change.
 
 ## Local evidence and outstanding verification
 
 The selected existing v0.5 render regression files previously passed locally as
 **7 files / 55 tests** on Debian 13 x64 with Node 24.19.0, pnpm 11.19.0 and system
 FFmpeg/FFprobe 7.1.5. The complete candidate-specific selection now passes
-**8 files / 57 tests** with all four candidate-pinned Noto font files and OFL.
-It produced decoded synthetic evidence with 180 frames, nine timestamp/color
-samples, AAC decode and unchanged source hashes. Local FFmpeg/FFprobe are still
-system 7.1.5 rather than the pinned Ubuntu 6.1.1 package; this is diagnostic
-evidence, not hosted pinned admission. The pinned Linux package and Windows/macOS
-runners remain hosted-only gates.
+**8 files / 57 tests** with all four candidate-pinned Noto font files and OFL,
+including the updated repeated-sample regression and decoded composite synthetic
+evidence. Local FFmpeg/FFprobe remain system 7.1.5 rather than the pinned Ubuntu
+6.1.1 package; this is diagnostic evidence, not hosted pinned admission. The
+pinned Linux package and Windows/macOS runners remain hosted-only gates.
 
 A new exact-head Render QA and Verify run must be recorded after these changes.
 Do not treat prior candidate runs or main's D7A matrix as a substitute. No

@@ -795,15 +795,27 @@ exact test inventory and same-run evidence for the exact PR head. See the
 [candidate validation](docs/validation-v050-render-qa.md) and
 [PR #129](https://github.com/bynanci/open-film/pull/129).
 
-Local validation now passes 8 files / 57 tests with pinned fonts; local FFmpeg
-remains an unpinned Debian package. The hosted c4 Windows job decoded the
-candidate MP4 and passed 55/56 checks, but the FFmpeg print parser still found no
-numeric-only values; a stricter context-aware parser now has a fixture and needs
-exact-head hosted verification. c4 Verify also had one browser failure where the
-caption safe-area bottom edit was absent from the saved command batch; one local
-full-suite run passed, so this still needs targeted reproduction. GLib advisory
-disposition, release-owner review and native/workstation checks remain separate
-gates. The public latest release remains v0.4.0.
+Local validation passes 8 files / 57 tests with the candidate fonts and system
+FFmpeg 7.1.5. Exact-head run 42383763652 on `9398258` passed macOS but exposed two
+test-evidence format gaps: Linux suppressed one repeated endpoint sample, while
+Windows used an `[Eval @ …]` prefix. The updated regression enables repeated
+FFmpeg logs and parses both observed prefixes without reducing the 257-sample,
+endpoint or tolerance assertions. The same run's decoded synthetic output had
+180 frames, nine PTS/RGB checkpoints, AAC audio and unchanged source hashes on all
+three hosts; Linux and Windows still failed the strict test inventory.
+
+Verify 42383763684 passed fast-contract, native-shell, docs-site and all six
+browser shards, but heavy-media failed only on that same photo-easing evidence
+assertion (3,656 of 3,657 tests passed). A deterministic browser regression then
+reproduced the c4 caption safe-area failure: a held font-size save acknowledgement
+reset a pending bottom-margin entry from 18 to 12. The historical candidate now
+keeps safe-area input in a selected-track local draft, as already done on main;
+the targeted browser workflow passed with its saved-value, Undo/Redo and reopen
+assertions intact. Full local candidate Render QA passes 8 files / 57 tests, and
+the focused delayed-ack browser test passes. A fresh exact-head hosted Verify and
+three-platform Render QA are still required. GLib advisory disposition,
+release-owner review and native/workstation checks remain separate gates. The
+public latest release remains v0.4.0.
 
 ## Next milestone — workstation evidence and delivery
 

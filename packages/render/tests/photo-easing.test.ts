@@ -5,7 +5,7 @@ import * as render from "../src/index.js";
 
 function parseFfmpegPrintSamples(text: string): number[] {
   const sampleLine =
-    /^(?:\[Parsed_perspective_\d+\s+@\s+[^\]]+\]\s*)?(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$/u;
+    /^(?:\[(?:Parsed_perspective_\d+|Eval)\s+@\s+[^\]]+\]\s*)?(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$/u;
   return text.split(/\r?\n/u).flatMap((line) => {
     const match = sampleLine.exec(line.trim());
     return match ? [Number(match[1])] : [];
@@ -15,9 +15,9 @@ function parseFfmpegPrintSamples(text: string): number[] {
 it("parses FFmpeg perspective print values with either supported log prefix", () => {
   expect(
     parseFfmpegPrintSamples(
-      "0.000000\r\n[Parsed_perspective_0 @ 000001234567] 1.000000\r\nnot a sample 2.0\r\n",
+      "0.000000\r\n[Parsed_perspective_0 @ 000001234567] 1.000000\r\n[Eval @ 000001234567] 0.500000\r\nnot a sample 2.0\r\n",
     ),
-  ).toEqual([0, 1]);
+  ).toEqual([0, 1, 0.5]);
 });
 
 it("matches bounded core easing in actual FFmpeg perspective expressions including endpoint-flat and exponent-form handles", async () => {
@@ -47,7 +47,7 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       [
         "-hide_banner",
         "-loglevel",
-        "info",
+        "repeat+info",
         "-f",
         "lavfi",
         "-i",
