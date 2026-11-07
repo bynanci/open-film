@@ -9,7 +9,7 @@ before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
 Status reviewed against
-[main](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
+[main](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e)
 on 2026-11-07. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
@@ -199,6 +199,18 @@ and in the long-range v1.0 readiness record.
 - [ ] Prepare and verify only the first `v0.5.0` candidate. Historical scope
       anchors are not tag targets; backport security fixes and run exact-head
       gates before drafting a release.
+      A source-only candidate is now under review in Draft PR
+      [#129](https://github.com/bynanci/open-film/pull/129): base
+      `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, head
+      `codex/release-v0.5.0-candidate` at
+      `1f2e23d62ae61959167ad5c3994a0077efecd39f`. Exact-head Verify
+      [42364751023](https://github.com/bynanci/open-film/actions/runs/42364751023),
+      dependency security [42364751028](https://github.com/bynanci/open-film/actions/runs/42364751028),
+      Windows recovery [42364751027](https://github.com/bynanci/open-film/actions/runs/42364751027)
+      and DCO [42364749311](https://github.com/bynanci/open-film/actions/runs/42364749311)
+      passed. Three-platform Render QA has no result on this historical branch;
+      GLib review and installer/workstation gates remain open. The candidate is
+      not frozen, approved, tagged or published.
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
       are recorded in the [independent Storytelling release track](docs/roadmap/incremental-release-train.md).

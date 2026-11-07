@@ -4,22 +4,27 @@ This page records the long-range v1.0 objective; it does not approve a tag.
 As of 2026-11-07, the latest public source release is v0.4.0, while root,
 Desktop, Tauri and Cargo metadata report 1.0.0. The proposed OpenFilm sequence
 begins at v0.5.0, continues through v0.8.0, and reserves v1.0.0 for native
-distribution readiness. No candidate SHA is frozen. See the
+distribution readiness. Draft PR [#129](https://github.com/bynanci/open-film/pull/129)
+prepares a v0.5.0 candidate at
+`1f2e23d62ae61959167ad5c3994a0077efecd39f`; exact-head Verify, dependency
+security, Windows recovery and DCO have passed, but the SHA is not frozen or
+approved. Candidate-bound Render QA and GLib review remain open. See the
 [current release gates](../validation-release-gates.md) and
 [incremental release train](incremental-release-train.md). Main is
-[`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c).
+[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e).
 The 1.0.0 metadata is not release approval. Storytelling maintains a separate
 repository and release track.
 
 For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
 and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
 Status was reconciled against the exact main SHA above; dated validation records
-retain the results of their original runs.
+retain the results of their original runs. The latest GitHub release is still
+v0.4.0; PR #129 is a draft and creates no tag or publication.
 
 ## Release & Version Status
 
 - **Package metadata**: root, Desktop, Tauri and Cargo currently declare 1.0.0; this is build metadata, not a selected release tag.
-- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0; no candidate SHA or tag is approved yet. Storytelling maintains a separate release track.
+- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0. Draft PR #129 prepares the first source-only candidate; its Verify, advisory, Windows recovery and DCO checks pass, while candidate Render QA and GLib review remain open. No candidate SHA or tag is approved yet. Storytelling maintains a separate release track.
 - **Selected merged feature baseline (through PR #99, with recent changes noted below)**:
   - PR #64: D6A managed proxy queue, eviction, rebuild, and health UI.
   - PR #69: Windows workflow recovery for issues #66–#68 (FFmpeg frame sync, atomic sync, benchmark quiescence).
