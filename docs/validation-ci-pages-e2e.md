@@ -138,3 +138,29 @@ Full exact-candidate hosted gates and the following main Pages deployment remain
 required before closing this follow-up. Their exact base/head/run results are
 recorded in the integrating pull request, preserving the original failed run.
 This evidence does not change the stable version or any workstation gate.
+
+## 2026-11-07 follow-up — shard the long transcript suite by test
+
+The exact-head browser reports for Draft PR #130
+([Verify 42400014568](https://github.com/bynanci/open-film/actions/runs/42400014568))
+contained 358 passing browser cases across six shards, with no skips, failures,
+flaky retries or unexpected results. Shard 6 took 7m22s. Its 26
+`transcript-productivity.spec.ts` cases accounted for 343.0s of reported test
+time, and the GitHub annotation reported 5.7m for that file.
+
+The cause was the file-level `beforeAll` fixture: although Playwright was already
+configured with `fullyParallel: true`, its default suite mode kept these shared-
+setup cases together during sharding. A baseline `--list --shard=n/6` check
+reproduced the concentration: all 26 cases were in shard 6 and none were in
+shards 1–5.
+
+The follow-up marks this suite `mode: "parallel"`. Its existing `workers: 1`
+setting remains enforced, so tests still serialize against each runner's
+project service. Every shard gets its own CI runner and fixture lifecycle. No
+assertion, timeout, retry rule, media source or workflow gate changed. The
+post-change Playwright inventory assigns 5/5/5/5/5/1 transcript cases across
+the six shards. Six actual local shard invocations passed all 26 cases; reported
+durations were 1m18s, 56.7s, 58.0s, 1m12s, 1m12s and 18.4s respectively. These
+local serial-run measurements establish fixture and project isolation; they do
+not claim a hosted whole-suite speedup. The new exact-head hosted results are
+recorded by Draft PR #131 when its checks finish.
