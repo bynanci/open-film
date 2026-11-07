@@ -826,12 +826,26 @@ ambient source fixture; its failed suite was incorrectly marked green by the
 platform guard. The current change bounds easing input, independently asserts
 257 output frames, uses the main-reviewed same-version macOS FFmpeg build,
 stabilizes the ambient RGB fixture and tests the outcome gate in TypeScript.
-These fixes pass locally, but exact-head hosted verification is still required.
-Verify 42386120251 on that head passed fast-contract, six browser shards,
-native-shell and docs-site; heavy-media failed on the easing assertion.
-Dependency Security, Windows Recovery and DCO passed. GLib disposition,
-release-owner review and native/workstation checks remain separate gates. The
-public latest release remains v0.4.0.
+Verify 42386120251 on the earlier `83a27ca` head passed fast-contract, six
+browser shards, native-shell and docs-site; heavy-media failed on the easing
+assertion. The corrected code head below passed a new exact-head run.
+The corrected code head `2b5a6aa2e05e9ddd496c447ca60a753fadac8252` then passed
+the exact-head Render QA matrix and final aggregator in run
+[42390017057](https://github.com/bynanci/open-film/actions/runs/42390017057):
+all three platforms reported 57/57 tests, zero skips, 180 decoded frames,
+nine PTS/RGB checkpoints, AAC audio and unchanged source hashes. Exact-head
+Verify [42390017052](https://github.com/bynanci/open-film/actions/runs/42390017052),
+Dependency Security [42390017076](https://github.com/bynanci/open-film/actions/runs/42390017076),
+Windows Recovery [42390017113](https://github.com/bynanci/open-film/actions/runs/42390017113)
+and contributor provenance [42390015259](https://github.com/bynanci/open-film/actions/runs/42390015259)
+also passed on that SHA. This evidence does not cover later heads. The evidence
+documentation commit requires a fresh exact-head run before PR acceptance.
+GLib disposition, release-owner review and native/workstation checks remain
+separate gates. The public latest release remains v0.4.0.
+
+All six browser shards passed on `2b5a6aa`; the slowest shard took 9m48, with
+`transcript-productivity.spec.ts` reported at 6m. Keep test-partition/runtime
+optimization as a follow-up and retain the current assertions.
 
 ## Next milestone — workstation evidence and delivery
 

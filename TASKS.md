@@ -1372,8 +1372,21 @@ behavior or the application dependency lock.
 - [x] Local format, lint, typecheck, i18n, docs locale checks and production
       build passed. Build still reports the existing >500 kB client chunk
       advisory; it does not fail the build.
-- [ ] Obtain a successful exact-head hosted Linux/Windows/macOS matrix and final
-      evidence aggregator on the updated PR #129 head.
+- [x] Exact-head hosted Linux/Windows/macOS Render QA and evidence aggregation
+      passed on `2b5a6aa2e05e9ddd496c447ca60a753fadac8252` in run
+      [42390017057](https://github.com/bynanci/open-film/actions/runs/42390017057):
+      all three receipts report 57/57 tests, no failures or skips, 180 decoded
+      frames, 9 PTS/RGB samples, AAC audio and unchanged synthetic input hashes.
+- [x] Exact-head Verify, Dependency Security, Windows Recovery and contributor
+      provenance passed on the same SHA in runs
+      [42390017052](https://github.com/bynanci/open-film/actions/runs/42390017052),
+      [42390017076](https://github.com/bynanci/open-film/actions/runs/42390017076),
+      [42390017113](https://github.com/bynanci/open-film/actions/runs/42390017113)
+      and [42390015259](https://github.com/bynanci/open-film/actions/runs/42390015259).
+      Any later PR head must pass its own exact-head checks before acceptance.
+- [ ] Profile the longest browser shard from Verify 42390017052: shard 5 took
+      9m48 and `transcript-productivity.spec.ts` took 6m. Optimize partitioning
+      while retaining all current assertions; track separately from release QA.
 - [x] Diagnose candidate head 83a's Linux/Windows/macOS easing results (256,
       258 and 258 values); bound FFmpeg input to 257 frames, assert decoded
       output count with progress output, and retain the exact sample, endpoint
@@ -1383,8 +1396,8 @@ behavior or the application dependency lock.
       suite as green. Unit coverage rejects failed/skipped stage outcomes.
 - [x] Local candidate Render QA passes 8 files / 57 tests with all four
       hash-verified candidate Noto fonts and OFL on Debian 13 / FFmpeg 7.1.5,
-      including decoded synthetic MP4 evidence. The pinned Linux tool package
-      and Windows/macOS hosts remain unverified on the corrected head.
+      including decoded synthetic MP4 evidence. Hosted receipts are recorded
+      above; they do not constitute workstation verification.
 - [x] Reproduce the c4 browser shard 1 caption safe-area loss with a held font
       save acknowledgement. The old control reset an in-progress bottom margin
       from 18 to 12; the selected-track local draft now survives that ack. The

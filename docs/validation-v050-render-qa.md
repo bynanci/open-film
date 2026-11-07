@@ -143,8 +143,10 @@ deterministically held font-size acknowledgement: the safe-area input reset from
 the safe-area form draft local until its value changes, matching the established
 main-branch behavior. The targeted end-to-end test went red before this fix and
 passed after it; it still checks persisted cue/track values, Undo, Redo, save and
-reopen. This branch has not yet completed the full browser suite after that
-change.
+reopen. At that point the full browser suite was still pending; exact-head
+Verify 42390017052 later passed all six shards. Shard 5 took 9m48, including
+`transcript-productivity.spec.ts` at 6m, so test partition/runtime optimization
+remains a follow-up that must preserve assertions.
 
 The following exact-head run
 [42386120211](https://github.com/bynanci/open-film/actions/runs/42386120211) on
@@ -170,7 +172,7 @@ docs-site. Heavy media failed on the same easing assertion. Dependency Security,
 Windows Recovery and DCO also passed on that head; these results do not validate
 the fixes below.
 
-## Local evidence and outstanding verification
+## Local and hosted evidence; remaining gates
 
 The selected existing v0.5 render regression files previously passed locally as
 **7 files / 55 tests** on Debian 13 x64 with Node 24.19.0, pnpm 11.19.0 and system
@@ -179,7 +181,8 @@ FFmpeg/FFprobe 7.1.5. The complete candidate-specific selection passes
 OFL, including the bounded easing regression and decoded composite synthetic
 evidence. Local FFmpeg/FFprobe remain system 7.1.5 rather than the pinned Ubuntu
 6.1.1 package; this is diagnostic evidence, not hosted pinned admission. The
-pinned Linux package and Windows/macOS runners remain hosted-only gates.
+hosted exact-head matrix below exercises the pinned packages and Windows/macOS
+runners.
 
 On 2026-11-07, the complete local media suite passed **304 files / 3,658 tests**;
 the contract suite passed **52 files / 1,183 tests**; and the focused easing,
@@ -192,6 +195,18 @@ The build emits the existing advisory that the main client chunk exceeds
 synthetic sources. This receipt was generated locally under `/tmp` and is not a
 hosted or retained release artifact.
 
-A new exact-head Render QA and Verify run must be recorded after these changes.
-Do not treat prior candidate runs or main's D7A matrix as a substitute. No
-workstation verification, GLib approval, merge, tag or publication is claimed.
+The corrected code head `2b5a6aa2e05e9ddd496c447ca60a753fadac8252` passed
+exact-head Render QA [42390017057](https://github.com/bynanci/open-film/actions/runs/42390017057)
+and Verify [42390017052](https://github.com/bynanci/open-film/actions/runs/42390017052).
+Dependency Security [42390017076](https://github.com/bynanci/open-film/actions/runs/42390017076),
+Windows Recovery [42390017113](https://github.com/bynanci/open-film/actions/runs/42390017113)
+and contributor provenance [42390015259](https://github.com/bynanci/open-film/actions/runs/42390015259)
+also passed on that SHA. The hosted receipts were downloaded and checked: each
+platform reports 57/57 passed, no failures/skips, a 160×90 180-frame MP4 at
+30000/1001, nine PTS/RGB samples, AAC audio and unchanged synthetic input
+hashes. Linux used FFmpeg 6.1.1; Windows and macOS used 9.0.2. These links and
+receipts are the evidence for `2b5a6aa`; any later PR head requires fresh checks.
+This evidence-documentation update changes the PR head and therefore requires
+another exact-head run before acceptance. Do not treat prior candidate runs or
+main's D7A matrix as a substitute. No workstation verification, GLib approval,
+merge, tag or publication is claimed.
