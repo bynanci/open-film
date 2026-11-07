@@ -216,7 +216,11 @@ and in the long-range v1.0 readiness record.
   [native validation](docs/validation-native-installer.md).
 - [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
       compatible upstream remediation, transitive reachability review and re-audit;
-      keep `proc-macro-error` maintenance notices visible.
+      keep `proc-macro-error` maintenance notices visible. Branch
+      `codex/native-glib-0429-current` carries an exact, provenance-pinned backport
+      of upstream gtk-rs commit `05dff0ee`; its source and Linux dependency-closure
+      checks pass locally. Optimized native controls, fresh hosted audit and
+      independent review remain required before this gate can close.
 - [ ] Validate clean-machine installation and first use without developer tools,
       including CJK and long paths on supported Windows/macOS targets.
 - [ ] Validate signing/notarization, supported manual updates, failed-update

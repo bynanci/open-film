@@ -620,3 +620,36 @@ As of 2026-11-04, the public `Native installer candidate` workflow still has **z
 GitHub's latest published release is still `v0.4.0`; the `1.0.0` package version in source is not a published release. [Issue #7](https://github.com/bynanci/open-film/issues/7) remains open for real Resolve interchange, representative source media, GPU/4K and related physical observations. The issue's older macOS dead-owner statement is stale: [PR #98](https://github.com/bynanci/open-film/pull/98) implements Darwin boot-session identity checks. That code change does not satisfy candidate-bound macOS workstation testing.
 
 Still required for D7B/M7E are reviewed Windows/macOS runtime artifacts and candidate-bound packages, signing/notarization where applicable, clean supported install and first launch without developer tools, CJK/long-path rendering, update failure/recovery, rollback and project-preserving uninstall, repeated native first-open trials, and the planned one-hour memory/workflow observation. The current execution host is Linux x86_64 and has neither the required GTK/WebKit/AppIndicator/librsvg development packages nor a Windows/macOS workstation. No real installer or physical workstation acceptance was run. Issue #7's Resolve, external-drive, real-media, GPU/4K, display and listening gates also remain manual. Use the [M7E workstation checklist](workstation-qa.md#m7e-native-installer-candidate) on each target OS; hosted CI and generated media are not substitutes for those observations.
+
+### 2026-11-07 current-main GLib backport candidate
+
+Candidate branch `codex/native-glib-0429-current` is based on main merge
+`73f9df9810770d52cab0cc2978e55ef8301f884e`. It vendors the complete MIT-licensed
+`glib 0.18.5` source and applies only the exact upstream fix from gtk-rs merge
+`05dff0ee696f9bcd8617cd48c4b812d046d440cb`: pass the `VariantStrIter` C
+out-pointer as `&mut p`. The source verifier reconstructs this tree from the
+locked crates.io archive and upstream patch, then checks all file bytes and
+Linux modes. The original registry lock is pinned to the base main commit
+(SHA-256 `2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698`,
+Git blob `b4b8b94363f731001e2b42bf74778d79f725a1e4`); the candidate Cargo lock
+changes only the GLib source and Linux regression-test dependency.
+
+Local source reconstruction and locked Linux `cargo metadata` closure checks
+passed. Five focused security-admission suites passed 94 tests total; Rust
+formatting, repository format checking and license-governance checks passed.
+Using local `cargo-audit 0.22.2` and the cached advisory database at commit
+`309392b18f6b17022f82c701f300433126901068` (1,422 advisories), the path-patched
+lock scan omitted GLib while retaining the unmaintained `proc-macro-error`
+notice; the current-main registry control reported GLib
+`RUSTSEC-2024-0429`. These local scans are not the fresh-database three-graph
+admission run.
+
+The actual optimized baseline, patched and application probes have not run on
+this executor: `pkg-config` cannot find `glib-2.0`, GTK or WebKit development
+packages. The candidate adds a hosted Linux admission workflow that installs
+those prerequisites, captures all three raw audits from one fresh advisory DB,
+and requires optimized baseline reproduction plus patched/application pass
+results. Until that exact-head workflow, independent security review and source
+admission all pass, `RUSTSEC-2024-0429` remains an open release gate. This
+candidate does not provide signed installers or Windows/macOS workstation
+evidence.

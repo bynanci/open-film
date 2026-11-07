@@ -8,7 +8,15 @@ on:
     paths:
       - "**/package.json"
       - "pnpm-lock.yaml"
-      - "apps/desktop/src-tauri/Cargo.lock"
+      - "apps/desktop/src-tauri/**"
+      - "rust-toolchain*"
+      - ".cargo/**"
+      - "vendor/**"
+      - "third-party/**"
+      - "scripts/security/**"
+      - ".gitattributes"
+      - ".github/workflows/native-security.yml"
+      - ".github/workflows/native-installer.yml"
       - ".github/workflows/security.yml"
 permissions:
   contents: read
@@ -33,33 +41,7 @@ jobs:
           name: javascript-advisories
           path: npm-audit.json
           if-no-files-found: error
-  rust-advisories:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pinned advisory scanner
-        run: |
-          rustup toolchain install 1.99.0 --profile minimal
-          cargo +1.99.0 install cargo-audit --version 0.22.2 --locked
-      - name: Check RustSec advisories
-        run: cargo +1.99.0 audit --file apps/desktop/src-tauri/Cargo.lock --json > rust-audit.json
-      - name: Show informational advisories separately
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          path = Path('rust-audit.json')
-          if path.exists() and path.stat().st_size:
-              report = json.loads(path.read_text())
-              for category, entries in report.get('warnings', {}).items():
-                  for item in entries:
-                      print(category, item['advisory']['id'], item['package']['name'], item['package']['version'])
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: rust-advisories
-          path: rust-audit.json
-          if-no-files-found: error
+  native-source-admission:
+    uses: ./.github/workflows/native-security.yml
+    with:
+      candidate_sha: ${{ github.event.pull_request.head.sha || github.sha }}
