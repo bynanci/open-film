@@ -13,16 +13,65 @@ source CI run does not satisfy those other gates.
 
 ## Evidence snapshot
 
-| Area | Observed evidence | Release implication |
-| --- | --- | --- |
-| Current source | main SHA 5f737a6 includes merged PR #126. Verify run [42317989011](https://github.com/bynanci/open-film/actions/runs/42317989011), Render QA [42317988938](https://github.com/bynanci/open-film/actions/runs/42317988938), Windows media recovery [42317988924](https://github.com/bynanci/open-film/actions/runs/42317988924), and Pages [42317988923](https://github.com/bynanci/open-film/actions/runs/42317988923) all completed successfully on that SHA. | Strong merged-main evidence; a release candidate still needs its own frozen identity and complete checks. |
-| PR #126 feature head | Exact feature head [`b4aba4c4bb70b8cb03edd54342f1b94cec649245`](https://github.com/bynanci/open-film/commit/b4aba4c4bb70b8cb03edd54342f1b94cec649245) passed its hosted checks before merge, including fast-contract, heavy-media, typescript-and-media, six browser shards, three-platform Render QA, Windows FFmpeg9, native-shell, docs-site and DCO. See [PR #126](https://github.com/bynanci/open-film/pull/126). | These results apply to the PR feature SHA. They do not replace checks on a separately frozen release candidate. |
-| Public release | Latest GitHub release is [v0.4.0](https://github.com/bynanci/open-film/releases/tag/v0.4.0), published 2026-10-20. It includes a source archive, synthetic reference MP4, validation JSON and SHA256SUMS; it is not an installer release. | Preserve this source-only distinction. |
-| Version identity | Root, Desktop, Tauri and Cargo metadata currently say 1.0.0, while the latest tag is v0.4.0. The next stable release number has not been selected. | Choose a release version explicitly and verify all version surfaces against the release tag; package metadata alone is not a release decision. |
-| Rust dependencies | Security run [42297394920](https://github.com/bynanci/open-film/actions/runs/42297394920) audited PR #120's dependency set. Its Cargo lock SHA-256 is `2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698`; pnpm lock SHA-256 is `173e22be4859fb74c702aec6fca31e3006b4b9eaeae632fee39f3d87606dc5ba`. Both match main. The report found zero vulnerabilities, one GLib unsound advisory RUSTSEC-2024-0429 and one unmaintained proc-macro-error advisory RUSTSEC-2024-0370. Tokio 1.53.3 removes RUSTSEC-2026-0386. The scanner treats unsound/unmaintained as informational and exits successfully. | The scanner's success is not a zero-warning security pass. Re-audit the frozen release candidate against a fresh advisory database and disposition the GLib finding for every shipped target. |
-| Alerting and enforcement | GitHub reports Dependabot alerts are disabled. The current credential could not read main branch protection settings, so required-check enforcement is unknown. | Enable Dependabot or an equivalent alert service; have an administrator confirm required checks and release permissions. |
-| Native installers | The native-installer workflow is manual-dispatch and input-gated; no candidate run was found. Signing/notarization, clean-machine installation, update failure recovery and uninstall preservation remain unverified in [M7E validation](validation-native-installer.md). | Native installers are blocked. Do not advertise a tested installer or signed update path. |
-| Physical product claims | Windows/macOS workstation, Resolve, GPU/4K, external-drive and listening observations remain tracked under [Issue #7](https://github.com/bynanci/open-film/issues/7). | Keep these claims out of release promises until candidate-bound observations exist. |
+- **Current source.** Main SHA `5f737a6` includes merged PR #126. Verify
+  [42317989011](https://github.com/bynanci/open-film/actions/runs/42317989011),
+  Render QA
+  [42317988938](https://github.com/bynanci/open-film/actions/runs/42317988938),
+  Windows media recovery
+  [42317988924](https://github.com/bynanci/open-film/actions/runs/42317988924),
+  and Pages
+  [42317988923](https://github.com/bynanci/open-film/actions/runs/42317988923)
+  all completed successfully on that SHA.
+  - **Implication:** Strong merged-main evidence; a release candidate still
+    needs its own frozen identity and complete checks.
+- **PR #126 feature head.** Exact feature head
+  [`b4aba4c4bb70b8cb03edd54342f1b94cec649245`](https://github.com/bynanci/open-film/commit/b4aba4c4bb70b8cb03edd54342f1b94cec649245)
+  passed hosted checks before merge: fast-contract, heavy-media,
+  typescript-and-media, six browser shards, three-platform Render QA, Windows
+  FFmpeg9, native-shell, docs-site and DCO. See
+  [PR #126](https://github.com/bynanci/open-film/pull/126).
+  - **Implication:** These checks apply to the PR feature SHA; they do not
+    replace checks on a separately frozen release candidate.
+- **Public release.** Latest GitHub release is
+  [v0.4.0](https://github.com/bynanci/open-film/releases/tag/v0.4.0), published
+  2026-10-20. It includes a source archive, synthetic reference MP4, validation
+  JSON and SHA256SUMS; it is not an installer release.
+  - **Implication:** Preserve this source-only distinction.
+- **Version identity.** Root, Desktop, Tauri and Cargo metadata currently say
+  1.0.0, while the latest tag is v0.4.0. The next stable release number has not
+  been selected.
+  - **Implication:** Choose a release version explicitly and verify all version
+    surfaces against the release tag; package metadata alone is not a release
+    decision.
+- **Rust dependencies.** Security run
+  [42297394920](https://github.com/bynanci/open-film/actions/runs/42297394920)
+  audited PR #120's dependency set. Cargo lock SHA-256:
+  `2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698`;
+  pnpm lock SHA-256:
+  `173e22be4859fb74c702aec6fca31e3006b4b9eaeae632fee39f3d87606dc5ba`.
+  Both match main. The report found zero vulnerabilities, GLib unsound advisory
+  RUSTSEC-2024-0429 and unmaintained proc-macro-error advisory
+  RUSTSEC-2024-0370. Tokio 1.53.3 removes RUSTSEC-2026-0386. The scanner treats
+  unsound/unmaintained as informational and exits successfully.
+  - **Implication:** Scanner success is not a zero-warning security pass.
+    Re-audit the frozen candidate against a fresh advisory database and
+    disposition the GLib finding for every shipped target.
+- **Alerting and enforcement.** GitHub reports Dependabot alerts are disabled.
+  The current credential could not read main branch protection settings, so
+  required-check enforcement is unknown.
+  - **Implication:** Enable Dependabot or equivalent alerting; have a repository
+    administrator confirm required checks and release permissions.
+- **Native installers.** The native-installer workflow is manual-dispatch and
+  input-gated; no candidate run was found. Signing/notarization, clean-machine
+  installation, update failure recovery and uninstall preservation remain
+  unverified in [M7E validation](validation-native-installer.md).
+  - **Implication:** Native installers are blocked. Do not advertise a tested
+    installer or signed update path.
+- **Physical product claims.** Windows/macOS workstation, Resolve, GPU/4K,
+  external-drive and listening observations remain tracked under
+  [Issue #7](https://github.com/bynanci/open-film/issues/7).
+  - **Implication:** Keep these claims out of release promises until
+    candidate-bound observations exist.
 
 ## Current decision
 
