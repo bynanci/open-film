@@ -1,10 +1,12 @@
 # 0.4.0 integrated release validation
 
+Historical record for the published v0.4.0 source release. For current readiness, see the [release gate audit](validation-release-gates.md).
+
 This record covers the reviewed source implementation. Final candidate/head,
 merge/tag identities, all changed paths, exact-head CI URLs, full browser results
 and checksums accompany the [0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
-[Integration PR #41](https://github.com/bynanci/open-film/pull/41) must pass all
-final checks before a merge commit and publication. No installer/workstation
+[Integration PR #41](https://github.com/bynanci/open-film/pull/41) passed the
+final checks before its merge and publication. No installer/workstation
 certification is implied.
 
 ## Exact reviewed inputs

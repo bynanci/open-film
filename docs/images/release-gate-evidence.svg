@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">OpenFilm release readiness evidence snapshot</title>
+  <desc id="desc">On main at 5f737a6, source CI, rendering and Windows recovery passed. The latest public version is 0.4.0 while package metadata says 1.0.0. The latest dependency audit has no vulnerability findings but leaves one unsound GLib advisory and one unmaintained dependency. Native installers and physical workstation claims have not been validated.</desc>
+  <defs>
+    <style>
+      .bg { fill:#f5f7fa; }
+      .card { fill:#fff; stroke:#d3dbe5; stroke-width:2; rx:18; }
+      .green { fill:#e4f4ec; stroke:#2e8a58; }
+      .amber { fill:#fff3d7; stroke:#c2912c; }
+      .red { fill:#ffedeb; stroke:#c4564a; }
+      .blue { fill:#e9f0fb; stroke:#5b7fae; }
+      .head { font:700 26px system-ui, sans-serif; fill:#1d2c3c; }
+      .subtitle { font:14px system-ui, sans-serif; fill:#5a6b7c; }
+      .label { font:700 18px system-ui, sans-serif; fill:#243447; }
+      .status { font:700 15px system-ui, sans-serif; }
+      .text { font:14px system-ui, sans-serif; fill:#425366; }
+      .strong { font:700 14px system-ui, sans-serif; fill:#26384b; }
+      .note { font:13px system-ui, sans-serif; fill:#536477; }
+      .status-green { fill:#236b44; }
+      .status-amber { fill:#88610f; }
+      .status-red { fill:#a43c34; }
+      .status-blue { fill:#416594; }
+      .footer { fill:#e8edf4; stroke:#8898ab; stroke-width:2; rx:16; }
+      .footer-text { font:700 18px system-ui, sans-serif; fill:#2c3d50; }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="720" rx="24"/>
+  <text class="head" x="48" y="54">Release readiness evidence</text>
+  <text class="subtitle" x="48" y="82">Snapshot: main 5f737a6 · 2026-11-07 · evidence links and exact runs are listed in the audit document</text>
+
+  <rect class="card green" x="48" y="120" width="530" height="206" rx="18"/>
+  <text class="label" x="74" y="158">Source CI</text>
+  <text class="status status-green" x="74" y="187">PASS · main SHA 5f737a6</text>
+  <text class="text" x="74" y="220">Main: Verify, Render QA, Windows recovery, Pages</text>
+  <text class="text" x="74" y="246">PR #126 feature head: all hosted checks passed</text>
+  <text class="text" x="74" y="272">Includes six browser shards, media and native gates</text>
+  <text class="note" x="74" y="302">Source evidence only; not installer certification</text>
+
+  <rect class="card amber" x="622" y="120" width="530" height="206" rx="18"/>
+  <text class="label" x="648" y="158">Version decision</text>
+  <text class="status status-amber" x="648" y="187">REVIEW · no next stable tag selected</text>
+  <text class="text" x="648" y="220">Published source release: v0.4.0</text>
+  <text class="text" x="648" y="246">Root, Desktop, Tauri and Cargo metadata: 1.0.0</text>
+  <text class="text" x="648" y="272">Next stable version remains TBD</text>
+  <text class="note" x="648" y="302">Metadata does not approve or publish a release</text>
+
+  <rect class="card amber" x="48" y="360" width="530" height="206" rx="18"/>
+  <text class="label" x="74" y="398">Dependency security</text>
+  <text class="status status-amber" x="74" y="427">REVIEW · default audit exits successfully</text>
+  <text class="text" x="74" y="460">0 known vulnerabilities in audited lockfiles</text>
+  <text class="text" x="74" y="486">GLib RUSTSEC-2024-0429 unsound finding remains</text>
+  <text class="text" x="74" y="512">proc-macro-error unmaintained; alerts are disabled</text>
+  <text class="note" x="74" y="542">Require fresh candidate audit and explicit disposition</text>
+
+  <rect class="card red" x="622" y="360" width="530" height="206" rx="18"/>
+  <text class="label" x="648" y="398">Native installers + physical claims</text>
+  <text class="status status-red" x="648" y="427">BLOCKED · no installer candidate or workstation evidence</text>
+  <text class="text" x="648" y="460">No signed/notarized candidate package</text>
+  <text class="text" x="648" y="486">Clean install, update, rollback and uninstall unverified</text>
+  <text class="text" x="648" y="512">Resolve, GPU/4K and listening gates remain open</text>
+  <text class="note" x="648" y="542">Do not claim installer or hardware certification</text>
+
+  <rect class="footer" x="48" y="608" width="1104" height="70" rx="16"/>
+  <text class="footer-text" x="76" y="650">Decision: source CI is green; broad stable release is not approved. Native installer distribution is blocked.</text>
+</svg>

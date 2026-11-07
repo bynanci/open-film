@@ -1,14 +1,15 @@
 # OpenFilm development tasks
 
 This is the current contributor-facing work list. [ROADMAP.md](ROADMAP.md)
-explains the direction; [v1.0 readiness](docs/roadmap/v1-readiness.md) defines the
-release requirements. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting a
-substantial change, and check existing issues or pull requests to avoid duplicate
-work.
+explains the direction; the [release gate policy](docs/validation-release-gates.md)
+defines current release requirements. The v1.0 readiness page remains a
+long-range scope record. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting
+a substantial change, and check existing issues or pull requests to avoid
+duplicate work.
 
 Status reviewed against
-[`main`](https://github.com/bynanci/open-film/commit/d332fb3265077ca08f218f6ba9b6c65d2519eaa2)
-on 2026-11-06. The latest published source release remains **v0.4.0**.
+[main](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
+on 2026-11-07. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -137,7 +138,7 @@ remain separate acceptance scopes. See the
 #### Phase 4B — deterministic animation
 
 - [x] **4B.1 shared frame-time contract:** merged in PR [#125](https://github.com/bynanci/open-film/pull/125) at `7add4762fe8174d76f43b863375ea39b73121e76`; exact-head hosted verification passed before merge.
-- [ ] **4B.2 visual keyframes:** draft PR [#126](https://github.com/bynanci/open-film/pull/126), based on merged 4B.1. Large FFmpeg graphs use a unique temporary script and a version-matched FFmpeg file-option (`-/filter_complex` on 7+, legacy script flag on 6.x) to avoid Windows process command-line limits; current exact-head hosted checks are required before merge.
+- [x] **4B.2 visual keyframes:** merged in PR [#126](https://github.com/bynanci/open-film/pull/126); feature head `b4aba4c4bb70b8cb03edd54342f1b94cec649245`, main merge [`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c). Exact-head Verify, all six browser shards, heavy-media QA, three-platform Render QA, Windows FFmpeg9 recovery, native-shell, docs-site and DCO passed. See [validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
 - [ ] **4B.3 speed ramps:** blocked until source-mapped caption, audio and rhythm consumers are reconciled and an explicit audio policy is approved. Keep existing audio timing unchanged until then.
 
 See the [4B design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md), [shared contract validation](docs/validation-cut-desk-phase-4b-time-contract.md) and [visual keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
@@ -174,17 +175,19 @@ Design references: [story authoring](docs/story-arc-authoring.md),
 [editing contracts](docs/EDITING_CONTRACTS.md),
 [seven-subsystem design crosswalk](docs/roadmap/seven-subsystem-reconciliation.md).
 The crosswalk records design responsibilities; current completion status is
-recorded here and in v1.0 readiness.
+recorded here, in the [release gate audit](docs/validation-release-gates.md),
+and in the long-range v1.0 readiness record.
 
 ## Distribution and platform readiness
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
-- Tokio's `RUSTSEC-2026-0386` is removed in the open PR #120 candidate by the
-  lockfile-only update to patched `1.53.3`; the refreshed audit still reports
-  GLib `RUSTSEC-2024-0429` and unmaintained `proc-macro-error`. This candidate
-  is not merged or release-approved; see the dated evidence in the validation
-  record.
+- PR [#120](https://github.com/bynanci/open-film/pull/120) merged on
+  2026-11-06; Tokio is now 1.53.3 and RUSTSEC-2026-0386 is no longer reported
+  by that audit. The current dependency report still records GLib
+  RUSTSEC-2024-0429 and unmaintained proc-macro-error; its successful default
+  exit does not close the unsoundness gate. See the dated
+  [native validation](docs/validation-native-installer.md).
 - [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
       compatible upstream remediation, transitive reachability review and re-audit;
       keep `proc-macro-error` maintenance notices visible.

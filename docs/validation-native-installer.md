@@ -589,6 +589,12 @@ On the rebased head, `cargo tree --locked --manifest-path apps/desktop/src-tauri
 
 The local `pnpm test:native` attempt passed `cargo fmt --check`, then stopped during Clippy dependency compilation because this Linux host lacks `glib-2.0 >= 2.70` in pkg-config. The chained Rust tests were not reached. This is a host prerequisite failure, not a native-code pass or failure; the exact candidate still needs the hosted native-shell gate.
 
+### 2026-11-07 merged disposition
+
+PR [#120](https://github.com/bynanci/open-film/pull/120) merged at 2026-11-06 22:59 UTC (merge commit d9fbf7801d64f7dc48ef852f63ef5babee6ae101). The current main snapshot is 5f737a6c8f35dce48e213370ff27900962c9304c. The merged Cargo.lock is byte-identical to the audited Tokio 1.53.3 candidate (SHA-256 2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698); pnpm-lock.yaml is also unchanged from that audit.
+
+Security run [42297394920](https://github.com/bynanci/open-film/actions/runs/42297394920) passed on PR #120 head c199d6e15fe67220f944db0d95601446087cc7f4, using advisory database 309392b18f6b17022f82c701f300433126901068 (1,422 advisories). Its JSON reports zero known vulnerabilities, GLib RUSTSEC-2024-0429 as unsound and proc-macro-error RUSTSEC-2024-0370 as unmaintained. Tokio is no longer reported. Because the scanner policy marks unsound and unmaintained as informational, exit 0 is not a zero-warning security pass. The lockfiles match current main, but the report predates the current source SHA; repeat both audits against the eventual release candidate and a fresh advisory database. The GLib source-aware admission and all installer/workstation gates remain open.
+
 ### Separate D7B source-repair experiment (not admitted)
 
 An isolated source-repair experiment at `423ccd3af308fe855b0da7f9ab9d0e1e78be8b2a` was audited on 2026-11-04. It is not based on current main `fcc00131c2f2d90d9dd20952dad192a65cceaa31`: it is 219 commits behind and 5 commits ahead, so it is not a release candidate and must be reconciled onto current main before further candidate validation. The reviewed GLib source verifier passed for 121 files, and locked Linux metadata/closure verification passed for 431 dependencies with the source patch and Tokio 1.53.3. The candidate lock SHA-256 is `c0f457e0ab610c0db6c5d4eddc5997f4de3a91e2c832587c956d337b5e7c8161`.

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">OpenFilm stable release gates</title>
+  <desc id="desc">Freeze an exact candidate, pass source, security, compatibility and provenance checks, add installer or physical-workstation gates when those are in scope, then approve and verify publication. Any hard gate failure blocks release.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#556579"/>
+    </marker>
+    <style>
+      .bg { fill:#f4f7fb; }
+      .box { fill:#fff; stroke:#b8c5d4; stroke-width:2; rx:16; }
+      .core { fill:#e7f0ff; stroke:#5b82c5; }
+      .security { fill:#fff3d8; stroke:#c18a24; }
+      .conditional { fill:#e8f6f2; stroke:#32917b; }
+      .final { fill:#e9edf5; stroke:#66778f; }
+      .blocked { fill:#fff0ed; stroke:#c65442; }
+      .title { font:700 22px system-ui, sans-serif; fill:#1c2b3a; }
+      .label { font:600 16px system-ui, sans-serif; fill:#253649; }
+      .body { font:14px system-ui, sans-serif; fill:#42566d; }
+      .small { font:600 13px system-ui, sans-serif; fill:#53657a; }
+      .line { fill:none; stroke:#556579; stroke-width:2.4; marker-end:url(#arrow); }
+      .fail-line { fill:none; stroke:#c65442; stroke-width:2.4; marker-end:url(#arrow); }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="700" rx="24"/>
+  <text class="title" x="56" y="54">Release one verified candidate</text>
+  <text class="body" x="56" y="82">Choose a channel and version, freeze the exact source identity, then add gates required by the claims.</text>
+
+  <rect class="box core" x="56" y="120" width="290" height="88" rx="16"/>
+  <text class="label" x="78" y="153">1. Select channel + version</text>
+  <text class="body" x="78" y="180">Source only, installer, or both</text>
+
+  <rect class="box core" x="455" y="120" width="290" height="88" rx="16"/>
+  <text class="label" x="477" y="153">2. Freeze candidate</text>
+  <text class="body" x="477" y="180">Commit SHA, tag, versions, lock hashes</text>
+  <path class="line" d="M346 164 H445"/>
+
+  <rect class="box core" x="854" y="120" width="290" height="88" rx="16"/>
+  <text class="label" x="876" y="153">3. Source quality gates</text>
+  <text class="body" x="876" y="180">Verify, media, browser, render, native</text>
+  <path class="line" d="M745 164 H844"/>
+
+  <rect class="box security" x="56" y="278" width="340" height="130" rx="16"/>
+  <text class="label" x="78" y="312">Security + provenance</text>
+  <text class="body" x="78" y="340">Fresh JS / RustSec audits</text>
+  <text class="body" x="78" y="363">DCO, licenses, NOTICE, runtime SBOM</text>
+  <text class="body" x="78" y="386">Warnings need reviewed dispositions</text>
+
+  <rect class="box core" x="430" y="278" width="340" height="130" rx="16"/>
+  <text class="label" x="452" y="312">Compatibility + integrity</text>
+  <text class="body" x="452" y="340">Open, migrate, save, reopen</text>
+  <text class="body" x="452" y="363">Source hashes, exports, project safety</text>
+  <text class="body" x="452" y="386">Candidate-bound evidence manifest</text>
+
+  <rect class="box conditional" x="804" y="278" width="340" height="130" rx="16"/>
+  <text class="label" x="826" y="312">Conditional acceptance</text>
+  <text class="body" x="826" y="340">Installer: clean install, sign, update, rollback</text>
+  <text class="body" x="826" y="363">Claims: Windows/macOS, Resolve, GPU, 4K</text>
+  <text class="body" x="826" y="386">Only require gates for advertised scope</text>
+
+  <path class="line" d="M998 208 V242 H226 V268"/>
+  <path class="line" d="M998 242 H600 V268"/>
+  <path class="line" d="M998 242 H974 V268"/>
+
+  <rect class="box final" x="365" y="488" width="470" height="96" rx="18"/>
+  <text class="label" x="390" y="525">4. Human release approval</text>
+  <text class="body" x="390" y="553">All hard gates pass; exceptions have owners and expiry</text>
+  <path class="line" d="M226 408 V454 H485 V478"/>
+  <path class="line" d="M600 408 V478"/>
+  <path class="line" d="M974 408 V454 H715 V478"/>
+
+  <rect class="box final" x="854" y="488" width="290" height="96" rx="18"/>
+  <text class="label" x="876" y="525">5. Publish + verify</text>
+  <text class="body" x="876" y="553">Artifacts, hashes, tag and public URL</text>
+  <path class="line" d="M835 536 H844"/>
+
+  <rect class="box blocked" x="56" y="488" width="250" height="96" rx="18"/>
+  <text class="label" x="78" y="525">Hard gate fails</text>
+  <text class="body" x="78" y="553">Block release; keep evidence</text>
+  <path class="fail-line" d="M365 536 H316"/>
+  <text class="small" x="56" y="642">A successful CI run is necessary source evidence; it does not certify an installer or physical workstation.</text>
+</svg>
