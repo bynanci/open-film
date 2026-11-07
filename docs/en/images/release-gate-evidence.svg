@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">OpenFilm release readiness evidence snapshot</title>
-  <desc id="desc">On main at 73f9df9, source CI, rendering and Windows recovery passed. The latest public version is 0.4.0 while package metadata says 1.0.0. Draft PR 129 has passing Verify, dependency advisory, Windows recovery and DCO checks. Candidate Render QA and the GLib unsound advisory remain open. Native installers and physical workstation claims have not been validated.</desc>
+  <desc id="desc">On main at 73f9df9, source CI, rendering and Windows recovery passed. The latest public version is 0.4.0 while package metadata says 1.0.0. Draft PR 129 candidate 04035f3 passed exact-head Verify, security, Windows recovery, DCO and three-platform Render QA. Independent GLib review, installer and workstation gates remain open.</desc>
   <defs>
     <style>
       .bg { fill:#f5f7fa; }
@@ -38,19 +38,19 @@
 
   <rect class="card amber" x="622" y="120" width="530" height="206" rx="18"/>
   <text class="label" x="648" y="158">Version decision</text>
-  <text class="status status-amber" x="648" y="187">DRAFT · Verify passed; release gates remain</text>
+  <text class="status status-amber" x="648" y="187">DRAFT · exact-head CI and render QA passed</text>
   <text class="text" x="648" y="220">Published source release: v0.4.0</text>
-  <text class="text" x="648" y="246">Draft PR #129 · candidate head 1f2e23d</text>
-  <text class="text" x="648" y="272">Render QA and GLib review remain open</text>
-  <text class="note" x="648" y="302">No tag or release has been approved or published</text>
+  <text class="text" x="648" y="246">Draft PR #129 · candidate head 04035f3</text>
+  <text class="text" x="648" y="272">57/57 render tests on Linux, Windows, macOS</text>
+  <text class="note" x="648" y="302">313 browser tests passed · no tag or publication</text>
 
   <rect class="card amber" x="48" y="360" width="530" height="206" rx="18"/>
   <text class="label" x="74" y="398">Dependency security</text>
-  <text class="status status-amber" x="74" y="427">REVIEW · default audit exits successfully</text>
-  <text class="text" x="74" y="460">No vuln alerts; GLib unsound finding remains</text>
-  <text class="text" x="74" y="486">GLib RUSTSEC-2024-0429 unsound finding remains</text>
-  <text class="text" x="74" y="512">proc-macro-error unmaintained; alerts are disabled</text>
-  <text class="note" x="74" y="542">Require fresh candidate audit and explicit disposition</text>
+  <text class="status status-amber" x="74" y="427">REVIEW · GLib disposition remains open</text>
+  <text class="text" x="74" y="460">Candidate advisory scan passed; GLib review open</text>
+  <text class="text" x="74" y="486">GLib RUSTSEC-2024-0429 needs independent review</text>
+  <text class="text" x="74" y="512">proc-macro-error warning; repository alerts disabled</text>
+  <text class="note" x="74" y="542">PR #128 is Draft; no independent review submitted</text>
 
   <rect class="card red" x="622" y="360" width="530" height="206" rx="18"/>
   <text class="label" x="648" y="398">Native installers + physical claims</text>
@@ -61,5 +61,5 @@
   <text class="note" x="648" y="542">Do not claim installer or hardware certification</text>
 
   <rect class="footer" x="48" y="608" width="1104" height="70" rx="16"/>
-  <text class="footer-text" x="76" y="650">Decision: candidate needs Render QA and security review. Native installers remain blocked.</text>
+  <text class="footer-text" x="76" y="650">Decision: candidate render gates pass; GLib review and release-owner approval remain open.</text>
 </svg>

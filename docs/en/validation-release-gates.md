@@ -11,7 +11,7 @@ green source CI run does not satisfy the other gates.
 
 ![Release gates: freeze one candidate, pass source and security gates, add platform-specific checks for the distribution and claims, then approve and verify published artifacts.](images/release-gates.svg)
 
-![Current release gate evidence on main 73f9df9: main checks passed; v0.5.0 candidate PR #129 has passing Verify, advisory, Windows recovery and DCO checks, while candidate Render QA, GLib review and installer or workstation gates remain open.](images/release-gate-evidence.svg)
+![Current release gate evidence on main 73f9df9: v0.5.0 candidate PR #129 exact-head Verify, security, Windows recovery, DCO and three-platform Render QA passed; independent GLib review, release-owner approval, installer and workstation gates remain open.](images/release-gate-evidence.svg)
 
 ## Evidence snapshot
 
@@ -30,19 +30,26 @@ green source CI run does not satisfy the other gates.
 - **v0.5.0 candidate.** Draft PR
   [#129](https://github.com/bynanci/open-film/pull/129) targets
   `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. Its current
-  head is `1f2e23d62ae61959167ad5c3994a0077efecd39f`. Exact-head Verify
-  [42364751023](https://github.com/bynanci/open-film/actions/runs/42364751023)
-  passed, including format, i18n, lint, types, contracts, six browser shards,
-  heavy-media and native-shell. Dependency security
-  [42364751028](https://github.com/bynanci/open-film/actions/runs/42364751028),
-  Windows recovery [42364751027](https://github.com/bynanci/open-film/actions/runs/42364751027)
-  and DCO [42364749311](https://github.com/bynanci/open-film/actions/runs/42364749311)
-  also passed. No three-platform Render QA result exists for this exact SHA:
-  the historical release branch predates that workflow.
-  - **Implication:** This is an in-progress draft, not a frozen or approved
-    candidate. Complete candidate-bound Render QA and the GLib security
-    disposition; recheck the exact SHA and every required gate before requesting
-    release review.
+  exact head is `04035f3266e191478296787982a46293177d61b2`. Verify
+  [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777)
+  passed format, i18n, docs, lint, types, contracts, build, 304 media test files
+  / 3,658 tests, native-shell, all six browser shards (313/313, zero failures,
+  skips or flaky retries), and the aggregate `typescript-and-media` check.
+  Dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
+  Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
+  and DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
+  passed on the same SHA. Candidate Render QA
+  [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
+  passed on Linux x64, Windows x64 and macOS arm64: 57/57 tests per platform,
+  180 decoded frames at 30000/1001, nine PTS/RGB samples, decoded AAC, and
+  unchanged synthetic-source SHA-256 values. The path-free evidence binds all
+  three results to this exact SHA and records `workstationVerified: false`.
+  - **Implication:** Candidate-bound automated source and render checks are
+    complete for this SHA, but PR #129 remains Draft and the candidate is not
+    frozen or approved. Independent GLib `RUSTSEC-2024-0429` review remains
+    open in Draft PR [#128](https://github.com/bynanci/open-film/pull/128); a
+    green advisory job does not close that unsoundness finding. Recheck every
+    exact-head gate if the candidate changes.
 - **PR #126 feature head.** Exact feature head
   [`b4aba4c4bb70b8cb03edd54342f1b94cec649245`](https://github.com/bynanci/open-film/commit/b4aba4c4bb70b8cb03edd54342f1b94cec649245)
   passed hosted checks before merge: fast-contract, heavy-media,
@@ -63,9 +70,10 @@ green source CI run does not satisfy the other gates.
   - **Implication:** Use the staged plan, freeze a versioned candidate and
     reconcile all version surfaces. Package metadata alone is not a release
     decision.
-- **Rust dependencies.** Security run
-  [42364751028](https://github.com/bynanci/open-film/actions/runs/42364751028)
-  audited the candidate lockfiles; JavaScript and Rust advisory jobs passed.
+- **Rust dependencies.** Exact-head security run
+  [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631)
+  audited the candidate lockfiles against the current advisory database;
+  JavaScript and Rust advisory jobs passed.
   This result does not clear the GLib unsound advisory
   RUSTSEC-2024-0429 and unmaintained proc-macro-error advisory
   RUSTSEC-2024-0370. Tokio 1.53.3 removes RUSTSEC-2026-0386. The scanner treats
@@ -97,8 +105,9 @@ green source CI run does not satisfy the other gates.
 Draft PR #129 prepares a v0.5.0 source candidate, but it is not frozen or
 approved. The proposed OpenFilm sequence continues through v0.8.0 before the
 long-range v1.0.0 distribution milestone. Storytelling maintains a separate
-release track. Main CI is green; the candidate's exact-head checks and security
-disposition are not yet complete, so no stable release is authorized.
+release track. Main CI and candidate exact-head automated checks, including
+three-platform Render QA, are green. The independent GLib disposition and
+release-owner decision remain open, so no stable release is authorized.
 
 - Prepare only the next scoped source candidate, v0.5.0, after its identity,
   compatibility, security and provenance gates below are completed. Complete

@@ -203,14 +203,24 @@ and in the long-range v1.0 readiness record.
       [#129](https://github.com/bynanci/open-film/pull/129): base
       `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, head
       `codex/release-v0.5.0-candidate` at
-      `1f2e23d62ae61959167ad5c3994a0077efecd39f`. Exact-head Verify
-      [42364751023](https://github.com/bynanci/open-film/actions/runs/42364751023),
-      dependency security [42364751028](https://github.com/bynanci/open-film/actions/runs/42364751028),
-      Windows recovery [42364751027](https://github.com/bynanci/open-film/actions/runs/42364751027)
-      and DCO [42364749311](https://github.com/bynanci/open-film/actions/runs/42364749311)
-      passed. Three-platform Render QA has no result on this historical branch;
-      GLib review and installer/workstation gates remain open. The candidate is
-      not frozen, approved, tagged or published.
+      `04035f3266e191478296787982a46293177d61b2`. Exact-head Verify
+      [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777),
+      dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
+      Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
+      Render QA [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
+      and DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
+      all passed on this SHA. Verify includes 304 media test files / 3,658 tests,
+      313/313 browser tests across six shards, native-shell and 18 interchange
+      checks. Linux, Windows and macOS each report 57/57 render tests, 180 decoded
+      frames, nine PTS/RGB samples, AAC audio and unchanged synthetic source hashes.
+      Render evidence explicitly marks workstation verification false. The
+      candidate remains Draft, not frozen, approved, tagged or published.
+- [x] Pass exact-head source, dependency, provenance, Windows recovery and
+      three-platform Render QA for candidate `04035f3266e191478296787982a46293177d61b2`.
+- [ ] Obtain an independent disposition of GLib `RUSTSEC-2024-0429`; PR #128
+      remains Draft without an independent review.
+- [ ] Obtain release-owner approval of the source-only scope and exact artifacts.
+
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
       are recorded in the [independent Storytelling release track](docs/roadmap/incremental-release-train.md).

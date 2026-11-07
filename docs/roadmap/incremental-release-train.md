@@ -13,18 +13,20 @@ record of releases already published.
   and Cargo metadata saying `1.0.0` is not publication evidence.
 - Main has accumulated work through the proposed `v0.8.0` scope. Publishing
   multiple tags from current main would ship the same full feature set repeatedly.
-- A first, source-only `v0.5.0` candidate is being prepared in Draft PR
+- A first, source-only `v0.5.0` candidate is under review in Draft PR
   [#129](https://github.com/bynanci/open-film/pull/129), based on the historical
   PR #75 scope anchor on dedicated branch `release/v0.5.0` at
   `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. Candidate head is
-  `1f2e23d62ae61959167ad5c3994a0077efecd39f`; exact-head Verify
-  [42364751023](https://github.com/bynanci/open-film/actions/runs/42364751023),
-  dependency security [42364751028](https://github.com/bynanci/open-film/actions/runs/42364751028),
-  Windows recovery [42364751027](https://github.com/bynanci/open-film/actions/runs/42364751027)
-  and DCO [42364749311](https://github.com/bynanci/open-film/actions/runs/42364749311)
-  passed. The historical branch predates the three-platform Render QA workflow,
-  so no candidate Render QA result exists; GLib security disposition remains
-  open. It is not frozen, approved, tagged or published.
+  `04035f3266e191478296787982a46293177d61b2`. Exact-head Verify
+  [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777),
+  dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
+  Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
+  DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
+  and three-platform Render QA [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
+  passed on this exact SHA. Verify reports 313/313 browser tests and 3,658 media
+  tests; each Render QA platform reports 57/57 tests and 180 decoded frames.
+  Independent GLib security disposition remains open. The candidate is not
+  frozen, approved, tagged or published.
 
 ## Proposed staged sequence
 
@@ -41,12 +43,12 @@ candidate or approved tag target.
 - Historical scope anchor: after PR #75, commit
   [`d5a286ed9250872e8eb9b1c3e40adb926f913d34`](https://github.com/bynanci/open-film/commit/d5a286ed9250872e8eb9b1c3e40adb926f913d34).
 - Distribution target: source archive only; no installer claim.
-- Candidate work: this is underway in Draft PR #129. The candidate aligns the
-  package/Tauri/Cargo version surfaces and backports reviewed dependency fixes.
-  Verify, dependency security, Windows recovery and DCO passed on its exact SHA.
-  Candidate-bound three-platform Render QA and independent GLib review remain
-  open. Keep the PR in draft until the full candidate gates and independent
-  review are complete.
+- Candidate work: Draft PR #129 aligns the package/Tauri/Cargo version surfaces
+  and backports reviewed dependency fixes. Exact-head Verify, dependency
+  security, Windows recovery, DCO and Linux/Windows/macOS Render QA all passed
+  on `04035f3266e191478296787982a46293177d61b2`. The independent GLib review
+  remains open. Keep the PR in draft until that review and release-owner
+  decision are complete.
 
 ### v0.6.0 — Rhythm, continuity and precision editing
 
@@ -164,11 +166,12 @@ expand a second NLE before the Storytelling host path is proven.
 
 ## Current blockers before the first staged release
 
-- The v0.5.0 candidate branch and Draft PR #129 exist, but the candidate is not
-  frozen or approved. Its Verify, advisory, Windows recovery and DCO checks
-  passed; three-platform Render QA is absent on this historical branch. The
-  anchor predates the Tokio patch and cannot be tagged; candidate-bound render
-  evidence and a security disposition are still required.
+- The v0.5.0 candidate branch and Draft PR #129 exist. Candidate
+  `04035f3266e191478296787982a46293177d61b2` passed exact-head Verify, dependency
+  security, Windows recovery, DCO and three-platform Render QA. The historical
+  anchor predates the Tokio patch and cannot be tagged; the candidate remains
+  unfrozen and unapproved pending independent GLib disposition and release-owner
+  review.
 - GLib `RUSTSEC-2024-0429` remains an unsoundness finding; the existing audit's
   successful default exit does not close it.
 - Dependabot alerts are disabled, and required-check enforcement has not been
