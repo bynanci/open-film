@@ -2,6 +2,20 @@ import { expect, it } from "vitest";
 import { evaluatePhotoEasing, type PhotoBezierEasingV1 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
 import * as render from "../src/index.js";
+import { ffmpegExpressionValues } from "../../../tests/helpers/ffmpeg-expression-log.js";
+
+it("parses only FFmpeg expression values from supported contexts", () => {
+  expect(
+    ffmpegExpressionValues(
+      [
+        "0.000000",
+        "[Eval @ 0x0000000123456789] 1.000000",
+        "[Parsed_perspective_0 @ 000001234567] 0.5",
+        "encoder frame 257 bitrate 8.5",
+      ].join("\n"),
+    ),
+  ).toEqual([0, 1, 0.5]);
+});
 
 it("matches bounded core easing in actual FFmpeg perspective expressions including endpoint-flat and exponent-form handles", async () => {
   const points = [
@@ -25,18 +39,22 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       curve,
       "min(1,max(0,(on-1)/256))",
     );
-    const { stderr } = await runProcess(
+    const { stdout, stderr } = await runProcess(
       "ffmpeg",
       [
         "-hide_banner",
         "-loglevel",
-        "info",
+        "repeat+info",
+        "-nostats",
         "-f",
         "lavfi",
         "-i",
         "color=blue:s=16x16:r=30:d=9",
         "-vf",
-        `format=gbrp,perspective=x0='print(${expression})':y0=0:x1=W:y1=0:x2=0:y2=H:x3=W:y3=H:sense=destination:eval=frame:interpolation=cubic`,
+        // Bound evaluations before the output limit can prefetch another frame.
+        "format=gbrp,trim=end_frame=257,perspective=x0='print(" +
+          expression +
+          ")':y0=0:x1=W:y1=0:x2=0:y2=H:x3=W:y3=H:sense=destination:eval=frame:interpolation=cubic",
         "-frames:v",
         "257",
         "-threads",
@@ -44,16 +62,22 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
         "-f",
         "null",
         "-",
+        "-progress",
+        "pipe:1",
       ],
       { timeoutMs: 15000 },
     );
-    const values = [...stderr.matchAll(/^(-?[0-9]+\.[0-9]+)\s*$/gmu)].map(
+    const samples = ffmpegExpressionValues(stderr);
+    const stdoutText = stdout.toString("utf8");
+    const outputFrames = [...stdoutText.matchAll(/^frame=(\d+)$/gmu)].map(
       (match) => Number(match[1]),
     );
-    expect(values).toHaveLength(257);
-    expect(values[0]).toBe(0);
-    expect(values[256]).toBe(1);
-    for (const [index, value] of values.entries())
+    expect(outputFrames.at(-1)).toBe(257);
+    expect(stdoutText).toMatch(/^progress=end$/mu);
+    expect(samples).toHaveLength(257);
+    expect(samples[0]).toBe(0);
+    expect(samples[256]).toBe(1);
+    for (const [index, value] of samples.entries())
       expect(
         Math.abs(value - evaluatePhotoEasing(curve, index / 256)),
       ).toBeLessThanOrEqual(5.1e-7);

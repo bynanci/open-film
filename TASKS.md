@@ -1350,3 +1350,60 @@ The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature
 validation records retain their original branch identities and historical runs.
+
+## v0.5.0 source-only candidate — Render QA gate
+
+Scope: [candidate Render QA validation](docs/validation-v050-render-qa.md) and
+[Draft PR #129](https://github.com/bynanci/open-film/pull/129). This adds a
+release-branch-specific three-platform gate without changing v0.5.0 renderer
+behavior or the application dependency lock.
+
+- [x] Keep the candidate's Linux and Windows FFmpeg pins and exact CJK
+      font/license hashes. Pin same-version macOS Homebrew ffmpeg-full 9.0.2_1
+      because the v0.5 HDR renderer and existing HDR regression require zscale;
+      record static package/license review separately from runtime admission.
+- [x] Run the v0.5 renderer regression selection and a decoded synthetic MP4
+      with source hashes, frame count, PTS/RGB samples and AAC evidence.
+- [x] Require a strict exact-head, same-run, same-attempt report inventory and
+      retain only bounded path-free JSON.
+- [x] Local complete `pnpm test:media`: 304 files / 3,658 tests passed;
+      `pnpm test:contracts`: 52 files / 1,183 tests passed; focused easing,
+      ambient-fill and candidate-gate tests: 3 files / 23 tests passed.
+- [x] Local format, lint, typecheck, i18n, docs locale checks and production
+      build passed. Build still reports the existing >500 kB client chunk
+      advisory; it does not fail the build.
+- [x] Exact-head hosted Linux/Windows/macOS Render QA and evidence aggregation
+      passed on `2b5a6aa2e05e9ddd496c447ca60a753fadac8252` in run
+      [42390017057](https://github.com/bynanci/open-film/actions/runs/42390017057):
+      all three receipts report 57/57 tests, no failures or skips, 180 decoded
+      frames, 9 PTS/RGB samples, AAC audio and unchanged synthetic input hashes.
+- [x] Exact-head Verify, Dependency Security, Windows Recovery and contributor
+      provenance passed on the same SHA in runs
+      [42390017052](https://github.com/bynanci/open-film/actions/runs/42390017052),
+      [42390017076](https://github.com/bynanci/open-film/actions/runs/42390017076),
+      [42390017113](https://github.com/bynanci/open-film/actions/runs/42390017113)
+      and [42390015259](https://github.com/bynanci/open-film/actions/runs/42390015259).
+      Any later PR head must pass its own exact-head checks before acceptance.
+- [ ] Profile the longest browser shard from Verify 42390017052: shard 5 took
+      9m48 and `transcript-productivity.spec.ts` took 6m. Optimize partitioning
+      while retaining all current assertions; track separately from release QA.
+- [x] Diagnose candidate head 83a's Linux/Windows/macOS easing results (256,
+      258 and 258 values); bound FFmpeg input to 257 frames, assert decoded
+      output count with progress output, and retain the exact sample, endpoint
+      and tolerance checks.
+- [x] Fix macOS zscale admission, the ambient source fixture's color-conversion
+      nondeterminism, and the Render QA outcome guard that had reported a failed
+      suite as green. Unit coverage rejects failed/skipped stage outcomes.
+- [x] Local candidate Render QA passes 8 files / 57 tests with all four
+      hash-verified candidate Noto fonts and OFL on Debian 13 / FFmpeg 7.1.5,
+      including decoded synthetic MP4 evidence. Hosted receipts are recorded
+      above; they do not constitute workstation verification.
+- [x] Reproduce the c4 browser shard 1 caption safe-area loss with a held font
+      save acknowledgement. The old control reset an in-progress bottom margin
+      from 18 to 12; the selected-track local draft now survives that ack. The
+      targeted browser test passed and retains persistence, Undo/Redo and reopen
+      assertions. Full exact-head browser/Verify remains open.
+- [ ] Close the GLib advisory through independent review and rerun security
+      checks on any resulting candidate head; this is separate from Render QA.
+- [ ] Complete release-owner review. No merge, tag, publication, installer or
+      workstation certification follows from this QA implementation alone.

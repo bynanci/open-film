@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "composition": {
+    "width": 160,
+    "height": 90,
+    "durationSeconds": 6.006,
+    "frameRate": {
+      "numerator": 30000,
+      "denominator": 1001
+    },
+    "frameCount": 180
+  },
+  "ptsSamples": [
+    { "frame": 0, "seconds": 0 },
+    { "frame": 59, "seconds": 1.968633 },
+    { "frame": 60, "seconds": 2.002 },
+    { "frame": 67, "seconds": 2.235567 },
+    { "frame": 75, "seconds": 2.5025 },
+    { "frame": 90, "seconds": 3.003 },
+    { "frame": 119, "seconds": 3.970633 },
+    { "frame": 120, "seconds": 4.004 },
+    { "frame": 179, "seconds": 5.972633 }
+  ],
+  "ptsToleranceSeconds": 0.0000005,
+  "rgbSamples": [
+    { "frame": 0, "expected": [255, 0, 0] },
+    { "frame": 59, "expected": [255, 0, 0] },
+    { "frame": 60, "expected": [255, 0, 0] },
+    { "frame": 67, "expected": [136, 119, 0] },
+    { "frame": 75, "expected": [0, 255, 0] },
+    { "frame": 90, "expected": [0, 255, 0] },
+    { "frame": 119, "expected": [0, 255, 0] },
+    { "frame": 120, "expected": [0, 0, 255] },
+    { "frame": 179, "expected": [0, 0, 255] }
+  ],
+  "rgbChannelErrorMaximum": 12,
+  "audio": {
+    "codec": "aac",
+    "sampleRate": 48000,
+    "channels": 1,
+    "expectedSampleFrames": 288288,
+    "sampleFrameTolerance": 2048
+  }
+}

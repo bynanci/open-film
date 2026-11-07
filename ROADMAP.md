@@ -784,6 +784,69 @@ combined gate status and preserved original feature evidence. The `v0.4.0` tag
 is the latest stable release; current `main` is the unreleased development base.
 No separate timeline or project-schema migration is introduced.
 
+## v0.5.0 source-only candidate — staged verification
+
+The first staged source candidate remains a Draft and is not a release. Its
+historical renderer is tested through a candidate-specific Linux/Windows/macOS
+Render QA matrix. Linux and Windows retain the branch's FFmpeg pins; macOS uses
+same-version Homebrew ffmpeg-full 9.0.2_1 because the existing v0.5 HDR
+renderer and regression require zscale. This is a CI-only tool pin and does
+not change the application lockfile. Main's later D7A suite is not used as
+evidence for this source tree. The hosted workflow verifies decoded synthetic
+output, source identity, PTS, pixels, audio, exact test inventory and same-run
+evidence for the exact PR head. See the
+[candidate validation](docs/validation-v050-render-qa.md) and
+[PR #129](https://github.com/bynanci/open-film/pull/129).
+
+Local validation passes 8 files / 57 candidate Render QA tests with all four
+hash-verified candidate fonts and system FFmpeg 7.1.5. The decoded synthetic
+MP4 is 160×90, 180 frames at 30000/1001 with nine PTS/RGB checkpoints, AAC
+48 kHz audio, and four unchanged source hashes. The complete media suite passes
+304 files / 3,658 tests; contracts pass 52 files / 1,183 tests. Format, lint,
+typecheck, i18n, docs locale checks and production build pass. The build retains
+an existing large-client-chunk advisory. These local results do not exercise
+the pinned hosted package or substitute for exact-head cross-platform CI.
+
+Exact-head run 42383763652 on `9398258` passed
+macOS but exposed logging-format issues. The first correction did not resolve
+the platform-dependent `print()` sample count.
+
+Verify 42383763684 passed fast-contract, native-shell, docs-site and all six
+browser shards, but heavy-media failed only on that same photo-easing evidence
+assertion (3,656 of 3,657 tests passed). A deterministic browser regression then
+reproduced the c4 caption safe-area failure: a held font-size save acknowledgement
+reset a pending bottom-margin entry from 18 to 12. The historical candidate now
+keeps safe-area input in a selected-track local draft, as already done on main;
+the targeted browser workflow passed with its saved-value, Undo/Redo and reopen
+assertions intact.
+
+Exact-head run 42386120211 on `83a27ca` confirmed Linux/Windows/macOS easing
+counts of 256/258/258. macOS also lacked `zscale` and had a nondeterministic
+ambient source fixture; its failed suite was incorrectly marked green by the
+platform guard. The current change bounds easing input, independently asserts
+257 output frames, uses the main-reviewed same-version macOS FFmpeg build,
+stabilizes the ambient RGB fixture and tests the outcome gate in TypeScript.
+Verify 42386120251 on the earlier `83a27ca` head passed fast-contract, six
+browser shards, native-shell and docs-site; heavy-media failed on the easing
+assertion. The corrected code head below passed a new exact-head run.
+The corrected code head `2b5a6aa2e05e9ddd496c447ca60a753fadac8252` then passed
+the exact-head Render QA matrix and final aggregator in run
+[42390017057](https://github.com/bynanci/open-film/actions/runs/42390017057):
+all three platforms reported 57/57 tests, zero skips, 180 decoded frames,
+nine PTS/RGB checkpoints, AAC audio and unchanged source hashes. Exact-head
+Verify [42390017052](https://github.com/bynanci/open-film/actions/runs/42390017052),
+Dependency Security [42390017076](https://github.com/bynanci/open-film/actions/runs/42390017076),
+Windows Recovery [42390017113](https://github.com/bynanci/open-film/actions/runs/42390017113)
+and contributor provenance [42390015259](https://github.com/bynanci/open-film/actions/runs/42390015259)
+also passed on that SHA. This evidence does not cover later heads. The evidence
+documentation commit requires a fresh exact-head run before PR acceptance.
+GLib disposition, release-owner review and native/workstation checks remain
+separate gates. The public latest release remains v0.4.0.
+
+All six browser shards passed on `2b5a6aa`; the slowest shard took 9m48, with
+`transcript-productivity.spec.ts` reported at 6m. Keep test-partition/runtime
+optimization as a follow-up and retain the current assertions.
+
 ## Next milestone — workstation evidence and delivery
 
 Complete Windows/macOS clean-machine runtime/installer validation and audited

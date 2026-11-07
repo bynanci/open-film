@@ -400,17 +400,85 @@ test("Edit imports segment-timed captions, edits the native track, and reopens t
   const end = page.getByTestId("caption-end");
   await end.fill("1700");
   await end.press("Tab");
-  await page.getByTestId("caption-font-size").fill("34");
-  await page.getByTestId("caption-font-size").press("Tab");
-  await page.getByTestId("caption-safe-bottom").fill("18");
-  await page.getByTestId("caption-safe-bottom").press("Tab");
-
   const readSaved = () =>
     get<{
       composition: Composition;
       canUndo: boolean;
       canRedo: boolean;
     }>(request, `/compositions/${fixture.composition.id}/editor`);
+  await expect
+    .poll(async () => {
+      const cue = (await readSaved()).composition.captionTracks?.[0]?.cues[0];
+      return {
+        text: cue?.text,
+        startMs: cue?.startMs,
+        endMs: cue?.endMs,
+        manualRevision: cue?.manualRevision,
+      };
+    })
+    .toEqual({
+      text: "繁體字幕\n第二行",
+      startMs: 700,
+      endMs: 1700,
+      manualRevision: 3,
+    });
+
+  let releaseFontAcknowledgement!: () => void;
+  let resolveFontRequestApplied!: () => void;
+  let resolveFontAcknowledgementForwarded!: () => void;
+  const fontAcknowledgementGate = new Promise<void>((resolve) => {
+    releaseFontAcknowledgement = resolve;
+  });
+  const fontRequestApplied = new Promise<void>((resolve) => {
+    resolveFontRequestApplied = resolve;
+  });
+  const fontAcknowledgementForwarded = new Promise<void>((resolve) => {
+    resolveFontAcknowledgementForwarded = resolve;
+  });
+  let heldFontRequest = false;
+  const editPath = `**/api/compositions/${fixture.composition.id}/edit`;
+  await page.route(editPath, async (route) => {
+    const body = route.request().postDataJSON() as {
+      commands?: { type?: string; style?: { fontSize?: number } }[];
+    };
+    const response = await route.fetch();
+    const isFontAcknowledgement =
+      !heldFontRequest &&
+      body.commands?.some(
+        (command) =>
+          command.type === "caption.track.style" &&
+          command.style?.fontSize === 34,
+      );
+    if (isFontAcknowledgement) {
+      heldFontRequest = true;
+      resolveFontRequestApplied();
+      await fontAcknowledgementGate;
+    }
+    try {
+      await route.fulfill({ response });
+    } finally {
+      if (isFontAcknowledgement) resolveFontAcknowledgementForwarded();
+    }
+  });
+  try {
+    await page.getByTestId("caption-font-size").fill("34");
+    await page.getByTestId("caption-font-size").press("Tab");
+    await expect.poll(() => heldFontRequest).toBe(true);
+    await fontRequestApplied;
+    const safeBottom = page.getByTestId("caption-safe-bottom");
+    await safeBottom.fill("18");
+    releaseFontAcknowledgement();
+    await fontAcknowledgementForwarded;
+    await expect(page.getByTestId("editor-save-state")).toHaveText(
+      uiText("en-US", "editor.save.saved"),
+    );
+    await expect(safeBottom).toHaveValue("18");
+    await safeBottom.press("Tab");
+  } finally {
+    releaseFontAcknowledgement();
+    await page.unroute(editPath);
+  }
+
   await expect
     .poll(async () => {
       const saved = await readSaved();
