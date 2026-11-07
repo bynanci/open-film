@@ -227,3 +227,16 @@ has fast-contract, all four browser shards, docs-site and native-shell successfu
 heavy-media QA is still running. Windows media recovery and Linux, Windows and
 macOS Render QA runs are successful. These checks cover `ccbd74e`, not the
 follow-up commit below it. Exact-head hosted verification remains required.
+
+## PR #119 merged disposition — 2026-11-07
+
+PR [#119](https://github.com/bynanci/open-film/pull/119) merged at
+`9b33249c3bd60872072c55fac4efac43d6d6e13b`. Its exact feature head was
+`4015d685f69bc9a697db95df67cebf5d8af72d22`. The hosted exact-head checks all
+passed before merge: DCO, fast-contract, typescript-and-media, browser shards
+1–4, heavy-media QA, native-shell, Windows recovery and Linux/Windows/macOS
+Render QA.
+
+This closes the hosted code-validation item in TASKS. It does not close real
+workstation, display-scale, physical keyboard, DaVinci Resolve, installer,
+GPU/4K or listening acceptance. Keep those manual gates separate.

@@ -4,12 +4,14 @@ Audit date: 2026-11-07. Evidence base: merged main at
 [5f737a6c8f35dce48e213370ff27900962c9304c](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c).
 
 This is a release-readiness assessment, not release approval. It separates source
-releases from installers and from claims that require physical equipment. A green
-source CI run does not satisfy those other gates.
+releases from installers and from claims that require physical equipment. The
+[incremental release train](roadmap/incremental-release-train.md) proposes
+separate OpenFilm milestones and an independent Storytelling version track. A
+green source CI run does not satisfy the other gates.
 
 ![Release gates: freeze one candidate, pass source and security gates, add platform-specific checks for the distribution and claims, then approve and verify published artifacts.](images/release-gates.svg)
 
-![Current release gate evidence on main 5f737a6: source checks passed; the release version is undecided; RustSec warnings and installer or workstation gates remain open.](images/release-gate-evidence.svg)
+![Current release gate evidence on main 5f737a6: main checks passed; v0.5.0 is the proposed first stage but has no frozen candidate; RustSec warnings and installer or workstation gates remain open.](images/release-gate-evidence.svg)
 
 ## Evidence snapshot
 
@@ -38,10 +40,10 @@ source CI run does not satisfy those other gates.
   JSON and SHA256SUMS; it is not an installer release.
   - **Implication:** Preserve this source-only distinction.
 - **Version identity.** Root, Desktop, Tauri and Cargo metadata currently say
-  1.0.0, while the latest tag is v0.4.0. The next stable release number has not
-  been selected.
-  - **Implication:** Choose a release version explicitly and verify all version
-    surfaces against the release tag; package metadata alone is not a release
+  1.0.0, while the latest tag is v0.4.0. The proposed next stage is v0.5.0;
+  no candidate SHA or tag has been approved.
+  - **Implication:** Use the staged plan, freeze a versioned candidate and
+    reconcile all version surfaces. Package metadata alone is not a release
     decision.
 - **Rust dependencies.** Security run
   [42297394920](https://github.com/bynanci/open-film/actions/runs/42297394920)
@@ -75,11 +77,14 @@ source CI run does not satisfy those other gates.
 
 ## Current decision
 
-There is no selected release candidate or next stable version. The current main
-CI is green, but that alone does not authorize a general stable release.
+There is no frozen or approved release candidate. The proposed OpenFilm sequence
+starts at v0.5.0 and continues through v0.8.0 before the long-range v1.0.0
+distribution milestone. Storytelling maintains a separate release track. Main
+CI is green, but that alone does not authorize a stable release.
 
-- A scoped source release may be considered after candidate identity, compatibility,
-  security and provenance gates below are completed. Any platform or hardware
+- Prepare only the next scoped source candidate, v0.5.0, after its identity,
+  compatibility, security and provenance gates below are completed. Complete
+  and publish each release before preparing the next. Any platform or hardware
   limitation that remains must be explicit in the release notes.
 - Native installer distribution is blocked until each advertised platform has a
   reviewed runtime and package, trust/signing evidence, and clean-machine install,
@@ -91,8 +96,10 @@ CI is green, but that alone does not authorize a general stable release.
 
 ### Gate 1: freeze the release identity
 
-- Select the channel and version deliberately. The next stable version is TBD;
-  v1.0.0 remains a roadmap objective, not a presumption.
+- Follow the staged sequence in the
+  [release train](roadmap/incremental-release-train.md). v0.5.0 is the planned
+  first stage; it is not approved until its candidate is frozen and passes these
+  gates. v1.0.0 remains a later distribution objective.
 - Freeze one full source SHA. Record the matching tag, all app/package/Tauri/Cargo
   version fields, project schema/catalog compatibility, and dependency lock hashes.
 - Require all release code to be merged, reviewed and present at that exact SHA.
@@ -155,8 +162,9 @@ Mocks and generated fixtures cannot close hardware or human-quality gates.
 
 ## Recommended next actions
 
-1. Correct the release-state documents and keep the current next-version decision
-   at TBD until the release owner selects it.
+1. Keep the documented release train aligned across TASKS, ROADMAP and the
+   validation records. Prepare only the next version after its exact candidate
+   has passed the gates; do not create tags before then.
 2. Enable Dependabot alerts or document the replacement alerting owner and cadence.
 3. Confirm main branch protection through repository administration and require
    the exact source, render, Windows and provenance checks that match the release scope.

@@ -42,6 +42,10 @@ gates. Project schema remains `1.0.0`; the current SQLite catalog is **v6**.
 - `v0.4.0` is already released. `main` is an unreleased development line, so the
   next stable version is deliberately **TBD**, not assumed to be `0.5.0` or
   `1.0.0`.
+- The later proposed incremental sequence and separate Storytelling release
+  track are documented in the current
+  [release train](incremental-release-train.md); this audit's original version
+  note remains historical.
 
 ## Capability evidence matrix
 

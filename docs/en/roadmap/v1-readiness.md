@@ -1,12 +1,15 @@
 # OpenFilm stable-release readiness
 
-This page records the long-range v1.0 objective; it does not select the next
-stable release version. As of 2026-11-07, the latest public source release is
-v0.4.0, while root, Desktop, Tauri and Cargo metadata report 1.0.0. The next
-stable version remains TBD until a candidate passes the
-[current release gates](../validation-release-gates.md). Main is
+This page records the long-range v1.0 objective; it does not approve a tag.
+As of 2026-11-07, the latest public source release is v0.4.0, while root,
+Desktop, Tauri and Cargo metadata report 1.0.0. The proposed OpenFilm sequence
+begins at v0.5.0, continues through v0.8.0, and reserves v1.0.0 for native
+distribution readiness. No candidate SHA is frozen. See the
+[current release gates](../validation-release-gates.md) and
+[incremental release train](incremental-release-train.md). Main is
 [`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c).
-The 1.0.0 metadata is not release approval.
+The 1.0.0 metadata is not release approval. Storytelling maintains a separate
+repository and release track.
 
 For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
 and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
@@ -16,7 +19,7 @@ retain the results of their original runs.
 ## Release & Version Status
 
 - **Package metadata**: root, Desktop, Tauri and Cargo currently declare 1.0.0; this is build metadata, not a selected release tag.
-- **Latest GitHub release**: v0.4.0, published 2026-10-20. The next stable release version remains TBD.
+- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0; no candidate SHA or tag is approved yet. Storytelling maintains a separate release track.
 - **Selected merged feature baseline (through PR #99, with recent changes noted below)**:
   - PR #64: D6A managed proxy queue, eviction, rebuild, and health UI.
   - PR #69: Windows workflow recovery for issues #66–#68 (FFmpeg frame sync, atomic sync, benchmark quiescence).
@@ -45,12 +48,16 @@ retain the results of their original runs.
   - PR #98: PR 4.1 (macOS Darwin cross-process dead-owner detection & boot session verification).
   - PR #99: Finalize the long-range readiness ledger and roadmap alignment.
   - PR #120: Patch Tokio to 1.53.3; GLib unsoundness remains under review.
+  - PR #119: Merge Tobi-ishi workspace and control-panel UX; exact-head hosted checks passed, while workstation and NLE gates remain open.
+  - PR #121: Add explicit event/person coverage constraints with source-consistent asset balance.
   - PR #126: Merge deterministic visual keyframes and bounded opacity rendering.
   - Cut Desk Phase 2/3 command persistence integration, external asset resolution, and atomic Undo/Redo regression.
   - D3B2, D4, D2A, D2B review-and-apply HTTP API routes and desktop UI workflow completion.
   - D3A2 real audio rhythm analysis producer (FFmpeg PCM onset/downbeat/phrase extraction), durable persistence, project reload recovery, and cut-point snap cut lifecycles.
 - **Current release gate audit**: See [release gates](../validation-release-gates.md)
   for the 2026-11-07 evidence snapshot and source-only versus installer criteria.
+- **Incremental releases**: See [release train](incremental-release-train.md) for
+  proposed OpenFilm scope cut lines and the independent Storytelling M0/M1 path.
 - **Physical Workstation Acceptance**: Issue #7 remains the owner for physical hardware observations (Windows 10/popopc, external drives, calibrated displays, acoustic listening, Resolve roundtrip, 4K/GPU performance).
 
 ## Delivery owners status

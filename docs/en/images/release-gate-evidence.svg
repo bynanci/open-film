@@ -38,11 +38,11 @@
 
   <rect class="card amber" x="622" y="120" width="530" height="206" rx="18"/>
   <text class="label" x="648" y="158">Version decision</text>
-  <text class="status status-amber" x="648" y="187">REVIEW · no next stable tag selected</text>
+  <text class="status status-amber" x="648" y="187">PLAN · staged release; no candidate frozen</text>
   <text class="text" x="648" y="220">Published source release: v0.4.0</text>
-  <text class="text" x="648" y="246">Root, Desktop, Tauri and Cargo metadata: 1.0.0</text>
-  <text class="text" x="648" y="272">Next stable version remains TBD</text>
-  <text class="note" x="648" y="302">Metadata does not approve or publish a release</text>
+  <text class="text" x="648" y="246">First planned source stage: v0.5.0</text>
+  <text class="text" x="648" y="272">v0.6.0–v0.8.0 follow; Storytelling is separate</text>
+  <text class="note" x="648" y="302">Metadata says 1.0.0; it does not approve a release</text>
 
   <rect class="card amber" x="48" y="360" width="530" height="206" rx="18"/>
   <text class="label" x="74" y="398">Dependency security</text>

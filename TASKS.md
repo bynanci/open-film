@@ -2,10 +2,11 @@
 
 This is the current contributor-facing work list. [ROADMAP.md](ROADMAP.md)
 explains the direction; the [release gate policy](docs/validation-release-gates.md)
-defines current release requirements. The v1.0 readiness page remains a
-long-range scope record. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting
-a substantial change, and check existing issues or pull requests to avoid
-duplicate work.
+defines current release requirements. The [incremental release train](docs/roadmap/incremental-release-train.md)
+keeps OpenFilm and Storytelling releases on separate version tracks. The v1.0
+readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+before starting a substantial change, and check existing issues or pull requests
+to avoid duplicate work.
 
 Status reviewed against
 [main](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
@@ -19,7 +20,7 @@ on 2026-11-07. The latest published source release remains **v0.4.0**.
 
 ## Editing and story workflow
 
-### Tobi-ishi workspace and control panels (2026-11-06 candidate)
+### Tobi-ishi workspace and control panels (merged in PR #119)
 
 - [x] Share local color, typography, original angular backing planes and lighting
       without clipping media, text, hit areas or keyboard focus.
@@ -33,8 +34,15 @@ on 2026-11-07. The latest published source release remains **v0.4.0**.
       transcript scrolling and readable selected states with browser regressions.
 - [x] Execute local regression gates and record full-run failures, corrected
       reruns and native dependency limits without treating reruns as a green CI run.
-- [ ] Obtain hosted exact-head CI before merging. Real workstation and NLE checks
-      remain separate.
+- [x] Hosted exact-head CI passed on PR #119 head
+      `4015d685f69bc9a697db95df67cebf5d8af72d22` before merge to main commit
+      `9b33249c3bd60872072c55fac4efac43d6d6e13b`; DCO, fast-contract,
+      typescript-and-media, four browser shards, heavy-media, native-shell,
+      Windows recovery and three-platform Render QA passed. See
+      [PR #119](https://github.com/bynanci/open-film/pull/119) and the
+      [dated validation record](docs/validation-tobiishi-control-panels-2026-11-06.md).
+- [ ] Complete real workstation, display-scale, keyboard and NLE checks. Hosted
+      CI and merge do not close these manual gates.
 
 See the [design system](docs/design-system.md),
 [layout rationale](docs/layout-refinement.md) and
@@ -117,8 +125,10 @@ remain separate acceptance scopes. See the
       describe bounded, pre-look source samples; calibrated display, HDR and
       hardware-monitor behavior are not included. See the
       [Phase 4A validation](docs/validation-cut-desk-phase-4a-scopes.md).
-- [ ] **Phase 4B — deterministic animation.** Specify and implement supported
-      keyframed properties and speed ramps with arbitrary-seek evaluation and
+- [ ] **Phase 4B — deterministic animation.** The shared frame-time contract
+      and visual keyframes are implemented in 4B.1/4B.2. Speed ramps (4B.3) are
+      deferred during Storytelling M1 and require source-mapped caption/audio/
+      rhythm consumers, explicit audio policy, arbitrary-seek evaluation and
       Monitor/FFmpeg parity. Preserve the existing Composition and user-pin
       contracts.
 - [x] **Phase 4C — shortcut profiles.** Merged in
@@ -130,16 +140,17 @@ remain separate acceptance scopes. See the
 - [ ] **Phase 4D — long-form evidence.** Add bounded performance telemetry and
       gather workstation evidence for proxies, high-DPI, pen/trackpad and
       multichannel audio workflows.
-- [ ] **Phase 4E — compound editing.** Start only after a versioned Composition
-      contract proves the feature cannot introduce a hidden second timeline.
-- [ ] **Phase 4F — multicamera.** Start only with explicit synchronization and
-      source-provenance evidence.
+- [ ] **Phase 4E — compound editing (deferred).** Revisit only after the
+      Storytelling host path is proven and a versioned Composition contract
+      demonstrates that it cannot introduce a hidden second timeline.
+- [ ] **Phase 4F — multicamera (deferred).** Revisit only after Storytelling M1
+      and only with explicit synchronization and source-provenance evidence.
 
 #### Phase 4B — deterministic animation
 
 - [x] **4B.1 shared frame-time contract:** merged in PR [#125](https://github.com/bynanci/open-film/pull/125) at `7add4762fe8174d76f43b863375ea39b73121e76`; exact-head hosted verification passed before merge.
 - [x] **4B.2 visual keyframes:** merged in PR [#126](https://github.com/bynanci/open-film/pull/126); feature head `b4aba4c4bb70b8cb03edd54342f1b94cec649245`, main merge [`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c). Exact-head Verify, all six browser shards, heavy-media QA, three-platform Render QA, Windows FFmpeg9 recovery, native-shell, docs-site and DCO passed. See [validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
-- [ ] **4B.3 speed ramps:** blocked until source-mapped caption, audio and rhythm consumers are reconciled and an explicit audio policy is approved. Keep existing audio timing unchanged until then.
+- [ ] **4B.3 speed ramps:** deferred until Storytelling M1 proves the host path and source-mapped caption, audio and rhythm consumers are reconciled under an explicit audio policy. Keep existing audio timing unchanged until then.
 
 See the [4B design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md), [shared contract validation](docs/validation-cut-desk-phase-4b-time-contract.md) and [visual keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
 
@@ -179,6 +190,17 @@ recorded here, in the [release gate audit](docs/validation-release-gates.md),
 and in the long-range v1.0 readiness record.
 
 ## Distribution and platform readiness
+
+### Incremental release train
+
+- [x] Define separate, cumulative OpenFilm source releases (`v0.5.0` through
+      `v0.8.0`) and reserve `v1.0.0` for native distribution closure; keep
+      Storytelling independently versioned ([release plan](docs/roadmap/incremental-release-train.md)).
+- [ ] Prepare and verify only the first `v0.5.0` candidate. Historical scope
+      anchors are not tag targets; backport security fixes and run exact-head
+      gates before drafting a release.
+- [ ] Review/merge Storytelling M0 PR #1, then dependent migration-map PR #2;
+      keep M1-01 read-only and version its SDK independently from OpenFilm.
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.

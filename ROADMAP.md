@@ -5,7 +5,9 @@ and an editable film. Development focuses on a reliable local workflow, clear
 editing decisions and portable projects.
 
 This page describes the project direction. See [TASKS.md](TASKS.md) for current
-work and [v1.0 readiness](docs/roadmap/v1-readiness.md) for release criteria.
+work, the [incremental release train](docs/roadmap/incremental-release-train.md)
+for separate product/version tracks, and [v1.0 readiness](docs/roadmap/v1-readiness.md)
+for long-range release criteria.
 Suggestions and contributions are welcome through [GitHub Issues](https://github.com/bynanci/open-film/issues)
 and the [contributing guide](CONTRIBUTING.md).
 
@@ -18,8 +20,11 @@ and the [contributing guide](CONTRIBUTING.md).
 | Native installers                                                  | In progress                     | Packaging tools exist, but distributable installers still require platform, dependency and installation verification. |
 | v1.0                                                               | Release goal                    | Published when the documented readiness criteria are met; the package version alone does not establish a release.     |
 
-The next stable release number remains TBD. v1.0 is a long-range goal, not a
-preselected next tag; use the [current release gate audit](docs/validation-release-gates.md).
+The proposed OpenFilm sequence is `v0.5.0` → `v0.6.0` → `v0.7.0` → `v0.8.0`,
+with `v1.0.0` reserved for native distribution readiness. These are staged
+planning labels, not release tags or frozen candidates. Storytelling has its
+own version track. See the [release train](docs/roadmap/incremental-release-train.md)
+and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
 [5f737a6c8f35dce48e213370ff27900962c9304c](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
@@ -33,14 +38,15 @@ separate gates.
 
 ### Bring the Tobi-ishi identity into everyday tasks
 
-The current UI candidate shares warm stone tokens and original angular surfaces,
-removes duplicate General-mode progress controls, and gives Inspector categories
-keyboard tabs with essential controls first. Script/direction disclosure and
-Import/Fit/Preview/Relink quick actions reuse existing save, review and ownership
-guards. This is a presentation and workflow refinement over the same project,
-Composition and processing services. Candidate checks and remaining gates belong
-in [TASKS.md](TASKS.md); [design rationale](docs/adr/tobiishi-surfaces.md) records
-the shared application/site boundary.
+PR #119 merged the warm stone tokens and original angular surfaces, removed
+duplicate General-mode progress controls, and added keyboard Inspector tabs with
+essential controls first. Script/direction disclosure and Import/Fit/Preview/
+Relink quick actions reuse existing save, review and ownership guards. This is
+a presentation and workflow refinement over the same project, Composition and
+processing services. Its exact-head CI passed; real workstation, display-scale
+and NLE gates remain in [TASKS.md](TASKS.md). The
+[design rationale](docs/adr/tobiishi-surfaces.md) records the shared
+application/site boundary.
 
 ### Add reviewed local media-intelligence workflows
 
