@@ -144,7 +144,8 @@ This evidence does not change the stable version or any workstation gate.
 The exact-head browser reports for Draft PR #130
 ([Verify 42400014568](https://github.com/bynanci/open-film/actions/runs/42400014568))
 contained 358 passing browser cases across six shards, with no skips, failures,
-flaky retries or unexpected results. Shard 6 took 7m22s. Its 26
+flaky retries or unexpected results. Browser shard 6's complete job took 8m35s,
+including runner setup. Its 26
 `transcript-productivity.spec.ts` cases accounted for 343.0s of reported test
 time, and the GitHub annotation reported 5.7m for that file.
 
