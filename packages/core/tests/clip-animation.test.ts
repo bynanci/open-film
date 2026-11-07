@@ -28,6 +28,15 @@ const animation: ClipAnimationV1 = {
 };
 
 describe("clip visual animation", () => {
+  it("keeps a single keyed value stable when seeking beyond its frame", () => {
+    const oneKey = validateClipAnimation({
+      version: 1,
+      visualTracks: [{ property: "x", keys: [{ frame: 0, value: 24 }] }],
+    });
+
+    expect(evaluateClipVisualAnimation(oneKey, 48).x).toBe(24);
+  });
+
   it("evaluates absolute keyed properties from the requested frame", () => {
     expect(evaluateClipVisualAnimation(animation, 4, { x: 12, y: 3 })).toEqual({
       x: 40,

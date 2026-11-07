@@ -244,6 +244,7 @@ function evaluateKeys(
   frame: number,
 ): number {
   if (frame <= keys[0]!.frame) return keys[0]!.value;
+  if (frame >= keys.at(-1)!.frame) return keys.at(-1)!.value;
   let low = 1;
   let high = keys.length - 1;
   while (low < high) {
@@ -251,8 +252,6 @@ function evaluateKeys(
     if (frame < keys[middle]!.frame) high = middle;
     else low = middle + 1;
   }
-  if (frame >= keys[low]!.frame) return keys[low]!.value;
-
   const from = keys[low - 1]!;
   const to = keys[low]!;
   const easing = from.interpolation ?? "linear";

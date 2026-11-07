@@ -6,8 +6,8 @@ Implementation: [draft PR #126](https://github.com/bynanci/open-film/pull/126).
 The feature branch contains initial implementation `e7fb5ec4d9e5ff97454038f853ac04163eb94540`,
 was synchronized with main at `7555b312a224fbbbedeaf14a639f354a266c1849`, and
 was last refreshed before this optimization at `34a425cbb4b8ab1b239cfb2b43833bc953961e5c`.
-The opacity optimization and its regression evidence are included in the
-current PR candidate; use the PR for the final exact head and hosted checks.
+The opacity optimization and single-key seek fix are included in the current
+PR candidate; use the PR for the final exact head and hosted checks.
 
 ## Shared state flow
 
@@ -38,11 +38,14 @@ current PR candidate; use the PR for the final exact head and hosted checks.
 
 Latest local checks on the opacity-optimized worktree:
 
-- Focused core/render/solver animation regressions — 4 files, 36 tests passed.
-- `pnpm test:contracts` — 81 files, 1,547 tests passed.
+- Focused core/render/solver animation regressions — 4 files, 37 tests passed,
+  including stable evaluation after seeking past a single key.
+- `pnpm test:contracts` — 81 files, 1,548 tests passed.
 - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` and
   `pnpm test:docs-i18n` — passed. The build reports the existing large
   `TimelineEditor` chunk advisory.
+- `tests/e2e/direct-clip-manipulation.spec.ts` — all 6 tests passed, including
+  the seek-at-frame-48 keyframe save/Undo/Redo/reopen workflow.
 - The real synthetic MP4 regression decodes first, middle and last opacity
   samples and compares them against the shared composition-frame evaluator;
   source SHA-256, geometry and dimensions remain asserted.
@@ -100,16 +103,26 @@ geometry, dimensions and the unchanged source hash. A 300,000-frame cubic
 compiler stress request was rejected at the 8 MiB serialized-filter cap in
 134 ms; the Node process RSS grew by about 37 MiB during that bounded compile.
 
-## Hosted evidence before opacity optimization
+## Hosted evidence and current correction
 
 Before the opacity optimization, synchronized head
 `34a425cbb4b8ab1b239cfb2b43833bc953961e5c` passed [Verify](https://github.com/bynanci/open-film/actions/runs/42311325261)
 (fast-contract, six browser shards, heavy-media, native-shell and docs-site),
 [three-platform Render QA](https://github.com/bynanci/open-film/actions/runs/42311325302),
 [Windows FFmpeg 9 recovery](https://github.com/bynanci/open-film/actions/runs/42311325419)
-and [DCO](https://github.com/bynanci/open-film/actions/runs/42311322996).
-These checks do not cover the opacity optimization; all hosted checks must
-complete successfully on the final pushed PR head before merge.
+and [DCO](https://github.com/bynanci/open-film/actions/runs/42311322996). Those
+checks do not cover the later opacity optimization.
+
+On optimization head `062c38710ae7fe534594a710f762b840a6692640`,
+[Verify](https://github.com/bynanci/open-film/actions/runs/42315174439) passed
+fast-contract, native-shell, docs-site and browser shards 2–6. Browser shard 1
+exposed a reproducible single-key seek failure at frame 48. The root cause was
+binary-search lookup past a one-key track; the fix now returns the final value
+before searching for an interval, with a focused regression test and all six
+local direct-clip browser tests passing. Render QA Windows/macOS and Windows
+FFmpeg 9 passed on that pre-fix head; Linux Render QA and heavy-media were still
+running. All hosted checks must complete successfully on the final pushed PR
+head before merge.
 
 ## Known limits and remaining gates
 
