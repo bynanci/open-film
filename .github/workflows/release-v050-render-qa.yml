@@ -31,7 +31,6 @@ jobs:
         shell: bash
     env:
       OPENFILM_SOURCE_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
-      OPENFILM_RENDER_QA_OUTPUT: ${{ runner.temp }}/openfilm-v050-render-evidence
       HOMEBREW_NO_AUTO_UPDATE: "1"
       HOMEBREW_NO_INSTALL_CLEANUP: "1"
     steps:
@@ -55,6 +54,8 @@ jobs:
       - name: Run candidate-version media regressions
         id: suite
         continue-on-error: true
+        env:
+          OPENFILM_RENDER_QA_OUTPUT: ${{ runner.temp }}/openfilm-v050-render-evidence
         run: >-
           pnpm test:render-qa:release
           --reporter=json
@@ -62,6 +63,8 @@ jobs:
       - name: Write path-free exact-head evidence
         id: evidence
         if: always()
+        env:
+          OPENFILM_RENDER_QA_OUTPUT: ${{ runner.temp }}/openfilm-v050-render-evidence
         run: >-
           pnpm exec tsx scripts/ci/release-render-qa-v050.ts write
           "$RUNNER_TEMP/openfilm-v050-vitest.json"
