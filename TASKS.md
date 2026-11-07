@@ -358,12 +358,16 @@ Tracking: [Issue #7](https://github.com/bynanci/open-film/issues/7),
 These items remain open, but are not prerequisites for every current editing
 change. Discuss their scope before implementation.
 
-- [ ] Balance the full browser suite with deterministic per-test shard lists.
-      Local Playwright preflight proves exact 358-case coverage and distributes
-      the 26 Transcript Productivity tests 4/4/4/5/5/4 while preserving one
-      worker, existing timeouts, assertions and zero retries. Exact-head E2E
-      execution and measured runtime impact remain pending on Draft PR #131; see
-      the [E2E shard validation](docs/validation-ci-pages-e2e.md).
+- [x] Balance the full browser suite with deterministic per-test shard lists
+      ([Draft PR #131](https://github.com/bynanci/open-film/pull/131), head
+      `d0e1c374114aff67f26ea075308d881236343b92`). Exact-head Verify run
+      [42407414566](https://github.com/bynanci/open-film/actions/runs/42407414566)
+      passed all 358 browser cases; the 26 Transcript Productivity tests ran
+      4/4/4/5/5/4 across six shards. The longest observed browser test step fell
+      from 8m05s to 6m35s versus run 42403889374, while keeping one worker,
+      existing timeouts, assertions and zero retries. The implementation remains
+      in a Draft PR and is not yet in main. See the
+      [E2E shard validation](docs/validation-ci-pages-e2e.md).
 - [ ] Executable plugin discovery/loading beyond built-in registration and SDK
       contracts. Keep the existing data-only preset format available.
 - [ ] Additional local vision, embedding and language-provider implementations;
