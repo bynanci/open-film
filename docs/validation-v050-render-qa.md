@@ -54,7 +54,8 @@ Hosted execution is:
 ```bash
 pnpm install --frozen-lockfile
 pnpm exec tsx scripts/ci/setup-render-qa.ts hosted-tools "$RUNNER_TEMP/openfilm-v050-tools"
-pnpm test:render-qa:release --reporter=json --outputFile="$RUNNER_TEMP/openfilm-v050-vitest.json"
+pnpm test:render-qa:release --reporter=default --reporter=json \
+  --outputFile.json="$RUNNER_TEMP/openfilm-v050-vitest.json"
 pnpm exec tsx scripts/ci/release-render-qa-v050.ts write \
   "$RUNNER_TEMP/openfilm-v050-vitest.json" \
   "$RUNNER_TEMP/openfilm-v050-render-evidence/render.json" \

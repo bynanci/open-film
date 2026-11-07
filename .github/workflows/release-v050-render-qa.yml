@@ -58,8 +58,9 @@ jobs:
           OPENFILM_RENDER_QA_OUTPUT: ${{ runner.temp }}/openfilm-v050-render-evidence
         run: >-
           pnpm test:render-qa:release
+          --reporter=default
           --reporter=json
-          --outputFile="$RUNNER_TEMP/openfilm-v050-vitest.json"
+          --outputFile.json="$RUNNER_TEMP/openfilm-v050-vitest.json"
       - name: Write path-free exact-head evidence
         id: evidence
         if: always()
