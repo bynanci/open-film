@@ -1,7 +1,7 @@
 # Stable release gates: current audit
 
-Audit date: 2026-11-07. Evidence base: merged main at
-[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e).
+Audit date: 2026-11-08. Evidence base: merged main at
+[`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276).
 
 This is a release-readiness assessment, not release approval. It separates source
 releases from installers and from claims that require physical equipment. The
@@ -11,20 +11,20 @@ green source CI run does not satisfy the other gates.
 
 ![Release gates: freeze one candidate, pass source and security gates, add platform-specific checks for the distribution and claims, then approve and verify published artifacts.](images/release-gates.svg)
 
-![Current release gate evidence on main 73f9df9: v0.5.0 candidate PR #129 exact-head Verify, security, Windows recovery, DCO and three-platform Render QA passed; independent GLib review, release-owner approval, installer and workstation gates remain open.](images/release-gate-evidence.svg)
+![Current release gate evidence on main a0f1a4d: v0.5.0 candidate PR #129 exact-head Verify, security, Windows recovery, DCO and three-platform Render QA passed; independent GLib review, release-owner approval, installer and workstation gates remain open.](images/release-gate-evidence.svg)
 
 ## Evidence snapshot
 
-- **Current source.** Main SHA `73f9df9` includes merged PR #127 and all earlier
-  main changes. Verify
-  [42355118227](https://github.com/bynanci/open-film/actions/runs/42355118227),
+- **Current source.** Main SHA [`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276) includes PRs #132–#136 merged on top of the release-gate baseline. Verify
+  [42479944561](https://github.com/bynanci/open-film/actions/runs/42479944561),
   Render QA
-  [42355118239](https://github.com/bynanci/open-film/actions/runs/42355118239),
+  [42479944534](https://github.com/bynanci/open-film/actions/runs/42479944534),
   Windows media recovery
-  [42355118290](https://github.com/bynanci/open-film/actions/runs/42355118290),
-  and Pages
-  [42355118308](https://github.com/bynanci/open-film/actions/runs/42355118308)
-  all completed successfully on that exact SHA.
+  [42479944590](https://github.com/bynanci/open-film/actions/runs/42479944590),
+  and website deployment
+  [42479944528](https://github.com/bynanci/open-film/actions/runs/42479944528)
+  all passed on this exact SHA. PR #136's exact-head Verify, Windows Recovery,
+  three-platform Render QA and DCO also passed before merge.
   - **Implication:** Strong merged-main evidence; a release candidate still
     needs its own frozen identity and complete checks.
 - **v0.5.0 candidate.** Draft PR

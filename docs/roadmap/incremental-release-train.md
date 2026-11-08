@@ -1,13 +1,14 @@
 # Incremental release train
 
-Plan reviewed on 2026-11-07 against main
-[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e).
+Plan reviewed on 2026-11-08 against main
+[`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276).
 This schedules source releases as separate, cumulative milestones. It is not a
 record of releases already published.
 
 ## Current release state
 
 - The latest published release is source-only `v0.4.0` from 2026-10-20.
+- Main at [`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276) includes merged PRs #132–#136. Its post-merge Verify, Windows Recovery, three-platform Render QA and website deployment passed; this does not change the separate v0.5.0 candidate or release gates.
 - The repository contains a later commit titled `release: OpenFilm v1.0.0`
   (PR #83), but no `v1.0.0` tag or GitHub Release exists. Root, Desktop, Tauri
   and Cargo metadata saying `1.0.0` is not publication evidence.

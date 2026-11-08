@@ -1,19 +1,21 @@
 # OpenFilm stable-release readiness
 
 This page records the long-range v1.0 objective; it does not approve a tag.
-As of 2026-11-07, the latest public source release is v0.4.0, while root,
+As of 2026-11-08, the latest public source release is v0.4.0, while root,
 Desktop, Tauri and Cargo metadata report 1.0.0. The proposed OpenFilm sequence
 begins at v0.5.0, continues through v0.8.0, and reserves v1.0.0 for native
 distribution readiness. Draft PR [#129](https://github.com/bynanci/open-film/pull/129)
 prepares a v0.5.0 candidate at
 `04035f3266e191478296787982a46293177d61b2`; exact-head Verify, dependency
 security, Windows recovery, DCO and Linux/Windows/macOS Render QA have passed.
-The SHA is not frozen or approved; independent GLib review remains open. See the
-[current release gates](../validation-release-gates.md) and
-[incremental release train](incremental-release-train.md). Main is
-[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e).
-The 1.0.0 metadata is not release approval. Storytelling maintains a separate
-repository and release track.
+Main at [`a0f1a4d`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276)
+merges PRs #132–#136; post-merge Verify, Windows Recovery, three-platform Render
+QA and website deployment passed on that exact SHA. The v0.5.0 candidate is not
+frozen or approved; independent GLib review and release-owner approval remain
+open. See the [current release gates](../validation-release-gates.md) and
+[incremental release train](incremental-release-train.md). The 1.0.0 metadata
+is not release approval. Storytelling maintains a separate repository and
+release track.
 
 For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
 and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
@@ -56,11 +58,12 @@ v0.4.0; PR #129 is a draft and creates no tag or publication.
   - PR #119: Merge Tobi-ishi workspace and control-panel UX; exact-head hosted checks passed, while workstation and NLE gates remain open.
   - PR #121: Add explicit event/person coverage constraints with source-consistent asset balance.
   - PR #126: Merge deterministic visual keyframes and bounded opacity rendering.
+  - PRs #132–#136: recover stale title previews and delayed search cleanup; retain GraphicScene textures during playback holds; fetch pinned FFmpeg through the asset API and retry transient acquisition failures with bounded backoff.
   - Cut Desk Phase 2/3 command persistence integration, external asset resolution, and atomic Undo/Redo regression.
   - D3B2, D4, D2A, D2B review-and-apply HTTP API routes and desktop UI workflow completion.
   - D3A2 real audio rhythm analysis producer (FFmpeg PCM onset/downbeat/phrase extraction), durable persistence, project reload recovery, and cut-point snap cut lifecycles.
 - **Current release gate audit**: See [release gates](../validation-release-gates.md)
-  for the 2026-11-07 evidence snapshot and source-only versus installer criteria.
+  for the 2026-11-08 evidence snapshot and source-only versus installer criteria.
 - **Incremental releases**: See [release train](incremental-release-train.md) for
   proposed OpenFilm scope cut lines and the independent Storytelling M0/M1 path.
 - **Physical Workstation Acceptance**: Issue #7 remains the owner for physical hardware observations (Windows 10/popopc, external drives, calibrated displays, acoustic listening, Resolve roundtrip, 4K/GPU performance).
