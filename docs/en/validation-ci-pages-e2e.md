@@ -138,3 +138,103 @@ Full exact-candidate hosted gates and the following main Pages deployment remain
 required before closing this follow-up. Their exact base/head/run results are
 recorded in the integrating pull request, preserving the original failed run.
 This evidence does not change the stable version or any workstation gate.
+
+## 2026-11-07 follow-up — deterministic test-list balancing
+
+The exact-head browser reports for Draft PR #130
+([Verify 42400014568](https://github.com/bynanci/open-film/actions/runs/42400014568))
+contained 358 passing browser cases across six shards, with no skips, failures,
+flaky retries or unexpected results. Browser shard 6's complete job took 8m35s,
+including runner setup. Its 26
+`transcript-productivity.spec.ts` cases accounted for 343.0s of reported test
+time; the GitHub annotation attributed 5.7m to that file.
+
+The first PR #131 attempt marked the transcript suite `mode: "parallel"` and
+appeared to split its focused-only inventory 5/5/5/5/5/1. That result did not
+represent the full suite. The subsequent complete run
+([Verify 42403889374](https://github.com/bynanci/open-film/actions/runs/42403889374))
+passed all 358 cases, but still placed all 26 transcript cases on shard 6
+(335.4s of test time). Its test durations were 289.1s, 483.8s, 322.4s, 302.9s,
+225.1s and 416.9s for shards 1–6. The full-suite report exposed that a
+file-filtered shard listing can give misleading boundaries: Playwright's
+standard sharding selects contiguous groups in discovery order, and this spec
+appears near the end of the inventory. The earlier `beforeAll` root-cause
+hypothesis was not supported and the first change did not fix the full-suite
+concentration.
+
+The current follow-up creates deterministic per-test Playwright `--test-list`
+files by round-robin assignment from the full candidate discovery. Each of the
+six isolated CI jobs executes its assigned list with one worker and records its
+matrix identity in report metadata. The fast preflight runs Playwright discovery
+for every generated list and requires exact, disjoint coverage of the complete
+inventory; the transcript file must appear in multiple lists. The results gate
+checks source SHA, matrix identity, full passing status, and each report's exact
+assigned test IDs. No application, media, timeout, retry or assertion behavior
+changed, and no dependency was upgraded.
+
+Local preflight evidence on the draft branch: `pnpm test:browser-partition`
+verified 358 cases with list sizes 60/60/60/60/59/59 and transcript
+distribution 4/4/4/5/5/4. Explicit shard-list generation and Playwright
+`--list --test-list` discovery returned 60 and 59 cases for lists 1 and 6. The
+focused validator unit suite passed 18/18; `pnpm typecheck` and `pnpm lint`
+passed. The later actual execution and measured runtime are recorded below.
+
+## 2026-11-07 follow-up — exact-head test-list execution
+
+Draft PR #131 implementation head `d0e1c374114aff67f26ea075308d881236343b92`
+is based on main `73f9df9810770d52cab0cc2978e55ef8301f884e`. Exact-head Verify
+run [42407414566](https://github.com/bynanci/open-film/actions/runs/42407414566)
+passed the fast-contract, heavy-media, all six browser shards, native-shell,
+docs-site and required `typescript-and-media` aggregate. The same head also
+passed DCO, JavaScript and Rust advisory checks, Windows FFmpeg 9 recovery, and
+three-platform Render QA. Heavy-media passed 376 files / 4,422 tests and the
+synthetic Silence audition evidence upload; no real workstation or Resolve
+verification is inferred from the hosted checks.
+
+The six browser reports were downloaded and independently checked with the
+candidate validator. It returned `verified: true`, 358 cases, shard sizes
+60/60/60/60/59/59, and exact source/matrix identities. Every case passed once
+with zero retries or skips. `transcript-productivity.spec.ts` contributed all
+26 cases, distributed 4/4/4/5/5/4.
+
+| Run / shard                      |     1 |     2 |     3 |     4 |     5 |     6 | Longest |
+| -------------------------------- | ----: | ----: | ----: | ----: | ----: | ----: | ------: |
+| Prior full-suite run 42403889374 | 4m50s | 8m05s | 5m24s | 5m04s | 3m46s | 6m58s |   8m05s |
+| Test-list run 42407414566        | 6m30s | 5m55s | 5m50s | 5m20s | 5m26s | 6m35s |   6m35s |
+
+These are the measured Playwright test-step wall times from separate hosted
+runs. The slowest shard decreased by 90 seconds (18.6%) and the observed range
+between fastest and slowest shard narrowed from 4m19s to 1m15s. The 358 test
+reports sum to 32m26s in the prior run and 33m17s in the test-list run, so this
+change balances runner load rather than reducing total test work; host load and
+test timing vary between runs. The six complete browser jobs, including setup,
+took 6m49s–7m56s in the new run.
+
+The fast-contract lane also passed formatting, locale/doc mirrors, lint,
+typecheck, partition checks and 1,548 contract tests. Heavy-media passed build,
+interchange, portable Resolve package preparation and built-CLI smoke. Render
+QA passed on Linux x64, Windows x64 and macOS arm64. The complete run's
+per-job records and browser reports are retained by GitHub; browser artifacts
+expire after seven days.
+
+The PR remains Draft and has not been merged. The measurement supports this
+specific deterministic partition on the hosted runner; it is not a guarantee
+of future CI duration or physical workstation performance. Windows/macOS
+workstation, native installer, actual Resolve, hardware audio/display and 4K
+gates remain separate.
+
+## 2026-11-08 follow-up — current main inventory
+
+PR #130 merged as main commit
+[`07016dac8c23148181f7d36a402a86d8d8bc0533`](https://github.com/bynanci/open-film/commit/07016dac8c23148181f7d36a402a86d8d8bc0533).
+The PR #131 branch was synchronized with that main before revalidation. The
+older exact-head run above remains evidence for its 358-case inventory only; it
+does not stand in for checks on the refreshed branch.
+
+On the synchronized branch, `pnpm test:browser-partition` returned
+`verified: true` for 363 cases, with list sizes 61/61/61/60/60/60 and all 26
+Transcript Productivity tests distributed 4/4/5/5/4/4. The focused
+`tests/unit/ci-browser-shards.test.ts` suite passed 18/18. These checks verify
+the partition and validator locally. The refreshed PR's exact-head Verify,
+dependency, DCO, Windows Recovery and three-platform Render QA checks remain the
+merge evidence; physical workstation and native installer gates remain separate.

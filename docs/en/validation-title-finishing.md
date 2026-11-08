@@ -179,6 +179,34 @@ under `/tmp/openfilm-finishing-integration/B-current/`. Historical evidence is
 retained separately. Full exact-head hosted gates and fresh integrated review
 remain coordinator-owned.
 
+## Stale title preview route cleanup on assertion failure — 2026-11-08
+
+PR [#132](https://github.com/bynanci/open-film/pull/132) exercises a delayed
+title PNG request that receives HTTP 409 after Undo and verifies a retry after
+Redo restores the exact immutable revision. The browser helper now releases
+both held route gates in `finally`, waits for the controlled response handler
+to settle, then removes its route. A regression injects an assertion failure
+after the stale response arrives and confirms the blocked handler still
+completes. This keeps failed browser runs from leaving unresolved route work or
+intercepting later requests; it does not change application state or preview
+retry policy.
+
+The rebased exact head `35f82e375844acbb79a5c0faa45d2442b9ad1b61` was
+verified before merge. Verify
+[42473142555](https://github.com/bynanci/open-film/actions/runs/42473142555)
+passed all six browser shards (362 cases), fast-contract, native-shell,
+docs-site, aggregate checks, and 376 media files / 4,421 tests. Windows
+Recovery
+[42473142585](https://github.com/bynanci/open-film/actions/runs/42473142585)
+passed 13 files / 140 tests and 14 browser cases; three-platform Render QA
+[42473142563](https://github.com/bynanci/open-film/actions/runs/42473142563)
+and DCO
+[42473141332](https://github.com/bynanci/open-film/actions/runs/42473141332)
+passed. PR #132 was merged at
+[d141b140](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14).
+This is editor preview and test-harness evidence; it does not establish a
+native installer, NLE or physical workstation acceptance.
+
 ## 2026-10-30 — repaired base carried through title finishing
 
 Merge `962562f` carries clean A `83cb846` and repaired documentation base

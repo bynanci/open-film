@@ -103,15 +103,36 @@ async function mountPhoto(diptych = false, text = false) {
         (element.text.includes("editor.presentation.sourceWarning") ||
           element.text.includes("editor.presentation.fillFailed")),
     );
+  const titleFailed = () =>
+    flatten(root).some(
+      (element) =>
+        element.props.role === "status" &&
+        [element, ...flatten(element)]
+          .map((descendant) => descendant.text)
+          .join("")
+          .includes("editor.presentation.titleFailed"),
+    );
   const error = async (image: HostNode) => {
-    (image.props.onError as () => void)();
+    if (image.props.class === "photo-presentation-title") {
+      vi.stubGlobal("HTMLImageElement", Object);
+      vi.stubGlobal("window", {
+        location: { href: "http://localhost/" },
+        addEventListener() {},
+        removeEventListener() {},
+      });
+      const src = String(image.props.src);
+      Object.assign(image, { currentSrc: src, src, isConnected: true });
+      (image.props.onError as (event: Event) => void)({
+        currentTarget: image,
+      } as unknown as Event);
+    } else (image.props.onError as () => void)();
     await settle();
   };
   const load = async (image: HostNode) => {
     (image.props.onLoad as (() => void) | undefined)?.();
     await settle();
   };
-  return { props, images, failed, error, load, controls };
+  return { props, images, failed, titleFailed, error, load, controls };
 }
 
 it("requires current ambient readiness and ignores failed images removed by a source reconnect", async () => {
@@ -176,7 +197,7 @@ it("fades a plain photo's native bold text using the existing local seek clock w
   expect((title().props.style as { opacity: number }).opacity).toBe(0);
 });
 
-it("isolates a returned title revision and explicit retry from prior image requests", async () => {
+it("retries one current title error automatically and exposes manual recovery after another", async () => {
   const photo = await mountPhoto(false, true);
   const title = () =>
     photo
@@ -188,17 +209,24 @@ it("isolates a returned title revision and explicit retry from prior image reque
   photo.props.revision = "revision";
   await settle();
   expect(title().props.src).not.toBe(original);
-  const failed = title().props.src;
+  const failed = title();
   await photo.error(title());
-  const retry = flatten(title().parent!.parent!).find(
+  expect(title()).not.toBe(failed);
+  const retry = title();
+  expect(retry.props.src).not.toBe(failed.props.src);
+  expect(photo.titleFailed()).toBe(false);
+  await photo.error(retry);
+  expect(photo.titleFailed()).toBe(true);
+  const retryButton = flatten(title().parent!.parent!).find(
     (element) =>
       element.tag === "button" &&
       element.text.includes("editor.presentation.retryTitle"),
   );
-  expect(retry).toBeDefined();
-  (retry!.props.onClick as () => void)();
+  expect(retryButton).toBeDefined();
+  (retryButton!.props.onClick as () => void)();
   await settle();
-  expect(title().props.src).not.toBe(failed);
+  expect(title().props.src).not.toBe(retry.props.src);
+  expect(photo.titleFailed()).toBe(false);
 });
 
 it("reloads a failed photo after a same-ID URI relink and ignores the removed source error", async () => {

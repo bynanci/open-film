@@ -113,9 +113,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      # Each VM owns its server; one worker serializes UI access while shards balance tests within spec files.
-      - run: pnpm test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,github,json
+      # Deterministic per-test lists interleave expensive specs across isolated runners; each VM still uses one worker.
+      - run: pnpm test:browser-shard-list ${{ matrix.shard }} "${{ runner.temp }}/e2e-test-list-${{ matrix.shard }}.txt"
+      - run: pnpm test:e2e --test-list="${{ runner.temp }}/e2e-test-list-${{ matrix.shard }}.txt" --shard=1/1 --reporter=list,github,json
         env:
+          OPENFILM_QA_BROWSER_SHARD: ${{ matrix.shard }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v4
         if: always()

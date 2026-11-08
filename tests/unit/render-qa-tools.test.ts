@@ -109,6 +109,25 @@ it("rejects insecure or unreviewed origins before requesting bytes", async () =>
     );
   expect(fetch).not.toHaveBeenCalled();
 });
+it("rejects unpinned GitHub release API paths before requesting bytes", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://api.github.com/repos/attacker/project/releases/assets/574302090",
+      sha256,
+      100,
+    ),
+  ).rejects.toThrow(/origin/u);
+  await expect(
+    downloadPinnedBytes(
+      "https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/other",
+      sha256,
+      100,
+    ),
+  ).rejects.toThrow(/origin/u);
+  expect(fetch).not.toHaveBeenCalled();
+});
 it("rejects a redirect to an unreviewed origin without fetching it", async () => {
   const fetch = vi.fn().mockResolvedValue(
     new Response(null, {
@@ -143,6 +162,68 @@ it("retries a temporary HTTP failure before accepting pinned bytes", async () =>
   ).resolves.toEqual(bytes);
   expect(fetch).toHaveBeenCalledTimes(2);
 });
+it("backs off through repeated transient HTTP failures before admitting pinned bytes", async () => {
+  const responses = [
+    new Response("temporarily unavailable", { status: 503 }),
+    new Response("temporarily unavailable", { status: 503 }),
+    new Response("temporarily unavailable", { status: 503 }),
+    new Response(bytes),
+  ];
+  const requestTimes: number[] = [];
+  const fetch = vi.fn(() => {
+    requestTimes.push(Date.now());
+    return Promise.resolve(responses.shift()!);
+  });
+  vi.stubGlobal("fetch", fetch);
+  vi.useFakeTimers();
+
+  try {
+    const pending = downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toEqual({ value: bytes });
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(requestTimes.map((time) => time - requestTimes[0]!)).toEqual([
+      0, 500, 1_500, 3_500,
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("downloads the pinned GitHub release asset through its official API redirect", async () => {
+  const assetApiUrl =
+    "https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/574302090";
+  const releaseAssetUrl =
+    "https://release-assets.githubusercontent.com/fixture";
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: releaseAssetUrl },
+      }),
+    )
+    .mockResolvedValueOnce(new Response(bytes));
+  vi.stubGlobal("fetch", fetch);
+
+  await expect(downloadPinnedBytes(assetApiUrl, sha256, 100)).resolves.toEqual(
+    bytes,
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const [apiUrl, apiOptions] = fetch.mock.calls[0]!;
+  expect(String(apiUrl)).toBe(assetApiUrl);
+  expect(new Headers(apiOptions?.headers).get("accept")).toBe(
+    "application/octet-stream",
+  );
+  expect(String(fetch.mock.calls[1]![0])).toBe(releaseAssetUrl);
+});
 it("reports a permanent HTTP failure without another request", async () => {
   const fetch = vi
     .fn()
@@ -164,14 +245,28 @@ it("bounds retries for a persistently unavailable pinned origin", async () => {
       new Response("temporarily unavailable", { status: 503 }),
     );
   vi.stubGlobal("fetch", fetch);
-  await expect(
-    downloadPinnedBytes(
+  vi.useFakeTimers();
+
+  try {
+    const pending = downloadPinnedBytes(
       "https://raw.githubusercontent.com/fixture",
       sha256,
       100,
-    ),
-  ).rejects.toThrow(/HTTP 503/u);
-  expect(fetch).toHaveBeenCalledTimes(2);
+    ).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    if (!("error" in result))
+      throw new Error("Expected persistent HTTP 503 to exhaust retries");
+    expect(result.error).toMatchObject({
+      message: "Render QA download failed (HTTP 503)",
+    });
+    expect(fetch).toHaveBeenCalledTimes(5);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 it("retries a timed-out pinned download before admitting its bytes", async () => {
   const fetch = vi

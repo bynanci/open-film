@@ -89,6 +89,10 @@ const rows = (page: Page) => page.getByTestId("transcript-row");
 const field = (page: Page) => page.getByTestId("transcript-text");
 
 test.use({ actionTimeout: 15_000, viewport: sizes[0] });
+// This file has substantial shared setup, but each test owns and closes its
+// project. Mark the suite parallel so Playwright can shard cases across CI
+// runners while workers=1 still serializes the shared server in each runner.
+test.describe.configure({ mode: "parallel" });
 test.beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "openfilm-transcript-browser-"));
   media = join(root, "Spoken memories 記憶");

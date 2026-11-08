@@ -9,8 +9,20 @@ before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
 Status reviewed against
-[main](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
-on 2026-11-07. The latest published source release remains **v0.4.0**.
+[main](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276)
+on 2026-11-08. PRs #132–#136 are merged. PR #132's exact-head Verify passed
+376 media files / 4,421 tests and 362 browser cases; its Windows Recovery and
+three-platform Render QA passed. PR #134's exact-head Verify passed 376 media
+files / 4,421 tests and 363 browser cases; Windows Recovery, three-platform
+Render QA, native-shell, docs-site and DCO passed. PR #135 added pinned FFmpeg
+asset transport. PR #136 adds bounded retries for transient pinned-tool
+acquisition failures; its exact-head Verify, Windows Recovery, three-platform
+Render QA and DCO passed. Post-merge main Verify, Windows Recovery,
+three-platform Render QA and website deployment also passed on
+`a0f1a4d6d768747377fb6f0803501914d30be276`. The v0.5.0 source-only candidate
+remains a Draft PR with automated checks green; independent GLib security review
+and release-owner approval remain open. The latest published source release
+remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -48,6 +60,65 @@ See the [design system](docs/design-system.md),
 [layout rationale](docs/layout-refinement.md) and
 [shared-surface decision](docs/adr/tobiishi-surfaces.md) and
 [dated validation](docs/validation-tobiishi-control-panels-2026-11-06.md).
+
+### Multi-source review response cleanup (PR #133)
+
+- [x] Wait for held stale review-search responses and remove the route in both
+      normal completion and assertion-failure cleanup. Preserve selection,
+      stale-response and result assertions; this is test-harness reliability,
+      not a change to import or review behavior.
+- [x] Validate the focused multi-source browser spec repeatedly and in the
+      exact-head six-shard CI, with Windows media recovery and three-platform
+      Render QA. See the [multi-source validation record](docs/validation-multi-source-analysis.md)
+      and [PR #133](https://github.com/bynanci/open-film/pull/133).
+
+### GraphicScene sampled-preview continuity (PR #134)
+
+- [x] Reproduce a disappearing preview when transport playback pauses or holds
+      while its exact still is pending; retain the last successful texture until
+      the current frame arrives. Project, Composition, revision and source-scope
+      changes still clear the old texture and fence stale responses.
+- [x] Add a deterministic browser regression with a held graphics response and
+      verify the retained texture is replaced by the exact paused frame.
+- [x] Run the existing bounded-playback, discontinuity and owner-switch case
+      five times; all ten repeated GraphicScene cases passed locally. The full
+      Record Monitor browser spec passed 7/7 and its unit suite passed 43/43.
+- [x] Rebase and merge the focused correction as
+      [1522879b](https://github.com/bynanci/open-film/commit/1522879b538d7145b1972d721dde78155179592e).
+      Exact-head Verify, Windows Recovery, three-platform Render QA, native-shell,
+      docs-site, and DCO passed. This sampled-preview evidence does not establish
+      realtime playback, GPU/4K performance, or workstation acceptance. See the
+      [GraphicScene validation record](docs/validation-graphic-scene.md) and
+      [PR #134](https://github.com/bynanci/open-film/pull/134).
+
+### Stale title-preview response recovery (PR #132)
+
+- [x] Add `finally` cleanup for the held fetch/response gates and remove the
+      route after the handler settles, even when an assertion fails. A dedicated
+      browser case injects an assertion failure after the stale HTTP 409 and
+      verifies the blocked response handler completes.
+- [x] The exact-head Verify run passed 376 media files / 4,421 tests and all
+      six browser shards (362 cases); Windows Recovery passed 140 tests plus
+      14 browser cases; three-platform Render QA and DCO passed.
+- [x] Merge PR #132 at
+      [d141b140](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14).
+      See the [merged PR](https://github.com/bynanci/open-film/pull/132).
+
+### Bounded retries for pinned Render QA tools
+
+- [x] Trace the post-merge Windows Recovery HTTP 503 responses to a retry window
+      of only two requests with a 250 ms initial delay; both failures occurred
+      before tests, while the exact PR candidate and three-platform Render QA
+      passed.
+- [x] Add a deterministic red-green regression for repeated 503 responses and
+      a persistent-origin failure that remains bounded.
+- [x] Expand retries to five attempts with capped exponential backoff while
+      preserving pinned origin allowlists, byte bounds, SHA-256 checks,
+      Retry-After handling, and fail-closed permanent errors.
+- Exact-head Verify, Windows Recovery, three-platform Render QA, and DCO remain
+  required merge gates for the follow-up; see
+  [PR #136](https://github.com/bynanci/open-film/pull/136) and the
+  [Render QA validation record](docs/validation-render-qa.md).
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 
@@ -199,6 +270,28 @@ and in the long-range v1.0 readiness record.
 - [ ] Prepare and verify only the first `v0.5.0` candidate. Historical scope
       anchors are not tag targets; backport security fixes and run exact-head
       gates before drafting a release.
+      A source-only candidate is now under review in Draft PR
+      [#129](https://github.com/bynanci/open-film/pull/129): base
+      `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, head
+      `codex/release-v0.5.0-candidate` at
+      `04035f3266e191478296787982a46293177d61b2`. Exact-head Verify
+      [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777),
+      dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
+      Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
+      Render QA [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
+      and DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
+      all passed on this SHA. Verify includes 304 media test files / 3,658 tests,
+      313/313 browser tests across six shards, native-shell and 18 interchange
+      checks. Linux, Windows and macOS each report 57/57 render tests, 180 decoded
+      frames, nine PTS/RGB samples, AAC audio and unchanged synthetic source hashes.
+      Render evidence explicitly marks workstation verification false. The
+      candidate remains Draft, not frozen, approved, tagged or published.
+- [x] Pass exact-head source, dependency, provenance, Windows recovery and
+      three-platform Render QA for candidate `04035f3266e191478296787982a46293177d61b2`.
+- [ ] Obtain an independent disposition of GLib `RUSTSEC-2024-0429`; PR #128
+      remains Draft without an independent review.
+- [ ] Obtain release-owner approval of the source-only scope and exact artifacts.
+
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
       are recorded in the [independent Storytelling release track](docs/roadmap/incremental-release-train.md).
@@ -269,6 +362,18 @@ Tracking: [Issue #7](https://github.com/bynanci/open-film/issues/7),
 These items remain open, but are not prerequisites for every current editing
 change. Discuss their scope before implementation.
 
+- [x] Balance the full browser suite with deterministic per-test shard lists
+      ([PR #131](https://github.com/bynanci/open-film/pull/131)). The original
+      exact-head Verify run [42407414566](https://github.com/bynanci/open-film/actions/runs/42407414566)
+      passed 358 cases on its then-current base; it remains historical evidence.
+      After synchronizing with main `07016dac8c23148181f7d36a402a86d8d8bc0533`,
+      `pnpm test:browser-partition` verified the current 363-case inventory with
+      shard sizes 61/61/61/60/60/60 and Transcript Productivity spread 4/4/5/5/4/4.
+      The earlier hosted comparison showed the longest browser test step fall
+      from 8m05s to 6m35s versus run 42403889374, while keeping one worker,
+      existing timeouts, assertions and zero retries. Merge readiness depends on
+      the refreshed PR's exact-head checks. See the
+      [E2E shard validation](docs/validation-ci-pages-e2e.md).
 - [ ] Executable plugin discovery/loading beyond built-in registration and SDK
       contracts. Keep the existing data-only preset format available.
 - [ ] Additional local vision, embedding and language-provider implementations;

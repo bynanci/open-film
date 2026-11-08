@@ -80,7 +80,11 @@ Tools are hash-pinned before use, not pulled from an arbitrary latest URL:
 | Noto Sans CJK TC Regular, upstream Sans2.004 OTF | `dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4` |
 | Upstream SIL Open Font License1.1                | `6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2` |
 
-Source URLs are fixed in the workflow. FFmpeg remains a separate test executable;
+The exact Windows FFmpeg asset ID and digest are fixed in the shared
+[`toolchain.json`](https://github.com/bynanci/open-film/blob/main/fixtures/render-qa/toolchain.json) provenance manifest. It is
+fetched through the official GitHub Release Asset API and redirected to the
+existing trusted release-assets host; the pinned bytes are unchanged. FFmpeg
+remains a separate test executable;
 Apache-2.0/NOTICE and distribution contracts are unchanged. The font license is
 preserved in evidence; the font is temporary CI input, not committed or bundled.
 The existing D7A fixed-font/metric program remains broader than this narrow gate.

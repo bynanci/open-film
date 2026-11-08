@@ -201,6 +201,52 @@ async function prepareReview(page: Page, locale: ProjectContentLocale) {
   return { panel, record, fixture };
 }
 
+function deferredSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+async function holdReviewSearchResponse(
+  page: Page,
+  endpoint: string,
+  query: string,
+) {
+  const held = deferredSignal();
+  const intercepted = deferredSignal();
+  const completed = deferredSignal();
+  const routePattern = `**${endpoint}?*`;
+  await page.route(routePattern, async (route) => {
+    const requestQuery = new URL(route.request().url()).searchParams.get(
+      "query",
+    );
+    if (requestQuery !== query) {
+      await route.continue();
+      return;
+    }
+
+    try {
+      const response = await route.fetch();
+      intercepted.resolve();
+      await held.promise;
+      await route.fulfill({ response });
+    } finally {
+      completed.resolve();
+    }
+  });
+  return {
+    intercepted: intercepted.promise,
+    completed: completed.promise,
+    release: held.resolve,
+    async cleanup() {
+      held.resolve();
+      await page.unrouteAll({ behavior: "wait" });
+    },
+  };
+}
+
 for (const locale of ["en-US", "zh-TW", "ja-JP"] as const) {
   test(`${locale}: changing a correction invalidates its preview and accepted story adoption refreshes the workspace`, async ({
     page,
@@ -492,25 +538,12 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
     exact: true,
   });
   await expect(accept).toBeVisible();
-  let release!: () => void;
-  let started!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const intercepted = new Promise<void>((resolve) => {
-    started = resolve;
-  });
   const endpoint = `/api/analysis-runs/${encodeURIComponent(record.run.id)}/review`;
-  await page.route(`**${endpoint}?*`, async (route) => {
-    const response = await route.fetch();
-    if (
-      new URL(route.request().url()).searchParams.get("query") === "unknown"
-    ) {
-      started();
-      await held;
-    }
-    await route.fulfill({ response });
-  });
+  const delayedSearch = await holdReviewSearchResponse(
+    page,
+    endpoint,
+    "unknown",
+  );
   try {
     const search = panel.getByRole("searchbox", {
       name: uiText("en-US", "app.import.analysis.review.search"),
@@ -518,7 +551,7 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
     });
     await search.fill("unknown");
     await expect(accept).toHaveCount(0);
-    await intercepted;
+    await delayedSearch.intercepted;
     await search.fill("event");
     const eventCount = record.results.filter(
       ({ kind }) => kind === "event",
@@ -526,7 +559,8 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
     await expect(panel.locator(".import-review-result")).toHaveCount(
       eventCount,
     );
-    release();
+    delayedSearch.release();
+    await delayedSearch.completed;
     await expect(
       panel.locator(`.import-review-result input[value="${event.id}"]`),
     ).toBeVisible();
@@ -550,6 +584,50 @@ test("search keeps the latest results, clears reviewed selection and exposes a u
       .all())
       await expect(button).toBeDisabled();
   } finally {
-    release();
+    await delayedSearch.cleanup();
   }
+});
+
+test("search response cleanup settles a held stale request after an assertion fails", async ({
+  page,
+}) => {
+  const { panel, record } = await prepareReview(page, "en-US");
+  const eventCount = record.results.filter(
+    ({ kind }) => kind === "event",
+  ).length;
+  const endpoint = `/api/analysis-runs/${encodeURIComponent(record.run.id)}/review`;
+  const delayedSearch = await holdReviewSearchResponse(
+    page,
+    endpoint,
+    "unknown",
+  );
+  const search = panel.getByRole("searchbox", {
+    name: uiText("en-US", "app.import.analysis.review.search"),
+    exact: true,
+  });
+  let assertionFailed = false;
+
+  try {
+    await search.fill("unknown");
+    await delayedSearch.intercepted;
+    await search.fill("event");
+    await expect(panel.locator(".import-review-result")).toHaveCount(
+      eventCount,
+    );
+
+    try {
+      await expect(
+        panel.getByTestId("missing-search-cleanup-assertion"),
+      ).toBeVisible({ timeout: 50 });
+    } catch (error) {
+      assertionFailed = true;
+      expect(error).toBeInstanceOf(Error);
+    }
+  } finally {
+    await delayedSearch.cleanup();
+  }
+
+  expect(assertionFailed).toBe(true);
+  await delayedSearch.completed;
+  await expect(panel.locator(".import-review-result")).toHaveCount(eventCount);
 });
