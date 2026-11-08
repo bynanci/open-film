@@ -1,5 +1,31 @@
 # Reproducible render QA (D7A)
 
+## 2026-11-08 — back off repeated pinned-tool service failures
+
+The post-merge Windows Recovery run for main
+[`1522879`](https://github.com/bynanci/open-film/commit/1522879b538d7145b1972d721dde78155179592e),
+[42476997280](https://github.com/bynanci/open-film/actions/runs/42476997280),
+received HTTP 503 twice while staging the hash-pinned FFmpeg asset. Both
+attempts stopped before tests. The PR #134 exact-head Windows Recovery passed,
+and the post-merge three-platform Render QA run passed, so the evidence points
+to an intermittent asset-service response rather than a render assertion.
+
+The previous per-URL budget was two requests with a 250 ms initial delay. The
+follow-up retains five bounded attempts and waits 500 ms, 1 s, 2 s, then 4 s
+between requests by default. Numeric and date `Retry-After` values remain capped
+at ten seconds. Exact URL/origin allowlists, redirect limits, byte ceilings,
+SHA-256 admission, and immediate failure for permanent or integrity errors are
+unchanged.
+
+The regression was observed red against the prior implementation: three
+consecutive HTTP 503 responses exhausted the old two-request budget before the
+pinned bytes could be admitted. It passes with the bounded backoff; a persistent
+503 still fails after exactly five requests. Focused local evidence is recorded
+with [PR #136](https://github.com/bynanci/open-film/pull/136). Exact-head Verify,
+Windows Recovery, three-platform Render QA, and DCO remain required before
+merge. This change improves CI asset acquisition resilience; it is not installer
+or workstation validation.
+
 ## 2026-11-08 — retrieve the pinned Windows FFmpeg asset through GitHub API
 
 Windows media-recovery runs for PRs [#132](https://github.com/bynanci/open-film/pull/132)

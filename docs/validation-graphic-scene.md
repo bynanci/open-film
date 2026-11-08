@@ -128,10 +128,11 @@ unmodified source at the texture-retention assertion and passed after the
 correction. Before rebase, the two GraphicScene playback cases passed five
 repetitions each (10/10). On the rebased candidate, the full
 `tests/e2e/record-monitor.spec.ts` passed 7/7 and
-`tests/unit/record-monitor.test.ts` passed 43/43. PR #134's exact-head Verify,
-Windows media recovery, three-platform Render QA, and DCO checks are the merge
-gate; their current results are tracked on the
-[PR](https://github.com/bynanci/open-film/pull/134).
+`tests/unit/record-monitor.test.ts` passed 43/43. PR #134 merged at exact head
+`95431adb4a7a432ba71d12b7026641936c710e98`, producing main merge commit
+`1522879b538d7145b1972d721dde78155179592e`. Its Verify passed 376 media files /
+4,421 tests and six browser shards (363 cases); Windows Recovery, three-platform
+Render QA, native-shell, docs-site and DCO also passed.
 
 This verifies a sampled browser preview only. It does not establish realtime
 frame rendering, GPU throughput, 4K performance, hardware decode behavior,

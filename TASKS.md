@@ -8,15 +8,17 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Status reviewed against PR #134's main base
-[d141b140cd96b2db45a2a822435f6dee6f810d14](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14)
-on 2026-11-08. PR #133 and #132 are merged. PR #132's exact-head Verify
-(376 media files / 4,421 tests and 362 browser cases), Windows Recovery, and
-three-platform Render QA passed before merge. PR #135 is merged at
-[d98211739ab2c893196c9dcf09e142c20d877b8c](https://github.com/bynanci/open-film/commit/d98211739ab2c893196c9dcf09e142c20d877b8c);
-its full follow-up Render QA passed on Linux, Windows, and macOS. PR #134 is
-rebased on the resulting main and carries the focused GraphicScene continuity
-fix. The latest published source release remains **v0.4.0**.
+Status reviewed against main
+[1522879b538d7145b1972d721dde78155179592e](https://github.com/bynanci/open-film/commit/1522879b538d7145b1972d721dde78155179592e)
+on 2026-11-08. PRs #132, #133, #134, and #135 are merged. PR #132's exact-head
+Verify passed 376 media files / 4,421 tests and 362 browser cases; its Windows
+Recovery and three-platform Render QA passed. PR #134's exact-head Verify passed
+376 media files / 4,421 tests and 363 browser cases; Windows Recovery, three-
+platform Render QA, native-shell, docs-site, and DCO also passed before merge.
+PR #135's source-asset transport is in main. The post-merge Windows Recovery
+run for #134's merge commit received HTTP 503 twice before starting tests;
+bounded retry hardening is recorded in the Render QA validation. The latest
+published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -77,8 +79,10 @@ See the [design system](docs/design-system.md),
 - [x] Run the existing bounded-playback, discontinuity and owner-switch case
       five times; all ten repeated GraphicScene cases passed locally. The full
       Record Monitor browser spec passed 7/7 and its unit suite passed 43/43.
-- [x] Rebase the focused correction on current main and retain exact-head CI
-      as its merge gate. This sampled-preview evidence does not establish
+- [x] Rebase and merge the focused correction as
+      [1522879b](https://github.com/bynanci/open-film/commit/1522879b538d7145b1972d721dde78155179592e).
+      Exact-head Verify, Windows Recovery, three-platform Render QA, native-shell,
+      docs-site, and DCO passed. This sampled-preview evidence does not establish
       realtime playback, GPU/4K performance, or workstation acceptance. See the
       [GraphicScene validation record](docs/validation-graphic-scene.md) and
       [PR #134](https://github.com/bynanci/open-film/pull/134).
@@ -95,6 +99,22 @@ See the [design system](docs/design-system.md),
 - [x] Merge PR #132 at
       [d141b140](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14).
       See the [merged PR](https://github.com/bynanci/open-film/pull/132).
+
+### Bounded retries for pinned Render QA tools
+
+- [x] Trace the post-merge Windows Recovery HTTP 503 responses to a retry window
+      of only two requests with a 250 ms initial delay; both failures occurred
+      before tests, while the exact PR candidate and three-platform Render QA
+      passed.
+- [x] Add a deterministic red-green regression for repeated 503 responses and
+      a persistent-origin failure that remains bounded.
+- [x] Expand retries to five attempts with capped exponential backoff while
+      preserving pinned origin allowlists, byte bounds, SHA-256 checks,
+      Retry-After handling, and fail-closed permanent errors.
+- Exact-head Verify, Windows Recovery, three-platform Render QA, and DCO remain
+  required merge gates for the follow-up; see
+  [PR #136](https://github.com/bynanci/open-film/pull/136) and the
+  [Render QA validation record](docs/validation-render-qa.md).
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 

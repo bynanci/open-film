@@ -27,10 +27,11 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[d141b140cd96b2db45a2a822435f6dee6f810d14](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14)
-on 2026-11-08. PRs #132, #133, and #135 are merged. Their exact-head CI and
-three-platform Render QA evidence is linked below; PR #134 carries the next
-focused preview correction.
+[1522879b538d7145b1972d721dde78155179592e](https://github.com/bynanci/open-film/commit/1522879b538d7145b1972d721dde78155179592e)
+on 2026-11-08. PRs #132, #133, #134, and #135 are merged. Their exact-head CI
+and three-platform Render QA evidence is linked below. A bounded-retry
+follow-up addresses transient pinned-tool acquisition failures without changing
+tool bytes or render acceptance criteria.
 Historical feature records keep their original candidate dates.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
@@ -92,8 +93,10 @@ while the monitor continued advancing and cancelling sampled-frame requests.
 The preview pause path cleared its texture during a transient monitor hold. PR
 [#134](https://github.com/bynanci/open-film/pull/134) retains the last decoded
 texture while it requests the exact paused frame; ownership and explicit seek
-changes still fence and clear prior images. The candidate is based on main
-`d141b14`; its hosted exact-head checks are the merge gate. This sampled
+changes still fence and clear prior images. PR #134 was based on main `d141b14` and merged as
+`1522879b538d7145b1972d721dde78155179592e`. Its exact Verify passed 376 media
+files / 4,421 tests and six browser shards (363 cases); Windows Recovery,
+three-platform Render QA, native-shell, docs-site, and DCO passed. This sampled
 preview validation does not represent realtime, GPU/4K or workstation
 acceptance.
 
@@ -109,6 +112,14 @@ and DCO
 [42473141332](https://github.com/bynanci/open-film/actions/runs/42473141332)
 also passed. This verifies test-route cleanup and title recovery, not native
 release, external-editor or physical workstation acceptance.
+
+The post-merge Windows Recovery run for `1522879b` then received HTTP 503
+from the pinned FFmpeg asset endpoint on both its initial attempt and one
+targeted retry, before tests started. The exact PR head's Windows Recovery and
+the post-merge three-platform Render QA passed. The follow-up Render QA change
+uses five bounded requests with capped exponential backoff; hash, byte, URL and
+licensing checks remain unchanged. This is CI acquisition resilience, not
+installer or workstation acceptance.
 
 ### Make the everyday editing workflow dependable
 
