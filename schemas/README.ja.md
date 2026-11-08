@@ -2,7 +2,7 @@
 
 [繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)
 
-`openfilm-project-1.0.0.schema.json` はプロジェクト manifest と、メディア、ストーリー、コンポジション、イベント、重複グループ、ジョブの再利用可能な定義を示します。`media-asset-1.0.0.schema.json` はメディア定義を参照し、`plugin-manifest-1.schema.json` は Plugin API 1、`workstation-qa-1.0.0.schema.json` は候補版に紐づく手動／ハードウェア QA 証拠を定義します。`$id` は安定した識別子です。検証器は同梱ファイルをローカルで解決でき、ネットワークを必要としません。
+`openfilm-project-1.0.0.schema.json` はプロジェクト manifest と、メディア、ストーリー、コンポジション、イベント、重複グループ、ジョブの再利用可能な定義を示します。`media-asset-1.0.0.schema.json` はメディア定義を参照し、`plugin-manifest-1.schema.json` は Plugin API 1、`workstation-qa-1.1.0.schema.json` は候補版に紐づく手動／ハードウェア QA 証拠を定義し、Windows、macOS、Linux のインストール検証を個別に記録します。旧版 `workstation-qa-1.0.0.schema.json` は過去の記録用に残し、欠けているプラットフォームの観測結果を推定しません。`$id` は安定した識別子です。検証器は同梱ファイルをローカルで解決でき、ネットワークを必要としません。
 
 長さ、ソースのトリム位置、タイムライン位置は秒、フレームレートは fps です。クリップの画面 x/y 座標は合成フレームの中心を原点とするピクセル（+x は右、+y は下）です。ソースピクセルは拡大縮小と時計回りの回転前に contain-fit します。地理座標は WGS84 度、イベント範囲は km、信頼度とジョブ進捗は0〜1、評価は0〜5です。時刻には明示的なタイムゾーンが必要です。Plugin メタデータキーは名前空間を付けてください。
 

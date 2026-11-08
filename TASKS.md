@@ -321,6 +321,9 @@ and in the long-range v1.0 readiness record.
       release-owner decisions remain separate.
 - [ ] Validate clean-machine installation and first use without developer tools,
       including CJK and long paths on supported Windows/macOS targets.
+- [x] Extend the existing workstation record to schema 1.1 with separate
+      Windows/macOS/Linux installer gates; preserve read-only validation of
+      historical 1.0 records and begin every new gate as `not-run`.
 - [ ] Validate signing/notarization, supported manual updates, failed-update
       rollback and uninstall behavior that preserves projects.
 - [x] Complete macOS dead-owner recovery evidence for process identity, PID reuse

@@ -676,3 +676,33 @@ before merge; original candidate checks are not relabeled for the new head.
 The v0.5.0 historical candidate still requires its own narrow, reviewed backport.
 Installer artifacts, signing/notarization, physical workstation evidence and the
 release-owner's exact-artifact decision remain separate gates.
+
+### 2026-11-08 platform QA record compatibility
+
+Reviewed baseline: main `6f916cb061fb3b973a23961745429869fd8380af`.
+The existing 1.0 record accepted its Windows installer gate but rejected
+`macos-installer` as unsupported, despite the M7E checklist requiring both
+Windows and macOS observations. This was a record-contract gap, not installation
+or product evidence.
+
+The existing record tool now creates schema 1.1 records with distinct Windows,
+macOS and Linux installer gates, each `not-run`. It retains validation of original
+1.0 records without mutation, migration or invented platform observations. The
+1.0 JSON Schema remains unchanged; the 1.1 schema adds the platform gates.
+
+Three new contract cases first failed on the baseline. The completed focused
+suite passes 15/15 tests, including legacy compatibility, required platform gates,
+false pass rejection and exclusive record creation. Both schema versions validate
+the corresponding generated/legacy records with the JSON Schema validator. The
+standalone ESM build of the same tool initialized and validated a Linux record
+with every manual gate `not-run`; its validation result explicitly says
+`record-only`. Full lint, TypeScript/Vue and production build also passed.
+
+The checklist documents running this standalone tool with the installed runtime's
+verified Node binary by explicit path, without adding developer tools to PATH.
+Installer, archive, candidate-receipt and runtime-manifest hashes remain explicit
+inputs to human review. No Windows/macOS installer was executed by this change.
+The current environment is Linux with no configured workstation VPN; the native
+installer workflow has no candidate runs, and the integration cannot read GitHub
+signing-secret metadata (HTTP 403). Signature/notarization, clean install,
+update/rollback/uninstall and physical observations remain unverified.

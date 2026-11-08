@@ -22,6 +22,12 @@ while any observation is `fail`. `blocked` requires a concrete blocker. The
 record is evidence metadata, not a benchmark runner; screenshots, logs, exported
 projects and source hashes should be referenced in each observation.
 
+New records use schema `1.1.0`, with separate `windows-installer`,
+`macos-installer` and `linux-installer` gates. Each begins `not-run`.
+Existing `1.0.0` records remain valid under their original gate list and schema;
+validation does not migrate them or add observations. An older record does not
+establish that an absent platform gate passed.
+
 Do not commit private media, absolute personal paths, API keys or provider secrets.
 
 ## Candidate identity
@@ -222,6 +228,37 @@ Keep both clean Windows and macOS gates `not-run` until tested on an actual
 workstation/VM with a full candidate SHA. Linux Cargo or Node process tests do
 not satisfy them. Record installer/runtime-manifest/artifact SHA-256, OS/build,
 architecture, app and tool versions, signature status and evidence references.
+
+Use the gate for the OS actually tested. In its `inputs`, record separate
+SHA-256 values for the installer (`kind: "installer"`), permission-preserving
+archive (`"installer-archive"`), `candidate.json` (`"candidate-receipt"`) and
+`runtime-manifest.json` (`"runtime-manifest"`). Check that the candidate receipt
+names the record's full candidate SHA and the installed runtime manifest hash.
+Keep signature/notarization verification, install, first launch, failed update,
+rollback and uninstall observations explicit. The validator checks record
+structure; a reviewer must still inspect the actual bytes and observations.
+
+For a clean target without developer Node or pnpm on PATH, prepare a standalone
+copy of the existing record tool on the build host:
+
+```sh
+pnpm exec esbuild scripts/workstation-qa.ts --bundle --platform=node \
+  --format=esm --outfile=/path/to/qa-kit/workstation-qa.mjs
+```
+
+Record its SHA-256 and source SHA in the kit. On the target, invoke that file
+with the **installed runtime's verified Node binary by its explicit path**:
+
+```sh
+"/path/to/installed/runtime/bin/node" workstation-qa.mjs init workstation-qa.json \
+  --candidate <full-40-character-git-sha>
+"/path/to/installed/runtime/bin/node" workstation-qa.mjs validate workstation-qa.json
+```
+
+In Windows PowerShell, use `& 'C:\path\to\installed\runtime\bin\node.exe'`
+for the same commands. This uses the existing record logic, requires no pnpm on
+the target, and does not add developer binaries to the app's PATH. A generated
+record or successful `validate` command is not installation evidence.
 
 For each platform:
 

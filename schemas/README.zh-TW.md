@@ -2,7 +2,7 @@
 
 [繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)
 
-`openfilm-project-1.0.0.schema.json` 定義專案 manifest，以及可重用的媒體、故事、組合、事件、重複群組和工作定義。`media-asset-1.0.0.schema.json` 參照媒體定義；`plugin-manifest-1.schema.json` 定義 Plugin API 1；`workstation-qa-1.0.0.schema.json` 定義綁定候選版本的人工／硬體 QA 證據。`$id` 是穩定識別碼；驗證器應在本機讀取隨附檔案，不需要網路。
+`openfilm-project-1.0.0.schema.json` 定義專案 manifest，以及可重用的媒體、故事、組合、事件、重複群組和工作定義。`media-asset-1.0.0.schema.json` 參照媒體定義；`plugin-manifest-1.schema.json` 定義 Plugin API 1；`workstation-qa-1.1.0.schema.json` 定義綁定候選版本的人工／硬體 QA 證據，包含各自獨立的 Windows、macOS 與 Linux 安裝驗收。舊有 `workstation-qa-1.0.0.schema.json` 保留供歷史紀錄使用；驗證不會推定缺少的平台觀察結果。`$id` 是穩定識別碼；驗證器應在本機讀取隨附檔案，不需要網路。
 
 時長、來源修剪位置與時間軸位置都以秒計；影格率以 fps 計。片段畫面 x/y 座標採組合影格像素，原點在中心（+x 向右、+y 向下）；來源像素先 contain-fit，再縮放及順時針旋轉。地理座標採 WGS84 度數，事件半徑以公里計。信心度與工作進度為 0 到 1，評分為 0 到 5，時間戳必須包含時區。Plugin 中繼資料請使用命名空間以避免衝突。
 

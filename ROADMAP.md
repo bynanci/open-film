@@ -183,6 +183,11 @@ The [installer guide](docs/native-installer.md),
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding
 evidence. CI results do not replace those observations.
 
+Workstation evidence schema 1.1 records Windows, macOS and Linux installer
+acceptance in separate gates. The record tool still reads historical 1.0 records
+without inferring observations for missing platforms. New installer gates start
+`not-run`; a schema check does not approve a release or certify installation.
+
 The E2E distribution follow-up keeps one worker per isolated runner and builds
 deterministic per-test Playwright lists from full discovery. PR #131's original
 exact-head run passed 358 browser cases and the full Verify aggregate; the
