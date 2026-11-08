@@ -325,6 +325,81 @@ test("slow GraphicScene playback retains its texture with bounded requests and f
   }
 });
 
+test("GraphicScene retains its last texture until the paused frame is rendered", async ({
+  page,
+}) => {
+  await page.route("http://127.0.0.1:4310/api/source/**", (route) =>
+    serve(route, false),
+  );
+  let initial = true;
+  const pending: Array<{ route: Route; frame: number }> = [];
+  await page.route("**/compositions/record/graphics.png?**", async (route) => {
+    const frame = Number(
+      new URL(route.request().url()).searchParams.get("frame"),
+    );
+    if (initial && frame === 0) {
+      initial = false;
+      await route.fulfill({ contentType: "image/png", body: photo });
+    } else pending.push({ route, frame });
+  });
+  const saved = composition();
+  saved.graphicScenes = [
+    {
+      version: 1,
+      id: "g",
+      name: "synthetic",
+      start: 0,
+      duration: 3,
+      zIndex: 0,
+      nodes: [],
+    },
+  ];
+  try {
+    await mount(page, saved, [asset("video")]);
+    const image = page.getByTestId("graphic-preview");
+    await expect(image).toHaveAttribute("data-frame", "0");
+    await expect
+      .poll(() =>
+        page
+          .locator("video")
+          .evaluate((node) => (node as HTMLVideoElement).readyState),
+      )
+      .toBeGreaterThanOrEqual(3);
+    await expect
+      .poll(() => page.evaluate(() => window.recordTest.monitor.buffering))
+      .toBe(false);
+
+    await page.evaluate(() => window.recordTest.monitor.play());
+    await expect
+      .poll(() => page.evaluate(() => window.recordTest.monitor.frame))
+      .toBeGreaterThanOrEqual(4);
+    const pausedFrame = await page.evaluate(() => {
+      window.recordTest.monitor.pause();
+      return window.recordTest.monitor.frame;
+    });
+    await expect
+      .poll(() => page.evaluate(() => window.recordTest.monitor.playing))
+      .toBe(false);
+    await expect(image).toHaveAttribute("data-frame", "0");
+    await expect
+      .poll(() => pending.some((item) => item.frame === pausedFrame))
+      .toBe(true);
+    await pending
+      .findLast((item) => item.frame === pausedFrame)!
+      .route.fulfill({
+        contentType: "image/png",
+        body: photo,
+      });
+    await expect(image).toHaveAttribute("data-frame", String(pausedFrame));
+  } finally {
+    for (const item of pending)
+      await item.route
+        .fulfill({ contentType: "image/png", body: photo })
+        .catch(() => {});
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
+
 test("canplay settles without seek feedback and actual video playback advances Record", async ({
   page,
 }) => {
