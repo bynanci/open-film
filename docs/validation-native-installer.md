@@ -653,3 +653,26 @@ results. Until that exact-head workflow, independent security review and source
 admission all pass, `RUSTSEC-2024-0429` remains an open release gate. This
 candidate does not provide signed installers or Windows/macOS workstation
 evidence.
+
+### 2026-11-08 independent GLib technical review
+
+An independent reviewer who did not implement the candidate returned technical
+**PASS**, with no confirmed P0/P1/P2 findings, for PR #128 head
+`3b05ba781b62494143e2d73ba6126a9e1f24d43e`. The
+[review disposition](security/glib-0429-independent-review.md) retains the
+source identities, authenticated hosted execution, fresh same-database audits,
+three target graphs, 98 focused tests and limits. Its path-free structured proof
+is committed as evidence, including all three parsed raw audit reports and the
+hashes of their original bytes. This is independent AI technical review, not a
+human release-owner decision.
+
+The full source diff applies cleanly to main
+`6f916cb061fb3b973a23961745429869fd8380af`. Signed-off synchronized head
+`2fac32622fce68f1ec69033c6cd6280dbc0baa39` changes no security source, Cargo,
+vendor, provenance or relevant workflow compared with the reviewed candidate.
+The 98 focused security tests and source reconstruction passed again there.
+Fresh hosted source admission and the complete final-head CI remain required
+before merge; original candidate checks are not relabeled for the new head.
+The v0.5.0 historical candidate still requires its own narrow, reviewed backport.
+Installer artifacts, signing/notarization, physical workstation evidence and the
+release-owner's exact-artifact decision remain separate gates.
