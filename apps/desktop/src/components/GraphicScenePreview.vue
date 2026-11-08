@@ -68,6 +68,15 @@ function reset() {
   failed.value = false;
   busyRetries = 0;
 }
+function holdLatest() {
+  generation++;
+  controller?.abort();
+  controller = undefined;
+  if (timer) clearTimeout(timer);
+  timer = undefined;
+  failed.value = false;
+  busyRetries = 0;
+}
 function schedule(delay = 0) {
   if (disposed || !props.active || controller || timer) return;
   timer = setTimeout(() => {
@@ -138,7 +147,10 @@ watch(
 );
 watch([requestedFrame, () => props.playing], () => {
   if (!props.playing) {
-    reset();
+    // A pause or decoder hold changes the requested frame without changing
+    // ownership. Keep the last decoded texture visible until the exact still
+    // arrives; explicit seeks and owner changes remount/reset this component.
+    holdLatest();
     schedule();
   } else schedule(120);
 });

@@ -9,9 +9,11 @@ before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
 Status reviewed against
-[main](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e)
-on 2026-11-08. PR #133 adds and validates the multi-source review search
-cleanup regression. The latest published source release remains **v0.4.0**.
+[main](https://github.com/bynanci/open-film/commit/5536b1c4b642280535e6c81ffab0b157de9dbb8d)
+on 2026-11-08. PR #133 is merged. Its post-merge Verify exposed a GraphicScene
+preview continuity regression; PR #134 tracks the focused correction. PR #132
+adds assertion-failure cleanup for its held title-preview route and awaits its
+new exact-head checks. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -60,6 +62,31 @@ See the [design system](docs/design-system.md),
       exact-head six-shard CI, with Windows media recovery and three-platform
       Render QA. See the [multi-source validation record](docs/validation-multi-source-analysis.md)
       and [PR #133](https://github.com/bynanci/open-film/pull/133).
+
+### GraphicScene sampled-preview continuity (PR #134)
+
+- [x] Reproduce a disappearing preview when transport playback pauses or holds
+      while its exact still is pending; retain the last successful texture until
+      the current frame arrives. Project, Composition, revision and source-scope
+      changes still clear the old texture and fence stale responses.
+- [x] Add a deterministic browser regression with a held graphics response and
+      verify the retained texture is replaced by the exact paused frame.
+- [x] Run the existing bounded-playback, discontinuity and owner-switch case
+      five times; all ten repeated GraphicScene cases passed locally. The full
+      Record Monitor browser spec passed 7/7 and its unit suite passed 43/43.
+- [ ] Complete exact-head hosted checks for PR #134. This preview QA does not
+      establish realtime playback, GPU/4K performance, or workstation acceptance.
+      See the [GraphicScene validation record](docs/validation-graphic-scene.md).
+
+### Stale title-preview response recovery (PR #132)
+
+- [x] Add `finally` cleanup for the held fetch/response gates and remove the
+      route after the handler settles, even when an assertion fails. A dedicated
+      browser case injects an assertion failure after the stale HTTP 409 and
+      verifies the blocked response handler completes.
+- [x] The full title-finishing browser spec passed 10/10 locally on the rebased
+      candidate; new exact-head hosted checks are still running.
+- [ ] Complete current-head CI and merge PR #132.
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 

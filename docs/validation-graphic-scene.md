@@ -102,3 +102,35 @@ Aesthetic clipping/placement and intended black scenes require manual review.
 JSON preserves scenes and image identities; OTIO retains metadata with explicit
 manual-recreation warnings. FCPXML/EDL reject unsupported scenes. Broader clip
 keyframes remain deferred; M4 photo narrative/consented assistance is next.
+
+## Sampled preview continuity during a transport hold — 2026-11-08
+
+Main `5536b1c4b642280535e6c81ffab0b157de9dbb8d` Verify run
+[42450857617](https://github.com/bynanci/open-film/actions/runs/42450857617)
+failed in browser shard 4 at `record-monitor.spec.ts:286`: while the transport
+advanced, the GraphicScene preview node remained mounted but its last rendered
+image disappeared. The saved trace records aborted requests for frames 1, 4,
+11, 18 and 25 before the failed assertion. This matched the component's pause
+path, which aborted pending work and revoked the last successful texture when
+Record temporarily stopped forward playback for a media hold.
+
+The focused correction separates ownership reset from a pause/hold refresh. A
+pause aborts and fences the obsolete request, but retains its current object URL
+until the requested still renders. Project, Composition, revision, source-scope
+changes and explicit seek remounts continue to clear the texture and reject old
+responses. The original bounded-request/discontinuity/owner-switch assertions
+remain unchanged.
+
+The new browser regression holds the requested still while playback advances,
+pauses the transport, verifies the previous texture remains visible, then
+fulfills the exact paused frame and verifies replacement. It failed on the
+unmodified source at the texture-retention assertion and passed after the
+correction. Local evidence on the candidate: GraphicScene E2E cases repeated
+five times each (10/10), full Record Monitor browser spec (7/7),
+`tests/unit/record-monitor.test.ts` (43/43), `pnpm typecheck`, `pnpm lint`, and
+`pnpm build` passed. The build retains the existing 604 kB TimelineEditor chunk
+warning. Exact-head hosted checks for the candidate remain the merge gate.
+
+This verifies a sampled browser preview only. It does not establish realtime
+frame rendering, GPU throughput, 4K performance, hardware decode behavior,
+workstation display quality or external-editor parity.
