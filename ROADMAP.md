@@ -27,15 +27,18 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[`73f9df9810770d52cab0cc2978e55ef8301f884e`](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e)
-on 2026-11-07. Draft PR [#129](https://github.com/bynanci/open-film/pull/129)
-prepares the first source-only candidate on a dedicated release branch. Exact-head
-Verify, dependency security, Windows recovery, DCO and three-platform Render QA
-passed on candidate `04035f3266e191478296787982a46293177d61b2`; six browser shards
-reported 313/313 tests, and Linux, Windows and macOS each reported 57/57 render
-tests. The candidate is not frozen, approved, tagged or published. Independent
-GLib review and release-owner approval remain open. Historical feature records
-keep their original SHAs and validation dates.
+[`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276)
+on 2026-11-08. PRs #132–#136 are merged, and the post-merge Verify, Windows
+Recovery, three-platform Render QA and website deployment passed on that main
+commit. Draft PR [#129](https://github.com/bynanci/open-film/pull/129) prepares
+the first source-only candidate on the dedicated `release/v0.5.0` branch. Its
+exact-head Verify, dependency security, Windows recovery, DCO and three-platform
+Render QA passed at candidate
+`04035f3266e191478296787982a46293177d61b2`. The candidate is not approved,
+tagged or published. Independent GLib review and release-owner approval remain
+open, as do installer and workstation acceptance gates. The latest published
+source release remains **v0.4.0**. Historical feature records retain their
+original SHAs and validation dates.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
 is merged in PR #111. Physical workstation and listening acceptance remain
@@ -81,6 +84,48 @@ GraphicScenes remain the foundation. See the
 [eleven-project integration reference](docs/en/media-intelligence-integrations.md),
 [繁體中文](docs/media-intelligence-integrations.md) and
 [ADR 012](docs/adr/012-reviewed-media-intelligence.md).
+
+The Multi-Source M6 review workflow now has a deterministic stale-search
+cleanup regression: the delayed response is awaited, and route teardown waits
+for in-flight handlers on both normal and assertion-failure paths. This is a
+test-harness reliability fix; it does not change review or import behavior.
+See [PR #133](https://github.com/bynanci/open-film/pull/133) and the
+[validation record](docs/validation-multi-source-analysis.md). Physical
+workstation and supported-browser gates remain open.
+
+The first Verify on the merged `5536b1c` head failed the slow GraphicScene
+preview case in browser shard 4. Its trace shows the last graphic image removed
+while the monitor continued advancing and cancelling sampled-frame requests.
+The preview pause path cleared its texture during a transient monitor hold. PR
+[#134](https://github.com/bynanci/open-film/pull/134) retains the last decoded
+texture while it requests the exact paused frame; ownership and explicit seek
+changes still fence and clear prior images. PR #134 was based on main `d141b14` and merged as
+`1522879b538d7145b1972d721dde78155179592e`. Its exact Verify passed 376 media
+files / 4,421 tests and six browser shards (363 cases); Windows Recovery,
+three-platform Render QA, native-shell, docs-site, and DCO passed. This sampled
+preview validation does not represent realtime, GPU/4K or workstation
+acceptance.
+
+PR [#132](https://github.com/bynanci/open-film/pull/132) was rebased on
+`d982117` and merged at `d141b14`. Its Verify run
+[42473142555](https://github.com/bynanci/open-film/actions/runs/42473142555)
+passed 376 media files / 4,421 tests and all six browser shards (362 cases).
+Windows Recovery
+[42473142585](https://github.com/bynanci/open-film/actions/runs/42473142585)
+passed 140 tests and 14 browser cases; three-platform Render QA
+[42473142563](https://github.com/bynanci/open-film/actions/runs/42473142563)
+and DCO
+[42473141332](https://github.com/bynanci/open-film/actions/runs/42473141332)
+also passed. This verifies test-route cleanup and title recovery, not native
+release, external-editor or physical workstation acceptance.
+
+The post-merge Windows Recovery run for `1522879b` then received HTTP 503
+from the pinned FFmpeg asset endpoint on both its initial attempt and one
+targeted retry, before tests started. The exact PR head's Windows Recovery and
+the post-merge three-platform Render QA passed. The follow-up Render QA change
+uses five bounded requests with capped exponential backoff; hash, byte, URL and
+licensing checks remain unchanged. This is CI acquisition resilience, not
+installer or workstation acceptance.
 
 ### Make the everyday editing workflow dependable
 

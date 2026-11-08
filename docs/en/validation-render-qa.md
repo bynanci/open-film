@@ -1,5 +1,53 @@
 # Reproducible render QA (D7A)
 
+## 2026-11-08 — back off repeated pinned-tool service failures
+
+The post-merge Windows Recovery run for main
+[`1522879`](https://github.com/bynanci/open-film/commit/1522879b538d7145b1972d721dde78155179592e),
+[42476997280](https://github.com/bynanci/open-film/actions/runs/42476997280),
+received HTTP 503 twice while staging the hash-pinned FFmpeg asset. Both
+attempts stopped before tests. The PR #134 exact-head Windows Recovery passed,
+and the post-merge three-platform Render QA run passed, so the evidence points
+to an intermittent asset-service response rather than a render assertion.
+
+The previous per-URL budget was two requests with a 250 ms initial delay. The
+follow-up retains five bounded attempts and waits 500 ms, 1 s, 2 s, then 4 s
+between requests by default. Numeric and date `Retry-After` values remain capped
+at ten seconds. Exact URL/origin allowlists, redirect limits, byte ceilings,
+SHA-256 admission, and immediate failure for permanent or integrity errors are
+unchanged.
+
+The regression was observed red against the prior implementation: three
+consecutive HTTP 503 responses exhausted the old two-request budget before the
+pinned bytes could be admitted. It passes with the bounded backoff; a persistent
+503 still fails after exactly five requests. Focused local evidence is recorded
+with [PR #136](https://github.com/bynanci/open-film/pull/136). Exact-head Verify,
+Windows Recovery, three-platform Render QA, and DCO remain required before
+merge. This change improves CI asset acquisition resilience; it is not installer
+or workstation validation.
+
+## 2026-11-08 — retrieve the pinned Windows FFmpeg asset through GitHub API
+
+Windows media-recovery runs for PRs [#132](https://github.com/bynanci/open-film/pull/132)
+and [#134](https://github.com/bynanci/open-film/pull/134) failed before running
+tests: the GitHub browser-download URL returned HTTP 504. GitHub Release metadata
+still reported the exact FFmpeg 9.0.2 asset as uploaded. The official API asset
+route
+[`GyanD/codexffmpeg` asset `574302090`](https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/574302090)
+redirected to the already trusted `release-assets.githubusercontent.com` host.
+Streaming the complete asset through that route produced **114,768,076 bytes**
+with SHA-256
+`60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba`, matching
+the existing pin exactly.
+
+The downloader now admits only this exact GitHub API path, sends the required
+`application/octet-stream` Accept header, and retains the existing redirect
+allowlist, byte ceiling, retry bound and digest check. Tests reject other API
+paths before any network request. Tool version, asset bytes, hash and licensing
+terms are unchanged. This verifies the API route from this environment; a
+successful exact-head Windows media-recovery run is still required and no
+installer or workstation acceptance is claimed.
+
 ## 2026-11-05 — bounded retry for pinned asset downloads
 
 The post-merge Render QA run for `af31f15b4462ef7224b290c545129c11e3b42361`

@@ -103,6 +103,7 @@ const failedSources = ref(new Set<string>());
 const loadedSources = ref(new Set<string>());
 const titleFailed = ref(false);
 const titleRetry = ref(0);
+const titleAutoRetryContext = ref<string | null>(null);
 const titleRequestOwner = useId();
 const fillRetry = ref(0);
 const loadedFill = ref("");
@@ -270,12 +271,49 @@ const titleUrl = computed(() =>
 );
 watch(titleUrl, () => {
   titleFailed.value = false;
+  titleAutoRetryContext.value = null;
   titleRetry.value++;
 });
 const titleRequestUrl = computed(
   () =>
     `${titleUrl.value}${titleUrl.value.includes("?") ? "&" : "?"}previewRequest=${encodeURIComponent(titleRequestOwner)}-${titleRetry.value}`,
 );
+function titlePreviewLoaded() {
+  titleFailed.value = false;
+}
+function titlePreviewErrored(event: Event) {
+  const image = event.currentTarget;
+  if (
+    !(image instanceof HTMLImageElement) ||
+    !image.isConnected ||
+    !props.clip.title
+  )
+    return;
+
+  const failedUrl = new URL(
+    image.currentSrc || image.src,
+    window.location.href,
+  );
+  const currentUrl = new URL(titleUrl.value, window.location.href);
+  // This component adds previewRequest to isolate overlapping img loads. The
+  // API still serves the project/composition/clip/revision in titleUrl.
+  failedUrl.searchParams.delete("previewRequest");
+  if (failedUrl.href !== currentUrl.href) return;
+
+  const retryContext = JSON.stringify([
+    props.projectId,
+    props.compositionId,
+    props.clip.id,
+    props.revision,
+  ]);
+  if (titleAutoRetryContext.value !== retryContext) {
+    titleAutoRetryContext.value = retryContext;
+    titleFailed.value = false;
+    titleRetry.value++;
+    return;
+  }
+  titleFailed.value = true;
+}
 const staticStyle = computed(() => {
   const geometry = resolveClipGeometry(props.clip.transform);
   return {
@@ -495,8 +533,8 @@ defineExpose({
         :alt="clip.title"
         :style="{ opacity: titleOpacity }"
         draggable="false"
-        @load="titleFailed = false"
-        @error="titleFailed = true"
+        @load="titlePreviewLoaded"
+        @error="titlePreviewErrored"
       />
       <slot :time="time" :playing="playing" />
     </div>

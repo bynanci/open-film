@@ -46,15 +46,22 @@ const origins = new Set([
   "release-assets.githubusercontent.com",
   "archive.ubuntu.com",
 ]);
+const windowsFfmpegAssetApiPath =
+  "/repos/GyanD/codexffmpeg/releases/assets/574302090";
 const transientDownloadStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
 function trustedUrl(input: string): URL {
   const url = new URL(input);
+  const reviewedGithubAssetApi =
+    url.hostname === "api.github.com" &&
+    url.pathname === windowsFfmpegAssetApiPath &&
+    !url.search &&
+    !url.hash;
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
     url.port ||
-    !origins.has(url.hostname)
+    (!origins.has(url.hostname) && !reviewedGithubAssetApi)
   )
     throw new Error("Unreviewed render QA download origin");
   return url;
@@ -74,7 +81,7 @@ export function verifyPinnedBytes(
   if (!/^[a-f0-9]{64}$/u.test(sha256) || qaSha256(bytes) !== sha256)
     throw new Error("Render QA download hash mismatch");
 }
-const maxDownloadAttempts = 2;
+const maxDownloadAttempts = 5;
 function isTransientDownloadError(error: unknown): boolean {
   return (
     error instanceof TypeError ||
@@ -93,7 +100,7 @@ function downloadRetryDelayMs(attempt: number, retryAfter?: string | null) {
     if (Number.isFinite(dateDelay) && dateDelay >= 0)
       return Math.min(dateDelay, 10_000);
   }
-  return Math.min(250 * 2 ** attempt, 1_000);
+  return Math.min(500 * 2 ** attempt, 8_000);
 }
 function waitForDownloadRetry(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -131,6 +138,10 @@ export async function downloadPinnedBytes(
       let response: Response;
       try {
         response = await fetch(url, {
+          headers:
+            url.hostname === "api.github.com"
+              ? { accept: "application/octet-stream" }
+              : undefined,
           redirect: "manual",
           signal: AbortSignal.timeout(60_000),
         });
