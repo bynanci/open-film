@@ -43,7 +43,7 @@
   "tools": {
     "win32-x64": {
       "version": "9.0.2",
-      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+      "url": "https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/574302090",
       "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
       "format": "zip",
       "maxBytes": 268435456,
