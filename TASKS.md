@@ -289,7 +289,10 @@ and in the long-range v1.0 readiness record.
 - [x] Pass exact-head source, dependency, provenance, Windows recovery and
       three-platform Render QA for candidate `04035f3266e191478296787982a46293177d61b2`.
 - [ ] Obtain an independent disposition of GLib `RUSTSEC-2024-0429`; PR #128
-      remains Draft without an independent review.
+      has an independent technical PASS for reviewed head `3b05ba7`, with
+      [retained proof](docs/security/glib-0429-independent-review.md). Complete
+      fresh checks on its synchronized head and the separate v0.5.0 backport
+      before closing the release-candidate gate.
 - [ ] Obtain release-owner approval of the source-only scope and exact artifacts.
 
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
@@ -309,7 +312,13 @@ and in the long-range v1.0 readiness record.
   [native validation](docs/validation-native-installer.md).
 - [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
       compatible upstream remediation, transitive reachability review and re-audit;
-      keep `proc-macro-error` maintenance notices visible.
+      keep `proc-macro-error` maintenance notices visible. Branch
+      `codex/native-glib-0429-current` carries an exact, provenance-pinned backport
+      of upstream gtk-rs commit `05dff0ee`; its source and Linux dependency-closure
+      checks pass locally. Optimized native controls, a fresh same-DB audit and
+      independent technical review passed for `3b05ba7`; the synchronized head
+      requires its own hosted checks before merge. Installer/workstation and
+      release-owner decisions remain separate.
 - [ ] Validate clean-machine installation and first use without developer tools,
       including CJK and long paths on supported Windows/macOS targets.
 - [ ] Validate signing/notarization, supported manual updates, failed-update

@@ -1,0 +1,762 @@
+{
+  "focusedTests": {
+    "admission": 30,
+    "audit": 9,
+    "closure": 14,
+    "controls": 19,
+    "source": 26,
+    "total": 98
+  },
+  "freshAudit": {
+    "candidateSHA": "3b05ba781b62494143e2d73ba6126a9e1f24d43e",
+    "currentRegistryGraphEquivalent": true,
+    "dbCommit": "309392b18f6b17022f82c701f300433126901068",
+    "dbFetchedAt": "2026-11-08T14:51:33.571305+00:00",
+    "dbFresh": true,
+    "dbURL": "https://github.com/RustSec/advisory-db.git",
+    "glibAdvisorySHA256": "0c1ab1d4a0ebe5948e362728b31613ab588b84a0284dadbc119f7424fdd9c6d0",
+    "lockSHA256": "43a9697c934bbb71af0ff23d406a6310c47f217806c6634bf5e3cae7ac217353",
+    "originalLockBlob": "b4b8b94363f731001e2b42bf74778d79f725a1e4",
+    "originalLockSHA256": "2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698",
+    "scannerVersion": "cargo-audit-audit 0.22.2",
+    "sourceSHA256": "652df5cd114a1145fef6412a02093186a32d4fae566bc83fe6fbbdd52c37a12c"
+  },
+  "highConfidenceFindings": [],
+  "hosted": {
+    "applicationMethods": [
+      {
+        "executableSHA256": "7f46078c30ee97a05a7cdc0185abf195e91c241ddb2484ea31e940540340d862",
+        "method": "glib_next",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "7f46078c30ee97a05a7cdc0185abf195e91c241ddb2484ea31e940540340d862",
+        "method": "glib_nth",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "7f46078c30ee97a05a7cdc0185abf195e91c241ddb2484ea31e940540340d862",
+        "method": "glib_last",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "7f46078c30ee97a05a7cdc0185abf195e91c241ddb2484ea31e940540340d862",
+        "method": "glib_next_back",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "7f46078c30ee97a05a7cdc0185abf195e91c241ddb2484ea31e940540340d862",
+        "method": "glib_nth_back",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      }
+    ],
+    "archiveSHA256": "ec1c4efe77e3391bbaaac8f79c171f8cdb6fce294935d74eae78cee135584302",
+    "artifactID": 13569073330,
+    "baselineMethods": [
+      {
+        "executableSHA256": "5933321b2b235e38526dac64bb5bf71d2f7a74be2c3e680f449f2b2168edaf37",
+        "method": "glib_next",
+        "outcome": "reproduced-null-pointer-ub",
+        "returncode": -11,
+        "signal": 11,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "5933321b2b235e38526dac64bb5bf71d2f7a74be2c3e680f449f2b2168edaf37",
+        "method": "glib_nth",
+        "outcome": "reproduced-null-pointer-ub",
+        "returncode": -11,
+        "signal": 11,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "5933321b2b235e38526dac64bb5bf71d2f7a74be2c3e680f449f2b2168edaf37",
+        "method": "glib_last",
+        "outcome": "reproduced-null-pointer-ub",
+        "returncode": -11,
+        "signal": 11,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "5933321b2b235e38526dac64bb5bf71d2f7a74be2c3e680f449f2b2168edaf37",
+        "method": "glib_next_back",
+        "outcome": "reproduced-null-pointer-ub",
+        "returncode": -11,
+        "signal": 11,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "5933321b2b235e38526dac64bb5bf71d2f7a74be2c3e680f449f2b2168edaf37",
+        "method": "glib_nth_back",
+        "outcome": "reproduced-null-pointer-ub",
+        "returncode": -11,
+        "signal": 11,
+        "timeout": false
+      }
+    ],
+    "candidateSHA": "3b05ba781b62494143e2d73ba6126a9e1f24d43e",
+    "compiler": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "independentBinaryReplay": "five pristine SIGSEGV and five patched passes; hosted binaries, no local recompilation",
+    "nativeBuildReturncode": 0,
+    "patchedMethods": [
+      {
+        "executableSHA256": "d4e8a205532d9c34355408821d60f4aa1b01b8000c638050a2f04ab41b2da05a",
+        "method": "glib_next",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "d4e8a205532d9c34355408821d60f4aa1b01b8000c638050a2f04ab41b2da05a",
+        "method": "glib_nth",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "d4e8a205532d9c34355408821d60f4aa1b01b8000c638050a2f04ab41b2da05a",
+        "method": "glib_last",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "d4e8a205532d9c34355408821d60f4aa1b01b8000c638050a2f04ab41b2da05a",
+        "method": "glib_next_back",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      },
+      {
+        "executableSHA256": "d4e8a205532d9c34355408821d60f4aa1b01b8000c638050a2f04ab41b2da05a",
+        "method": "glib_nth_back",
+        "outcome": "passed",
+        "returncode": 0,
+        "signal": null,
+        "timeout": false
+      }
+    ],
+    "profile": {
+      "codegen-units": 16,
+      "debug": false,
+      "lto": false,
+      "opt-level": 3,
+      "overflow-checks": false,
+      "panic": "unwind"
+    },
+    "rawControlFilesHashed": 57,
+    "runID": 42359357894
+  },
+  "humanReleaseOwnerApproval": "separate Gate 5 requirement; not supplied",
+  "independentInventory": {
+    "changedFiles": ["src/variant_iter.rs"],
+    "fileCount": 121,
+    "lockPackages": 431,
+    "patchedBytes": 1717592,
+    "pristineBytes": 1717584,
+    "verified": true
+  },
+  "latestMainAtReview": "6f916cb061fb3b973a23961745429869fd8380af",
+  "nativeInstallerTrustAndWorkstationAcceptance": "not supplied",
+  "reports": {
+    "actual": {
+      "dbCommit": "309392b18f6b17022f82c701f300433126901068",
+      "dependencyCount": 431,
+      "lockSHA256": "43a9697c934bbb71af0ff23d406a6310c47f217806c6634bf5e3cae7ac217353",
+      "rawReport": {
+        "database": {
+          "advisory-count": 1422,
+          "last-commit": null,
+          "last-updated": null
+        },
+        "lockfile": {
+          "dependency-count": 431
+        },
+        "settings": {
+          "ignore": [],
+          "informational_warnings": ["unmaintained", "unsound", "notice"],
+          "severity": null,
+          "target_arch": [],
+          "target_os": []
+        },
+        "vulnerabilities": {
+          "count": 0,
+          "found": false,
+          "list": []
+        },
+        "warnings": {
+          "unmaintained": [
+            {
+              "advisory": {
+                "aliases": [],
+                "categories": [],
+                "collection": "crates",
+                "cvss": null,
+                "date": "2024-09-01",
+                "description": "proc-macro-error's maintainer seems to be unreachable, with no commits for 2 years, no releases pushed for 4 years, and no activity on the GitLab repo or response to email.\n\nproc-macro-error also depends on `syn 1.x`, which may be bringing duplicate dependencies into dependant build trees.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)",
+                "expect-deleted": false,
+                "id": "RUSTSEC-2024-0370",
+                "informational": "unmaintained",
+                "keywords": [],
+                "license": "CC0-1.0",
+                "package": "proc-macro-error",
+                "references": [],
+                "related": [],
+                "source": null,
+                "title": "proc-macro-error is unmaintained",
+                "url": "https://gitlab.com/CreepySkeleton/proc-macro-error/-/issues/20",
+                "withdrawn": null
+              },
+              "affected": null,
+              "kind": "unmaintained",
+              "package": {
+                "checksum": "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c",
+                "dependencies": [
+                  {
+                    "name": "proc-macro-error-attr",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.4"
+                  },
+                  {
+                    "name": "proc-macro2",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.107"
+                  },
+                  {
+                    "name": "quote",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.47"
+                  },
+                  {
+                    "name": "syn",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.109"
+                  },
+                  {
+                    "name": "version_check",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.9.5"
+                  }
+                ],
+                "name": "proc-macro-error",
+                "replace": null,
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "version": "1.0.4"
+              },
+              "versions": {
+                "patched": [],
+                "unaffected": []
+              }
+            }
+          ]
+        }
+      },
+      "returncode": 0,
+      "signal": null,
+      "stderr": "",
+      "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSHA256": "2aa977f837cbf0afe2bd6cc7433ec0a5cfa3bccda5e2335bf77e4ccc0127c4fd",
+      "timeout": false
+    },
+    "currentRegistry": {
+      "dbCommit": "309392b18f6b17022f82c701f300433126901068",
+      "dependencyCount": 431,
+      "lockSHA256": "fdd11665720c74c41119267de35e1d1ec52a360b00e8d613dd65a5594a97418a",
+      "rawReport": {
+        "database": {
+          "advisory-count": 1422,
+          "last-commit": null,
+          "last-updated": null
+        },
+        "lockfile": {
+          "dependency-count": 431
+        },
+        "settings": {
+          "ignore": [],
+          "informational_warnings": ["unmaintained", "unsound", "notice"],
+          "severity": null,
+          "target_arch": [],
+          "target_os": []
+        },
+        "vulnerabilities": {
+          "count": 0,
+          "found": false,
+          "list": []
+        },
+        "warnings": {
+          "unmaintained": [
+            {
+              "advisory": {
+                "aliases": [],
+                "categories": [],
+                "collection": "crates",
+                "cvss": null,
+                "date": "2024-09-01",
+                "description": "proc-macro-error's maintainer seems to be unreachable, with no commits for 2 years, no releases pushed for 4 years, and no activity on the GitLab repo or response to email.\n\nproc-macro-error also depends on `syn 1.x`, which may be bringing duplicate dependencies into dependant build trees.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)",
+                "expect-deleted": false,
+                "id": "RUSTSEC-2024-0370",
+                "informational": "unmaintained",
+                "keywords": [],
+                "license": "CC0-1.0",
+                "package": "proc-macro-error",
+                "references": [],
+                "related": [],
+                "source": null,
+                "title": "proc-macro-error is unmaintained",
+                "url": "https://gitlab.com/CreepySkeleton/proc-macro-error/-/issues/20",
+                "withdrawn": null
+              },
+              "affected": null,
+              "kind": "unmaintained",
+              "package": {
+                "checksum": "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c",
+                "dependencies": [
+                  {
+                    "name": "proc-macro-error-attr",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.4"
+                  },
+                  {
+                    "name": "proc-macro2",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.107"
+                  },
+                  {
+                    "name": "quote",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.47"
+                  },
+                  {
+                    "name": "syn",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.109"
+                  },
+                  {
+                    "name": "version_check",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.9.5"
+                  }
+                ],
+                "name": "proc-macro-error",
+                "replace": null,
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "version": "1.0.4"
+              },
+              "versions": {
+                "patched": [],
+                "unaffected": []
+              }
+            }
+          ],
+          "unsound": [
+            {
+              "advisory": {
+                "aliases": ["GHSA-wrw7-89jp-8q8g"],
+                "categories": [],
+                "collection": "crates",
+                "cvss": null,
+                "date": "2024-03-30",
+                "description": "The `VariantStrIter::impl_get` function (called internally by implementations of the `Iterator` and `DoubleEndedIterator` traits for this type) was unsound, resulting in undefined behaviour.\n\nAn immutable reference `&p` to a `*mut libc::c_char` pointer initialized to `NULL` was passed as an argument to a C function that that mutates the pointer behind `&p` in-place (i.e. as an out-argument), which was unsound. After changes in recent versions of the Rust compiler, these unsound writes through `&p` now seem to be completely disregarded when building the `glib` crate with optimizations.\n\nThis subsequently caused all calls of `VariantStrIter::impl_get` to violate the safety requirements of the `std::ffi::CStr::from_ptr` function - which requires its argument to be a valid pointer to a C-style string - resulting in crashes due to `NULL` pointer dereferences.\n\nThis was fixed by passing the out-argument pointer explitly as `&mut p` instead of `&p`.\n\nThis issue has been present since this code was initially added in `glib` v0.15.0. The mismatch in mutability was likely missed (and not raised as an error by the compiler) because the C function wrapped by `VariantStrIter::impl_get` is variadic (`glib_sys::g_variant_get_child`), and the pointer in question is one of the variadic arguments.",
+                "expect-deleted": false,
+                "id": "RUSTSEC-2024-0429",
+                "informational": "unsound",
+                "keywords": [],
+                "license": "CC0-1.0",
+                "package": "glib",
+                "references": [],
+                "related": [],
+                "source": null,
+                "title": "Unsoundness in `Iterator` and `DoubleEndedIterator` impls for `glib::VariantStrIter`",
+                "url": "https://github.com/gtk-rs/gtk-rs-core/pull/1343",
+                "withdrawn": null
+              },
+              "affected": {
+                "arch": [],
+                "functions": {
+                  "glib::VariantStrIter::last": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::next": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::next_back": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::nth": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::nth_back": [">=0.15.0, <0.20.0"]
+                },
+                "os": []
+              },
+              "kind": "unsound",
+              "package": {
+                "checksum": "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5",
+                "dependencies": [
+                  {
+                    "name": "bitflags",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "2.13.2"
+                  },
+                  {
+                    "name": "futures-channel",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-core",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-executor",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-task",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-util",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "gio-sys",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.1"
+                  },
+                  {
+                    "name": "glib-macros",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.5"
+                  },
+                  {
+                    "name": "glib-sys",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.1"
+                  },
+                  {
+                    "name": "gobject-sys",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.0"
+                  },
+                  {
+                    "name": "libc",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.2.190"
+                  },
+                  {
+                    "name": "memchr",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "2.8.3"
+                  },
+                  {
+                    "name": "once_cell",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.21.4"
+                  },
+                  {
+                    "name": "smallvec",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.16.2"
+                  },
+                  {
+                    "name": "thiserror",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.69"
+                  }
+                ],
+                "name": "glib",
+                "replace": null,
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "version": "0.18.5"
+              },
+              "versions": {
+                "patched": [">=0.20.0"],
+                "unaffected": ["<0.15.0"]
+              }
+            }
+          ]
+        }
+      },
+      "returncode": 1,
+      "signal": null,
+      "stderr": "",
+      "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSHA256": "745770b5aa674b93eb3a419440ede130302f44ee02f944c89f61667e8f6ea7ed",
+      "timeout": false
+    },
+    "historical": {
+      "dbCommit": "309392b18f6b17022f82c701f300433126901068",
+      "dependencyCount": 431,
+      "lockSHA256": "2e36795c727a50337aa8fe7aa9b20a40bedd99ecf53c265036ae07f13b6c0698",
+      "rawReport": {
+        "database": {
+          "advisory-count": 1422,
+          "last-commit": null,
+          "last-updated": null
+        },
+        "lockfile": {
+          "dependency-count": 431
+        },
+        "settings": {
+          "ignore": [],
+          "informational_warnings": ["unmaintained", "unsound", "notice"],
+          "severity": null,
+          "target_arch": [],
+          "target_os": []
+        },
+        "vulnerabilities": {
+          "count": 0,
+          "found": false,
+          "list": []
+        },
+        "warnings": {
+          "unmaintained": [
+            {
+              "advisory": {
+                "aliases": [],
+                "categories": [],
+                "collection": "crates",
+                "cvss": null,
+                "date": "2024-09-01",
+                "description": "proc-macro-error's maintainer seems to be unreachable, with no commits for 2 years, no releases pushed for 4 years, and no activity on the GitLab repo or response to email.\n\nproc-macro-error also depends on `syn 1.x`, which may be bringing duplicate dependencies into dependant build trees.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)",
+                "expect-deleted": false,
+                "id": "RUSTSEC-2024-0370",
+                "informational": "unmaintained",
+                "keywords": [],
+                "license": "CC0-1.0",
+                "package": "proc-macro-error",
+                "references": [],
+                "related": [],
+                "source": null,
+                "title": "proc-macro-error is unmaintained",
+                "url": "https://gitlab.com/CreepySkeleton/proc-macro-error/-/issues/20",
+                "withdrawn": null
+              },
+              "affected": null,
+              "kind": "unmaintained",
+              "package": {
+                "checksum": "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c",
+                "dependencies": [
+                  {
+                    "name": "proc-macro-error-attr",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.4"
+                  },
+                  {
+                    "name": "proc-macro2",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.107"
+                  },
+                  {
+                    "name": "quote",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.47"
+                  },
+                  {
+                    "name": "syn",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.109"
+                  },
+                  {
+                    "name": "version_check",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.9.5"
+                  }
+                ],
+                "name": "proc-macro-error",
+                "replace": null,
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "version": "1.0.4"
+              },
+              "versions": {
+                "patched": [],
+                "unaffected": []
+              }
+            }
+          ],
+          "unsound": [
+            {
+              "advisory": {
+                "aliases": ["GHSA-wrw7-89jp-8q8g"],
+                "categories": [],
+                "collection": "crates",
+                "cvss": null,
+                "date": "2024-03-30",
+                "description": "The `VariantStrIter::impl_get` function (called internally by implementations of the `Iterator` and `DoubleEndedIterator` traits for this type) was unsound, resulting in undefined behaviour.\n\nAn immutable reference `&p` to a `*mut libc::c_char` pointer initialized to `NULL` was passed as an argument to a C function that that mutates the pointer behind `&p` in-place (i.e. as an out-argument), which was unsound. After changes in recent versions of the Rust compiler, these unsound writes through `&p` now seem to be completely disregarded when building the `glib` crate with optimizations.\n\nThis subsequently caused all calls of `VariantStrIter::impl_get` to violate the safety requirements of the `std::ffi::CStr::from_ptr` function - which requires its argument to be a valid pointer to a C-style string - resulting in crashes due to `NULL` pointer dereferences.\n\nThis was fixed by passing the out-argument pointer explitly as `&mut p` instead of `&p`.\n\nThis issue has been present since this code was initially added in `glib` v0.15.0. The mismatch in mutability was likely missed (and not raised as an error by the compiler) because the C function wrapped by `VariantStrIter::impl_get` is variadic (`glib_sys::g_variant_get_child`), and the pointer in question is one of the variadic arguments.",
+                "expect-deleted": false,
+                "id": "RUSTSEC-2024-0429",
+                "informational": "unsound",
+                "keywords": [],
+                "license": "CC0-1.0",
+                "package": "glib",
+                "references": [],
+                "related": [],
+                "source": null,
+                "title": "Unsoundness in `Iterator` and `DoubleEndedIterator` impls for `glib::VariantStrIter`",
+                "url": "https://github.com/gtk-rs/gtk-rs-core/pull/1343",
+                "withdrawn": null
+              },
+              "affected": {
+                "arch": [],
+                "functions": {
+                  "glib::VariantStrIter::last": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::next": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::next_back": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::nth": [">=0.15.0, <0.20.0"],
+                  "glib::VariantStrIter::nth_back": [">=0.15.0, <0.20.0"]
+                },
+                "os": []
+              },
+              "kind": "unsound",
+              "package": {
+                "checksum": "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5",
+                "dependencies": [
+                  {
+                    "name": "bitflags",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "2.13.2"
+                  },
+                  {
+                    "name": "futures-channel",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-core",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-executor",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-task",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "futures-util",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.3.34"
+                  },
+                  {
+                    "name": "gio-sys",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.1"
+                  },
+                  {
+                    "name": "glib-macros",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.5"
+                  },
+                  {
+                    "name": "glib-sys",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.1"
+                  },
+                  {
+                    "name": "gobject-sys",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.18.0"
+                  },
+                  {
+                    "name": "libc",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "0.2.190"
+                  },
+                  {
+                    "name": "memchr",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "2.8.3"
+                  },
+                  {
+                    "name": "once_cell",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.21.4"
+                  },
+                  {
+                    "name": "smallvec",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.16.2"
+                  },
+                  {
+                    "name": "thiserror",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "version": "1.0.69"
+                  }
+                ],
+                "name": "glib",
+                "replace": null,
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "version": "0.18.5"
+              },
+              "versions": {
+                "patched": [">=0.20.0"],
+                "unaffected": ["<0.15.0"]
+              }
+            }
+          ]
+        }
+      },
+      "returncode": 1,
+      "signal": null,
+      "stderr": "",
+      "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSHA256": "745770b5aa674b93eb3a419440ede130302f44ee02f944c89f61667e8f6ea7ed",
+      "timeout": false
+    }
+  },
+  "reviewKind": "independent AI technical security review; not human approval or risk acceptance",
+  "reviewedBase": "73f9df9810770d52cab0cc2978e55ef8301f884e",
+  "reviewedHead": "3b05ba781b62494143e2d73ba6126a9e1f24d43e",
+  "riskTier": "T2",
+  "schemaVersion": 1,
+  "securitySourceAndCargoDeltaToSynchronizedHead": false,
+  "source": {
+    "archiveSHA256": "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5",
+    "fileCount": 121,
+    "linuxModesVerified": true,
+    "patchSHA256": "a742bf59f1b00af0f434623b34e2fd969dc8697d37c796efdf909dd9eb19b854",
+    "patchedTreeSHA256": "9e187d4f6bca0afa6c96a9db1dc76e379a2dd26bf3122d82fb928504e3943882",
+    "pristineTreeSHA256": "2a95cf8a0a2cc534f828c9b6bf78fb9b5ffb41f356608e902144a8da3eb1fc0f",
+    "schemaVersion": 1,
+    "vendor": "vendor/glib-0.18.5",
+    "verified": true,
+    "version": "0.18.5"
+  },
+  "synchronizedHeadHostedVerification": "not established by this review; requires fresh exact-head checks",
+  "synchronizedHeadObserved": "2fac32622fce68f1ec69033c6cd6280dbc0baa39",
+  "targetReachability": {
+    "aarch64-apple-darwin": {
+      "glib": "absent normal/build/dev",
+      "proc-macro-error": "absent normal/build/dev"
+    },
+    "x86_64-pc-windows-msvc": {
+      "glib": "absent normal/build/dev",
+      "proc-macro-error": "absent normal/build/dev"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "glib": "reviewed path 0.18.5 in normal GTK graph plus Linux-only dev edge",
+      "proc-macro-error": "1.0.4 host proc-macro tooling via glib-macros and gtk3-macros"
+    }
+  },
+  "technicalMergeRecommendationForReviewedHead": "PASS"
+}
