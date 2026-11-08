@@ -162,6 +162,41 @@ it("retries a temporary HTTP failure before accepting pinned bytes", async () =>
   ).resolves.toEqual(bytes);
   expect(fetch).toHaveBeenCalledTimes(2);
 });
+it("backs off through repeated transient HTTP failures before admitting pinned bytes", async () => {
+  const responses = [
+    new Response("temporarily unavailable", { status: 503 }),
+    new Response("temporarily unavailable", { status: 503 }),
+    new Response("temporarily unavailable", { status: 503 }),
+    new Response(bytes),
+  ];
+  const requestTimes: number[] = [];
+  const fetch = vi.fn(() => {
+    requestTimes.push(Date.now());
+    return Promise.resolve(responses.shift()!);
+  });
+  vi.stubGlobal("fetch", fetch);
+  vi.useFakeTimers();
+
+  try {
+    const pending = downloadPinnedBytes(
+      "https://raw.githubusercontent.com/fixture",
+      sha256,
+      100,
+    ).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toEqual({ value: bytes });
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(requestTimes.map((time) => time - requestTimes[0]!)).toEqual([
+      0, 500, 1_500, 3_500,
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it("downloads the pinned GitHub release asset through its official API redirect", async () => {
   const assetApiUrl =
     "https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/574302090";
@@ -210,14 +245,28 @@ it("bounds retries for a persistently unavailable pinned origin", async () => {
       new Response("temporarily unavailable", { status: 503 }),
     );
   vi.stubGlobal("fetch", fetch);
-  await expect(
-    downloadPinnedBytes(
+  vi.useFakeTimers();
+
+  try {
+    const pending = downloadPinnedBytes(
       "https://raw.githubusercontent.com/fixture",
       sha256,
       100,
-    ),
-  ).rejects.toThrow(/HTTP 503/u);
-  expect(fetch).toHaveBeenCalledTimes(2);
+    ).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    if (!("error" in result))
+      throw new Error("Expected persistent HTTP 503 to exhaust retries");
+    expect(result.error).toMatchObject({
+      message: "Render QA download failed (HTTP 503)",
+    });
+    expect(fetch).toHaveBeenCalledTimes(5);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 it("retries a timed-out pinned download before admitting its bytes", async () => {
   const fetch = vi

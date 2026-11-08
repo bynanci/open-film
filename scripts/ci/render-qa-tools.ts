@@ -81,7 +81,7 @@ export function verifyPinnedBytes(
   if (!/^[a-f0-9]{64}$/u.test(sha256) || qaSha256(bytes) !== sha256)
     throw new Error("Render QA download hash mismatch");
 }
-const maxDownloadAttempts = 2;
+const maxDownloadAttempts = 5;
 function isTransientDownloadError(error: unknown): boolean {
   return (
     error instanceof TypeError ||
@@ -100,7 +100,7 @@ function downloadRetryDelayMs(attempt: number, retryAfter?: string | null) {
     if (Number.isFinite(dateDelay) && dateDelay >= 0)
       return Math.min(dateDelay, 10_000);
   }
-  return Math.min(250 * 2 ** attempt, 1_000);
+  return Math.min(500 * 2 ** attempt, 8_000);
 }
 function waitForDownloadRetry(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
