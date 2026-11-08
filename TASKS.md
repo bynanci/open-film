@@ -8,12 +8,15 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Status reviewed against
-[main](https://github.com/bynanci/open-film/commit/5536b1c4b642280535e6c81ffab0b157de9dbb8d)
-on 2026-11-08. PR #133 is merged. Its post-merge Verify exposed a GraphicScene
-preview continuity regression; PR #134 tracks the focused correction. PR #132
-adds assertion-failure cleanup for its held title-preview route and awaits its
-new exact-head checks. The latest published source release remains **v0.4.0**.
+Status reviewed against PR #134's main base
+[d141b140cd96b2db45a2a822435f6dee6f810d14](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14)
+on 2026-11-08. PR #133 and #132 are merged. PR #132's exact-head Verify
+(376 media files / 4,421 tests and 362 browser cases), Windows Recovery, and
+three-platform Render QA passed before merge. PR #135 is merged at
+[d98211739ab2c893196c9dcf09e142c20d877b8c](https://github.com/bynanci/open-film/commit/d98211739ab2c893196c9dcf09e142c20d877b8c);
+its full follow-up Render QA passed on Linux, Windows, and macOS. PR #134 is
+rebased on the resulting main and carries the focused GraphicScene continuity
+fix. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -74,9 +77,11 @@ See the [design system](docs/design-system.md),
 - [x] Run the existing bounded-playback, discontinuity and owner-switch case
       five times; all ten repeated GraphicScene cases passed locally. The full
       Record Monitor browser spec passed 7/7 and its unit suite passed 43/43.
-- [ ] Complete exact-head hosted checks for PR #134. This preview QA does not
-      establish realtime playback, GPU/4K performance, or workstation acceptance.
-      See the [GraphicScene validation record](docs/validation-graphic-scene.md).
+- [x] Rebase the focused correction on current main and retain exact-head CI
+      as its merge gate. This sampled-preview evidence does not establish
+      realtime playback, GPU/4K performance, or workstation acceptance. See the
+      [GraphicScene validation record](docs/validation-graphic-scene.md) and
+      [PR #134](https://github.com/bynanci/open-film/pull/134).
 
 ### Stale title-preview response recovery (PR #132)
 
@@ -84,9 +89,12 @@ See the [design system](docs/design-system.md),
       route after the handler settles, even when an assertion fails. A dedicated
       browser case injects an assertion failure after the stale HTTP 409 and
       verifies the blocked response handler completes.
-- [x] The full title-finishing browser spec passed 10/10 locally on the rebased
-      candidate; new exact-head hosted checks are still running.
-- [ ] Complete current-head CI and merge PR #132.
+- [x] The exact-head Verify run passed 376 media files / 4,421 tests and all
+      six browser shards (362 cases); Windows Recovery passed 140 tests plus
+      14 browser cases; three-platform Render QA and DCO passed.
+- [x] Merge PR #132 at
+      [d141b140](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14).
+      See the [merged PR](https://github.com/bynanci/open-film/pull/132).
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 

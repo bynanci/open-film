@@ -27,9 +27,10 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[5536b1c4b642280535e6c81ffab0b157de9dbb8d](https://github.com/bynanci/open-film/commit/5536b1c4b642280535e6c81ffab0b157de9dbb8d)
-on 2026-11-08. PR #133 is merged; its multi-source validation evidence and
-post-merge GraphicScene follow-up are tracked below.
+[d141b140cd96b2db45a2a822435f6dee6f810d14](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14)
+on 2026-11-08. PRs #132, #133, and #135 are merged. Their exact-head CI and
+three-platform Render QA evidence is linked below; PR #134 carries the next
+focused preview correction.
 Historical feature records keep their original candidate dates.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
@@ -91,16 +92,23 @@ while the monitor continued advancing and cancelling sampled-frame requests.
 The preview pause path cleared its texture during a transient monitor hold. PR
 [#134](https://github.com/bynanci/open-film/pull/134) retains the last decoded
 texture while it requests the exact paused frame; ownership and explicit seek
-changes still fence and clear prior images. Local regression tests and build
-gates pass; exact-head hosted checks remain pending in the PR. This does not
-represent realtime, GPU/4K or workstation acceptance.
+changes still fence and clear prior images. The candidate is based on main
+`d141b14`; its hosted exact-head checks are the merge gate. This sampled
+preview validation does not represent realtime, GPU/4K or workstation
+acceptance.
 
-PR [#132](https://github.com/bynanci/open-film/pull/132) also adds a late
-stale-title-response retry test for the restored immutable revision. Its held
-HTTP route gates now release and settle even after an assertion failure. The
-re-based candidate's full title-finishing browser suite passes locally; exact
-head hosted checks are still running. Native release, external-editor and
-physical workstation gates remain independent.
+PR [#132](https://github.com/bynanci/open-film/pull/132) was rebased on
+`d982117` and merged at `d141b14`. Its Verify run
+[42473142555](https://github.com/bynanci/open-film/actions/runs/42473142555)
+passed 376 media files / 4,421 tests and all six browser shards (362 cases).
+Windows Recovery
+[42473142585](https://github.com/bynanci/open-film/actions/runs/42473142585)
+passed 140 tests and 14 browser cases; three-platform Render QA
+[42473142563](https://github.com/bynanci/open-film/actions/runs/42473142563)
+and DCO
+[42473141332](https://github.com/bynanci/open-film/actions/runs/42473141332)
+also passed. This verifies test-route cleanup and title recovery, not native
+release, external-editor or physical workstation acceptance.
 
 ### Make the everyday editing workflow dependable
 

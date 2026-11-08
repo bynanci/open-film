@@ -125,11 +125,13 @@ The new browser regression holds the requested still while playback advances,
 pauses the transport, verifies the previous texture remains visible, then
 fulfills the exact paused frame and verifies replacement. It failed on the
 unmodified source at the texture-retention assertion and passed after the
-correction. Local evidence on the candidate: GraphicScene E2E cases repeated
-five times each (10/10), full Record Monitor browser spec (7/7),
-`tests/unit/record-monitor.test.ts` (43/43), `pnpm typecheck`, `pnpm lint`, and
-`pnpm build` passed. The build retains the existing 604 kB TimelineEditor chunk
-warning. Exact-head hosted checks for the candidate remain the merge gate.
+correction. Before rebase, the two GraphicScene playback cases passed five
+repetitions each (10/10). On the rebased candidate, the full
+`tests/e2e/record-monitor.spec.ts` passed 7/7 and
+`tests/unit/record-monitor.test.ts` passed 43/43. PR #134's exact-head Verify,
+Windows media recovery, three-platform Render QA, and DCO checks are the merge
+gate; their current results are tracked on the
+[PR](https://github.com/bynanci/open-film/pull/134).
 
 This verifies a sampled browser preview only. It does not establish realtime
 frame rendering, GPU throughput, 4K performance, hardware decode behavior,

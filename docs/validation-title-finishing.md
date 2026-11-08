@@ -191,10 +191,21 @@ completes. This keeps failed browser runs from leaving unresolved route work or
 intercepting later requests; it does not change application state or preview
 retry policy.
 
-On the rebased PR candidate, all 10 title-finishing browser cases passed locally,
-including the deliberate assertion-failure cleanup case. Exact-head hosted
-checks are tracked on PR #132; they remain the merge gate. No native installer,
-NLE or physical workstation acceptance is implied.
+The rebased exact head `35f82e375844acbb79a5c0faa45d2442b9ad1b61` was
+verified before merge. Verify
+[42473142555](https://github.com/bynanci/open-film/actions/runs/42473142555)
+passed all six browser shards (362 cases), fast-contract, native-shell,
+docs-site, aggregate checks, and 376 media files / 4,421 tests. Windows
+Recovery
+[42473142585](https://github.com/bynanci/open-film/actions/runs/42473142585)
+passed 13 files / 140 tests and 14 browser cases; three-platform Render QA
+[42473142563](https://github.com/bynanci/open-film/actions/runs/42473142563)
+and DCO
+[42473141332](https://github.com/bynanci/open-film/actions/runs/42473141332)
+passed. PR #132 was merged at
+[d141b140](https://github.com/bynanci/open-film/commit/d141b140cd96b2db45a2a822435f6dee6f810d14).
+This is editor preview and test-harness evidence; it does not establish a
+native installer, NLE or physical workstation acceptance.
 
 ## 2026-10-30 — repaired base carried through title finishing
 
