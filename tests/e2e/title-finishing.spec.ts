@@ -214,13 +214,18 @@ async function expectLateStaleTitleResponseRetry(
   page: Page,
   request: APIRequestContext,
   imageSelector: string,
+  hooks: {
+    beforeRedo?: () => void;
+    onStaleResponseSettled?: () => void;
+  } = {},
 ) {
   const beforeEdit = await state(request);
 
   let releaseFetch!: () => void,
     releaseResponse!: () => void,
     announcePreviewRequest!: () => void,
-    announceStaleResponse!: () => void;
+    announceStaleResponse!: () => void,
+    settleStaleRoute!: () => void;
   const fetchGate = new Promise<void>((resolve) => {
       releaseFetch = resolve;
     }),
@@ -232,79 +237,96 @@ async function expectLateStaleTitleResponseRetry(
     }),
     staleResponseReady = new Promise<void>((resolve) => {
       announceStaleResponse = resolve;
+    }),
+    staleRouteSettled = new Promise<void>((resolve) => {
+      settleStaleRoute = resolve;
     });
   let previewRevision: string | undefined,
     staleResponseStatus: number | undefined,
     retryCount = 0;
-  await page.route(
-    "**/api/compositions/bilingual-film/title/bilingual-clip.png?*",
-    async (route) => {
-      const revision = new URL(route.request().url()).searchParams.get(
-        "revision",
-      );
-      if (!revision || revision === beforeEdit.revision) {
-        await route.continue();
-        return;
-      }
-      if (previewRevision) {
-        retryCount++;
-        await route.continue();
-        return;
-      }
-      previewRevision = revision;
-      announcePreviewRequest();
+  const previewRoutePattern =
+    "**/api/compositions/bilingual-film/title/bilingual-clip.png?*";
+  const previewRoute = async (route: Route) => {
+    const revision = new URL(route.request().url()).searchParams.get(
+      "revision",
+    );
+    if (!revision || revision === beforeEdit.revision) {
+      await route.continue();
+      return;
+    }
+    if (previewRevision) {
+      retryCount++;
+      await route.continue();
+      return;
+    }
+    previewRevision = revision;
+    announcePreviewRequest();
+    try {
       await fetchGate;
       const response = await route.fetch();
       staleResponseStatus = response.status();
       announceStaleResponse();
       await responseGate;
       await route.fulfill({ response });
-    },
-  );
+      hooks.onStaleResponseSettled?.();
+    } finally {
+      settleStaleRoute();
+    }
+  };
+  await page.route(previewRoutePattern, previewRoute);
+  try {
+    await page
+      .getByText("Secondary language typography", { exact: true })
+      .click();
+    const size = page.getByTestId("title-run-secondary-fontSize");
+    await size.fill("22.5");
+    await size.press("Tab");
+    await expect
+      .poll(
+        async () =>
+          (await state(request)).composition.tracks[0]!.clips[0]!.titleRuns
+            ?.secondary?.fontSize,
+      )
+      .toBe(22.5);
+    const edited = await state(request);
+    await previewRequestReady;
+    expect(previewRevision).toBe(edited.revision);
 
-  await page
-    .getByText("Secondary language typography", { exact: true })
-    .click();
-  const size = page.getByTestId("title-run-secondary-fontSize");
-  await size.fill("22.5");
-  await size.press("Tab");
-  await expect
-    .poll(
-      async () =>
-        (await state(request)).composition.tracks[0]!.clips[0]!.titleRuns
-          ?.secondary?.fontSize,
-    )
-    .toBe(22.5);
-  const edited = await state(request);
-  await previewRequestReady;
-  expect(previewRevision).toBe(edited.revision);
+    const undoResponse = await request.post(
+      `${base}/compositions/${compositionId}/undo`,
+      { data: { baseRevision: edited.revision } },
+    );
+    expect(undoResponse.ok()).toBe(true);
+    const undone = await undoResponse.json();
+    expect(
+      undone.composition.tracks[0]!.clips[0]!.titleRuns?.secondary?.fontSize,
+    ).toBe(18);
+    releaseFetch();
+    await staleResponseReady;
+    expect(staleResponseStatus).toBe(409);
+    hooks.beforeRedo?.();
 
-  const undoResponse = await request.post(
-    `${base}/compositions/${compositionId}/undo`,
-    { data: { baseRevision: edited.revision } },
-  );
-  expect(undoResponse.ok()).toBe(true);
-  const undone = await undoResponse.json();
-  expect(
-    undone.composition.tracks[0]!.clips[0]!.titleRuns?.secondary?.fontSize,
-  ).toBe(18);
-  releaseFetch();
-  await staleResponseReady;
-  expect(staleResponseStatus).toBe(409);
+    const redoResponse = await request.post(
+      `${base}/compositions/${compositionId}/redo`,
+      { data: { baseRevision: undone.revision } },
+    );
+    expect(redoResponse.ok()).toBe(true);
+    expect((await redoResponse.json()).revision).toBe(edited.revision);
+    releaseResponse();
 
-  const redoResponse = await request.post(
-    `${base}/compositions/${compositionId}/redo`,
-    { data: { baseRevision: undone.revision } },
-  );
-  expect(redoResponse.ok()).toBe(true);
-  expect((await redoResponse.json()).revision).toBe(edited.revision);
-  releaseResponse();
-
-  const title = page.locator(imageSelector).first();
-  await expect.poll(() => retryCount).toBe(1);
-  await expect(title).toHaveJSProperty("naturalWidth", 640);
-  await expect(page.locator(".editor-source-warning")).toHaveCount(0);
-  await expect(page.locator(".editor-presentation-warnings")).toHaveCount(0);
+    const title = page.locator(imageSelector).first();
+    await expect.poll(() => retryCount).toBe(1);
+    await expect(title).toHaveJSProperty("naturalWidth", 640);
+    await expect(page.locator(".editor-source-warning")).toHaveCount(0);
+    await expect(page.locator(".editor-presentation-warnings")).toHaveCount(0);
+  } finally {
+    // Assertions can fail while the route handler is waiting at either gate.
+    // Always unblock it and remove the interception to isolate the next test.
+    releaseFetch();
+    releaseResponse();
+    if (previewRevision) await staleRouteSettled;
+    await page.unroute(previewRoutePattern, previewRoute);
+  }
 }
 async function seek(page: Page, frame: number) {
   const field = page.getByRole("textbox", {
@@ -540,6 +562,26 @@ test("a late stale photo title response retries the restored immutable revision"
     request,
     ".photo-presentation-title",
   );
+});
+
+test("late stale title response gates release when an assertion fails", async ({
+  page,
+  request,
+}) => {
+  await createFilm(request);
+  await openEditor(page);
+  let staleResponseSettled = false;
+  await expect(
+    expectLateStaleTitleResponseRetry(page, request, ".editor-title-overlay", {
+      beforeRedo: () => {
+        throw new Error("synthetic assertion failure");
+      },
+      onStaleResponseSettled: () => {
+        staleResponseSettled = true;
+      },
+    }),
+  ).rejects.toThrow("synthetic assertion failure");
+  await expect.poll(() => staleResponseSettled).toBe(true);
 });
 
 test("Record caption boundaries and selection match the existing MP4 selector", async ({
