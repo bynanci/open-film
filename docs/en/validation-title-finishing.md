@@ -179,6 +179,23 @@ under `/tmp/openfilm-finishing-integration/B-current/`. Historical evidence is
 retained separately. Full exact-head hosted gates and fresh integrated review
 remain coordinator-owned.
 
+## Stale title preview route cleanup on assertion failure — 2026-11-08
+
+PR [#132](https://github.com/bynanci/open-film/pull/132) exercises a delayed
+title PNG request that receives HTTP 409 after Undo and verifies a retry after
+Redo restores the exact immutable revision. The browser helper now releases
+both held route gates in `finally`, waits for the controlled response handler
+to settle, then removes its route. A regression injects an assertion failure
+after the stale response arrives and confirms the blocked handler still
+completes. This keeps failed browser runs from leaving unresolved route work or
+intercepting later requests; it does not change application state or preview
+retry policy.
+
+On the rebased PR candidate, all 10 title-finishing browser cases passed locally,
+including the deliberate assertion-failure cleanup case. Exact-head hosted
+checks are tracked on PR #132; they remain the merge gate. No native installer,
+NLE or physical workstation acceptance is implied.
+
 ## 2026-10-30 — repaired base carried through title finishing
 
 Merge `962562f` carries clean A `83cb846` and repaired documentation base
