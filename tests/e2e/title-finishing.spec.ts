@@ -417,6 +417,103 @@ test("a delayed stale title request cannot poison the same revision after Undo a
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
+test("a late stale title response retries the restored immutable revision", async ({
+  page,
+  request,
+}) => {
+  await createFilm(request);
+  const beforeEdit = await state(request);
+  await openEditor(page);
+
+  let releaseFetch!: () => void,
+    releaseResponse!: () => void,
+    announcePreviewRequest!: () => void,
+    announceStaleResponse!: () => void;
+  const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    }),
+    responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    }),
+    previewRequestReady = new Promise<void>((resolve) => {
+      announcePreviewRequest = resolve;
+    }),
+    staleResponseReady = new Promise<void>((resolve) => {
+      announceStaleResponse = resolve;
+    });
+  let previewRevision: string | undefined,
+    staleResponseStatus: number | undefined,
+    retryCount = 0;
+  await page.route(
+    "**/api/compositions/bilingual-film/title/bilingual-clip.png?*",
+    async (route) => {
+      const revision = new URL(route.request().url()).searchParams.get(
+        "revision",
+      );
+      if (!revision || revision === beforeEdit.revision) {
+        await route.continue();
+        return;
+      }
+      if (previewRevision) {
+        retryCount++;
+        await route.continue();
+        return;
+      }
+      previewRevision = revision;
+      announcePreviewRequest();
+      await fetchGate;
+      const response = await route.fetch();
+      staleResponseStatus = response.status();
+      announceStaleResponse();
+      await responseGate;
+      await route.fulfill({ response });
+    },
+  );
+
+  await page
+    .getByText("Secondary language typography", { exact: true })
+    .click();
+  const size = page.getByTestId("title-run-secondary-fontSize");
+  await size.fill("22.5");
+  await size.press("Tab");
+  await expect
+    .poll(
+      async () =>
+        (await state(request)).composition.tracks[0]!.clips[0]!.titleRuns
+          ?.secondary?.fontSize,
+    )
+    .toBe(22.5);
+  const edited = await state(request);
+  await previewRequestReady;
+  expect(previewRevision).toBe(edited.revision);
+
+  const undoResponse = await request.post(
+    `${base}/compositions/${compositionId}/undo`,
+    { data: { baseRevision: edited.revision } },
+  );
+  expect(undoResponse.ok()).toBe(true);
+  const undone = await undoResponse.json();
+  expect(
+    undone.composition.tracks[0]!.clips[0]!.titleRuns?.secondary?.fontSize,
+  ).toBe(18);
+  releaseFetch();
+  await staleResponseReady;
+  expect(staleResponseStatus).toBe(409);
+
+  const redoResponse = await request.post(
+    `${base}/compositions/${compositionId}/redo`,
+    { data: { baseRevision: undone.revision } },
+  );
+  expect(redoResponse.ok()).toBe(true);
+  expect((await redoResponse.json()).revision).toBe(edited.revision);
+  releaseResponse();
+
+  const title = page.locator(".editor-title-overlay").first();
+  await expect.poll(() => retryCount).toBe(1);
+  await expect(title).toHaveJSProperty("naturalWidth", 640);
+  await expect(page.locator(".editor-source-warning")).toHaveCount(0);
+});
+
 test("Record caption boundaries and selection match the existing MP4 selector", async ({
   page,
   request,
