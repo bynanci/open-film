@@ -3,8 +3,8 @@ import { arch, cpus, platform, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const WORKSTATION_QA_SCHEMA_VERSION = "1.0.0" as const;
-export const WORKSTATION_QA_GATES = [
+export const WORKSTATION_QA_SCHEMA_VERSION = "1.1.0" as const;
+const legacyGates = [
   "resolve",
   "asr",
   "llm",
@@ -13,6 +13,11 @@ export const WORKSTATION_QA_GATES = [
   "4k",
   "windows-installer",
   "cross-process-recovery",
+] as const;
+export const WORKSTATION_QA_GATES = [
+  ...legacyGates,
+  "macos-installer",
+  "linux-installer",
 ] as const;
 
 export type WorkstationQaGateId = (typeof WORKSTATION_QA_GATES)[number];
@@ -91,6 +96,8 @@ export function createWorkstationQaRecord(
       "4k": gate(),
       "windows-installer": gate(),
       "cross-process-recovery": gate(),
+      "macos-installer": gate(),
+      "linux-installer": gate(),
     },
   };
 }
@@ -159,8 +166,13 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
     ["schemaVersion", "candidateSha", "createdAt", "environment", "gates"],
     "record",
   );
-  if (value.schemaVersion !== WORKSTATION_QA_SCHEMA_VERSION)
-    errors.push(`schemaVersion must be ${WORKSTATION_QA_SCHEMA_VERSION}`);
+  if (
+    value.schemaVersion !== "1.0.0" &&
+    value.schemaVersion !== WORKSTATION_QA_SCHEMA_VERSION
+  )
+    errors.push(
+      `schemaVersion must be 1.0.0 or ${WORKSTATION_QA_SCHEMA_VERSION}`,
+    );
   if (
     typeof value.candidateSha !== "string" ||
     !/^[0-9a-f]{40}$/iu.test(value.candidateSha)
@@ -192,8 +204,10 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
       errors.push("environment.memoryBytes must be a positive safe integer");
   }
   if (!object(value.gates)) return [...errors, "gates are required"];
-  keys(value.gates, WORKSTATION_QA_GATES, "gates");
-  for (const id of WORKSTATION_QA_GATES) {
+  const supportedGates =
+    value.schemaVersion === "1.0.0" ? legacyGates : WORKSTATION_QA_GATES;
+  keys(value.gates, supportedGates, "gates");
+  for (const id of supportedGates) {
     const gate = value.gates[id];
     const path = `gates.${id}`;
     if (!object(gate)) {

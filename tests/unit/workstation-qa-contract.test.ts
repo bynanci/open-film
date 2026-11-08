@@ -22,6 +22,65 @@ describe("workstation QA evidence contract", () => {
     expect(validateWorkstationQaRecord(record)).toEqual([]);
   });
 
+  it("records Windows, macOS and Linux installer gates in version 1.1", () => {
+    const record = createWorkstationQaRecord(sha);
+    expect(record.schemaVersion).toBe("1.1.0");
+    for (const id of [
+      "windows-installer",
+      "macos-installer",
+      "linux-installer",
+    ])
+      expect(record.gates).toHaveProperty(id, {
+        status: "not-run",
+        observations: [],
+      });
+  });
+
+  it("keeps original version 1.0 records readable without adding observations", () => {
+    const current = createWorkstationQaRecord(sha);
+    const gates: Record<string, unknown> = { ...current.gates };
+    delete gates["macos-installer"];
+    delete gates["linux-installer"];
+    const legacy = { ...current, schemaVersion: "1.0.0", gates };
+    const original = JSON.stringify(legacy);
+    expect(validateWorkstationQaRecord(legacy)).toEqual([]);
+    expect(JSON.stringify(legacy)).toBe(original);
+  });
+
+  it("requires the new installer gates only for version 1.1", () => {
+    const current = createWorkstationQaRecord(sha);
+    const gates: Record<string, unknown> = { ...current.gates };
+    delete gates["macos-installer"];
+    expect(
+      validateWorkstationQaRecord({
+        ...current,
+        schemaVersion: "1.1.0",
+        gates,
+      }),
+    ).toContain("gates.macos-installer is required");
+    expect(
+      validateWorkstationQaRecord({ ...current, schemaVersion: "1.0.0" }),
+    ).toContain("gates.macos-installer is not supported");
+  });
+
+  it("rejects a macOS pass without positive evidence", () => {
+    const record = createWorkstationQaRecord(sha);
+    const invalid = {
+      ...record,
+      gates: {
+        ...record.gates,
+        "macos-installer": {
+          status: "passed",
+          completedAt: "2026-11-08T14:00:00Z",
+          observations: [{ check: "Clean install", status: "unavailable" }],
+        },
+      },
+    };
+    expect(validateWorkstationQaRecord(invalid)).toContain(
+      "gates.macos-installer cannot pass with an unavailable observation",
+    );
+  });
+
   it("requires positive evidence before a gate can pass", () => {
     const record = createWorkstationQaRecord(sha);
     record.gates["4k"] = {

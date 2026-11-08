@@ -1,21 +1,22 @@
 # OpenFilm stable-release readiness
 
 This page records the long-range v1.0 objective; it does not approve a tag.
-As of 2026-11-08, the latest public source release is v0.4.0, while root,
-Desktop, Tauri and Cargo metadata report 1.0.0. The proposed OpenFilm sequence
-begins at v0.5.0, continues through v0.8.0, and reserves v1.0.0 for native
-distribution readiness. Draft PR [#129](https://github.com/bynanci/open-film/pull/129)
-prepares a v0.5.0 candidate at
-`04035f3266e191478296787982a46293177d61b2`; exact-head Verify, dependency
-security, Windows recovery, DCO and Linux/Windows/macOS Render QA have passed.
-Main at [`a0f1a4d`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276)
-merges PRs #132–#136; post-merge Verify, Windows Recovery, three-platform Render
-QA and website deployment passed on that exact SHA. The v0.5.0 candidate is not
-frozen or approved; independent GLib review and release-owner approval remain
-open. See the [current release gates](../validation-release-gates.md) and
-[incremental release train](incremental-release-train.md). The 1.0.0 metadata
-is not release approval. Storytelling maintains a separate repository and
-release track.
+As of 2026-11-08, the latest public source release remains v0.4.0 while main's
+package metadata says 1.0.0. The staged sequence starts with source-only v0.5.0,
+continues through v0.8.0 and reserves v1.0.0 for native distribution readiness.
+Main at [`23ac0a2`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc)
+includes the independently reviewed GLib source fix from PR #128. Its final head
+`e11051f` passed all 19 checks, including optimized native source admission.
+Draft PR [#129](https://github.com/bynanci/open-film/pull/129) remains on its
+separate historical release track at `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
+That exact candidate passes complete CI, three-platform Render QA, its own native
+controls/audits and independent technical adaptation review. The
+[prepared source/asset packet](../release-owner-review-v050.md) awaits the
+release-owner decision, including the maintenance-warning disposition. It does
+not provide installer or physical workstation acceptance. See the
+[current release gates](../validation-release-gates.md) and
+[release train](incremental-release-train.md). Main metadata is not a published
+version; Storytelling maintains a separate repository and release track.
 
 For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
 and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
@@ -26,7 +27,7 @@ v0.4.0; PR #129 is a draft and creates no tag or publication.
 ## Release & Version Status
 
 - **Package metadata**: root, Desktop, Tauri and Cargo currently declare 1.0.0; this is build metadata, not a selected release tag.
-- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0. Draft PR #129 prepares the first source-only candidate at `04035f3266e191478296787982a46293177d61b2`; exact-head Verify, advisory, Windows recovery, DCO and three-platform Render QA passed. Independent GLib review and release-owner approval remain open; no candidate SHA or tag is approved yet. Storytelling maintains a separate release track.
+- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0. Draft PR #129 prepares the source-only candidate at `54534d8cf985203e8b5abbd09a771436f8fe09e5`; complete CI, native source admission, Render QA and independent technical source review passed. Release-owner approval of the exact archive and maintenance-warning disposition remains pending; no tag is approved. Storytelling maintains a separate release track.
 - **Selected merged feature baseline (through PR #99, with recent changes noted below)**:
   - PR #64: D6A managed proxy queue, eviction, rebuild, and health UI.
   - PR #69: Windows workflow recovery for issues #66–#68 (FFmpeg frame sync, atomic sync, benchmark quiescence).
@@ -54,7 +55,7 @@ v0.4.0; PR #129 is a draft and creates no tag or publication.
   - PR #97: Cut Desk Phase 3 (track controls: target, lock, mute, solo, visibility & persistence).
   - PR #98: PR 4.1 (macOS Darwin cross-process dead-owner detection & boot session verification).
   - PR #99: Finalize the long-range readiness ledger and roadmap alignment.
-  - PR #120: Patch Tokio to 1.53.3; GLib unsoundness remains under review.
+  - PR #120 patches Tokio to 1.53.3; PR #128 adds the independently reviewed, source-verified GLib repair and fail-closed native admission.
   - PR #119: Merge Tobi-ishi workspace and control-panel UX; exact-head hosted checks passed, while workstation and NLE gates remain open.
   - PR #121: Add explicit event/person coverage constraints with source-consistent asset balance.
   - PR #126: Merge deterministic visual keyframes and bounded opacity rendering.

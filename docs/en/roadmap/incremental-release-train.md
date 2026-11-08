@@ -1,33 +1,33 @@
 # Incremental release train
 
 Plan reviewed on 2026-11-08 against main
-[`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276).
-This schedules source releases as separate, cumulative milestones. It is not a
-record of releases already published.
+[`23ac0a22a500b4454449da56436305c5c41292cc`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc).
+This schedules source releases as separate cumulative milestones, not a record
+of already published versions.
 
 ## Current release state
 
-- The latest published release is source-only `v0.4.0` from 2026-10-20.
-- Main at [`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276) includes merged PRs #132–#136. Its post-merge Verify, Windows Recovery, three-platform Render QA and website deployment passed; this does not change the separate v0.5.0 candidate or release gates.
-- The repository contains a later commit titled `release: OpenFilm v1.0.0`
-  (PR #83), but no `v1.0.0` tag or GitHub Release exists. Root, Desktop, Tauri
-  and Cargo metadata saying `1.0.0` is not publication evidence.
-- Main has accumulated work through the proposed `v0.8.0` scope. Publishing
-  multiple tags from current main would ship the same full feature set repeatedly.
-- A first, source-only `v0.5.0` candidate is under review in Draft PR
-  [#129](https://github.com/bynanci/open-film/pull/129), based on the historical
-  PR #75 scope anchor on dedicated branch `release/v0.5.0` at
-  `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. Candidate head is
-  `04035f3266e191478296787982a46293177d61b2`. Exact-head Verify
-  [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777),
-  dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
-  Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
-  DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
-  and three-platform Render QA [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
-  passed on this exact SHA. Verify reports 313/313 browser tests and 3,658 media
-  tests; each Render QA platform reports 57/57 tests and 180 decoded frames.
-  Independent GLib security disposition remains open. The candidate is not
-  frozen, approved, tagged or published.
+- Latest public source release remains `v0.4.0`, published 2026-10-20.
+- Main includes merged GLib source repair PR #128 and browser balancing PR #131.
+  The security head `e11051f` passed all 19 hosted checks and independent technical
+  review; this does not select main's 1.0.0 metadata as a release version.
+- Main already contains work through the proposed v0.8.0 scope. Repeated tags
+  from the same main would ship that whole feature set rather than staged cuts.
+- The source-only v0.5.0 candidate remains Draft PR
+  [#129](https://github.com/bynanci/open-film/pull/129) on dedicated
+  `release/v0.5.0`, based on PR #75's historical scope at
+  `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. New candidate head
+  `54534d8cf985203e8b5abbd09a771436f8fe09e5` retains all 22 version surfaces at
+  0.5.0 and adds the independently reviewed GLib source-security backport.
+- The candidate's [Verify 42493427242](https://github.com/bynanci/open-film/actions/runs/42493427242),
+  [native source admission 42493427131](https://github.com/bynanci/open-film/actions/runs/42493427131),
+  Windows Recovery, DCO and Linux/Windows/macOS Render QA passed on that SHA.
+  Downloaded reports validate 313 browser cases and 57 render tests per target.
+  Its own independent technical source-security review returned PASS; no older
+  main execution receipt substitutes for this candidate.
+- The [exact source/asset owner packet](../release-owner-review-v050.md) is
+  prepared. Owner approval of the scope, hashes and retained maintenance warning
+  remains pending. No tag or release was created; native acceptance stays open.
 
 ## Proposed staged sequence
 
@@ -44,12 +44,10 @@ candidate or approved tag target.
 - Historical scope anchor: after PR #75, commit
   [`d5a286ed9250872e8eb9b1c3e40adb926f913d34`](https://github.com/bynanci/open-film/commit/d5a286ed9250872e8eb9b1c3e40adb926f913d34).
 - Distribution target: source archive only; no installer claim.
-- Candidate work: Draft PR #129 aligns the package/Tauri/Cargo version surfaces
-  and backports reviewed dependency fixes. Exact-head Verify, dependency
-  security, Windows recovery, DCO and Linux/Windows/macOS Render QA all passed
-  on `04035f3266e191478296787982a46293177d61b2`. The independent GLib review
-  remains open. Keep the PR in draft until that review and release-owner
-  decision are complete.
+- Candidate work: PR #129 is technically validated at
+  `54534d8cf985203e8b5abbd09a771436f8fe09e5`, including its own reviewed GLib
+  backport and fresh controls/audits. Keep it Draft until the release-owner
+  decision on the [prepared source/asset packet](../release-owner-review-v050.md).
 
 ### v0.6.0 — Rhythm, continuity and precision editing
 
@@ -91,7 +89,7 @@ candidate or approved tag target.
 - Release only after the runtime and installer are actually distributable and
   every advertised platform passes signing/notarization, clean-machine first
   launch, update failure recovery, rollback and project-preserving uninstall.
-- No source SHA is nominated yet. M7E, GLib security disposition and physical
+- No source SHA is nominated yet. M7E, candidate-specific security admission and physical
   Windows/macOS workstation observations remain open.
 - The intended scope is a verified distribution step after earlier source
   milestones, not a container for all unfinished features.
@@ -167,18 +165,18 @@ expand a second NLE before the Storytelling host path is proven.
 
 ## Current blockers before the first staged release
 
-- The v0.5.0 candidate branch and Draft PR #129 exist. Candidate
-  `04035f3266e191478296787982a46293177d61b2` passed exact-head Verify, dependency
-  security, Windows recovery, DCO and three-platform Render QA. The historical
-  anchor predates the Tokio patch and cannot be tagged; the candidate remains
-  unfrozen and unapproved pending independent GLib disposition and release-owner
-  review.
-- GLib `RUSTSEC-2024-0429` remains an unsoundness finding; the existing audit's
-  successful default exit does not close it.
-- Dependabot alerts are disabled, and required-check enforcement has not been
-  confirmed through repository administration.
+- Candidate `54534d8cf985203e8b5abbd09a771436f8fe09e5` passed its technical gates,
+  including independent source-security review and actual optimized native
+  admission. The source archive/owner-review packet is prepared, but owner
+  approval and the release-branch merge are pending.
+- proc-macro-error RUSTSEC-2024-0370 remains a maintenance warning for explicit
+  owner review with scope, expiry and recheck triggers. GLib source remediation
+  is verified; no generic scanner-success waiver is used.
+- The current integration cannot confirm restricted repository alerting,
+  protection or signing-secret administration (HTTP 403). Ask administration to
+  confirm state; do not infer it from failed reads.
 - The first four source milestones must not advertise native installers or
-  physical workstation certification. Those observations remain open under
+  physical workstation certification. Those observations remain under
   [Issue #7](https://github.com/bynanci/open-film/issues/7).
 
 See the [release gate audit](../validation-release-gates.md) and
