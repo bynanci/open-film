@@ -359,14 +359,16 @@ These items remain open, but are not prerequisites for every current editing
 change. Discuss their scope before implementation.
 
 - [x] Balance the full browser suite with deterministic per-test shard lists
-      ([Draft PR #131](https://github.com/bynanci/open-film/pull/131), head
-      `d0e1c374114aff67f26ea075308d881236343b92`). Exact-head Verify run
-      [42407414566](https://github.com/bynanci/open-film/actions/runs/42407414566)
-      passed all 358 browser cases; the 26 Transcript Productivity tests ran
-      4/4/4/5/5/4 across six shards. The longest observed browser test step fell
+      ([PR #131](https://github.com/bynanci/open-film/pull/131)). The original
+      exact-head Verify run [42407414566](https://github.com/bynanci/open-film/actions/runs/42407414566)
+      passed 358 cases on its then-current base; it remains historical evidence.
+      After synchronizing with main `07016dac8c23148181f7d36a402a86d8d8bc0533`,
+      `pnpm test:browser-partition` verified the current 363-case inventory with
+      shard sizes 61/61/61/60/60/60 and Transcript Productivity spread 4/4/5/5/4/4.
+      The earlier hosted comparison showed the longest browser test step fall
       from 8m05s to 6m35s versus run 42403889374, while keeping one worker,
-      existing timeouts, assertions and zero retries. The implementation remains
-      in a Draft PR and is not yet in main. See the
+      existing timeouts, assertions and zero retries. Merge readiness depends on
+      the refreshed PR's exact-head checks. See the
       [E2E shard validation](docs/validation-ci-pages-e2e.md).
 - [ ] Executable plugin discovery/loading beyond built-in registration and SDK
       contracts. Keep the existing data-only preset format available.

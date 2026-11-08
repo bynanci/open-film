@@ -184,12 +184,15 @@ The [installer guide](docs/native-installer.md),
 evidence. CI results do not replace those observations.
 
 The E2E distribution follow-up keeps one worker per isolated runner and builds
-deterministic per-test Playwright lists from full discovery. Draft PR #131's
-exact-head run passed all 358 browser cases and the full Verify aggregate; the
+deterministic per-test Playwright lists from full discovery. PR #131's original
+exact-head run passed 358 browser cases and the full Verify aggregate; the
 longest observed browser test step decreased from 8m05s to 6m35s, with the
-Transcript Productivity tests split 4/4/4/5/5/4. This is measured CI evidence,
-not a workstation guarantee. The implementation is still in a Draft PR and is
-not yet part of main; see the [E2E shard validation](docs/validation-ci-pages-e2e.md).
+Transcript Productivity tests split 4/4/4/5/5/4. After synchronizing the PR
+branch with main `07016dac8c23148181f7d36a402a86d8d8bc0533`, local partition
+validation covered 363 cases with shard sizes 61/61/61/60/60/60 and transcript
+distribution 4/4/5/5/4/4. These are measured CI and local preflight results, not a
+workstation guarantee. Merge readiness depends on the refreshed PR's exact-head
+checks; see the [E2E shard validation](docs/validation-ci-pages-e2e.md).
 
 PR [#120](https://github.com/bynanci/open-film/pull/120) merged on 2026-11-06
 and patches Tokio to 1.53.3. The current dependency report no longer lists

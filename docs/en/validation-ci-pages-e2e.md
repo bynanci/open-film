@@ -222,3 +222,19 @@ specific deterministic partition on the hosted runner; it is not a guarantee
 of future CI duration or physical workstation performance. Windows/macOS
 workstation, native installer, actual Resolve, hardware audio/display and 4K
 gates remain separate.
+
+## 2026-11-08 follow-up — current main inventory
+
+PR #130 merged as main commit
+[`07016dac8c23148181f7d36a402a86d8d8bc0533`](https://github.com/bynanci/open-film/commit/07016dac8c23148181f7d36a402a86d8d8bc0533).
+The PR #131 branch was synchronized with that main before revalidation. The
+older exact-head run above remains evidence for its 358-case inventory only; it
+does not stand in for checks on the refreshed branch.
+
+On the synchronized branch, `pnpm test:browser-partition` returned
+`verified: true` for 363 cases, with list sizes 61/61/61/60/60/60 and all 26
+Transcript Productivity tests distributed 4/4/5/5/4/4. The focused
+`tests/unit/ci-browser-shards.test.ts` suite passed 18/18. These checks verify
+the partition and validator locally. The refreshed PR's exact-head Verify,
+dependency, DCO, Windows Recovery and three-platform Render QA checks remain the
+merge evidence; physical workstation and native installer gates remain separate.
