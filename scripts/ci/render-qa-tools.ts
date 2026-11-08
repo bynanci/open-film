@@ -46,15 +46,22 @@ const origins = new Set([
   "release-assets.githubusercontent.com",
   "archive.ubuntu.com",
 ]);
+const windowsFfmpegAssetApiPath =
+  "/repos/GyanD/codexffmpeg/releases/assets/574302090";
 const transientDownloadStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
 function trustedUrl(input: string): URL {
   const url = new URL(input);
+  const reviewedGithubAssetApi =
+    url.hostname === "api.github.com" &&
+    url.pathname === windowsFfmpegAssetApiPath &&
+    !url.search &&
+    !url.hash;
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
     url.port ||
-    !origins.has(url.hostname)
+    (!origins.has(url.hostname) && !reviewedGithubAssetApi)
   )
     throw new Error("Unreviewed render QA download origin");
   return url;
@@ -131,6 +138,10 @@ export async function downloadPinnedBytes(
       let response: Response;
       try {
         response = await fetch(url, {
+          headers:
+            url.hostname === "api.github.com"
+              ? { accept: "application/octet-stream" }
+              : undefined,
           redirect: "manual",
           signal: AbortSignal.timeout(60_000),
         });

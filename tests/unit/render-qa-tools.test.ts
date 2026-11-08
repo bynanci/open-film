@@ -109,6 +109,25 @@ it("rejects insecure or unreviewed origins before requesting bytes", async () =>
     );
   expect(fetch).not.toHaveBeenCalled();
 });
+it("rejects unpinned GitHub release API paths before requesting bytes", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    downloadPinnedBytes(
+      "https://api.github.com/repos/attacker/project/releases/assets/574302090",
+      sha256,
+      100,
+    ),
+  ).rejects.toThrow(/origin/u);
+  await expect(
+    downloadPinnedBytes(
+      "https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/other",
+      sha256,
+      100,
+    ),
+  ).rejects.toThrow(/origin/u);
+  expect(fetch).not.toHaveBeenCalled();
+});
 it("rejects a redirect to an unreviewed origin without fetching it", async () => {
   const fetch = vi.fn().mockResolvedValue(
     new Response(null, {
@@ -142,6 +161,33 @@ it("retries a temporary HTTP failure before accepting pinned bytes", async () =>
     ),
   ).resolves.toEqual(bytes);
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+it("downloads the pinned GitHub release asset through its official API redirect", async () => {
+  const assetApiUrl =
+    "https://api.github.com/repos/GyanD/codexffmpeg/releases/assets/574302090";
+  const releaseAssetUrl =
+    "https://release-assets.githubusercontent.com/fixture";
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: releaseAssetUrl },
+      }),
+    )
+    .mockResolvedValueOnce(new Response(bytes));
+  vi.stubGlobal("fetch", fetch);
+
+  await expect(downloadPinnedBytes(assetApiUrl, sha256, 100)).resolves.toEqual(
+    bytes,
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const [apiUrl, apiOptions] = fetch.mock.calls[0]!;
+  expect(String(apiUrl)).toBe(assetApiUrl);
+  expect(new Headers(apiOptions?.headers).get("accept")).toBe(
+    "application/octet-stream",
+  );
+  expect(String(fetch.mock.calls[1]![0])).toBe(releaseAssetUrl);
 });
 it("reports a permanent HTTP failure without another request", async () => {
   const fetch = vi
