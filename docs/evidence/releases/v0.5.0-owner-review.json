@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-release-owner-review-packet",
+  "candidateSha": "54534d8cf985203e8b5abbd09a771436f8fe09e5",
+  "releaseBaseSha": "d5a286ed9250872e8eb9b1c3e40adb926f913d34",
+  "version": "0.5.0",
+  "preparedAt": "2026-11-08T15:15:49.513660+00:00",
+  "preparedBy": "Codex",
+  "distribution": "source-only",
+  "sourceArchive": {
+    "file": "openfilm-v0.5.0-source-54534d8.tar.gz",
+    "sha256": "40e170e682c1a518f16a572edddf0260247293c846986bd827582ba9b825e458",
+    "bytes": 5116663,
+    "gitArchivePrefix": "openfilm-0.5.0/"
+  },
+  "lockfiles": {
+    "pnpm-lock.yaml": "48028209f125cf87c0efe7d371d3a40ada26312f61c3c7d4e473f5a730572b7f",
+    "apps/desktop/src-tauri/Cargo.lock": "6ac7abcd44aeac8cd6164595069a166e546e41b0c4134eac1820b72731126aa4"
+  },
+  "ownerDecision": {
+    "requestedOwner": "bynanci",
+    "status": "not-approved",
+    "approvedCandidateSha": null,
+    "approvedArtifacts": []
+  },
+  "requiredChecks": {
+    "status": "passed",
+    "verifyRun": 42493427242,
+    "securityAdmissionRun": 42493427131,
+    "windowsRecoveryRun": 42493427121,
+    "renderQaRun": 42493427234,
+    "dcoRun": 42493424466
+  },
+  "securityReview": {
+    "status": "independent-technical-PASS",
+    "advisory": "RUSTSEC-2024-0429",
+    "maintenanceWarning": "RUSTSEC-2024-0370",
+    "ownerMaintenanceAcceptance": "pending",
+    "proposedReviewExpiry": "2026-12-08",
+    "recheckTriggers": [
+      "source/lock/features/compiler/target/candidate change",
+      "new advisory or changed advisory semantics",
+      "before release or expiry"
+    ],
+    "reviewedCandidateSha": "54534d8cf985203e8b5abbd09a771436f8fe09e5",
+    "proofFile": "review-proof.json",
+    "proofSha256": "1fe5222953696d36b3055c6ba069813212c60b01a54039515a23e925b6b5eacd",
+    "nativeArtifactId": 13623121108,
+    "nativeArtifactSha256": "e34686d33068c3eb202c952b03e672281558c8df4345b6d056c0d088d16b76cc"
+  },
+  "nativeDistribution": {
+    "included": false,
+    "installerArtifacts": [],
+    "signing": "not-verified",
+    "notarization": "not-verified",
+    "windowsWorkstation": "not-run",
+    "macosWorkstation": "not-run"
+  },
+  "physicalClaims": {
+    "resolve": "not-verified",
+    "gpu4k": "not-verified",
+    "externalMedia": "not-verified",
+    "listeningQuality": "not-verified"
+  },
+  "publication": {
+    "tagCreated": false,
+    "releaseCreated": false,
+    "published": false
+  },
+  "versionSurfaces": {
+    "apps/cli/package.json": "0.5.0",
+    "apps/desktop/package.json": "0.5.0",
+    "apps/server/package.json": "0.5.0",
+    "package.json": "0.5.0",
+    "packages/analysis/package.json": "0.5.0",
+    "packages/application/package.json": "0.5.0",
+    "packages/catalog/package.json": "0.5.0",
+    "packages/core/package.json": "0.5.0",
+    "packages/events/package.json": "0.5.0",
+    "packages/exporters/package.json": "0.5.0",
+    "packages/media/package.json": "0.5.0",
+    "packages/metadata/package.json": "0.5.0",
+    "packages/plugin-sdk/package.json": "0.5.0",
+    "packages/provider-whisper/package.json": "0.5.0",
+    "packages/render/package.json": "0.5.0",
+    "packages/solver/package.json": "0.5.0",
+    "packages/source-insta360/package.json": "0.5.0",
+    "packages/source-pixel/package.json": "0.5.0",
+    "packages/story/package.json": "0.5.0",
+    "packages/ui/package.json": "0.5.0",
+    "apps/desktop/src-tauri/tauri.conf.json": "0.5.0",
+    "apps/desktop/src-tauri/Cargo.toml": "0.5.0"
+  },
+  "releaseBranchMerge": {
+    "status": "not-merged",
+    "pullRequest": 129,
+    "target": "release/v0.5.0",
+    "approvedCandidateRemains": "54534d8cf985203e8b5abbd09a771436f8fe09e5"
+  },
+  "renderEvidence": {
+    "linux-x64.json": "3c964fd536bdfccb166c9746e4da2857fc95778ce4ef79acd02c3ce440e5890b",
+    "win32-x64.json": "ff2fb7defbec77157a0bc4fc611a16b8130342d2608078f4788ff1c8d5f5d7a4",
+    "darwin-arm64.json": "48e91825e1c6bfeedb62f7775761ce311e7e4ecd05bf64d2e5a4aea3b85f3baf"
+  },
+  "browserEvidence": {
+    "verified": true,
+    "total": 313,
+    "failures": 0,
+    "skips": 0,
+    "retries": 0,
+    "candidateSha": "54534d8cf985203e8b5abbd09a771436f8fe09e5"
+  },
+  "preparedReviewBundle": {
+    "filename": "openfilm-v0.5.0-owner-review-54534d8.zip",
+    "sha256": "bc5fc729f880d119330c9e31d7b3cbd73d320a91179d422a3c230cc1b97a2cb6",
+    "published": false
+  },
+  "recordPurpose": "Prepared owner-review packet snapshot. Artifact filenames are relative to that packet; this is not an approval record."
+}

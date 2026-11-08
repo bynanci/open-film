@@ -1,123 +1,80 @@
 # Stable release gates: current audit
 
-Audit date: 2026-11-08. Evidence base: merged main at
-[`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276).
-
-This is a release-readiness assessment, not release approval. It separates source
-releases from installers and from claims that require physical equipment. The
-[incremental release train](roadmap/incremental-release-train.md) proposes
-separate OpenFilm milestones and an independent Storytelling version track. A
-green source CI run does not satisfy the other gates.
+Audit date: 2026-11-08. Development base: merged main
+[`23ac0a22a500b4454449da56436305c5c41292cc`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc).
+Proposed source candidate: `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
+This assessment records technical readiness and pending owner decisions; it is
+not release approval. Source delivery, native installers and physical claims
+have distinct gates under the [release train](roadmap/incremental-release-train.md).
 
 ![Release gates: freeze one candidate, pass source and security gates, add platform-specific checks for the distribution and claims, then approve and verify published artifacts.](images/release-gates.svg)
 
-![Current release gate evidence on main a0f1a4d: v0.5.0 candidate PR #129 exact-head Verify, security, Windows recovery, DCO and three-platform Render QA passed; independent GLib review, release-owner approval, installer and workstation gates remain open.](images/release-gate-evidence.svg)
+![Candidate 54534d8 passes source, native source-security and three-platform Render QA; independent technical review passes, owner approval is pending, and native installer/workstation gates remain blocked.](images/release-gate-evidence.svg)
 
-## Evidence snapshot
+## Candidate-bound evidence
 
-- **Current source.** Main SHA [`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276) includes PRs #132–#136 merged on top of the release-gate baseline. Verify
-  [42479944561](https://github.com/bynanci/open-film/actions/runs/42479944561),
-  Render QA
-  [42479944534](https://github.com/bynanci/open-film/actions/runs/42479944534),
-  Windows media recovery
-  [42479944590](https://github.com/bynanci/open-film/actions/runs/42479944590),
-  and website deployment
-  [42479944528](https://github.com/bynanci/open-film/actions/runs/42479944528)
-  all passed on this exact SHA. PR #136's exact-head Verify, Windows Recovery,
-  three-platform Render QA and DCO also passed before merge.
-  - **Implication:** Strong merged-main evidence; a release candidate still
-    needs its own frozen identity and complete checks.
-- **v0.5.0 candidate.** Draft PR
-  [#129](https://github.com/bynanci/open-film/pull/129) targets
-  `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. Its current
-  exact head is `04035f3266e191478296787982a46293177d61b2`. Verify
-  [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777)
-  passed format, i18n, docs, lint, types, contracts, build, 304 media test files
-  / 3,658 tests, native-shell, all six browser shards (313/313, zero failures,
-  skips or flaky retries), and the aggregate `typescript-and-media` check.
-  Dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
-  Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
-  and DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
-  passed on the same SHA. Candidate Render QA
-  [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
-  passed on Linux x64, Windows x64 and macOS arm64: 57/57 tests per platform,
-  180 decoded frames at 30000/1001, nine PTS/RGB samples, decoded AAC, and
-  unchanged synthetic-source SHA-256 values. The path-free evidence binds all
-  three results to this exact SHA and records `workstationVerified: false`.
-  - **Implication:** Candidate-bound automated source and render checks are
-    complete for this SHA, but PR #129 remains Draft and the candidate is not
-    frozen or approved. Independent GLib `RUSTSEC-2024-0429` review remains
-    open in Draft PR [#128](https://github.com/bynanci/open-film/pull/128); a
-    green advisory job does not close that unsoundness finding. Recheck every
-    exact-head gate if the candidate changes.
-- **PR #126 feature head.** Exact feature head
-  [`b4aba4c4bb70b8cb03edd54342f1b94cec649245`](https://github.com/bynanci/open-film/commit/b4aba4c4bb70b8cb03edd54342f1b94cec649245)
-  passed hosted checks before merge: fast-contract, heavy-media,
-  typescript-and-media, six browser shards, three-platform Render QA, Windows
-  FFmpeg9, native-shell, docs-site and DCO. See
-  [PR #126](https://github.com/bynanci/open-film/pull/126).
-  - **Implication:** These checks apply to the PR feature SHA; they do not
-    replace checks on a separately frozen release candidate.
-- **Public release.** Latest GitHub release is
+- **Development repair.** PR [#128](https://github.com/bynanci/open-film/pull/128)
+  merged at `23ac0a22a500b4454449da56436305c5c41292cc`. Its final head
+  `e11051f01bf8603c5bacbcb34e6d8cb6e2352bbf` passed all 19 checks, including
+  [Verify 42493069308](https://github.com/bynanci/open-film/actions/runs/42493069308),
+  [native source admission 42493069303](https://github.com/bynanci/open-film/actions/runs/42493069303),
+  Windows Recovery, DCO and three-platform Render QA. The
+  [independent technical disposition](security/glib-0429-independent-review.md)
+  retains source, closure, optimized controls and fresh audit evidence. Main's
+  post-merge Windows Recovery/Render QA/Pages passed; its
+  [Verify 42494577085](https://github.com/bynanci/open-film/actions/runs/42494577085)
+  is still running the media lane at this snapshot. This does not substitute
+  for the historical release candidate's own checks.
+- **v0.5.0 source candidate.** Draft PR
+  [#129](https://github.com/bynanci/open-film/pull/129), targeting dedicated
+  `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, now has head
+  `54534d8cf985203e8b5abbd09a771436f8fe09e5`. It carries only the reviewed GLib
+  fix/admission backport over its prior candidate; all 431 package versions
+  remain fixed and all 22 version surfaces agree on 0.5.0. Exact-head
+  [Verify 42493427242](https://github.com/bynanci/open-film/actions/runs/42493427242),
+  [security/native admission 42493427131](https://github.com/bynanci/open-film/actions/runs/42493427131),
+  [Windows Recovery 42493427121](https://github.com/bynanci/open-film/actions/runs/42493427121),
+  [DCO 42493424466](https://github.com/bynanci/open-film/actions/runs/42493424466)
+  and [Render QA 42493427234](https://github.com/bynanci/open-film/actions/runs/42493427234)
+  all passed. Independently downloaded browser reports validate 313 passing
+  cases with no skip/retry. Render reports validate 57 tests per platform,
+  180 decoded frames, PTS/RGB/AAC/source hashes and `workstationVerified: false`.
+- **Independent release-source disposition.** The adapted 0.5.0 source received
+  an independent AI technical **PASS**, with no confirmed P0/P1/P2 finding.
+  The [retained proof](https://github.com/bynanci/open-film/blob/main/docs/evidence/releases/v0.5.0-security-review.json)
+  binds the candidate and its newly authenticated native artifact 13623121108
+  (ZIP SHA-256 `e34686d33068c3eb202c952b03e672281558c8df4345b6d056c0d088d16b76cc`).
+  Actual optimized pristine failures, patched/application passes, native build
+  and fresh actual/registry/historical audit exits 0/1/1 are verified. A path
+  crate's default scanner omission is not accepted as remediation proof.
+- **Owner review inputs.** A reproducible source archive and candidate-bound
+  evidence packet are prepared. Archive SHA-256 is
+  `40e170e682c1a518f16a572edddf0260247293c846986bd827582ba9b825e458`.
+  The [owner review](release-owner-review-v050.md) names the exact scope, assets,
+  checks and remaining maintenance-warning decision. It keeps approval pending.
+  DCO and AI technical review are not an owner decision.
+- **Published state.** Latest public release remains source-only
   [v0.4.0](https://github.com/bynanci/open-film/releases/tag/v0.4.0), published
-  2026-10-20. It includes a source archive, synthetic reference MP4, validation
-  JSON and SHA256SUMS; it is not an installer release.
-  - **Implication:** Preserve this source-only distinction.
-- **Version identity.** Main's root, Desktop, Tauri and Cargo metadata say
-  1.0.0, while the latest tag is v0.4.0. The proposed next stage is v0.5.0;
-  Draft PR #129 aligns its dedicated candidate branch to 0.5.0, but no
-  candidate SHA or tag has been approved.
-  - **Implication:** Use the staged plan, freeze a versioned candidate and
-    reconcile all version surfaces. Package metadata alone is not a release
-    decision.
-- **Rust dependencies.** Exact-head security run
-  [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631)
-  audited the candidate lockfiles against the current advisory database;
-  JavaScript and Rust advisory jobs passed.
-  This result does not clear the GLib unsound advisory
-  RUSTSEC-2024-0429 and unmaintained proc-macro-error advisory
-  RUSTSEC-2024-0370. Tokio 1.53.3 removes RUSTSEC-2026-0386. The scanner treats
-  unsound/unmaintained as informational and exits successfully.
-  - **Implication:** Scanner success is not a zero-warning security pass.
-    Re-audit the frozen candidate against a fresh advisory database and
-    disposition the GLib finding for every shipped target. The separate GLib
-    PR [#128](https://github.com/bynanci/open-film/pull/128) remains Draft
-    pending independent security review.
-- **Alerting and enforcement.** GitHub reports Dependabot alerts are disabled.
-  The current credential could not read main branch protection settings, so
-  required-check enforcement is unknown.
-  - **Implication:** Enable Dependabot or equivalent alerting; have a repository
-    administrator confirm required checks and release permissions.
-- **Native installers.** The native-installer workflow is manual-dispatch and
-  input-gated; no installer-candidate run was found. Signing/notarization,
-  clean-machine installation, update failure recovery and uninstall preservation remain
-  unverified in [M7E validation](validation-native-installer.md).
-  - **Implication:** Native installers are blocked. Do not advertise a tested
-    installer or signed update path.
-- **Physical product claims.** Windows/macOS workstation, Resolve, GPU/4K,
-  external-drive and listening observations remain tracked under
-  [Issue #7](https://github.com/bynanci/open-film/issues/7).
-  - **Implication:** Keep these claims out of release promises until
-    candidate-bound observations exist.
+  2026-10-20. Main package metadata remains 1.0.0; that is not a published tag.
 
-## Current decision
+## Gate state and limits
 
-Draft PR #129 prepares a v0.5.0 source candidate, but it is not frozen or
-approved. The proposed OpenFilm sequence continues through v0.8.0 before the
-long-range v1.0.0 distribution milestone. Storytelling maintains a separate
-release track. Main CI and candidate exact-head automated checks, including
-three-platform Render QA, are green. The independent GLib disposition and
-release-owner decision remain open, so no stable release is authorized.
+| Gate                                                          | Current state                                                        | Consequence                                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Candidate identity/version/source checks                      | PASS for 54534d8                                                     | Ready for owner review, not tag approval                                          |
+| GLib RUSTSEC-2024-0429                                        | Exact source repair technically verified on main and 0.5.0 candidate | Upstream 0.18.5 remains affected; retain source-aware proof and registry controls |
+| proc-macro-error RUSTSEC-2024-0370                            | Maintenance warning retained                                         | Owner decision with scope/expiry/recheck remains pending                          |
+| Release-owner decision and release-branch merge               | Pending                                                              | Keep PR #129 Draft; no publication approval                                       |
+| Audited native runtime, licenses/SBOM and installer artifacts | Missing; native installer workflow has no candidate runs             | Native distribution blocked                                                       |
+| Signing/notarization and clean target lifecycle               | Not verified                                                         | No signed installer/update/rollback claim                                         |
+| Windows/macOS physical QA                                     | No connected workstation or candidate-bound observations             | Keep gates not-run; record schema 1.1 does not supply observations                |
+| Repository alert/protection/signing-secret administration     | Current integration cannot read restricted metadata (HTTP 403)       | State is unknown; administrator confirmation is still needed                      |
 
-- Prepare only the next scoped source candidate, v0.5.0, after its identity,
-  compatibility, security and provenance gates below are completed. Complete
-  and publish each release before preparing the next. Any platform or hardware
-  limitation that remains must be explicit in the release notes.
-- Native installer distribution is blocked until each advertised platform has a
-  reviewed runtime and package, trust/signing evidence, and clean-machine install,
-  update, rollback and uninstall observations.
-- Resolve, GPU, 4K, camera and studio-listening claims require actual evidence on
-  the hardware and software named by the claim.
+The next reviewable delivery is source-only v0.5.0. Its technical gates have
+passed; owner acceptance of the exact source/asset scope and maintenance warning
+remains required. Signed Windows/macOS installers are a separate M7E objective.
+Resolve, GPU/4K, real camera/external media and listening claims remain under
+[Issue #7](https://github.com/bynanci/open-film/issues/7).
 
 ## Proposed release policy
 
@@ -187,25 +144,16 @@ Mocks and generated fixtures cannot close hardware or human-quality gates.
 - After publication, download the public assets, verify every checksum, confirm
   tag/commit/version agreement and record the final release URL and timestamp.
 
-## Recommended next actions
+## Next actions
 
-1. Complete exact-head validation and independent security review for Draft PR
-   #129, then update the candidate record. Keep TASKS, ROADMAP and validation
-   evidence aligned; do not create tags before the release gates pass.
-2. Enable Dependabot alerts or document the replacement alerting owner and cadence.
-3. Confirm main branch protection through repository administration and require
-   the exact source, render, Windows and provenance checks that match the release scope.
-4. Re-run both dependency audits on the eventual candidate with a fresh advisory
-   database. Keep GLib RUSTSEC-2024-0429 open until remediation or independent
-   source-aware disposition is complete; keep the unmaintained notice visible.
-5. Keep M7E blocked until actual per-platform installer artifacts and workstation
-   evidence exist. Do not make a v1.0.0 or installer promise from metadata alone.
+1. Obtain the release-owner decision on the [prepared exact candidate and assets](release-owner-review-v050.md); retain PR #129 as Draft until that decision.
+2. Preserve the source-aware GLib review, raw audit/control evidence and all asset hashes beyond temporary CI retention. Re-audit on changed sources, locks, features, compilers, targets, advisories or candidate SHA.
+3. Obtain the reviewed per-target runtime artifact/run ID and manifest digest, with full distribution license/source/SBOM receipts, before dispatching native packaging.
+4. Connect the actual Windows/macOS targets and collect signing/notarization, clean install, first launch, update failure, rollback, uninstall and project-preservation observations using the existing [M7E checklist](workstation-qa.md#m7e-native-installer-candidate).
+5. Have repository administration confirm alerting, branch rules and release/signing permissions; failed metadata access is not evidence of either enabled or disabled settings.
 
 ## Sources
 
-- [Current development tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md) and [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md).
-- [Native installer validation](validation-native-installer.md) and
-  [workstation checklist](workstation-qa.md).
-- [Historical v0.4.0 validation](validation-stable-release.md).
-- [PR #120 Tokio remediation](https://github.com/bynanci/open-film/pull/120) and
-  [PR #126 deterministic visual keyframes](https://github.com/bynanci/open-film/pull/126).
+- [Current tasks](../TASKS.md), [roadmap](../ROADMAP.md) and [release train](roadmap/incremental-release-train.md).
+- [Independent main GLib disposition](security/glib-0429-independent-review.md) and [0.5.0 owner review](release-owner-review-v050.md).
+- [Native installer validation](validation-native-installer.md), [workstation checklist](workstation-qa.md) and [historical v0.4.0 validation](validation-stable-release.md).

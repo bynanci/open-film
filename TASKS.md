@@ -8,21 +8,15 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Status reviewed against
-[main](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276)
-on 2026-11-08. PRs #132–#136 are merged. PR #132's exact-head Verify passed
-376 media files / 4,421 tests and 362 browser cases; its Windows Recovery and
-three-platform Render QA passed. PR #134's exact-head Verify passed 376 media
-files / 4,421 tests and 363 browser cases; Windows Recovery, three-platform
-Render QA, native-shell, docs-site and DCO passed. PR #135 added pinned FFmpeg
-asset transport. PR #136 adds bounded retries for transient pinned-tool
-acquisition failures; its exact-head Verify, Windows Recovery, three-platform
-Render QA and DCO passed. Post-merge main Verify, Windows Recovery,
-three-platform Render QA and website deployment also passed on
-`a0f1a4d6d768747377fb6f0803501914d30be276`. The v0.5.0 source-only candidate
-remains a Draft PR with automated checks green; independent GLib security review
-and release-owner approval remain open. The latest published source release
-remains **v0.4.0**.
+Status reviewed against [main `23ac0a2`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc)
+on 2026-11-08. PRs #128, #130–#136 are merged. PR #128's head `e11051f`
+passed all 19 checks, including actual native source admission and independent
+technical source review. The v0.5.0 source-only candidate in Draft PR #129 is
+`54534d8cf985203e8b5abbd09a771436f8fe09e5`; its own full CI, three-platform
+Render QA, optimized native controls and independent adapted-source review pass.
+Release-owner approval of the exact source archive and retained maintenance
+warning remains pending. Native installer/workstation gates remain open. The
+latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -267,33 +261,20 @@ and in the long-range v1.0 readiness record.
 - [x] Define separate, cumulative OpenFilm source releases (`v0.5.0` through
       `v0.8.0`) and reserve `v1.0.0` for native distribution closure; keep
       Storytelling independently versioned ([release plan](docs/roadmap/incremental-release-train.md)).
-- [ ] Prepare and verify only the first `v0.5.0` candidate. Historical scope
-      anchors are not tag targets; backport security fixes and run exact-head
-      gates before drafting a release.
-      A source-only candidate is now under review in Draft PR
-      [#129](https://github.com/bynanci/open-film/pull/129): base
-      `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, head
-      `codex/release-v0.5.0-candidate` at
-      `04035f3266e191478296787982a46293177d61b2`. Exact-head Verify
-      [42397686777](https://github.com/bynanci/open-film/actions/runs/42397686777),
-      dependency security [42397686631](https://github.com/bynanci/open-film/actions/runs/42397686631),
-      Windows recovery [42397686564](https://github.com/bynanci/open-film/actions/runs/42397686564),
-      Render QA [42397686583](https://github.com/bynanci/open-film/actions/runs/42397686583)
-      and DCO [42397683996](https://github.com/bynanci/open-film/actions/runs/42397683996)
-      all passed on this SHA. Verify includes 304 media test files / 3,658 tests,
-      313/313 browser tests across six shards, native-shell and 18 interchange
-      checks. Linux, Windows and macOS each report 57/57 render tests, 180 decoded
-      frames, nine PTS/RGB samples, AAC audio and unchanged synthetic source hashes.
-      Render evidence explicitly marks workstation verification false. The
-      candidate remains Draft, not frozen, approved, tagged or published.
-- [x] Pass exact-head source, dependency, provenance, Windows recovery and
-      three-platform Render QA for candidate `04035f3266e191478296787982a46293177d61b2`.
-- [ ] Obtain an independent disposition of GLib `RUSTSEC-2024-0429`; PR #128
-      has an independent technical PASS for reviewed head `3b05ba7`, with
-      [retained proof](docs/security/glib-0429-independent-review.md). Complete
-      fresh checks on its synchronized head and the separate v0.5.0 backport
-      before closing the release-candidate gate.
-- [ ] Obtain release-owner approval of the source-only scope and exact artifacts.
+- [x] Prepare and verify the first `v0.5.0` source-only candidate in Draft PR
+      [#129](https://github.com/bynanci/open-film/pull/129), head
+      `54534d8cf985203e8b5abbd09a771436f8fe09e5`, on dedicated
+      `release/v0.5.0` base `d5a286ed9250872e8eb9b1c3e40adb926f913d34`.
+      All 22 version surfaces remain 0.5.0; only the reviewed security backport
+      extends its historical feature cut. See the [owner packet](docs/release-owner-review-v050.md).
+- [x] Pass the candidate's source, dependency/native admission, provenance,
+      Windows Recovery and three-platform Render QA gates. Downloaded reports
+      verify 313 browser cases and 57 render tests per target, with no hardware
+      certification. Prior `04035f3` results remain historical.
+- [x] Obtain independent technical GLib dispositions for main repair PR #128
+      and the adapted release source; retain source/lock/control/audit proof.
+- [ ] Obtain release-owner approval of the exact source/asset scope and explicit
+      proc-macro-error maintenance-warning decision; no tag/publication is approved.
 
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
@@ -306,19 +287,20 @@ and in the long-range v1.0 readiness record.
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
 - PR [#120](https://github.com/bynanci/open-film/pull/120) merged on
   2026-11-06; Tokio is now 1.53.3 and RUSTSEC-2026-0386 is no longer reported
-  by that audit. The current dependency report still records GLib
-  RUSTSEC-2024-0429 and unmaintained proc-macro-error; its successful default
-  exit does not close the unsoundness gate. See the dated
+  by that audit. PR #128 now repairs the actual GLib source; both registry
+  controls still expose the affected upstream version. The source-aware proof
+  accompanies the path-crate audit, and proc-macro-error remains an owner
+  maintenance-review item. See the dated
   [native validation](docs/validation-native-installer.md).
-- [ ] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` installer gate with
+- [x] Resolve the tracked GLib 0.18.5 / `RUSTSEC-2024-0429` source-remediation gate with
       compatible upstream remediation, transitive reachability review and re-audit;
       keep `proc-macro-error` maintenance notices visible. Branch
       `codex/native-glib-0429-current` carries an exact, provenance-pinned backport
       of upstream gtk-rs commit `05dff0ee`; its source and Linux dependency-closure
-      checks pass locally. Optimized native controls, a fresh same-DB audit and
-      independent technical review passed for `3b05ba7`; the synchronized head
-      requires its own hosted checks before merge. Installer/workstation and
-      release-owner decisions remain separate.
+      checks, optimized native controls, fresh same-DB audits and independent technical
+      reviews passed. PR #128 merged at `23ac0a2`; release candidate `54534d8` has
+      its own complete security evidence. Installer/workstation and release-owner
+      decisions remain separate.
 - [ ] Validate clean-machine installation and first use without developer tools,
       including CJK and long paths on supported Windows/macOS targets.
 - [x] Extend the existing workstation record to schema 1.1 with separate

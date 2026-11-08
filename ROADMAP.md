@@ -27,18 +27,16 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[`a0f1a4d6d768747377fb6f0803501914d30be276`](https://github.com/bynanci/open-film/commit/a0f1a4d6d768747377fb6f0803501914d30be276)
-on 2026-11-08. PRs #132–#136 are merged, and the post-merge Verify, Windows
-Recovery, three-platform Render QA and website deployment passed on that main
-commit. Draft PR [#129](https://github.com/bynanci/open-film/pull/129) prepares
-the first source-only candidate on the dedicated `release/v0.5.0` branch. Its
-exact-head Verify, dependency security, Windows recovery, DCO and three-platform
-Render QA passed at candidate
-`04035f3266e191478296787982a46293177d61b2`. The candidate is not approved,
-tagged or published. Independent GLib review and release-owner approval remain
-open, as do installer and workstation acceptance gates. The latest published
-source release remains **v0.4.0**. Historical feature records retain their
-original SHAs and validation dates.
+[`23ac0a22a500b4454449da56436305c5c41292cc`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc)
+on 2026-11-08. The GLib source fix in PR #128 is merged after independent
+technical review and all 19 final-head checks. Draft PR
+[#129](https://github.com/bynanci/open-film/pull/129) remains on the dedicated
+historical `release/v0.5.0` track at `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
+Its own full CI, native source admission, three-platform Render QA and independent
+adaptation review pass. The [prepared source/asset packet](docs/release-owner-review-v050.md)
+awaits the release-owner decision; no tag or publication is approved. Installer
+and physical workstation acceptance remain open. Latest published source release
+remains **v0.4.0**; historical feature records retain their original evidence.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
 is merged in PR #111. Physical workstation and listening acceptance remain
@@ -199,17 +197,13 @@ distribution 4/4/5/5/4/4. These are measured CI and local preflight results, not
 workstation guarantee. Merge readiness depends on the refreshed PR's exact-head
 checks; see the [E2E shard validation](docs/validation-ci-pages-e2e.md).
 
-PR [#120](https://github.com/bynanci/open-film/pull/120) merged on 2026-11-06
-and patches Tokio to 1.53.3. The current dependency report no longer lists
-RUSTSEC-2026-0386; GLib RUSTSEC-2024-0429 and the unmaintained proc-macro
-notice remain open. A provenance-pinned upstream GLib backport is under
-validation on branch `codex/native-glib-0429-current`; Linux optimized controls,
-fresh same-database audits and independent technical review passed for `3b05ba7`.
-Its synchronized head still needs fresh hosted checks, and the historical v0.5.0
-candidate needs its own reviewed backport. See the
-[independent disposition](docs/security/glib-0429-independent-review.md),
-[release gate audit](docs/validation-release-gates.md)
-and [merged audit disposition](docs/validation-native-installer.md#2026-11-07-merged-disposition).
+PR [#120](https://github.com/bynanci/open-film/pull/120) patches Tokio to 1.53.3.
+PR [#128](https://github.com/bynanci/open-film/pull/128) now merges the exact GLib
+upstream source repair with independent technical review, optimized controls and
+fresh same-database audits. Candidate `54534d8` has its own reviewed adaptation.
+The proc-macro-error maintenance warning remains an explicit owner decision.
+See the [release gate audit](docs/validation-release-gates.md) and
+[independent disposition](docs/security/glib-0429-independent-review.md).
 
 ## Foundations available on main
 
