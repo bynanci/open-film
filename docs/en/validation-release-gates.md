@@ -154,6 +154,6 @@ Mocks and generated fixtures cannot close hardware or human-quality gates.
 
 ## Sources
 
-- [Current tasks](../TASKS.md), [roadmap](../ROADMAP.md) and [release train](roadmap/incremental-release-train.md).
+- [Current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md), [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md) and [release train](roadmap/incremental-release-train.md).
 - [Independent main GLib disposition](security/glib-0429-independent-review.md) and [0.5.0 owner review](release-owner-review-v050.md).
 - [Native installer validation](validation-native-installer.md), [workstation checklist](workstation-qa.md) and [historical v0.4.0 validation](validation-stable-release.md).
