@@ -345,3 +345,27 @@ reviewed for publication.
 | Safari/Firefox and accessibility      | Exercise fallback file/folder selection, keyboard review/retry, CJK layout, screen reader announcements and high-DPI reflow in the actual supported browsers.                 |
 | External-drive and stress             | Scan/stage synthetic media, disconnect and reconnect the drive, cancel/retry and reopen; verify manifest/source hashes and partial-scope disclosure.                          |
 | Resolve                               | Follow the existing import/relink checklist with the generated interchange package and retain actual NLE/version evidence; metadata-only effects require explicit recreation. |
+
+## 2026-11-08 delayed review-search response cleanup
+
+The multi-source review browser regression now holds an earlier search response,
+issues a newer search, and waits for the stale handler to finish before checking
+the final selection and results. Cleanup releases the held response and awaits
+route teardown, including when an assertion fails. The existing stale-response,
+selection, populated-result and empty-result checks remain enabled. This change
+hardens the test harness; it does not change import, review or Composition
+behavior.
+
+The test-only source change is commit
+[`632b1306226d0ba4a1d99bb3503a6fe4653db050`](https://github.com/bynanci/open-film/commit/632b1306226d0ba4a1d99bb3503a6fe4653db050),
+based on main `73f9df9810770d52cab0cc2978e55ef8301f884e`. On that code-only head,
+the focused case passed 10/10 across five repetitions, the complete spec passed
+7/7, and hosted exact-head CI passed: 359 browser tests across six shards, 4,419
+media tests, fast-contract, docs-site, native-shell, Windows recovery, DCO and
+Linux/Windows/macOS Render QA. See [PR #133](https://github.com/bynanci/open-film/pull/133)
+for the live check results after the accompanying roadmap and validation updates.
+
+These hosted checks are not workstation evidence. Native installation,
+supported-browser permission behavior, external drives, actual Resolve import,
+hardware accessibility, GPU/4K and private-media checks remain under the open
+gates above.

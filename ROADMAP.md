@@ -27,8 +27,9 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[5f737a6c8f35dce48e213370ff27900962c9304c](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
-on 2026-11-07. Historical feature records keep their original candidate dates.
+[73f9df9810770d52cab0cc2978e55ef8301f884e](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e)
+on 2026-11-08. PR #133 and its validation evidence are tracked below.
+Historical feature records keep their original candidate dates.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
 is merged in PR #111. Physical workstation and listening acceptance remain
@@ -74,6 +75,14 @@ GraphicScenes remain the foundation. See the
 [eleven-project integration reference](docs/en/media-intelligence-integrations.md),
 [繁體中文](docs/media-intelligence-integrations.md) and
 [ADR 012](docs/adr/012-reviewed-media-intelligence.md).
+
+The Multi-Source M6 review workflow now has a deterministic stale-search
+cleanup regression: the delayed response is awaited, and route teardown waits
+for in-flight handlers on both normal and assertion-failure paths. This is a
+test-harness reliability fix; it does not change review or import behavior.
+See [PR #133](https://github.com/bynanci/open-film/pull/133) and the
+[validation record](docs/validation-multi-source-analysis.md). Physical
+workstation and supported-browser gates remain open.
 
 ### Make the everyday editing workflow dependable
 

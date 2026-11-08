@@ -9,8 +9,9 @@ before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
 Status reviewed against
-[main](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c)
-on 2026-11-07. The latest published source release remains **v0.4.0**.
+[main](https://github.com/bynanci/open-film/commit/73f9df9810770d52cab0cc2978e55ef8301f884e)
+on 2026-11-08. PR #133 adds and validates the multi-source review search
+cleanup regression. The latest published source release remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -48,6 +49,17 @@ See the [design system](docs/design-system.md),
 [layout rationale](docs/layout-refinement.md) and
 [shared-surface decision](docs/adr/tobiishi-surfaces.md) and
 [dated validation](docs/validation-tobiishi-control-panels-2026-11-06.md).
+
+### Multi-source review response cleanup (PR #133)
+
+- [x] Wait for held stale review-search responses and remove the route in both
+      normal completion and assertion-failure cleanup. Preserve selection,
+      stale-response and result assertions; this is test-harness reliability,
+      not a change to import or review behavior.
+- [x] Validate the focused multi-source browser spec repeatedly and in the
+      exact-head six-shard CI, with Windows media recovery and three-platform
+      Render QA. See the [multi-source validation record](docs/validation-multi-source-analysis.md)
+      and [PR #133](https://github.com/bynanci/open-film/pull/133).
 
 ### Media intelligence: reviewed silence and durable Jobs (2026-11-05)
 
