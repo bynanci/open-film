@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.png binary
+# Preserve every reviewed third-party byte, including the binary crate archive.
+/vendor/glib-0.18.5/** -text -whitespace
+/third-party/glib-0.18.5/** -text -whitespace

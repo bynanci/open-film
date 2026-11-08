@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Native source admission
+on:
+  workflow_call:
+    inputs:
+      candidate_sha:
+        type: string
+        required: true
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-source-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - name: Set evidence destination outside the checkout
+        run: echo "NATIVE_EVIDENCE=$RUNNER_TEMP/native-security-evidence" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - name: Install actual native development prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf gdb
+      - name: Install reviewed compiler and scanner
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+          cargo +1.99.0 install cargo-audit --version 0.22.2 --locked --root "$RUNNER_TEMP/native-audit"
+          echo "$RUNNER_TEMP/native-audit/bin" >> "$GITHUB_PATH"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Exercise source, closure, supervisor and admission faults
+        run: |
+          python3 scripts/security/test-verify-glib-source.py
+          python3 scripts/security/test-verify-glib-closure.py
+          python3 scripts/security/test-run-glib-controls.py
+          python3 scripts/security/test-audit-native.py
+          python3 scripts/security/test-native-admission.py
+          cargo +1.99.0 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check
+      - name: Reconstruct and verify complete reviewed source
+        id: source
+        run: python3 scripts/security/verify-glib-source.py --repository . --output "$NATIVE_EVIDENCE/source.json"
+      - name: Capture the actual locked Linux graph
+        id: metadata
+        run: |
+          cargo +1.99.0 metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu --manifest-path apps/desktop/src-tauri/Cargo.toml > "$NATIVE_EVIDENCE/metadata.json"
+          cargo +1.99.0 tree --locked --target x86_64-unknown-linux-gnu --manifest-path apps/desktop/src-tauri/Cargo.toml -e normal,build,dev > "$NATIVE_EVIDENCE/tree.txt"
+          python3 scripts/security/verify-glib-closure.py --metadata "$NATIVE_EVIDENCE/metadata.json" --lock apps/desktop/src-tauri/Cargo.lock --source "$NATIVE_EVIDENCE/source.json" --repository . --output "$NATIVE_EVIDENCE/closure.json"
+      - name: Build the native application and run five optimized controls independently
+        id: controls
+        run: python3 scripts/security/run-glib-controls.py --repository . --output "$NATIVE_EVIDENCE/controls"
+      - name: Capture three raw audits using one fresh database
+        if: ${{ always() && steps.metadata.outcome == 'success' }}
+        run: python3 scripts/security/audit-native.py --repository . --output "$NATIVE_EVIDENCE/audit"
+      - name: Evaluate candidate security admission
+        if: ${{ always() && steps.source.outcome == 'success' }}
+        run: python3 scripts/security/native-admission.py --repository . --evidence-dir "$NATIVE_EVIDENCE" --output "$NATIVE_EVIDENCE/admission.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-security-${{ inputs.candidate_sha || github.sha }}
+          path: ${{ runner.temp }}/native-security-evidence/
+          if-no-files-found: error
+          retention-days: 30

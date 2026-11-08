@@ -855,3 +855,9 @@ import/relink/playback, representative fonts/licensing, protected subjects,
 physical color, listening and sustained 4K performance. Future remote generation
 must pass explicit provider consent, API/download safety and terms/cost/retention
 review; local editing continues without a provider.
+
+The 2026-11-08 source-security follow-up carries the exact reviewed GLib upstream
+repair into the historical v0.5.0 candidate, with release-specific baseline/lock
+anchors and no unrelated dependency upgrade. Its own independent review, fresh
+optimized source admission, complete CI and release-owner review must pass before
+publication. See [backport validation](docs/validation-v050-security-backport.md).

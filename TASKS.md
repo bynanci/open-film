@@ -1407,3 +1407,19 @@ behavior or the application dependency lock.
       checks on any resulting candidate head; this is separate from Render QA.
 - [ ] Complete release-owner review. No merge, tag, publication, installer or
       workstation certification follows from this QA implementation alone.
+
+## v0.5.0 source-security follow-up (2026-11-08)
+
+- [x] Carry only the reviewed upstream GLib source repair, its full license and
+      the source/closure/control/audit/admission tooling from PR #128.
+- [x] Bind controls to this candidate's pre-backport `04035f3` registry lock and
+      required root version 0.5.0; preserve all registry dependency versions.
+- [x] Pass 98 focused security tests and complete source reconstruction locally.
+- [ ] Complete independent adaptation review and fresh source admission plus all
+      CI gates for the new exact PR #129 head; old `04035f3` checks are historical.
+- [ ] Obtain release-owner review of the exact source archive, SHA-256 receipts,
+      retained audit evidence and explicit maintenance-warning disposition.
+
+This is a source-only candidate. Native package trust, clean target installation,
+update/rollback/uninstall and physical observations remain separate open gates.
+See [security backport validation](docs/validation-v050-security-backport.md).
