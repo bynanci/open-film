@@ -50,6 +50,12 @@ a bounded read-only SDK compatibility proof, measured CI costs and native
 post-build evidence binding. Source-release ownership and physical acceptance
 remain separate workstreams; no new NLE expansion is selected by this plan.
 
+The [fixed-source media profile](docs/validation/media-test-profile.md) now records
+real tool costs without changing the workload or claiming a product speedup.
+[PR #148](https://github.com/bynanci/open-film/pull/148) binds CI to the actual
+checkout and runs Windows recovery for every PR. Its proposed governance rules
+still require a separate owner decision and administrator activation.
+
 The [Issue #138 compatibility capsule](docs/validation/storytelling-compatibility-138.md)
 now exercises the existing exporter against a pinned Storytelling SDK finite
 profile. Local exporter/unit and actual-SDK application/CLI tests pass; protected

@@ -35,6 +35,18 @@ capsule, measured CI profiling, and final native evidence binding. Runtime
 provisioning and target QA proceed through separate dependencies. Existing
 Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
 
+- [x] Complete the bounded [#139 media cost profile](docs/validation/media-test-profile.md)
+      using two fixed-source repetitions and 56 real tool calls. Render work
+      dominated the selected cases; no production speedup, fixture reuse or
+      weaker suite assertion is claimed.
+- [x] Implement actual-checkout source-head guards and unconditional Windows
+      recovery coverage in [PR #148](https://github.com/bynanci/open-film/pull/148).
+      The proposed [merge policy](docs/governance/merge-controls-operator-handoff.md)
+      remains unapplied; this implementation does not approve distribution.
+- [ ] Obtain the owner's decision and authorized administrator execution for
+      [#146](https://github.com/bynanci/open-film/issues/146). Native signing,
+      target lifecycle and performance observations remain separate open gates.
+
 ## Editing and story workflow
 
 ### Tobi-ishi workspace and control panels (merged in PR #119)
