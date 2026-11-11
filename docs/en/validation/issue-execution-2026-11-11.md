@@ -7,29 +7,28 @@ for historical [PR #129](https://github.com/bynanci/open-film/pull/129) remains 
 
 ## Source and delivery identities
 
-| Scope                                  | Exact identity / record                                                                                                                                                             |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Original implementation baseline       | `08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`                                                                                                                                          |
-| Issue plan                             | [PR #147](https://github.com/bynanci/open-film/pull/147), merged as `dd3af6ce38d7577cc4aec5e184b76fc14f459d6d`                                                                      |
-| CI/source guards and measured profiler | [PR #148](https://github.com/bynanci/open-film/pull/148), tested source `d008d01abfc8cf402fb3ed0d8fcbdf7acec6a9c3`, merged as `338b3c4a5fbee3627bc0b75df3e77277230d04bc`            |
-| Read-only SDK capsule                  | [PR #149](https://github.com/bynanci/open-film/pull/149), tested delivery `4d68d526cc0139bb8b857334d0d70c33959c037b`, merged as `c8feabcd58ff34b378097821ff92bbeb3517b941`          |
-| Native receipt/runtime intake          | [PR #150](https://github.com/bynanci/open-film/pull/150), reviewed delivery `5dacfed92cf1b350486162b736f2d559b67355ad`                                                              |
-| Final integrated delivery              | [PR #151](https://github.com/bynanci/open-film/pull/151); its current head, checks and merge status are the live final-head record                                                  |
-| Local whole-code verification          | Private integration commit `b8bb14ba64eb66d4719dc97fc77216cbebd6e365`; production and unit/media source blobs were reconciled; browser-only follow-ups are tracked separately below |
+| Scope                                  | Exact identity / record                                                                                                                                                    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Original implementation baseline       | `08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`                                                                                                                                 |
+| Issue plan                             | [PR #147](https://github.com/bynanci/open-film/pull/147), merged as `dd3af6ce38d7577cc4aec5e184b76fc14f459d6d`                                                             |
+| CI/source guards and measured profiler | [PR #148](https://github.com/bynanci/open-film/pull/148), tested source `d008d01abfc8cf402fb3ed0d8fcbdf7acec6a9c3`, merged as `338b3c4a5fbee3627bc0b75df3e77277230d04bc`   |
+| Read-only SDK capsule                  | [PR #149](https://github.com/bynanci/open-film/pull/149), tested delivery `4d68d526cc0139bb8b857334d0d70c33959c037b`, merged as `c8feabcd58ff34b378097821ff92bbeb3517b941` |
+| Native receipt/runtime intake          | [PR #150](https://github.com/bynanci/open-film/pull/150), tested delivery `336a16f513b7f737833587b068a846a7e5e0ac24`, merged as `14fa800748f6c2026ac06f82354369602b1c7d26` |
+| Final integrated delivery              | [PR #151](https://github.com/bynanci/open-film/pull/151); its current head, checks and merge status are the live final-head record                                         |
+| Local whole-code verification          | PR #151 source `247d4faf8d7be673b6b809d1e3146e3659d0a505`; later source changes require their own final-head gates                                                         |
 
 PR #151 includes the reviewed SDK/native branches so its checks can exercise the
-whole code set. #149 is merged; merge #150 first; their shared changes then leave its
-diff. A passing local integration run is not a passing future PR-head CI run.
+whole code set. #149 and #150 are merged; their shared changes leave its diff. A passing local integration run is not a passing future PR-head CI run.
 The document uses the live PR record rather than embedding its own commit hash.
 
 ## Observed local verification
 
-The final private integration commit passed `pnpm test`: **465 files / 6,114
-tests**, exit 0, **613.60 s**. The earlier pre-fix integration passed 6,109 tests;
-that historical result is not substituted for the final run. The 1,548 contract
+Source `247d4faf8d7be673b6b809d1e3146e3659d0a505` passed `pnpm test`: **467 files /
+6,151 tests**, exit 0, **601.36 s**. Earlier private integrations passed 6,109
+and 6,114 tests; those historical results are not substituted for this run. The 1,548 contract
 tests below are a subset, not an additional full-suite total.
 
-All 20 commands below exited 0 against that same final integration commit:
+All 20 commands below exited 0 against that same `247d4fa` source:
 
 | #   | Command                                                                                     | Evidence scope                                    |
 | --- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
@@ -59,7 +58,7 @@ extraction and archive cases**. These fixtures do not certify real target bytes.
 
 Additional final-integration checks passed: `pnpm build`, built CLI smoke,
 `pnpm test:interchange` with **18 official OpenTimelineIO checks**, **11 actual
-pinned-SDK application/CLI checks**, and the real documentation build (**32.199 s**).
+pinned-SDK application/CLI checks**, and the real documentation build (**13.886 s**).
 The SDK command uses `scripts/storytelling-compat.vitest.ts` and requires the
 explicit SDK checkout/binary digest documented in the [capsule record](storytelling-compatibility-138.md).
 Resolve/FilmCraft import, hardware quality and production SDK execution were not
@@ -94,7 +93,7 @@ checks are tracked in [PR #150](https://github.com/bynanci/open-film/pull/150) a
 [PR #151](https://github.com/bynanci/open-film/pull/151). Original assertions,
 timeouts, retry counts and source checks remain intact. These findings do not
 retroactively turn the earlier failed Verify into a pass or replace final-head
-six-shard verification. The 6,114-test run above does not include Playwright.
+six-shard verification. The 6,151-test run above does not include Playwright.
 
 A later `04cc127` Verify exposed a separate cancellation-test contract mismatch:
 the real import correctly retained a completed photo and showed Organize memories,
@@ -119,7 +118,7 @@ The fixture sends one close request, rejects non-200 responses without a busy
 fallback or retry, disposes its context, and attempts every ordered stop callback
 while preserving failures. Six new real HTTP/lifecycle regressions plus three
 existing transport cases passed; all three collect locales passed with unchanged
-test bodies. These are additional tests beyond the 6,114-test snapshot above.
+test bodies. These six new tests are included in the 6,151-test snapshot above.
 
 ## Native inline review closure
 
@@ -145,15 +144,20 @@ are structural tests and provide no real OS signature or distribution approval.
 
 ## Actual source-security producer evidence
 
-The actual [Dependency Security run 43006588414](https://github.com/bynanci/open-film/actions/runs/43006588414)
+The actual [Dependency Security run 43023766217](https://github.com/bynanci/open-film/actions/runs/43023766217)
 passed native source admission at exact source
-`5dacfed92cf1b350486162b736f2d559b67355ad`. Its authenticated
-[artifact 13848199616](https://github.com/bynanci/open-film/actions/runs/43006588414/artifacts/13848199616)
-is 3,664,715 bytes; GitHub and independently downloaded ZIP SHA-256 agree:
-`8129eb3b3a64781ab5ac7f1ad040dfa0ba5a2c9b1475c518454d0c779adcbb73`.
-The ordinary, visible `advisory-db.bundle` is **919,701 bytes**. An independent
-offline bare clone recovered database commit
-`901cf64f2d04dc7f9f26bbbd50a3010378de034d`, matching the retained audit.
+`247d4faf8d7be673b6b809d1e3146e3659d0a505`. The authenticated
+[artifact 13857560229](https://github.com/bynanci/open-film/actions/runs/43023766217/artifacts/13857560229)
+was independently downloaded and pinned as ZIP SHA-256
+`949eb3808995ab4d2130340edaf0fc33b6c8387853dfb16fbdcc97142eccaab7`.
+The ordinary, visible `advisory-db.bundle` is **922,889 bytes**, SHA-256
+`2fdf3703ccb60814cb807fd1a56d651d268ea1031c3a5690414301e3f8f02ae5`.
+An independent offline bare clone recovered database commit
+`fd6f39814c4d3c359fdbe223d0280dec4933f78f`, matching the retained audit.
+Compared with the retained earlier `901cf64` snapshot, five hickory-proto advisories
+were added (1,453 to 1,458 records); that package is absent from the captured
+metadata and all three lockfiles. Scanner 0.22.2 and candidate warnings were
+unchanged. This is an observed database update, not a blanket risk clearance.
 The artifact needs no hidden `.git` entries. Actual source/closure/lock/audit byte
 pins and admission evaluation were independently reconciled. The actual patched
 audit has no vulnerability records; the upstream control findings and retained
