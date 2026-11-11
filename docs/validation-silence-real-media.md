@@ -186,3 +186,40 @@ Human listening, real recorded A/V synchronization, more than two captured
 channels, live browser cancellation/project-switch behavior and both native
 workstation/device acceptance gates remain open. `/dev/snd` was absent on the
 Linux host; no output routing or playback sample rate was observed.
+
+## Corrected objective contract rerun
+
+Candidate `6fd7480ea5d8a6a997d80df88033bd281346d935` reran both complete
+recorded-media flows with this worktree's own frozen dependencies. The runner
+exited **0** with status `objective-contract-pass; manual-review-required`,
+`qualityAcceptance: manual-review-required`, and `fullyAcceptedQuality: false`.
+[Corrected candidate-bound evidence](https://github.com/bynanci/open-film/blob/main/docs/evidence/silence-real-media/2026-11-11-frame-contract.json)
+retains the historical record reference and the full-PCM-versus-MP4 difference.
+
+| Duration check at 48 kHz                    |             Natural |                                     Mixed reuse/speed |
+| ------------------------------------------- | ------------------: | ----------------------------------------------------: |
+| Full accepted Composition / PCM duration    | 18.840 s / 18.840 s |                                   15.264 s / 15.264 s |
+| Full accepted PCM frames                    |             904,320 |                                               732,672 |
+| Core frame-aligned export duration / frames |  18.840 s / 904,320 |                                    15.240 s / 731,520 |
+| Actual AAC stream duration                  |            18.840 s |                                              15.240 s |
+| AAC error against existing export target    |           0 samples |                                             0 samples |
+| Lost full-PCM tail                          |    0 samples / 0 ms |                             **1,152 samples / 24 ms** |
+| Typed tail warning                          |                none | `qa.frameAlignedAudioTail` / `manual-review-required` |
+
+Before/after independent WAV maximum PCM error remains zero for both cases.
+The source intervals, detector settings, selected-candidate policy and existing
+renderer behavior did not change. The corrected guard has 11 focused tests:
+aligned cases have no tail warning; 25/30 fps and rational 30000/1001 and
+24000/1001 fps cases retain expected tail warnings; additional AAC shortening
+and shortened full PCM still fail. Against the initial QA extraction, six tests
+failed and five passed. After correction all 11 passed. Removing the AAC error
+guard caused three tests to fail; restoring it returned all 11 to passing.
+The final focused selection passed **6 files / 58 tests**, including these
+guards and the existing core/render timing and Silence integration suites.
+Full typecheck, focused ESLint, formatting, documentation mirrors and license
+governance passed. No full-suite, CI, browser or native-device result is inferred.
+
+This is a correction of the QA reference duration, not permission to discard
+the known tail or claim perceptual acceptance. Human review must include the
+full-PCM tail versus the actual MP4 termination, along with the seam, speech,
+breath, music and native-device observations above. Issue #144 remains open.
