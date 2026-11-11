@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Loaded only by vitest.media-profile.config.ts. No production authority changes.
 import crypto from "node:crypto";
+import { appendFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { beforeEach, afterEach, expect } from "vitest";
 import { PipelineService } from "../../packages/application/src/pipeline-orchestrator.ts";
@@ -31,9 +32,25 @@ crypto.createHash = function (...args) {
   for (const method of ["update", "digest"]) {
     const original = hash[method];
     hash[method] = function (...values) {
-      return recorder.measureSync(`hash.${args[0]}.${method}`, () =>
+      const result = recorder.measureSync(`hash.${args[0]}.${method}`, () =>
         original.apply(this, values),
       );
+      if (method === "digest" && process.env.OPENFILM_PROFILE_STAGES) {
+        appendFileSync(
+          `${process.env.OPENFILM_PROFILE_STAGES}.hashes.jsonl`,
+          JSON.stringify({
+            test: recorder.context.test,
+            algorithm: args[0],
+            digestHex:
+              typeof result === "string" && values[0] === "hex"
+                ? result
+                : Buffer.isBuffer(result)
+                  ? result.toString("hex")
+                  : null,
+          }) + "\n",
+        );
+      }
+      return result;
     };
   }
   return hash;
