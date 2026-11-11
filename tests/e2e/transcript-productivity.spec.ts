@@ -4125,11 +4125,11 @@ test("opaque lone-surrogate and very long IDs use exact JSON lookup for review p
     reopenFailure = { error };
   } finally {
     releaseReopenedRead();
-    const cleanup = await Promise.allSettled([
+    const readCleanup = await Promise.allSettled([reopenedRead]);
+    const routeCleanup = await Promise.allSettled([
       page.unroute(reopenedReadPattern, holdReopenedRead),
-      reopenedRead,
     ]);
-    for (const result of cleanup)
+    for (const result of [...readCleanup, ...routeCleanup])
       if (result.status === "rejected" && !reopenFailure)
         reopenFailure = { error: result.reason };
   }
