@@ -13,6 +13,7 @@ import subprocess
 import sys
 import datetime
 import warnings
+from contextlib import redirect_stderr
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -190,8 +191,9 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(len(m.verify_policy(self.repo, root)), 6)
         for name in m.POLICY_FILES:
             path = root/name; data=path.read_bytes(); path.write_bytes(data+b'\n# different policy\n')
-            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'policy'):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'policy') as failure:
                 m.verify_policy(self.repo, root)
+            self.assertEqual(m.failure_record('policy', failure.exception, {})['code'], 'policy_identity')
             path.write_bytes(data)
         path = root/m.POLICY_FILES[0]; path.write_bytes(path.read_bytes()+b'\n')
         git(root, 'add', str(path)); git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Changed policy')
@@ -212,8 +214,9 @@ class ReplayTests(unittest.TestCase):
         p=root/'evidence/audit/audit.json'; saved=p.read_bytes()
         for hours in (-7, 1):
             audit=json.loads(saved); audit['dbFetchedAt']=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=hours)).isoformat(); p.write_text(json.dumps(audit))
-            with self.subTest(hours=hours), self.assertRaisesRegex(ValueError, 'replay'):
+            with self.subTest(hours=hours), self.assertRaisesRegex(ValueError, 'replay') as failure:
                 value, original, _=m.build_payload(root/'evidence'); m.replay_snapshot(self.repo, root, value, original)
+            self.assertEqual(m.failure_record('replay', failure.exception, {})['code'], 'audit_freshness')
         p.write_bytes(saved)
         (root/'dirty').write_text('not candidate')
         with self.assertRaisesRegex(ValueError, 'replay'): m.replay_snapshot(self.repo, root, payload, admission)
@@ -300,5 +303,86 @@ class WorkflowTests(unittest.TestCase):
                      SOURCE_RUN_ID='1', SOURCE_WORKFLOW_ID='2', SOURCE_ARTIFACT_ID='3', SOURCE_ARCHIVE_SHA256='b'*64)
             env[key]=value
             with patch.dict(os.environ, env), self.assertRaises(ValueError): m.expected_inputs()
+
+class DiagnosticTests(unittest.TestCase):
+    setUp = TransportTests.setUp
+    # Reuse transport data without exposing any real credentials.
+    SECRET = 'TOKEN-SENTINEL-NEVER-LOG'
+    URL = 'https://productionresultssa1.blob.core.windows.net/private?sig=SIGNED-SENTINEL'
+
+    def main_failure(self, fault):
+        runner=self.root/'runner'; runner.mkdir()
+        tools=runner/'source-replay-tools'; (tools/'scripts/native').mkdir(parents=True)
+        workspace=self.root/'workspace'; workspace.mkdir()
+        env=dict(RUNNER_TEMP=str(runner), GITHUB_WORKSPACE=str(workspace), GITHUB_SHA='c'*40,
+                 GITHUB_REPOSITORY='bynanci/open-film', GITHUB_REPOSITORY_ID='17', CANDIDATE_SHA='a'*40,
+                 SOURCE_RUN_ID='100', SOURCE_WORKFLOW_ID='200', SOURCE_ARTIFACT_ID='300',
+                 SOURCE_ARCHIVE_SHA256='b'*64, GH_TOKEN=self.SECRET)
+        run,artifact,workflow=map(copy.deepcopy,(self.run,self.artifact,self.workflow))
+        if fault=='wrong-artifact': artifact['name']=self.URL+self.SECRET
+        if fault=='expired': artifact['expired']=True
+        if fault=='invalid-input': env['SOURCE_RUN_ID']=self.SECRET+self.URL
+        if fault=='workspace-occupied': (workspace/'keep').write_text('owned existing checkout')
+        if fault=='output-occupied':
+            (runner/'source-replay').mkdir(); (runner/'source-replay'/'keep').write_text(self.SECRET)
+        if fault=='wrong-tool': env['GITHUB_SHA']='d'*40
+        stderr=io.StringIO()
+        with patch.dict(os.environ, env), patch.object(sys,'argv',['replay-security-artifact.py']), \
+             patch.object(m,'__file__',str(tools/'scripts/native/replay-security-artifact.py')), \
+             patch.object(m,'ORIGINAL_ROOT',workspace), patch.object(m,'git',return_value=b'c'*40+b'\n'), \
+             patch.object(m,'fetch',side_effect=[json.dumps(x).encode() for x in (run,artifact,workflow)]) as transport, \
+             redirect_stderr(stderr), self.assertRaises(Exception):
+            m.main()
+        public=stderr.getvalue()
+        failure=runner/'source-replay/failure.json'
+        if failure.exists():
+            saved=failure.read_text(); public+=saved; diagnostic=json.loads(saved)
+        else: diagnostic=json.loads(stderr.getvalue())
+        self.assertNotIn(self.SECRET, public); self.assertNotIn(self.URL, public)
+        self.assertLess(len(public), 8192)
+        self.assertFalse(diagnostic['distributionApproved'])
+        self.assertEqual(diagnostic['status'],'failed')
+        self.assertEqual(diagnostic['identities']['candidateSha'],'a'*40)
+        if fault in ('invalid-input','workspace-occupied','output-occupied','wrong-tool'):
+            transport.assert_not_called()
+        self.assertFalse((runner/'source-replay/result.json').exists())
+        if fault=='output-occupied':
+            self.assertFalse(failure.exists())
+            self.assertEqual((runner/'source-replay/keep').read_text(),self.SECRET)
+        if fault=='workspace-occupied':
+            self.assertEqual((workspace/'keep').read_text(),'owned existing checkout')
+        return diagnostic
+
+    def test_main_retains_safe_distinct_artifact_identity_and_expiry_failures(self):
+        for fault, code in [('wrong-artifact','artifact_name'),('expired','artifact_expired')]:
+            with self.subTest(fault=fault):
+                d=self.main_failure(fault)
+                self.assertEqual((d['stage'],d['code']),('source-identity',code))
+                self.assertEqual(d['identities']['sourceArtifactId'],300)
+                self.assertEqual(d['identities']['observedArtifactId'],300)
+                shutil.rmtree(self.root/'runner'); shutil.rmtree(self.root/'workspace')
+
+    def test_preflight_failures_are_reported_without_overwriting_any_output(self):
+        for fault, stage, code in [('invalid-input','inputs','input_numeric'),('workspace-occupied','workspace','root_occupied'),('output-occupied','output','root_occupied'),('wrong-tool','tools','tool_identity')]:
+            with self.subTest(fault=fault):
+                d=self.main_failure(fault)
+                self.assertEqual((d['stage'],d['code']),(stage,code))
+                if fault=='invalid-input': self.assertNotIn('sourceRunId',d['identities'])
+                shutil.rmtree(self.root/'runner'); shutil.rmtree(self.root/'workspace')
+
+    def test_untrusted_external_exceptions_and_unknown_stages_never_become_public_text(self):
+        for stage in ('api','download','checkout','policy','replay',self.URL):
+            for error in (ValueError(self.SECRET+self.URL), OSError(self.SECRET), m.urllib.error.URLError(self.URL), subprocess.CalledProcessError(1,[self.SECRET],stderr=self.URL)):
+                d=m.failure_record(stage, error, {})
+                encoded=json.dumps(d)
+                self.assertNotIn(self.SECRET,encoded);self.assertNotIn(self.URL,encoded)
+                self.assertIn(d['code'],m.SAFE_FAILURES)
+                self.assertLess(len(encoded),4096)
+        with self.assertRaises(ValueError) as failure:
+            m.require(False,'Unsafe download destination')
+        self.assertEqual(m.failure_record('download',failure.exception,{})['code'],'download_destination')
+        with self.assertRaises(ValueError) as failure:
+            m.require(False,'Source replay failed')
+        self.assertEqual(m.failure_record('replay',failure.exception,{})['code'],'policy_rejected')
 
 if __name__ == '__main__': unittest.main()

@@ -26,9 +26,114 @@ TOTAL_BYTES = 32 * 1024**2
 PAYLOAD_BYTES = 48 * 1024**2
 
 
+# Only this closed table may supply public diagnostic text. Never stringify
+# arbitrary exceptions, API fields, source paths, signed URLs or stderr here.
+SAFE_FAILURES = {
+    'guard_rejected': 'A source replay guard rejected its input',
+    'input_numeric': 'Malformed numeric identity',
+    'input_sha': 'Malformed SHA identity',
+    'input_repository': 'Unexpected repository for original workspace allowlist',
+    'input_arguments': 'Unexpected replay arguments',
+    'source_identity': 'Source run/workflow/repository identity mismatch',
+    'source_workflow': 'Source native workflow reference mismatch',
+    'artifact_identity': 'Source artifact identity/digest/size mismatch',
+    'artifact_name': 'Source artifact name mismatch',
+    'artifact_expired': 'Source artifact expired or expiry state missing',
+    'download_destination': 'Unsafe download destination',
+    'download_api_redirect': 'Redirect back to API refused',
+    'download_redirect_limit': 'Download redirect limit',
+    'download_response': 'Authenticated download failed',
+    'download_timeout': 'Download time limit',
+    'download_bytes': 'Download byte limit',
+    'download_transport': 'Download transport failed',
+    'json_duplicate': 'Duplicate JSON key',
+    'input_symlink': 'Symlink input/parent',
+    'input_file': 'Input type/link/byte limit',
+    'input_race': 'Input changed during read',
+    'snapshot_path': 'Unsafe snapshot path',
+    'archive_digest': 'Archive size/digest mismatch',
+    'extraction_occupied': 'Occupied extraction destination',
+    'archive_limit': 'ZIP entry/expanded byte limit',
+    'archive_alias': 'ZIP duplicate/alias',
+    'archive_type': 'ZIP link/type/encryption forbidden',
+    'archive_metadata': 'Malformed ZIP metadata',
+    'archive_link_metadata': 'Unsupported ZIP link metadata',
+    'archive_collision': 'ZIP file-parent collision',
+    'destination_parent': 'Unsafe destination parent',
+    'archive_member_limit': 'ZIP member byte limit',
+    'archive_truncated': 'ZIP truncated member',
+    'raw_duplicate': 'Duplicate raw evidence role',
+    'raw_digest': 'Raw scanner digest mismatch',
+    'raw_limit': 'Raw evidence total byte limit',
+    'raw_reports': 'Expected three raw audit reports',
+    'raw_leaf': 'Scanner output must be a direct leaf',
+    'payload_limit': 'Payload byte limit',
+    'root_canonical': 'Noncanonical candidate path',
+    'root_parent': 'Unsafe candidate parent',
+    'root_occupied': 'Occupied candidate path',
+    'candidate_identity': 'Candidate checkout identity/cleanliness mismatch',
+    'candidate_shallow': 'Shallow candidate history',
+    'historical_objects': 'Missing/mismatched historical source objects',
+    'policy_identity': 'Changed tool/candidate policy identity',
+    'replay_limit': 'Source replay output limit',
+    'replay_timeout': 'Source replay timed out',
+    'policy_rejected': 'Source replay failed',
+    'audit_freshness': 'Source replay failed: stale/future advisory fetch timestamp',
+    'admission_differs': 'Replayed entire admission differs',
+    'admission_candidate': 'Retained admission candidate mismatch',
+    'original_paths': 'Original source paths do not match allowlisted fresh workspace',
+    'tool_path': 'Unexpected tool checkout',
+    'tool_identity': 'Dispatcher tool identity mismatch',
+    'workspace_path': 'Unexpected original workspace',
+    'output_failed': 'Cannot safely create or retain replay output; inspect runner workspace setup',
+    'inputs_failed': 'Required replay inputs are missing or malformed',
+    'api_failed': 'Cannot read authenticated source identity; inspect API access and identifiers',
+    'snapshot_failed': 'Cannot read the bounded original evidence snapshot',
+    'checkout_failed': 'Cannot create the fresh full candidate checkout or verify its objects',
+    'policy_failed': 'Cannot read or verify the six identical policy files',
+    'unexpected_failed': 'Source replay failed before completing verification',
+}
+SAFE_MESSAGES = {message: code for code, message in SAFE_FAILURES.items()}
+STAGE_FAILURES = dict(output='output_failed', inputs='inputs_failed', tools='policy_failed',
+                      workspace='output_failed', api='api_failed', **{'source-identity':'source_identity'},
+                      download='download_transport', extraction='snapshot_failed', paths='original_paths',
+                      payload='snapshot_failed', checkout='checkout_failed', policy='policy_failed',
+                      replay='policy_rejected', retention='output_failed', unknown='unexpected_failed')
+
+
+class ReplayFailure(ValueError):
+    def __init__(self, code):
+        self.code = code if code in SAFE_FAILURES else 'guard_rejected'
+        super().__init__(SAFE_FAILURES[self.code])
+
+
 def require(condition, message):
     if not condition:
-        raise ValueError(message)
+        raise ReplayFailure(SAFE_MESSAGES.get(message, 'guard_rejected'))
+
+
+def safe_identities(values):
+    result = {}
+    for key in ('repositoryId', 'sourceRunId', 'sourceWorkflowId', 'sourceArtifactId',
+                'observedRunId', 'observedWorkflowId', 'observedArtifactId', 'observedRunAttempt',
+                'observedRepositoryId', 'observedHeadRepositoryId'):
+        value = values.get(key)
+        if type(value) in (str, int) and re.fullmatch(r'[1-9][0-9]{0,19}', str(value)):
+            result[key] = int(value)
+    for key, length in (('candidateSha',40), ('toolSha',40), ('observedHeadSha',40), ('archiveSha256',64)):
+        value = values.get(key)
+        if isinstance(value,str) and re.fullmatch('[a-f0-9]{'+str(length)+'}', value):
+            result[key] = value
+    if values.get('repository') == 'bynanci/open-film':
+        result['repository'] = 'bynanci/open-film'
+    return result
+
+
+def failure_record(stage, error, identities):
+    stage = stage if stage in STAGE_FAILURES else 'unknown'
+    code = error.code if isinstance(error, ReplayFailure) and error.code in SAFE_FAILURES else STAGE_FAILURES[stage]
+    return dict(schemaVersion=1, status='failed', distributionApproved=False, stage=stage,
+                code=code, reason=SAFE_FAILURES[code], identities=safe_identities(identities))
 
 
 def sha(data):
@@ -61,6 +166,8 @@ def verify_transport(run, artifact, workflow, expected):
         require(any(x.get('sha') == expected['candidate_sha'] and
                     x.get('path') == expected['repository'] + '/' + paths[1] + '@' + expected['candidate_sha']
                     for x in run.get('referenced_workflows', [])), 'Source native workflow reference mismatch')
+    require(artifact.get('name') == 'native-security-' + expected['candidate_sha'], 'Source artifact name mismatch')
+    require(artifact.get('expired') is False, 'Source artifact expired or expiry state missing')
     require(artifact.get('id') == expected['source_artifact_id'] and
             artifact.get('name') == 'native-security-' + expected['candidate_sha'] and artifact.get('expired') is False and
             artifact.get('digest') == 'sha256:' + expected['source_archive_sha256'] and
@@ -113,8 +220,8 @@ def fetch(url, token, maximum, output=None):
                         require(size <= maximum, 'Download byte limit')
                         sink.write(chunk)
             except (urllib.error.URLError, OSError, TimeoutError):
-                raise ValueError('Download transport failed') from None
-        raise ValueError('Download redirect limit')
+                raise ReplayFailure('download_transport') from None
+        raise ReplayFailure('download_redirect_limit')
 
 
 def regular(path, maximum):
@@ -273,7 +380,7 @@ def verify_policy(tools, repository):
         data = [regular(root/name, RAW_BYTES) for root in (tools, repository)]
         require(blobs[0] == blobs[1] and data[0] == data[1] and
                 all(git(root, 'show', 'HEAD:'+name) == value for root, value in zip((tools, repository), data)),
-                'Changed tool/candidate policy identity: '+name)
+                'Changed tool/candidate policy identity')
         identities.append(dict(path=name, gitBlob=blobs[0], sha256=sha(data[0])))
     return identities
 
@@ -286,13 +393,18 @@ def replay_snapshot(tools, repository, payload, admission, output=None):
         result = subprocess.run([sys.executable, '-I', '-B', str(tools/'scripts/native/receipt-security.py'), str(repository)],
                                 input=payload, capture_output=True, env=git_environment(), timeout=60, check=False)
     except subprocess.TimeoutExpired:
-        raise ValueError('Source replay timed out') from None
+        raise ReplayFailure('replay_timeout') from None
     require(len(result.stdout) <= PAYLOAD_BYTES and len(result.stderr) <= RAW_BYTES, 'Source replay output limit')
     if output is not None:
         for name, data in (('replay.stdout', result.stdout), ('replay.stderr', result.stderr)):
             with (output/name).open('xb') as target:
                 target.write(data)
-    require(result.returncode == 0, 'Source replay failed: '+result.stderr.decode(errors='replace')[-4000:])
+    if result.returncode != 0:
+        # Classify only the exact terminal diagnostic of the unchanged trusted
+        # policy; preserve raw logs separately, never echo arbitrary stderr.
+        terminal = result.stderr.splitlines()[-1:]
+        code = 'audit_freshness' if terminal == [b'ValueError: native security replay blocked: stale/future advisory fetch timestamp'] else 'policy_rejected'
+        raise ReplayFailure(code)
     value = parse_json(result.stdout)
     require(json.dumps(value, sort_keys=True, separators=(',', ':')) == json.dumps(admission, sort_keys=True, separators=(',', ':')), 'Replayed entire admission differs')
     return value
@@ -332,43 +444,69 @@ def save_json(path, value):
 def main():
     import sys
     os.umask(0o022)
-    expected = expected_inputs()
-    require(len(sys.argv) == 1, 'Unexpected replay arguments')
-    runner = Path(os.environ['RUNNER_TEMP'])
-    tools = Path(__file__).resolve().parents[2]
-    require(tools == runner/'source-replay-tools' and tools == tools.resolve(), 'Unexpected tool checkout')
-    tool_sha = os.environ['GITHUB_SHA']
-    require(re.fullmatch('[a-f0-9]{40}', tool_sha) and git(tools, 'rev-parse', 'HEAD').decode().strip() == tool_sha,
-            'Dispatcher tool identity mismatch')
-    require(Path(os.environ['GITHUB_WORKSPACE']) == ORIGINAL_ROOT, 'Unexpected original workspace')
-    empty_root(ORIGINAL_ROOT)
-    output = runner/'source-replay'
-    empty_root(output)
-    output.mkdir(exist_ok=True)
-    token = os.environ['GH_TOKEN']
-    api = 'https://api.github.com/repos/'+expected['repository']+'/actions/'
-    def read_api(suffix):
-        return parse_json(fetch(api+suffix, token, 2*1024**2))
+    output = None
+    stage = 'output'
+    identities = {key: os.environ.get(env) for key, env in (
+        ('repository','GITHUB_REPOSITORY'), ('repositoryId','GITHUB_REPOSITORY_ID'),
+        ('candidateSha','CANDIDATE_SHA'), ('toolSha','GITHUB_SHA'),
+        ('sourceRunId','SOURCE_RUN_ID'), ('sourceWorkflowId','SOURCE_WORKFLOW_ID'),
+        ('sourceArtifactId','SOURCE_ARTIFACT_ID'), ('archiveSha256','SOURCE_ARCHIVE_SHA256'))}
     try:
+        runner = Path(os.environ['RUNNER_TEMP'])
+        destination = runner/'source-replay'
+        empty_root(destination)
+        destination.mkdir(exist_ok=True)
+        output = destination  # Only this proven empty, owned directory is writable.
+        stage = 'inputs'
+        expected = expected_inputs()
+        require(len(sys.argv) == 1, 'Unexpected replay arguments')
+        stage = 'tools'
+        tools = Path(__file__).resolve().parents[2]
+        require(tools == runner/'source-replay-tools' and tools == tools.resolve(), 'Unexpected tool checkout')
+        tool_sha = os.environ['GITHUB_SHA']
+        require(re.fullmatch('[a-f0-9]{40}', tool_sha) and git(tools, 'rev-parse', 'HEAD').decode().strip() == tool_sha,
+                'Dispatcher tool identity mismatch')
+        stage = 'workspace'
+        require(Path(os.environ['GITHUB_WORKSPACE']) == ORIGINAL_ROOT, 'Unexpected original workspace')
+        empty_root(ORIGINAL_ROOT)
+        stage = 'api'
+        token = os.environ['GH_TOKEN']
+        api = 'https://api.github.com/repos/'+expected['repository']+'/actions/'
+        def read_api(suffix):
+            return parse_json(fetch(api+suffix, token, 2*1024**2))
         run = read_api('runs/'+str(expected['source_run_id']))
+        identities.update(observedRunId=run.get('id'), observedWorkflowId=run.get('workflow_id'),
+                          observedHeadSha=run.get('head_sha'), observedRunAttempt=run.get('run_attempt'))
+        for key, field in (('observedRepositoryId','repository'), ('observedHeadRepositoryId','head_repository')):
+            if isinstance(run.get(field),dict): identities[key] = run[field].get('id')
         artifact = read_api('artifacts/'+str(expected['source_artifact_id']))
+        identities['observedArtifactId'] = artifact.get('id')
         workflow = read_api('workflows/'+str(expected['source_workflow_id']))
+        stage = 'source-identity'
         verify_transport(run, artifact, workflow, expected)
         for name, value in (('run.json', run), ('artifact.json', artifact), ('workflow.json', workflow)):
             save_json(output/name, value)
         archive = output/'artifact.zip'
+        stage = 'download'
         fetch(api+'artifacts/'+str(expected['source_artifact_id'])+'/zip', token, artifact['size_in_bytes'], archive)
+        stage = 'extraction'
         evidence = extract_snapshot(archive, output/'evidence', artifact, expected)
+        stage = 'paths'
         preflight_metadata(evidence, ORIGINAL_ROOT)
+        stage = 'payload'
         payload, admission, pins = build_payload(evidence)
         require(admission.get('candidateSHA') == expected['candidate_sha'], 'Retained admission candidate mismatch')
         with (output/'replay-payload.json').open('xb') as target:
             target.write(payload)
         save_json(output/'raw-pins.json', pins)
+        stage = 'checkout'
         prepare_candidate(ORIGINAL_ROOT, expected['candidate_sha'], 'https://github.com/'+expected['repository']+'.git')
+        stage = 'policy'
         policies = verify_policy(tools, ORIGINAL_ROOT)
         save_json(output/'policy-identities.json', policies)
+        stage = 'replay'
         result = replay_snapshot(tools, ORIGINAL_ROOT, payload, admission, output)
+        stage = 'retention'
         save_json(output/'replayed-admission.json', result)
         save_json(output/'result.json', dict(schemaVersion=1, status='source-replay-verified', distributionApproved=False,
                   toolSha=tool_sha, candidateSha=expected['candidate_sha'], repository=expected['repository'],
@@ -380,18 +518,18 @@ def main():
                   command=['python3', '-I', '-B', str(tools/'scripts/native/receipt-security.py'), str(ORIGINAL_ROOT)]))
         print('Source replay verified; distributionApproved=false')
     except Exception as error:
-        # API/transport exceptions contain no signed URLs or tokens. Never turn
-        # failed transport, stale evidence or policy rejection into a success.
-        save_json(output/'failure.json', dict(schemaVersion=1, status='failed', distributionApproved=False,
-                                             errorType=type(error).__name__))
+        diagnostic = failure_record(stage, error, identities)
+        if output is not None:
+            try:
+                save_json(output/'failure.json', diagnostic)
+            except (OSError, ValueError):
+                pass  # Never overwrite an occupied file to retain diagnostics.
+        print(json.dumps(diagnostic, sort_keys=True), file=sys.stderr)
         raise
 
 
 if __name__ == '__main__':
     try:
         main()
-    except Exception as error:
-        # Retain only sanitized failure detail: urllib errors can carry signed
-        # storage URLs, so network failures are normalized inside fetch().
-        print('Source replay failed: '+type(error).__name__, file=__import__('sys').stderr)
+    except Exception:
         raise SystemExit(1)
