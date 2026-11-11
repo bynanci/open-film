@@ -81,6 +81,7 @@ async function tree(
   await walk(root);
   return result.sort((a, b) => a.path.localeCompare(b.path, "en"));
 }
+export type CargoRecordedPathRole = "workspace" | "registry" | "artifact";
 export async function collectCargoEvidence(options: {
   root: string;
   target: string;
@@ -91,7 +92,13 @@ export async function collectCargoEvidence(options: {
   invocation: string;
   shell: string;
   observationMode?: "executed" | "fixture";
+  /** Internal trusted I/O resolver; raw evidence and package IDs stay unchanged. */
+  resolveRecordedPath?: (path: string, role: CargoRecordedPathRole) => string;
 }): Promise<CargoEvidence> {
+  const recordedPath = (path: string, role: CargoRecordedPathRole) =>
+    options.resolveRecordedPath
+      ? options.resolveRecordedPath(path, role)
+      : path;
   const root = await realpath(options.root),
     targetDirectory = await realpath(options.targetDirectory);
   if (
@@ -161,7 +168,12 @@ export async function collectCargoEvidence(options: {
   )
     throw new Error("Unbounded or duplicate Cargo package identity");
   for (const p of metadata.packages) {
-    const manifest = await realpath(p.manifest_path),
+    const manifest = await realpath(
+        recordedPath(
+          p.manifest_path,
+          p.source === null ? "workspace" : "registry",
+        ),
+      ),
       packageRoot = dirname(manifest),
       sourceTree = await tree(packageRoot, p.source !== null);
     let source: PackageIdentity["source"];
@@ -222,7 +234,8 @@ export async function collectCargoEvidence(options: {
   const compilations: CargoEvidence["compilations"] = [],
     generatedOutputs: CargoEvidence["generatedOutputs"] = [],
     linkedLibraries: NonNullable<CargoEvidence["linkedLibraries"]> = [];
-  const artifact = async (path: string) => {
+  const artifact = async (path: string, recorded = true) => {
+    if (recorded) path = recordedPath(path, "artifact");
     const actual = await realpath(path);
     const info = await lstat(path);
     if (info.isSymbolicLink() || !info.isFile())
@@ -243,7 +256,9 @@ export async function collectCargoEvidence(options: {
     if (message.reason === "compiler-artifact") {
       if (!message.target?.kind?.length || !message.filenames?.length)
         throw new Error("Missing target compiler artifact");
-      const artifacts = await Promise.all(message.filenames.map(artifact));
+      const artifacts = await Promise.all(
+        message.filenames.map((path) => artifact(path)),
+      );
       const role = message.target.kind.includes("proc-macro")
         ? "proc-macro"
         : message.target.kind.includes("custom-build")
@@ -257,17 +272,18 @@ export async function collectCargoEvidence(options: {
     } else {
       let role: "target" | "build" | undefined;
       if (message.out_dir) {
+        const outputDirectory = recordedPath(message.out_dir, "artifact");
         const output = relativePath(
           targetDirectory,
-          await realpath(message.out_dir),
+          await realpath(outputDirectory),
         );
         role = output.startsWith(`${options.target}/release/`)
           ? "target"
           : "build";
-        for (const file of await tree(message.out_dir))
+        for (const file of await tree(outputDirectory))
           generatedOutputs.push({
             packageId,
-            path: `target/${relativePath(targetDirectory, join(message.out_dir, file.path))}`,
+            path: `target/${relativePath(targetDirectory, join(outputDirectory, file.path))}`,
             sha256: file.sha256,
           });
       }
@@ -279,7 +295,7 @@ export async function collectCargoEvidence(options: {
         linkedLibraries.push({ packageId, name, role });
     }
   }
-  const shell = await artifact(options.shell),
+  const shell = await artifact(options.shell, false),
     shellCompilation = compilations.filter(
       (c) =>
         c.role === "target" &&

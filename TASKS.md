@@ -314,10 +314,20 @@ and in the long-range v1.0 readiness record.
       open. Do not enable an M4 writer/authority switch or reimplement completed
       M1-02/M1-03 from bounded proofs. Keep versions independent.
 
-- [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
-      license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Runtime staging and attribution tools are merged, but final candidate receipt
-      binding to post-build native/security/trust evidence is incomplete. Signed
-      installers and physical workstation gates also remain open.
+- [x] **Native evidence tooling:** add bounded runtime intake and target staging,
+      plus versioned pre-trust identity, final-byte snapshots and external candidate
+      binding to reconstructed contribution/security evidence. See the
+      [candidate receipt validation](docs/validation-native-candidate-receipt.md)
+      and [runtime intake evidence](docs/runtime-intake-141.md). Fixture checks
+      remain record-only and do not authorize distribution.
+- [ ] **D7B / M7E:** issues [#140](https://github.com/bynanci/open-film/issues/140)
+      and [#141](https://github.com/bynanci/open-film/issues/141) remain open for
+      actual reviewed runtime inputs, rights/license and security closure, signed
+      final bytes and complete reviewed candidate receipts. Issues
+      [#142](https://github.com/bynanci/open-film/issues/142) and
+      [#143](https://github.com/bynanci/open-film/issues/143) remain open for
+      actual Windows/macOS trust and installation/lifecycle observations; see
+      [native distribution validation](docs/validation-native-installer.md).
 - PR [#120](https://github.com/bynanci/open-film/pull/120) merged on
   2026-11-06; Tokio is now 1.53.3 and RUSTSEC-2026-0386 is no longer reported
   by that audit. PR #128 now repairs the actual GLib source; both registry

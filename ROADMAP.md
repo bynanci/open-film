@@ -198,6 +198,16 @@ installation, first launch, updates, rollback and uninstall on the target
 platforms. Confirm camera files, external drives, audio playback, display
 behavior and supported NLE handoffs on actual workstations.
 
+- **Native evidence tooling:** bounded [runtime intake and target staging](docs/runtime-intake-141.md)
+  and [staged candidate receipt binding](docs/validation-native-candidate-receipt.md)
+  are implemented. Issues [#140](https://github.com/bynanci/open-film/issues/140),
+  [#141](https://github.com/bynanci/open-film/issues/141),
+  [#142](https://github.com/bynanci/open-film/issues/142) and
+  [#143](https://github.com/bynanci/open-film/issues/143) remain open for actual
+  reviewed runtimes, rights/security closure, signed installers and target OS
+  trust/lifecycle evidence. Synthetic checks and source intake hashes do not
+  approve redistribution or replace those observations.
+
 The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding

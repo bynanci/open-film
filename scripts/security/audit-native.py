@@ -68,6 +68,25 @@ def capture_current_registry_control(control,output,manifest_text,original_lock,
     return current,current_lock
 
 
+def verify_advisory_bundle(bundle,expected_commit):
+    """Verify offline replay from the ordinary artifact file, without its .git."""
+    with tempfile.TemporaryDirectory(prefix='openfilm-advisory-bundle-') as private:
+        database=Path(private)/'database.git'
+        subprocess.run(['git','-c','core.hooksPath=/dev/null','clone','--bare','--',str(Path(bundle).resolve()),str(database)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+        actual=subprocess.check_output(['git','rev-parse','HEAD'],cwd=database,text=True,timeout=30).strip()
+        require(actual==expected_commit,'database bundle commit differs')
+
+
+def retain_advisory_bundle(database,bundle,expected_commit):
+    """Retain the already fetched shallow database; never fetch more history."""
+    database=Path(database);bundle=Path(bundle).absolute()
+    require(not bundle.exists() and not bundle.is_symlink(),'database bundle destination already exists')
+    actual=subprocess.check_output(['git','rev-parse','HEAD'],cwd=database,text=True,timeout=30).strip()
+    require(actual==expected_commit,'database changed before bundling')
+    subprocess.run(['git','bundle','create',str(bundle),'HEAD'],cwd=database,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+    verify_advisory_bundle(bundle,expected_commit)
+
+
 def capture_audits(repository,output):
     repository=Path(repository).resolve();output=Path(output).resolve();output.mkdir(parents=True,exist_ok=True)
     record=dict(schemaVersion=1,candidateSHA=closure.candidate(repository),verified=False,dbFresh=False,reports={},errors=[],currentRegistryGraphEquivalent=False)
@@ -126,6 +145,7 @@ def capture_audits(repository,output):
         require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=db,text=True).strip()==db_commit,'database changed during scans')
         require(source.verify_source(repository)==before,'source changed during scans')
         require((repository/closure.APP/'Cargo.lock').read_bytes()==lock,'lock changed during scans')
+        retain_advisory_bundle(db,output/'advisory-db.bundle',db_commit)
         record['verified']=True
     except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as exc:record['errors'].append(str(exc))
     (output/'audit.json').write_bytes(source.canonical(record));return record

@@ -348,10 +348,53 @@ test("cancels a real import and keeps the project available", async ({
       previousJobs.filter((job) => job.type === "import").map((job) => job.id),
     );
     await page.getByRole("button", { name: "Add your first media" }).click();
+    const importStarted = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/import",
+    );
     await chooseImportFolder(page, fixture.media);
+    const importResponse = await importStarted;
+    expect(importResponse.status()).toBe(202);
+    const { jobId } = (await importResponse.json()) as { jobId: string };
+    expect(previousImportIds.has(jobId)).toBe(false);
+    let importedBeforeCancel: MediaAsset[] = [];
+    await expect
+      .poll(async () => {
+        const [response, activeJobsResponse] = await Promise.all([
+          request.get("http://127.0.0.1:4310/api/assets?limit=200"),
+          request.get("http://127.0.0.1:4310/api/jobs"),
+        ]);
+        expect(response.ok()).toBe(true);
+        expect(activeJobsResponse.ok()).toBe(true);
+        const catalog = (await response.json()) as {
+          assets: MediaAsset[];
+        };
+        const activeJobs = (await activeJobsResponse.json()) as {
+          jobs: { id: string; status: string }[];
+        };
+        importedBeforeCancel = catalog.assets;
+        return (
+          importedBeforeCancel.length > 0 &&
+          activeJobs.jobs.some(
+            (job) =>
+              job.id === jobId &&
+              (job.status === "queued" || job.status === "running"),
+          )
+        );
+      })
+      .toBe(true);
+    const cancelAcknowledged = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === `/api/jobs/${jobId}/cancel`,
+    );
     await page
       .getByRole("button", { name: "Cancel import", exact: true })
       .click();
+    const cancellation = await cancelAcknowledged;
+    expect(cancellation.status()).toBe(200);
+    expect(await cancellation.json()).toEqual({ ok: true });
     await expect(
       page.getByRole("heading", { name: "Import stopped", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
@@ -360,25 +403,42 @@ test("cancels a real import and keeps the project available", async ({
     const { jobs } = (await jobsResponse.json()) as {
       jobs: { id: string; type: string; status: string }[];
     };
-    expect(
-      jobs.some(
-        (job) =>
-          job.type === "import" &&
-          job.status === "cancelled" &&
-          !previousImportIds.has(job.id),
-      ),
-    ).toBe(true);
+    expect(jobs.find((job) => job.id === jobId)).toMatchObject({
+      id: jobId,
+      type: "import",
+      status: "cancelled",
+    });
     const project = await request.get("http://127.0.0.1:4310/api/project");
     expect(project.ok()).toBe(true);
     expect((await project.json()).project.title).toBe("An unfinished import");
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
-    const addMoreMedia = page.getByRole("button", {
-      name: "Add more media",
+    const retainedResponse = await request.get(
+      "http://127.0.0.1:4310/api/assets?limit=200",
+    );
+    expect(retainedResponse.ok()).toBe(true);
+    const retained = (await retainedResponse.json()) as {
+      assets: MediaAsset[];
+    };
+    expect(retained.assets.map((asset) => asset.id)).toEqual(
+      expect.arrayContaining(importedBeforeCancel.map((asset) => asset.id)),
+    );
+    for (const asset of importedBeforeCancel)
+      await expect(
+        page.getByRole("button", {
+          name: `Inspect ${asset.name}`,
+          exact: true,
+        }),
+      ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Organize memories", exact: true }),
+    ).toBeVisible();
+    const addMedia = page.getByRole("button", {
+      name: "Add media",
       exact: true,
     });
-    await expect(addMoreMedia).toBeVisible();
-    await expect(addMoreMedia).toBeEnabled();
-    await addMoreMedia.click();
+    await expect(addMedia).toBeVisible();
+    await expect(addMedia).toBeEnabled();
+    await addMedia.click();
     await expect(
       page.getByRole("region", { name: "Import media" }),
     ).toBeVisible();

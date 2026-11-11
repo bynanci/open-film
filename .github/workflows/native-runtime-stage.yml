@@ -1,0 +1,96 @@
+# Modified by OpenFilm contributors on 2026-11-11. See LICENSE and NOTICE.
+name: Native runtime review candidate
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        options: [windows-2022, macos-14]
+        required: true
+      source_run_id:
+        description: Successful same-repository, same-commit run holding reviewed inputs
+        required: true
+      source_workflow_id:
+        description: Independently reviewed source workflow numeric ID
+        required: true
+      source_artifact_id:
+        description: Reviewed inputs artifact numeric ID
+        required: true
+      input_archive_sha256:
+        description: Independently reviewed inputs.tar SHA-256
+        required: true
+      input_json_sha256:
+        description: Independently reviewed runtime-inputs.local.json SHA-256
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  stage:
+    runs-on: ${{ inputs.platform }}
+    timeout-minutes: 30
+    env:
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_WORKFLOW_ID: ${{ inputs.source_workflow_id }}
+      SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+      INPUT_ARCHIVE_SHA256: ${{ inputs.input_archive_sha256 }}
+      INPUT_JSON_SHA256: ${{ inputs.input_json_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - name: Identify actual target
+        id: target
+        shell: bash
+        run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT, "name=" + process.platform + "-" + process.arch + "\n")'
+      - name: Read source identity from authenticated repository API
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ && "$SOURCE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ && "$SOURCE_WORKFLOW_ID" =~ ^[1-9][0-9]*$ ]]
+          mkdir transport
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > transport/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID" > transport/artifact.json
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.source_run_id }}
+          artifact-ids: ${{ inputs.source_artifact_id }}
+          github-token: ${{ github.token }}
+          path: transport/download
+          merge-multiple: true
+      - name: Authenticate pins and extract reviewed inputs without execution
+        shell: bash
+        env:
+          SOURCE_ARTIFACT_NAME: reviewed-runtime-inputs-${{ steps.target.outputs.name }}
+        run: |
+          python scripts/native/test-extract-runtime.py
+          python scripts/native/test-prepare-runtime-inputs.py
+          python scripts/native/prepare-runtime-inputs.py transport/download/inputs.tar reviewed-inputs transport/run.json transport/artifact.json
+      - run: pnpm install --frozen-lockfile
+      - name: Inspect input pins and native headers without execution
+        shell: bash
+        run: |
+          mkdir runtime-review
+          pnpm exec tsx scripts/native/inspect-runtime-inputs.ts reviewed-inputs/runtime-inputs.local.json > runtime-review/intake.json
+      - run: pnpm build
+      - name: Stage with existing runtime attribution and linkage gates
+        shell: bash
+        run: pnpm runtime:stage reviewed-inputs/runtime-inputs.local.json staged-runtime
+      - name: Refuse test-only output and retain the generated manifest digest for review
+        shell: bash
+        run: |
+          pnpm exec tsx -e 'import {verifyRuntimeBundle, assertDistributableRuntime, runtimeHash} from "./apps/server/src/runtime-manifest.ts"; import {writeFile} from "node:fs/promises"; (async () => { const m = await verifyRuntimeBundle("staged-runtime"); assertDistributableRuntime(m); await writeFile("runtime-review/runtime-manifest.sha256", await runtimeHash("staged-runtime/runtime-manifest.json") + "  runtime-manifest.json\n"); })();'
+          tar -cf runtime-review/runtime.tar -C staged-runtime .
+          echo 'Runtime staged for independent manifest review; owned launch/close and installer admission remain separate.' >> "$GITHUB_STEP_SUMMARY"
+          cat runtime-review/runtime-manifest.sha256 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-review-${{ steps.target.outputs.name }}-${{ github.sha }}
+          path: runtime-review/
+          if-no-files-found: error
