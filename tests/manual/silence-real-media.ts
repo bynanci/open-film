@@ -398,8 +398,11 @@ async function run() {
             sampleRate: 48000,
             timelineStartSample: 4800,
             sourceInSample: Math.round(clip.sourceIn! * 48000),
-            // Keep the independent range valid before testing the edit-policy boundary.
-            sourceOutSample: Math.round((clip.sourceOut! - 0.2) * 48000),
+            // Natural fills the composition; the mixed clip already has room for the shift.
+            // Preserve its full automation domain while testing the J/L policy boundary.
+            sourceOutSample: Math.round(
+              (clip.sourceOut! - (mixed ? 0 : 0.2)) * 48000,
+            ),
           };
         }
         await app.save();
