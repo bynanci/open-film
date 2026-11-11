@@ -692,6 +692,12 @@ for (const locale of ["en-US", "ja-JP"] as const) {
       name: text("app.import.label"),
       exact: true,
     });
+    await expect(
+      panel.getByRole("button", {
+        name: text("app.import.addFiles"),
+        exact: true,
+      }),
+    ).toBeEnabled();
     await panel
       .getByLabel(text("app.import.addFiles"), { exact: true })
       .setInputFiles(fixture.byId.landscape!);
