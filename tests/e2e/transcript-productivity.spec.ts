@@ -4083,13 +4083,57 @@ test("opaque lone-surrogate and very long IDs use exact JSON lookup for review p
     })
     .click();
   await expect(page.locator(".launcher-actions")).toBeVisible();
-  await openFilm(page, path);
-  await transcriptMode(page);
-  expect(
-    await rows(page).evaluateAll((nodes) =>
-      nodes.map((node) => (node as HTMLElement).dataset.segmentId),
-    ),
-  ).toEqual(ids);
+  // The visible workspace and video mount before its transcript read finishes.
+  // Hold the fresh reopened read to exercise that boundary without a delay.
+  let releaseReopenedRead!: () => void;
+  let reopenedReadStarted!: () => void;
+  const reopenedReadGate = new Promise<void>((resolve) => {
+    releaseReopenedRead = resolve;
+  });
+  const reopenedReadArrived = new Promise<void>((resolve) => {
+    reopenedReadStarted = resolve;
+  });
+  const reopenedReadPattern = `**/api/assets/${asset.id}/transcript?offset=0&limit=100`;
+  let reopenedRead: Promise<void> | undefined;
+  const holdReopenedRead: Parameters<Page["route"]>[1] = (route) => {
+    reopenedRead = (async () => {
+      const response = await route.fetch();
+      reopenedReadStarted();
+      await reopenedReadGate;
+      await route.fulfill({ response });
+    })();
+    return reopenedRead;
+  };
+  await page.route(reopenedReadPattern, holdReopenedRead);
+  let reopenFailure: { error: unknown } | undefined;
+  try {
+    await openFilm(page, path);
+    await transcriptMode(page);
+    await reopenedReadArrived;
+    await expect(rows(page)).toHaveCount(0);
+    await expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("loading"),
+    );
+    releaseReopenedRead();
+    await expect(rows(page)).toHaveCount(ids.length);
+    expect(
+      await rows(page).evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLElement).dataset.segmentId),
+      ),
+    ).toEqual(ids);
+  } catch (error) {
+    reopenFailure = { error };
+  } finally {
+    releaseReopenedRead();
+    const cleanup = await Promise.allSettled([
+      page.unroute(reopenedReadPattern, holdReopenedRead),
+      reopenedRead,
+    ]);
+    for (const result of cleanup)
+      if (result.status === "rejected" && !reopenFailure)
+        reopenFailure = { error: result.reason };
+  }
+  if (reopenFailure) throw reopenFailure.error;
   for (const [position, id] of ids.entries()) {
     const found = await post<{
       segment: { id: string; text: string };
