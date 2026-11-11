@@ -32,6 +32,8 @@ jobs:
       - run: pnpm test:license
       - run: pnpm test:provenance
       - run: node --test scripts/ci/tests/source-head.node.mjs
+      - run: node --test scripts/ci/tests/media-profile.node.mjs
+      - run: python3 scripts/ci/tests/media-profile-process.py
       - run: pnpm format:check
       - run: pnpm test:i18n
       - run: pnpm test:docs-i18n
