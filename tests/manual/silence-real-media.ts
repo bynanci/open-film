@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Offline, opt-in application validation. No third-party fixtures enter CI.
 import assert from "node:assert/strict";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import {
+  copyFile,
+  cp,
+  mkdir,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createExportProfile, type MediaAsset } from "@openfilm/core";
 import {
   OpenFilmApplication,
-  TimelineEditor,
   type RecordAudioPreviewDescriptor,
 } from "@openfilm/application";
 import { hashFile, runProcess } from "@openfilm/media";
@@ -64,6 +70,23 @@ await runProcess("git", [
 const candidate = (await runProcess("git", ["rev-parse", "HEAD"])).stdout
   .toString()
   .trim();
+const workspacePackageEntries = Object.fromEntries(
+  await Promise.all(
+    [
+      "@openfilm/core",
+      "@openfilm/application",
+      "@openfilm/media",
+      "@openfilm/render",
+    ].map(async (name) => {
+      const entry = await realpath(fileURLToPath(import.meta.resolve(name)));
+      assert(
+        entry.startsWith(process.cwd() + sep),
+        `Workspace package resolves outside this candidate: ${name}`,
+      );
+      return [name, entry];
+    }),
+  ),
+);
 for (const [file, hash] of sources)
   assert.equal(
     await hashFile(join(mediaRoot, file)),
@@ -73,6 +96,7 @@ for (const [file, hash] of sources)
 await mkdir(outputRoot);
 const results: Record<string, unknown> = {
   candidate,
+  workspacePackageEntries,
   startedAt: new Date().toISOString(),
   options,
   tools: {
@@ -98,7 +122,7 @@ const saveResults = () =>
   );
 const commands: string[][] = [];
 async function ffmpeg(args: string[]) {
-  commands.push(["ffmpeg", ...args]);
+  commands.push(["ffmpeg", "-v", "error", "-nostdin", ...args]);
   await runProcess("ffmpeg", ["-v", "error", "-nostdin", ...args]);
 }
 async function asset(
@@ -194,6 +218,10 @@ async function rejectsCode(action: () => Promise<unknown>, code: string) {
 }
 
 async function run() {
+  await copyFile(
+    join(process.cwd(), "docs/validation-silence-real-media.md"),
+    join(outputRoot, "README.md"),
+  );
   // Documented excerpts, no added silence and no synthesized audio.
   await ffmpeg([
     "-ss",
@@ -343,8 +371,8 @@ async function run() {
       ];
       for (const a of [voice, music, picture]) app.catalog.upsertAsset(a);
       await app.save();
-      const editor = new TimelineEditor(app),
-        original = structuredClone(editor.get("timeline").composition);
+      let editor = app.timelineEditor;
+      const original = structuredClone(editor.get("timeline").composition);
       // Same real source, policy protection checked without speculative mutation.
       const protections = [];
       for (const kind of ["clip", "track", "source", "pin", "jl"]) {
@@ -436,6 +464,21 @@ async function run() {
         join(outputRoot, `${name}-review.json`),
         JSON.stringify({ jobId: created.job.id, review }, null, 2) + "\n",
       );
+      // Close SQLite before copying the still-unaccepted review for human UI replay.
+      const reviewProject = `${name}-review.openfilm`;
+      const currentDirectory = app.directory;
+      app.close();
+      await cp(currentDirectory, join(outputRoot, reviewProject), {
+        recursive: true,
+      });
+      app = await OpenFilmApplication.open(join(outputRoot, reviewProject));
+      assert.deepEqual(
+        (await app.silenceJobs.getReview(created.job.id)).review,
+        review,
+      );
+      app.close();
+      app = await OpenFilmApplication.open(currentDirectory);
+      editor = app.timelineEditor;
       const disk = await readFile(join(app.directory, "project.json"));
       const audition = await app.silenceJobs.audition(created.job.id, {
         reviewId: review.reviewId,
@@ -576,12 +619,12 @@ async function run() {
       app.close();
       app = await OpenFilmApplication.open(directory);
       assert.deepEqual(
-        new TimelineEditor(app).get("timeline").composition,
+        app.timelineEditor.get("timeline").composition,
         accepted.edit.composition,
       );
       const reopened = await app.recordAudioPreview.prepare(
         "timeline",
-        new TimelineEditor(app).get("timeline").revision,
+        app.timelineEditor.get("timeline").revision,
       );
       assert.deepEqual(await pcm(app, reopened), after);
       const reopenedMp4 = join(outputRoot, `${name}-reopened.mp4`);
@@ -606,6 +649,7 @@ async function run() {
       );
       const record = {
         name,
+        reviewProject,
         duration,
         jobId: created.job.id,
         review,
@@ -631,6 +675,67 @@ async function run() {
           "Accept/Undo/Redo/Save/cold Reopen: composition and accepted decode verified",
         outputs,
       };
+      await writeFile(
+        join(outputRoot, `${name}-listening-observations.json`),
+        JSON.stringify(
+          {
+            candidate,
+            jobId: created.job.id,
+            reviewId: review.reviewId,
+            status: "UNREVIEWED — human required",
+            listener: null,
+            observedAtUtc: null,
+            osBuild: null,
+            installerIdentity: null,
+            hardware: null,
+            outputDevice: null,
+            outputApi: null,
+            routing: null,
+            deviceSampleRate: null,
+            browserSampleRate: null,
+            volume: null,
+            sources: results.sources,
+            outputs,
+            references: review.proposal.candidates.map((item) => ({
+              candidateId: item.id,
+              selected: review.proposal.selectedCandidateIds.includes(item.id),
+              originalSourceIntervals: item.sourceIntervals.map(
+                ({ start, end }) => ({ start: start + 30, end: end + 30 }),
+              ),
+              timelineIntervals: item.timelineIntervals,
+              humanClassification: null,
+              retainedSpeech: null,
+              retainedBreaths: null,
+              falseRemoval: null,
+              falseRetention: null,
+              notes: null,
+            })),
+            seams: seams.map((seam) => ({
+              ...seam,
+              clicks: null,
+              consonants: null,
+              breaths: null,
+              musicContinuity: null,
+              stereoRouting: null,
+              gainFadeDucking: null,
+              recordedAvSync: null,
+              judgment: null,
+              notes: null,
+            })),
+            nativeScenarios: {
+              locksPins: null,
+              jlRejection: null,
+              cancelDuringRender: null,
+              staleCallbacks: null,
+              projectSwitchDuringAudition: null,
+              acceptUndoRedoSaveReopen: null,
+              deviceChange: null,
+            },
+          },
+          null,
+          2,
+        ) + "\n",
+      );
       (results.cases as unknown[]).push(record);
       results.commands = commands;
       await saveResults();

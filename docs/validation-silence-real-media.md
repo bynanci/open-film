@@ -39,6 +39,9 @@ on a clean committed candidate; the runner records the exact Git commit and
 tool identities. Preserve failures and use a fresh evidence directory on retry.
 `results.json`, saved projects, original/proposed WAV, accepted MP4, actual AAC
 decode WAV, and source/derived hashes form the local listening packet.
+Each `*-listening-observations.json` starts with unreviewed human fields,
+candidate-bound source/timeline intervals and seam sample windows. Fill these
+only from actual independent reference annotation and listening observations.
 
 ## Predeclared cases and objective criteria
 
@@ -60,6 +63,13 @@ sample of the accepted mix. Record decoded AAC sample count, packet PTS,
 container/video duration, loudness, peak and PCM error separately: AAC is lossy
 and may have trailing codec padding. Do not assert AAC byte equality with WAV.
 Sample jumps and codec error are diagnostics, not click/intelligibility passes.
+
+Each `*-review.openfilm` is copied with storage closed before acceptance and
+reopened to verify the saved review identity. Open this copy in the current UI
+to replay the still-unaccepted Review. The other project contains the accepted
+edit. Project media URIs refer to the local packet: rerun the runner on each
+workstation to generate native paths and record that workstation's new review
+identity. Do not silently relink media and reuse an earlier review receipt.
 
 The runner checks explicit Accept → Undo → Redo → Save → cold Reopen, render
 equivalence after reopen, old audition descriptor revocation, real-source
