@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -188,3 +188,83 @@ it("requires every original audit role rather than accepting optimistic summary 
     ).rejects.toThrow(`Security closure requires exactly one retained ${name}`);
   }
 });
+
+it("rejects relocated source admission with an explicit original-path preflight", async () => {
+  const f = await fixture();
+  const observation = await f.observation();
+  const moved = `${f.root}-relocated`;
+  roots.push(moved);
+  await rename(f.root, moved);
+  await expect(
+    verifySecurityClosure(moved, observation, f.identity),
+  ).rejects.toThrow(
+    /Source admission requires its original absolute checkout path/u,
+  );
+});
+it("replays a visible-only producer artifact in a fresh independent checkout at the recorded path", async () => {
+  const f = await fixture();
+  const observation = await f.observation();
+  const metadata = await readFile(join(f.root, "evidence/metadata.json"));
+  const moved = `${f.root}-producer`;
+  roots.push(moved);
+  await rename(f.root, moved);
+  execFileSync(
+    "python",
+    [
+      "-c",
+      "import os, subprocess, sys; os.umask(0o022); subprocess.run(['git', 'clone', '--no-local', *sys.argv[1:]], check=True)",
+      moved,
+      f.root,
+    ],
+    { stdio: "pipe" },
+  );
+  execFileSync("python", [
+    "-c",
+    `
+import pathlib, sys, zipfile
+source, destination = map(pathlib.Path, sys.argv[1:])
+archive = source / "visible.zip"
+with zipfile.ZipFile(archive, "w") as output:
+    for path in (source / "evidence").rglob("*"):
+        relative = path.relative_to(source)
+        if path.is_file() and not any(p.startswith(".") for p in relative.parts):
+            output.write(path, relative)
+with zipfile.ZipFile(archive) as artifact: artifact.extractall(destination)
+`,
+    moved,
+    f.root,
+  ]);
+  await rm(moved, { recursive: true });
+  expect(await readFile(join(f.root, "evidence/metadata.json"))).toEqual(
+    metadata,
+  );
+  await expect(
+    readFile(join(f.root, "evidence/audit/advisory-db/.git/HEAD")),
+  ).rejects.toThrow();
+  await expect(
+    verifySecurityClosure(f.root, observation, f.identity),
+  ).resolves.toBeUndefined();
+});
+
+it.each(["workspace", "root-manifest", "glib-manifest"])(
+  "preflights %s before cloning a malformed database",
+  async (field) => {
+    const f = await fixture();
+    const path = join(f.root, "evidence/metadata.json");
+    const metadata = JSON.parse(await readFile(path, "utf8"));
+    if (field === "workspace") metadata.workspace_root += "-wrong";
+    else
+      metadata.packages[field === "root-manifest" ? 0 : 1].manifest_path +=
+        "-wrong";
+    await writeFile(path, JSON.stringify(metadata));
+    await writeFile(
+      join(f.root, "evidence/audit/advisory-db.bundle"),
+      "malformed",
+    );
+    await expect(
+      verifySecurityClosure(f.root, await f.observation(), f.identity),
+    ).rejects.toThrow(
+      /Source admission requires its original absolute checkout path/u,
+    );
+  },
+);

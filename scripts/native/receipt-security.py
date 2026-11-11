@@ -14,6 +14,21 @@ policy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
 
 
+def preflight_source_path(repository, metadata):
+    # This is an explicit constraint, not a relocation adapter. Do not change
+    # original bytes/IDs or replace the complete closure checks below.
+    app = repository / policy.closure.APP
+    packages = metadata["packages"]
+    root = [p for p in packages if p["id"] == metadata["resolve"]["root"]]
+    glib = [p for p in packages if p["name"] == "glib"]
+    policy.require(
+        metadata["workspace_root"] == str(app)
+        and len(root) == 1 and root[0]["manifest_path"] == str(app / "Cargo.toml")
+        and len(glib) == 1 and glib[0]["manifest_path"] == str(repository / policy.source.VENDOR / "Cargo.toml"),
+        "Source admission requires its original absolute checkout path: workspace_root and root/GLib manifest paths must match this Linux checkout. Use a fresh isolated runner at the reviewed original path; do not rewrite pinned metadata or overwrite an existing checkout.",
+    )
+
+
 def replay(repository, value):
     policy.require(set(value) == {"schemaVersion", "files"} and value["schemaVersion"] == 1, "unknown security replay schema")
     files = value["files"]
@@ -30,6 +45,7 @@ def replay(repository, value):
             output = directory / name
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(data)
+        preflight_source_path(repository, json.loads((directory / "metadata.json").read_bytes(), object_pairs_hook=policy.no_duplicates))
         # A local self-contained Git bundle preserves the actual DB commit and
         # objects. Clone performs no network fetch and cannot use caller hooks.
         subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--bare", "--", str(directory / "audit/advisory-db.bundle"), str(directory / "audit/advisory-db")], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)

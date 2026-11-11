@@ -64,7 +64,14 @@ git(db, "init", "-q")
 git(db, "add", ".")
 git(db, "commit", "-qm", "Synthetic database identity")
 audit["dbCommit"] = git(db, "rev-parse", "HEAD")
-git(db, "bundle", "create", str(ad / "advisory-db.bundle"), "HEAD")
+# Exercise the actual producer helper with a shallow two-commit database.
+git(db, "commit", "--allow-empty", "-qm", "Synthetic second database commit")
+origin = ad / "temporary-db-origin"
+db.rename(origin)
+git(ad, "clone", "--depth", "1", origin.as_uri(), str(db))
+shutil.rmtree(origin)
+audit["dbCommit"] = git(db, "rev-parse", "HEAD")
+policy.auditor.retain_advisory_bundle(db, ad / "advisory-db.bundle", audit["dbCommit"])
 for name, report in audit["reports"].items():
     raw = policy.source.canonical(report.pop("raw"))
     report.pop("stderr")
