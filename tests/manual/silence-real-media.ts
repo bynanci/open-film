@@ -370,7 +370,8 @@ async function run() {
             sampleRate: 48000,
             timelineStartSample: 4800,
             sourceInSample: Math.round(clip.sourceIn! * 48000),
-            sourceOutSample: Math.round(clip.sourceOut! * 48000),
+            // Keep the independent range valid before testing the edit-policy boundary.
+            sourceOutSample: Math.round((clip.sourceOut! - 0.2) * 48000),
           };
         }
         await app.save();
