@@ -1,15 +1,6 @@
 name: Windows media recovery
 on:
   pull_request:
-    paths:
-      - ".github/workflows/windows-media-recovery.yml"
-      - "packages/**"
-      - "apps/**"
-      - "tests/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "scripts/ci/**"
-      - "fixtures/render-qa/**"
   push:
     branches: [main]
   workflow_dispatch:
@@ -31,6 +22,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0

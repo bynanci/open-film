@@ -5,6 +5,8 @@ on:
   pull_request:
 permissions:
   contents: read
+env:
+  OPENFILM_SOURCE_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
@@ -14,6 +16,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -24,6 +31,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:license
       - run: pnpm test:provenance
+      - run: node --test scripts/ci/tests/source-head.node.mjs
       - run: pnpm format:check
       - run: pnpm test:i18n
       - run: pnpm test:docs-i18n
@@ -38,6 +46,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -97,6 +110,11 @@ jobs:
       OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -138,6 +156,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 24.14.0
@@ -155,6 +178,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -181,6 +209,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify declared source head
+        run: node scripts/ci/check-source-head.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
