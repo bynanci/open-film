@@ -50,4 +50,4 @@ Files: create `.github/workflows/native-security-replay.yml`; add workflow asser
 - [x] Add fixed-origin trusted tool bootstrap, helper invocation with inputs passed as environment/data (no shell interpolation), bounded result artifact retention and timeout. No automatic trigger or workflow_call.
 - [x] GREEN focused tests; run native focused regressions, typecheck/lint/format/docs/license/partition checks as applicable; verify frozen dependency links belong to this worktree first.
 - [ ] Record commands/RED/GREEN/source hashes/limits and actual-versus-blocked claims in execution report; signed commit, DCO validation, root/whole_delivery_review independent review. No push/PR/merge/dispatch by worker.
-- [ ] Root owns subsequent draftPR152/fullCI/merge registration and one hosted actual-artifact replay if still fresh. If expired, report stale honestly; do not rerun into green or silently substitute evidence.
+- [ ] Root owns the subsequent independent draft PR, full CI and merge registration and one hosted actual-artifact replay if still fresh. If expired, report stale honestly; do not rerun into green or silently substitute evidence.
