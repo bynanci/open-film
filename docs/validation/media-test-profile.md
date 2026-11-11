@@ -51,4 +51,27 @@ Raw bundle: `issue-139-measured-14c81a5` in the issue-execution evidence directo
 
 ### Review correction to the first packet
 
-The original twenty-file evidence packet is preserved unchanged. Its schema-1 `python` field reported PATH Python 3.12.14, while the executable observer actually used `/usr/bin/python3` 3.13.5. The FFmpeg/ffprobe identities and real child observations remain historical evidence; that field must not be read as observer provenance. Independent review also found observer KILL could orphan its child and child SIGKILL could become wrapper exit 1. Focused real-process regressions now cover TERM forwarding, child TERM/KILL signal parity, TERM→KILL cleanup and pipe closure (including adopted-child wait status), plus literal arguments, environment and binary stdin/output. A deliberately different PATH Python regression verifies actual interpreter identity. Fresh fixed-SHA repeated observations are required after this executable correction before relying on the updated harness.
+The original twenty-file evidence packet is preserved unchanged. Its schema-1 `python` field reported PATH Python 3.12.14, while the executable observer actually used `/usr/bin/python3` 3.13.5. The FFmpeg/ffprobe identities and real child observations remain historical evidence; that field must not be read as observer provenance. Independent review also found observer KILL could orphan its child and child SIGKILL could become wrapper exit 1. Focused real-process regressions now cover TERM forwarding, child TERM/KILL signal parity, TERM→KILL cleanup and pipe closure (including adopted-child wait status), plus literal arguments, environment and binary stdin/output. A deliberately different PATH Python regression verifies actual interpreter identity. Fresh fixed-SHA repeated observations after this executable correction are recorded below.
+
+### Fresh measurements after the process-observer fix
+
+The reviewed executable correction is fixed at `152b7b72c27ed7497d1a596ad945dd97c63f577f`. A separate coordinated window beginning 2026-11-11 09:38:14 UTC reran exactly the same two original cases twice, retaining the same source pins, worker settings, assertions, timeout and retry settings. Both repetitions passed (2 selected passes, 15 unselected, 0 failures each); all 56 FFmpeg/ffprobe invocations exited zero. The original and profiling inventories again matched all 17 cases exactly. Eight JPEG identities/counts and the WAV digest matched in both fresh traces and the historical source pins.
+
+The authoritative new packet is `issue-139-measured-152b7b7`; the historical packet remains unchanged. Schema-2 metadata records actual observer `/usr/bin/python3` → `/usr/bin/python3.13`, version `3.13.5 (main, Jul 15 2026, 20:25:40) [GCC 14.2.0]`, binary SHA256 `17b78e0a93175e86f9ac03141924fd7a7f0c0c52e66b34bfa0de20ffef989df1`. Analysis Python is separately identified in `analysis-python.json`. One-minute load at the repeat boundaries was 0.01 → 1.65 → 1.93; the shared-host limitations still apply.
+
+| Fresh observation                              | Repeat 1 wall seconds | Repeat 2 wall seconds |
+| ---------------------------------------------- | --------------------: | --------------------: |
+| Whole invocation                               |                92.333 |                92.188 |
+| Case envelopes including setup                 |                90.679 |                90.536 |
+| Setup + pre-first-pipeline test work           |                 0.654 |                 0.618 |
+| Eight photo fixture subprocesses               |                 0.398 |                 0.377 |
+| SHA256 update + digest calls                   |                0.0254 |                0.0261 |
+| Pipeline render, three calls                   |                41.201 |                41.308 |
+| Pipeline visual QA, two calls                  |                25.302 |                25.116 |
+| Pipeline export, two calls                     |                23.471 |                23.434 |
+| Seven render/encode subprocesses across stages |                86.600 |                86.613 |
+| Two isolated visual-QA decode subprocesses     |                 0.675 |                 0.644 |
+
+Rows overlap. The seven render subprocesses used 174.666/172.895 CPU seconds, max RSS 667,936/786,968 KiB. Isolated decode used 1.799/1.789 CPU seconds, max RSS 112,220/105,944 KiB. Fixture subprocesses used 0.387/0.363 CPU seconds, max RSS 37,828/37,888 KiB. Maximum sampled Node RSS was 222,648/220,480 KiB. Individual stage and command observations remain in the fresh raw JSONL and analysis CSV, protected by its separate SHA256SUMS.
+
+These fresh observations support the same bounded conclusion: real render/encode work dominates, while fixture generation and hashing are small. No speedup ratio is inferred between packets, and no fixture reuse, sharding or product performance optimization is implemented. Focused signal/process regressions passed 4/4 and profiler/provenance regressions passed 5/5 before the fresh run. Complete unchanged media/browser gates remain root-owned integration prerequisites.
