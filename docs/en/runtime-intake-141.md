@@ -95,6 +95,11 @@ or incomplete license/linkage receipt remains a block. Actual native shell,
 generated/static/sysroot and final-shell linkage evidence follows the fixed
 runtime build under issue 140; none belongs inside the immutable runtime manifest.
 
+The [retained provenance and obligations matrix](validation/runtime-provenance-141.md)
+records the 50 input hashes, static ABI/build observations and embedded signature
+consistency checks. Those offline observations do not supply target FFmpeg inputs,
+complete rights/source closure, OS trust or distribution approval.
+
 ## Evidence still required to close issue 141
 
 - Independently reviewed target FFmpeg/FFprobe binaries, build options, matching

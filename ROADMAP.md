@@ -225,6 +225,13 @@ behavior and supported NLE handoffs on actual workstations.
   trust/lifecycle evidence. Synthetic checks and source intake hashes do not
   approve redistribution or replace those observations.
 
+The [retained input provenance matrix](docs/validation/runtime-provenance-141.md)
+and [source-bound synthetic benchmark preparation](docs/validation/native-benchmark-preparation-145.md)
+close bounded offline engineering tasks. Actual runtime/source/rights closure and
+native measurements retain their own gates. The opt-in hosted source replay
+entry reuses the existing complete Python authority; its code/fixture checks must
+not be substituted for an actual authenticated original-path run.
+
 The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding

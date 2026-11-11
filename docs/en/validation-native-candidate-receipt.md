@@ -90,6 +90,76 @@ Required checks:
 
 Security must include exactly one raw file named `admission.json`, produced by the existing native source-admission workflow for the same candidate. The validator requires passing source remediation, no reasons, all four closure digests and three audit report identities. Retain exactly one each of `source.json`, `closure.json`, `regression.json`, `metadata.json`, `audit.json`, and the stdout/stderr files named by all three audit reports in `security.raw`. Also retain `actual-metadata.stdout`, `current-registry-metadata.stdout`, `current-registry-Cargo.lock`, `historical-Cargo.lock`, and the self-contained `audit/advisory-db.bundle` emitted by `audit-native.py` before marking capture verified. The producer bundles the already captured shallow database without another fetch, clones that bundle locally into a temporary bare repository, and requires its HEAD to equal the recorded `dbCommit`. The native-security artifact retains this ordinary file; hidden `.git` files are unnecessary. All these pins are required even if summary flags say they passed. The finalizer materializes the original pinned bytes, reconstructs the database locally from the bundle without network access, and calls the same complete `verify_admission` function as the original native-admission CLI. That includes source checkout cleanliness, exact candidate/lock identity, both metadata graphs, registry and historical locks, captured database commit, raw scans, closure and freshness. The resulting admission must equal the original retained receipt. Original JSON bytes are preserved, including Python floating-point representations. Put evidence and local input configs in an already ignored directory such as `dist/native-evidence`; untracked source files block admission. Replay requires Linux and the **original absolute POSIX source-admission checkout path**, matching the existing source-admission verifier. A preflight compares the original `metadata.json` workspace and root/GLib manifest paths to the selected checkout before cloning the database or running full admission. Arbitrary-root security replay is unsupported. The independent Cargo path mapping does not relocate source-admission metadata. Retain Windows/macOS target observations and perform final external assembly on an isolated Linux runner with the exact candidate at that original path and unchanged artifact bytes. Preserve the complete original source-admission artifact for independent review. Source admission alone does not satisfy the post-build scan or target dependency-closure checks. Security observation must be refreshed within six hours of finalization. Future observation timestamps fail.
 
+### Source-only hosted replay
+
+The opt-in `Retained native source replay` workflow reuses the existing complete Python
+`receipt-security.py` authority on a fresh Linux runner. It is a source-evidence
+check, independent of runtime provisioning, signing and platform observations.
+The workflow must first be reviewed and registered on main. It does not replace
+or alter automatic source admission, final receipt assembly or owner approval.
+
+Supply all five values from the same reviewed successful source capture:
+
+| Input                   | Required identity                                              |
+| ----------------------- | -------------------------------------------------------------- |
+| `candidate_sha`         | Full exact source commit, including the original policy bytes  |
+| `source_run_id`         | Completed successful same-repository capture run               |
+| `source_workflow_id`    | Authenticated producer workflow, not a caller URL              |
+| `source_artifact_id`    | Unexpired `native-security-<candidate>` artifact from that run |
+| `source_archive_sha256` | Independently reviewed original ZIP digest                     |
+
+From an existing authenticated repository session, validate the reviewed tool
+revision on main and the original successful source capture before dispatching.
+No token is pasted into inputs or stored in a project:
+
+```sh
+: "${OPENFILM_REPLAY_CANDIDATE:?full reviewed original source SHA required}"
+: "${OPENFILM_REPLAY_SOURCE_RUN:?original successful source run ID required}"
+: "${OPENFILM_REPLAY_SOURCE_WORKFLOW:?original producer workflow ID required}"
+: "${OPENFILM_REPLAY_SOURCE_ARTIFACT:?original artifact ID required}"
+: "${OPENFILM_REPLAY_ZIP_SHA256:?independently reviewed original ZIP hash required}"
+gh workflow run native-security-replay.yml --repo bynanci/open-film --ref main \
+  -f candidate_sha="$OPENFILM_REPLAY_CANDIDATE" \
+  -f source_run_id="$OPENFILM_REPLAY_SOURCE_RUN" \
+  -f source_workflow_id="$OPENFILM_REPLAY_SOURCE_WORKFLOW" \
+  -f source_artifact_id="$OPENFILM_REPLAY_SOURCE_ARTIFACT" \
+  -f source_archive_sha256="$OPENFILM_REPLAY_ZIP_SHA256"
+```
+
+Retain the actual dispatch run ID and its `native-source-replay-<candidate>-<run>`
+artifact. A passing `result.json` records `source-replay-verified`, the distinct
+tool/subject identities, input and output digests and `distributionApproved:false`.
+Failure diagnostics must remain bounded and sanitized; never attach credentials,
+signed transport URLs or private media to a debugging report.
+
+```mermaid
+flowchart TD
+  A[Reviewed tool revision] --> D[Fresh original-path candidate checkout]
+  B[Authenticated source run and artifact] --> C[Bounded ZIP and unchanged raw bytes]
+  C --> E[Existing complete Python admission replay]
+  D --> E
+  E --> F[Whole-result equality and record-only evidence]
+  G[Reviewed runtime rights and actual OS observations] --> H[Final candidate receipt and owner release decision]
+  F --> H
+```
+
+The dispatcher/tool revision and historic subject revision are recorded separately.
+The six existing Python policy files must match the subject byte-for-byte. The
+runner authenticates repository/run/workflow/head/artifact identities, bounds and
+hashes the transport, preserves all original raw bytes, and prepares only the
+fresh allowed original POSIX checkout. Existing/dirty/symlink workspaces are
+refused without resetting or deleting them. Hooks/filters and artifact execution
+are not enabled. A signed-storage redirect never carries the GitHub API token.
+
+A successful Python process is insufficient: its entire admission result must
+match the original retained receipt. Original byte, path, graph, lock, database,
+scan and six-hour freshness requirements remain. An expired but downloadable
+artifact must fail; this workflow does not refresh timestamps, substitute scans
+or retry until passing. Retain the actual failed/successful run, exact source/tool
+SHA, input identities and result artifact for independent review before reporting
+external replay complete. Fixture tests alone cannot establish that observation.
+No result grants native trust, rights or distribution approval.
+
 ### Safe independent Linux assembly
 
 Review the original `metadata.json` and explicitly select the original checkout path (its workspace path ends in `apps/desktop/src-tauri`); also check the root and GLib manifest paths. Treat all three as evidence to review, never as permission to create or overwrite arbitrary paths. Use a fresh isolated Linux runner/container whose filesystem you control. If that exact path is occupied, dirty, a symlink, or contains the wrong candidate, stop and provision a new isolated runner. Do not move, delete, reset or reuse an existing checkout to satisfy this constraint. The operational cost is recreating the reviewed original path for external assembly; pinned metadata and package IDs must never be edited to fit a convenient directory.
