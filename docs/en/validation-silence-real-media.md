@@ -230,3 +230,28 @@ This is a correction of the QA reference duration, not permission to discard
 the known tail or claim perceptual acceptance. Human review must include the
 full-PCM tail versus the actual MP4 termination, along with the seam, speech,
 breath, music and native-device observations above. Issue #144 remains open.
+
+## Canonical path guard review replay
+
+Independent review found that the initial lexical path guard accepted inside
+names beginning with `..` and did not resolve symlinks. The QA-only correction
+uses canonical checkout/source/output-parent paths, complete parent components,
+an absolute cross-drive result on Windows, and an actual created-output recheck.
+The fresh-directory and pinned-source-hash guards remain in force.
+
+Candidate `edbd477` replayed both same-source cases once after the coordinated
+profiling window ended. [Replay receipt](https://github.com/bynanci/open-film/blob/main/docs/evidence/silence-real-media/2026-11-11-path-guard-replay.json)
+binds the full candidate SHA and new review identities. The runner exited 0
+with the same objective-contract/manual-review status, zero PCM/WAV and
+AAC/export errors, and the unchanged mixed **1,152-sample / 24 ms** typed
+warning. Source cut selections and source/timeline intervals match the prior
+record. Earlier packets and committed evidence remain unchanged.
+
+Path TDD observed 12 failures / 7 passes against the extracted original guard,
+then 19/19 passing with the correction; path and duration guards together pass
+30/30. Inside `..name` folders, inside-pointing source/output-parent symlinks,
+external siblings, Windows cross-drive lexical paths, fresh-output rejection,
+and post-creation containment are covered. Direct runner negative checks reject
+inside `..evidence`, unapproved source bytes and an existing evidence directory
+before media generation. Full typecheck and focused static checks pass. Windows
+lexical tests do not establish actual Windows device or filesystem acceptance.

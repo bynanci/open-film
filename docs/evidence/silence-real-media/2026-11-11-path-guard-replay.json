@@ -1,0 +1,235 @@
+{
+  "candidate": "edbd477549a5d3b9ec0bc789d5aeeaf4185c2d9f",
+  "startedAt": "2026-11-11T09:43:37.029Z",
+  "finishedAt": "2026-11-11T09:43:50.251Z",
+  "options": {
+    "thresholdDb": -35,
+    "minimumSilenceSeconds": 0.3,
+    "paddingSeconds": 0.08
+  },
+  "tools": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "ffmpeg": "ffmpeg version 7.1.5-0+deb13u1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 7.1.5-0+deb13u1 Copyright (c) 2007-2026 the FFmpeg developers"
+  },
+  "sources": [
+    {
+      "name": "paddy-neary.opus",
+      "sha256": "42973f944af32809fe9f7446a7a745d64fe9fc3e51db521902563f7fa2946053"
+    },
+    {
+      "name": "guitar.ogg",
+      "sha256": "d6ff6cafd3025db2e2215b32e3e7e6411fa08a8d2e0fca7c3353b5a4a82523a5"
+    }
+  ],
+  "status": "objective-contract-pass; manual-review-required",
+  "qualityAcceptance": "manual-review-required",
+  "fullyAcceptedQuality": false,
+  "durationChecks": [
+    {
+      "name": "natural",
+      "fullCompositionDurationSeconds": 18.83999999999999,
+      "fullPcmFrames": 904320,
+      "fullPcmDurationSeconds": 18.84,
+      "exportFrameRate": 25,
+      "expectedExportDurationSeconds": 18.84,
+      "expectedExportFrames": 904320,
+      "actualAacDurationSeconds": 18.84,
+      "pcmCompositionErrorSamples": 0,
+      "aacExportErrorSamples": 0,
+      "lostTailSamples": 0,
+      "lostTailMilliseconds": 0,
+      "objectiveContractPass": true,
+      "warnings": []
+    },
+    {
+      "name": "mixed-reuse-speed",
+      "fullCompositionDurationSeconds": 15.264000000000005,
+      "fullPcmFrames": 732672,
+      "fullPcmDurationSeconds": 15.264,
+      "exportFrameRate": 25,
+      "expectedExportDurationSeconds": 15.24,
+      "expectedExportFrames": 731520,
+      "actualAacDurationSeconds": 15.24,
+      "pcmCompositionErrorSamples": 0,
+      "aacExportErrorSamples": 0,
+      "lostTailSamples": 1152,
+      "lostTailMilliseconds": 24,
+      "objectiveContractPass": true,
+      "warnings": [
+        {
+          "code": "qa.frameAlignedAudioTail",
+          "severity": "manual-review-required",
+          "lostTailSamples": 1152,
+          "lostTailMilliseconds": 24
+        }
+      ]
+    }
+  ],
+  "manualReviewWarnings": [
+    {
+      "name": "mixed-reuse-speed",
+      "code": "qa.frameAlignedAudioTail",
+      "severity": "manual-review-required",
+      "lostTailSamples": 1152,
+      "lostTailMilliseconds": 24
+    }
+  ],
+  "humanListening": "NOT PERFORMED",
+  "device": "No output device observed; Linux headless application services only",
+  "scope": "Replay after canonical external-path QA guard correction; human/native acceptance remains open",
+  "rawResultsSha256": "f91ed9c6b2ca2055f57e8b893efcb734ab1709029c1e65540463a26692271c7b",
+  "referenceEvidence": {
+    "name": "2026-11-11-frame-contract.json",
+    "sha256": "da58ceb3ca91b73ba9c403703a9bd2499de0ed38098bd47c70d745655d9d7e96",
+    "historicalFailureName": "2026-11-11.json",
+    "historicalFailureSha256": "a2085fb4f85154925233316a14e74c21215fc01232fde2cc051564d164353260"
+  },
+  "cases": [
+    {
+      "name": "natural",
+      "jobId": "6bd56977-131b-4cea-9bee-96e927b2e939",
+      "beforeParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "wavParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "beforeSamples": 1152000,
+      "afterSamples": 904320,
+      "aacDecodedSamples": 905216,
+      "aacDecodedMinusPcmSamples": 896,
+      "aacDecodedMinusStreamSamples": 896,
+      "mp4DurationErrorSamples": 0,
+      "durationReview": {
+        "fullCompositionDurationSeconds": 18.83999999999999,
+        "fullPcmFrames": 904320,
+        "fullPcmDurationSeconds": 18.84,
+        "exportFrameRate": 25,
+        "expectedExportDurationSeconds": 18.84,
+        "expectedExportFrames": 904320,
+        "actualAacDurationSeconds": 18.84,
+        "pcmCompositionErrorSamples": 0,
+        "aacExportErrorSamples": 0,
+        "lostTailSamples": 0,
+        "lostTailMilliseconds": 0,
+        "objectiveContractPass": true,
+        "warnings": []
+      },
+      "history": "Accept/Undo/Redo/Save/cold Reopen: composition and accepted decode verified",
+      "outputs": [
+        {
+          "name": "natural-before.wav",
+          "sha256": "337118be626f728830d0676023cc58c4865dd1d5b68f5dd2acdb4d83a90671c6"
+        },
+        {
+          "name": "natural-proposed.wav",
+          "sha256": "94081cf719f0a2edb42f57c53bfc44e2a6636ddb807e6cdbdb62d5b5b0ae7ac5"
+        },
+        {
+          "name": "natural-accepted.wav",
+          "sha256": "94081cf719f0a2edb42f57c53bfc44e2a6636ddb807e6cdbdb62d5b5b0ae7ac5"
+        },
+        {
+          "name": "natural-accepted.mp4",
+          "sha256": "b37373e023605805a38047d709221e5781747062f57a9d3543f93b95f52fd821"
+        },
+        {
+          "name": "natural-mp4-decode.wav",
+          "sha256": "84d298a823f551f542d3d7295615e1917c0ca95f9b0f19775728a011353743e2"
+        },
+        {
+          "name": "natural-reopened.mp4",
+          "sha256": "b37373e023605805a38047d709221e5781747062f57a9d3543f93b95f52fd821"
+        }
+      ],
+      "reviewId": "2cba123b35232ddccd23c0327258ff082b8f64dc4136d98542244dab56105494",
+      "sourceHash": "ea720904147fd579d5681d8db108640c9247d4059cbdc2e950a1e7cb610f9d89",
+      "unchangedFromReference": [
+        "selectedCandidateIds",
+        "sourceIntervals",
+        "timelineIntervals",
+        "totalDurationReduced"
+      ]
+    },
+    {
+      "name": "mixed-reuse-speed",
+      "jobId": "8ad992b6-c10b-4902-ad95-095c2867c68b",
+      "beforeParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "wavParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "beforeSamples": 921600,
+      "afterSamples": 732672,
+      "aacDecodedSamples": 732160,
+      "aacDecodedMinusPcmSamples": -512,
+      "aacDecodedMinusStreamSamples": 640,
+      "mp4DurationErrorSamples": -1152,
+      "durationReview": {
+        "fullCompositionDurationSeconds": 15.264000000000005,
+        "fullPcmFrames": 732672,
+        "fullPcmDurationSeconds": 15.264,
+        "exportFrameRate": 25,
+        "expectedExportDurationSeconds": 15.24,
+        "expectedExportFrames": 731520,
+        "actualAacDurationSeconds": 15.24,
+        "pcmCompositionErrorSamples": 0,
+        "aacExportErrorSamples": 0,
+        "lostTailSamples": 1152,
+        "lostTailMilliseconds": 24,
+        "objectiveContractPass": true,
+        "warnings": [
+          {
+            "code": "qa.frameAlignedAudioTail",
+            "severity": "manual-review-required",
+            "lostTailSamples": 1152,
+            "lostTailMilliseconds": 24
+          }
+        ]
+      },
+      "history": "Accept/Undo/Redo/Save/cold Reopen: composition and accepted decode verified",
+      "outputs": [
+        {
+          "name": "mixed-reuse-speed-before.wav",
+          "sha256": "76a9ab5dd7002a98c97264da244ba41314afbb987204e9ad15f51c99ad393a43"
+        },
+        {
+          "name": "mixed-reuse-speed-proposed.wav",
+          "sha256": "db448fb1e8c16d2a65c8a7ff8d58aef22fdc4a0d426bd5a6848fbc7ed39ae746"
+        },
+        {
+          "name": "mixed-reuse-speed-accepted.wav",
+          "sha256": "db448fb1e8c16d2a65c8a7ff8d58aef22fdc4a0d426bd5a6848fbc7ed39ae746"
+        },
+        {
+          "name": "mixed-reuse-speed-accepted.mp4",
+          "sha256": "3a733c34bd9efe0d7aa7d8becefd06e6820be2eeb06e13023b2ab0d350303c80"
+        },
+        {
+          "name": "mixed-reuse-speed-mp4-decode.wav",
+          "sha256": "6b2183177978e61efeaf0673a53550a358d1b774b87c8e9df2758c268a2fe0e3"
+        },
+        {
+          "name": "mixed-reuse-speed-reopened.mp4",
+          "sha256": "3a733c34bd9efe0d7aa7d8becefd06e6820be2eeb06e13023b2ab0d350303c80"
+        }
+      ],
+      "reviewId": "b69a81383f871754a094ebe8112246108f802674256b72d8a7f5ed33039b2c5c",
+      "sourceHash": "ea720904147fd579d5681d8db108640c9247d4059cbdc2e950a1e7cb610f9d89",
+      "unchangedFromReference": [
+        "selectedCandidateIds",
+        "sourceIntervals",
+        "timelineIntervals",
+        "totalDurationReduced"
+      ]
+    }
+  ]
+}
