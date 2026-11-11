@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Offline, opt-in application validation. No third-party fixtures enter CI.
 import assert from "node:assert/strict";
-import {
-  copyFile,
-  cp,
-  mkdir,
-  readFile,
-  realpath,
-  writeFile,
-} from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { copyFile, cp, readFile, realpath, writeFile } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createExportProfile, type MediaAsset } from "@openfilm/core";
 import {
@@ -22,6 +15,10 @@ import {
   reviewRecordedAudioDuration,
   type RecordedAudioDurationReview,
 } from "../fixtures/silence-real-media-contract.js";
+import {
+  createExternalEvidenceDirectory,
+  resolveRecordedMediaPaths,
+} from "../fixtures/silence-real-media-paths.js";
 
 const sources = [
   [
@@ -46,32 +43,46 @@ const profile = (format: "mp4" | "wav") =>
     frameRate: 25,
     format,
   });
-const mediaRoot = resolve(process.argv[2] ?? "");
-const outputRoot = resolve(process.argv[3] ?? "");
 assert(
   process.argv.length === 4,
   "Usage: tsx tests/manual/silence-real-media.ts MEDIA_DIRECTORY NEW_EXTERNAL_EVIDENCE_DIRECTORY",
 );
-for (const path of [mediaRoot, outputRoot]) {
-  const fromCheckout = relative(process.cwd(), path);
-  assert(
-    fromCheckout.startsWith(".."),
-    "Media and evidence must be outside the checkout",
-  );
-}
+const actualCheckout = (
+  await runProcess("git", [
+    "-C",
+    dirname(fileURLToPath(import.meta.url)),
+    "rev-parse",
+    "--show-toplevel",
+  ])
+).stdout
+  .toString()
+  .trim();
+const {
+  checkoutRoot,
+  mediaRoot,
+  outputRoot: preparedOutputRoot,
+} = await resolveRecordedMediaPaths(
+  actualCheckout,
+  process.argv[2]!,
+  process.argv[3]!,
+);
 assert.equal(
   (
-    await runProcess("git", ["status", "--porcelain", "--untracked-files=no"])
+    await runProcess("git", ["status", "--porcelain", "--untracked-files=no"], {
+      cwd: checkoutRoot,
+    })
   ).stdout.toString(),
   "",
   "Commit tracked candidate changes before recording evidence",
 );
-await runProcess("git", [
-  "ls-files",
-  "--error-unmatch",
-  "tests/manual/silence-real-media.ts",
-]);
-const candidate = (await runProcess("git", ["rev-parse", "HEAD"])).stdout
+await runProcess(
+  "git",
+  ["ls-files", "--error-unmatch", "tests/manual/silence-real-media.ts"],
+  { cwd: checkoutRoot },
+);
+const candidate = (
+  await runProcess("git", ["rev-parse", "HEAD"], { cwd: checkoutRoot })
+).stdout
   .toString()
   .trim();
 const workspacePackageEntries = Object.fromEntries(
@@ -84,7 +95,7 @@ const workspacePackageEntries = Object.fromEntries(
     ].map(async (name) => {
       const entry = await realpath(fileURLToPath(import.meta.resolve(name)));
       assert(
-        entry.startsWith(process.cwd() + sep),
+        entry.startsWith(checkoutRoot + sep),
         `Workspace package resolves outside this candidate: ${name}`,
       );
       return [name, entry];
@@ -97,7 +108,10 @@ for (const [file, hash] of sources)
     hash,
     `Unapproved source bytes: ${file}`,
   );
-await mkdir(outputRoot);
+const outputRoot = await createExternalEvidenceDirectory(
+  checkoutRoot,
+  preparedOutputRoot,
+);
 const results: Record<string, unknown> = {
   candidate,
   workspacePackageEntries,
@@ -226,7 +240,7 @@ async function rejectsCode(action: () => Promise<unknown>, code: string) {
 
 async function run() {
   await copyFile(
-    join(process.cwd(), "docs/validation-silence-real-media.md"),
+    join(checkoutRoot, "docs/validation-silence-real-media.md"),
     join(outputRoot, "README.md"),
   );
   // Documented excerpts, no added silence and no synthesized audio.

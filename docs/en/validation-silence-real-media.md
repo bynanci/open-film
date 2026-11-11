@@ -34,7 +34,14 @@ curl --fail --location --output /tmp/openfilm-real-media/guitar.ogg 'https://upl
 pnpm exec tsx tests/manual/silence-real-media.ts /tmp/openfilm-real-media /tmp/openfilm-real-evidence
 ```
 
-The evidence directory must not exist. It is created outside the checkout. Run
+The evidence directory must not exist and its parent must already exist.
+The runner identifies the actual Git checkout containing its script, resolves
+that checkout and the existing source/output-parent directories to canonical
+filesystem paths, and requires both media and evidence to be outside it.
+Ordinary inside names beginning with `..` and external aliases pointing inside
+are rejected; Windows paths on another drive are treated as external. Fresh
+output creation remains nonrecursive and is followed by another canonical
+containment check before any source-derived packet is written. Run
 on a clean committed candidate; the runner records the exact Git commit and
 tool identities. Preserve failures and use a fresh evidence directory on retry.
 `results.json`, saved projects, original/proposed WAV, accepted MP4, actual AAC
