@@ -121,6 +121,11 @@ const saveResults = () =>
     JSON.stringify(results, null, 2) + "\n",
   );
 const commands: string[][] = [];
+const durationChecks: {
+  name: string;
+  errorSamples: number;
+  passed: boolean;
+}[] = [];
 async function ffmpeg(args: string[]) {
   commands.push(["ffmpeg", "-v", "error", "-nostdin", ...args]);
   await runProcess("ffmpeg", ["-v", "error", "-nostdin", ...args]);
@@ -569,7 +574,14 @@ async function run() {
       assert.equal(audio.channels, 2);
       assert.equal(Number(audio.sample_rate), 48000);
       assert.equal(Number(audio.start_time), 0);
-      assert(Math.abs(Number(audio.duration) * 48000 - after.length / 6) <= 1);
+      const mp4DurationErrorSamples =
+        Number(audio.duration) * 48000 - after.length / 6;
+      durationChecks.push({
+        name,
+        errorSamples: mp4DurationErrorSamples,
+        passed: Math.abs(mp4DurationErrorSamples) <= 1,
+      });
+      // Preserve the same <=1-sample requirement, but collect decode/history evidence before failing.
       const aac = await decode(mp4),
         aacWav = await wav(`${name}-mp4-decode`, aac);
       // Compare common duration only; preserve actual padding as a separate measurement.
@@ -665,8 +677,12 @@ async function run() {
         beforeSamples: before.length / 6,
         afterSamples: after.length / 6,
         aacDecodedSamples: aac.length / 6,
-        aacPaddingSamples: (aac.length - after.length) / 6,
+        aacDecodedMinusPcmSamples: (aac.length - after.length) / 6,
+        aacDecodedMinusStreamSamples:
+          aac.length / 6 - Number(audio.duration) * 48000,
+        aacComparedSamples: common / 6,
         aacError,
+        mp4DurationErrorSamples,
         probe,
         seams,
         measurement: {
@@ -743,7 +759,7 @@ async function run() {
       results.commands = commands;
       await saveResults();
       console.log(
-        `${name}: ${before.length / 6} → ${after.length / 6} samples, ${seams.length} seams; objective assertions passed`,
+        `${name}: ${before.length / 6} → ${after.length / 6} samples, ${seams.length} seams; MP4 duration error ${mp4DurationErrorSamples} samples`,
       );
     } finally {
       app.close();
@@ -751,8 +767,13 @@ async function run() {
   }
   for (const [file, hash] of sources)
     assert.equal(await hashFile(join(mediaRoot, file)), hash);
-  results.status = "objective assertions passed; human/device gates OPEN";
+  results.durationChecks = durationChecks;
   results.finishedAt = new Date().toISOString();
+  assert(
+    durationChecks.every((check) => check.passed),
+    `MP4 duration must match accepted PCM within one sample: ${JSON.stringify(durationChecks)}`,
+  );
+  results.status = "objective assertions passed; human/device gates OPEN";
   await saveResults();
 }
 try {
