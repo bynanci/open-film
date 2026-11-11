@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Retained native source replay
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Independently reviewed original source candidate full SHA
+        required: true
+      source_run_id:
+        description: Successful same-repository source admission run ID
+        required: true
+      source_workflow_id:
+        description: Reviewed native-security or security workflow numeric ID
+        required: true
+      source_artifact_id:
+        description: Retained native-security artifact numeric ID
+        required: true
+      source_archive_sha256:
+        description: Independently reviewed original artifact ZIP SHA-256
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_WORKFLOW_ID: ${{ inputs.source_workflow_id }}
+      SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+      SOURCE_ARCHIVE_SHA256: ${{ inputs.source_archive_sha256 }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Bootstrap exact reviewed tools outside the original candidate path
+        shell: bash
+        run: |
+          set -eu
+          umask 022
+          test "$GITHUB_REPOSITORY" = bynanci/open-film
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test ! -e "$RUNNER_TEMP/source-replay-tools"
+          test ! -L "$RUNNER_TEMP/source-replay-tools"
+          # No checkout action: the original candidate workspace stays empty.
+          # No global/system Git config, hooks, filter/LFS or project commands.
+          env -i PATH="$PATH" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_LFS_SKIP_SMUDGE=1 GIT_TERMINAL_PROMPT=0 \
+            git -c core.hooksPath=/dev/null -c init.templateDir= -c core.attributesFile=/dev/null clone --no-checkout -- https://github.com/bynanci/open-film.git "$RUNNER_TEMP/source-replay-tools"
+          env -i PATH="$PATH" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_LFS_SKIP_SMUDGE=1 GIT_TERMINAL_PROMPT=0 \
+            git -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -C "$RUNNER_TEMP/source-replay-tools" checkout --detach "$GITHUB_SHA"
+          test "$(git -C "$RUNNER_TEMP/source-replay-tools" rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Authenticate original artifact and replay full source admission
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I -B "$RUNNER_TEMP/source-replay-tools/scripts/native/replay-security-artifact.py"
+      - name: Retain replay identities, original bytes and outcome
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-source-replay-${{ inputs.candidate_sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/source-replay/
+          if-no-files-found: error
+          retention-days: 30
