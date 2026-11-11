@@ -9,7 +9,7 @@ before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
 Historical baseline reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
-on 2026-11-11. Planning PR #147 and CI/profiling PR #148 are merged;
+on 2026-11-11. Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged;
 [the issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
 implementation PRs #149–#151, whole-code verification and remaining external gates.
 Their linked PR records carry current final-head checks and merge status.

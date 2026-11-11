@@ -7,18 +7,18 @@ for historical [PR #129](https://github.com/bynanci/open-film/pull/129) remains 
 
 ## Source and delivery identities
 
-| Scope                                  | Exact identity / record                                                                                                                                                  |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Original implementation baseline       | `08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`                                                                                                                               |
-| Issue plan                             | [PR #147](https://github.com/bynanci/open-film/pull/147), merged as `dd3af6ce38d7577cc4aec5e184b76fc14f459d6d`                                                           |
-| CI/source guards and measured profiler | [PR #148](https://github.com/bynanci/open-film/pull/148), tested source `d008d01abfc8cf402fb3ed0d8fcbdf7acec6a9c3`, merged as `338b3c4a5fbee3627bc0b75df3e77277230d04bc` |
-| Read-only SDK capsule                  | [PR #149](https://github.com/bynanci/open-film/pull/149), reviewed delivery `4d68d526cc0139bb8b857334d0d70c33959c037b`                                                   |
-| Native receipt/runtime intake          | [PR #150](https://github.com/bynanci/open-film/pull/150), reviewed delivery `5dacfed92cf1b350486162b736f2d559b67355ad`                                                   |
-| Final integrated delivery              | [PR #151](https://github.com/bynanci/open-film/pull/151); its current head, checks and merge status are the live final-head record                                       |
-| Local whole-code verification          | Private integration commit `b8bb14ba64eb66d4719dc97fc77216cbebd6e365`; all non-documentation file blobs match the final integrated delivery                              |
+| Scope                                  | Exact identity / record                                                                                                                                                             |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Original implementation baseline       | `08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`                                                                                                                                          |
+| Issue plan                             | [PR #147](https://github.com/bynanci/open-film/pull/147), merged as `dd3af6ce38d7577cc4aec5e184b76fc14f459d6d`                                                                      |
+| CI/source guards and measured profiler | [PR #148](https://github.com/bynanci/open-film/pull/148), tested source `d008d01abfc8cf402fb3ed0d8fcbdf7acec6a9c3`, merged as `338b3c4a5fbee3627bc0b75df3e77277230d04bc`            |
+| Read-only SDK capsule                  | [PR #149](https://github.com/bynanci/open-film/pull/149), tested delivery `4d68d526cc0139bb8b857334d0d70c33959c037b`, merged as `c8feabcd58ff34b378097821ff92bbeb3517b941`          |
+| Native receipt/runtime intake          | [PR #150](https://github.com/bynanci/open-film/pull/150), reviewed delivery `5dacfed92cf1b350486162b736f2d559b67355ad`                                                              |
+| Final integrated delivery              | [PR #151](https://github.com/bynanci/open-film/pull/151); its current head, checks and merge status are the live final-head record                                                  |
+| Local whole-code verification          | Private integration commit `b8bb14ba64eb66d4719dc97fc77216cbebd6e365`; production and unit/media source blobs were reconciled; browser-only follow-ups are tracked separately below |
 
 PR #151 includes the reviewed SDK/native branches so its checks can exercise the
-whole code set. Merge #149 and #150 first; their shared changes then leave its
+whole code set. #149 is merged; merge #150 first; their shared changes then leave its
 diff. A passing local integration run is not a passing future PR-head CI run.
 The document uses the live PR record rather than embedding its own commit hash.
 
@@ -75,6 +75,27 @@ not replace PR #151's own final-head gates. Local `pnpm test:native` was not run
 because GTK/WebKit development prerequisites are absent. Hosted native-shell CI
 and native installer/workstation acceptance are distinct observations.
 
+## Browser synchronization follow-ups
+
+PR #150's earlier `5dacfed` Verify failed one en-US import smoke case while
+60 shard cases passed. Its trace selected a hidden file input while the visible
+Add Files control was disabled by the initial readiness request; no upload was
+submitted. A controlled red reproduced the exact original 15-second missing
+import-button failure, and a semantic enabled-control wait passed the full
+workflow. The final affected smoke spec passed all three locales in three
+rounds, **9/9**. A preliminary diagnostic with invalid route cleanup was
+retained and excluded from that proof.
+
+A real Chromium follow-up also demonstrated a separate assertion-failure cleanup
+race in the reopened-transcript test: unroute could race the held fulfillment.
+The parallel sequence failed 10/10; settling the captured read before removing
+the handler was clean 10/10. The browser-only corrections and their exact final
+checks are tracked in [PR #150](https://github.com/bynanci/open-film/pull/150) and
+[PR #151](https://github.com/bynanci/open-film/pull/151). Original assertions,
+timeouts, retry counts and source checks remain intact. These findings do not
+retroactively turn the earlier failed Verify into a pass or replace final-head
+six-shard verification. The 6,114-test run above does not include Playwright.
+
 ## Actual source-security producer evidence
 
 The actual [Dependency Security run 43006588414](https://github.com/bynanci/open-film/actions/runs/43006588414)
@@ -104,7 +125,7 @@ constraints](../validation-native-candidate-receipt.md).
 
 | Issue                                                   | Implemented / observed                                                                                                                   | Still open                                                                                                                                                                     |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [#138](https://github.com/bynanci/open-film/issues/138) | Read-only finite-profile capsule; unchanged Catalog/project/source checks and 11 actual-SDK tests                                        | Close the bounded issue only after #149 merges with its required gates; no production adapter/writer or FilmCraft acceptance                                                   |
+| [#138](https://github.com/bynanci/open-film/issues/138) | Read-only finite-profile capsule; unchanged Catalog/project/source checks and 11 actual-SDK tests                                        | Bounded issue closed after #149 passed all 18 checks and merged; production adapter/writer and FilmCraft acceptance remain separate                                            |
 | [#139](https://github.com/bynanci/open-film/issues/139) | Fixed-source profiling, process/provenance fixes and source-bound CI merged in #148; bounded issue closed                                | No production speedup or unmeasured optimization claim                                                                                                                         |
 | [#140](https://github.com/bynanci/open-film/issues/140) | Versioned pre-trust/final-byte receipt and original evidence reconstruction; Windows/POSIX Cargo replay and final handoff fixes reviewed | Actual complete final receipt, external replay, target observations and independent acceptance                                                                                 |
 | [#141](https://github.com/bynanci/open-film/issues/141) | Authenticated runtime intake, target staging producer and read-only upstream metadata                                                    | Actual reviewed target runtime inputs, complete rights/license/SPDX, artifact IDs/manifests and OS execution                                                                   |

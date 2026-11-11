@@ -38,7 +38,7 @@ awaits the release-owner decision; no tag or publication is approved. Installer
 and physical workstation acceptance remain open. Latest published source release
 remains **v0.4.0**; historical feature records retain their original evidence.
 
-Planning PR #147 and CI/profiling PR #148 are merged. The
+Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged. The
 [issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
 the reviewed #149–#151 implementation slices, final-head gate records and
 outstanding owner/platform acceptance; it does not label every slice merged.
