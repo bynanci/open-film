@@ -8,8 +8,10 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Status reviewed against [main `23ac0a2`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc)
-on 2026-11-08. PRs #128, #130–#136 are merged. PR #128's head `e11051f`
+Status reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
+on 2026-11-11. PRs #128, #130–#137 are merged. PR #137 final-head and post-merge
+checks passed, including 1,548 contracts, 4,429 media tests and 363 browser cases;
+workstation schema 1.1 does not certify physical observations. PR #128's head `e11051f`
 passed all 19 checks, including actual native source admission and independent
 technical source review. The v0.5.0 source-only candidate in Draft PR #129 is
 `54534d8cf985203e8b5abbd09a771436f8fe09e5`; its own full CI, three-platform
@@ -23,6 +25,15 @@ latest published source release remains **v0.4.0**.
   hardware certification.
 - Existing milestone IDs are retained so design documents and implementation
   history remain easy to follow.
+
+## Next execution queue
+
+The [2026-11-11 issue plan](docs/roadmap/next-issues-2026-11-11.md) maps the
+28 unchecked baseline entries to code, evidence, owner and deferred work.
+Its first independent code packages are a read-only Storytelling compatibility
+capsule, measured CI profiling, and final native evidence binding. Runtime
+provisioning and target QA proceed through separate dependencies. Existing
+Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
 
 ## Editing and story workflow
 
@@ -190,12 +201,13 @@ remain separate acceptance scopes. See the
       describe bounded, pre-look source samples; calibrated display, HDR and
       hardware-monitor behavior are not included. See the
       [Phase 4A validation](docs/validation-cut-desk-phase-4a-scopes.md).
-- [ ] **Phase 4B — deterministic animation.** The shared frame-time contract
-      and visual keyframes are implemented in 4B.1/4B.2. Speed ramps (4B.3) are
-      deferred during Storytelling M1 and require source-mapped caption/audio/
-      rhythm consumers, explicit audio policy, arbitrary-seek evaluation and
-      Monitor/FFmpeg parity. Preserve the existing Composition and user-pin
-      contracts.
+- **Phase 4B — deterministic animation:** only the deferred 4B.3 speed-ramp
+  subtask below remains open; this aggregate is not a second implementation task. The shared frame-time contract
+  and visual keyframes are implemented in 4B.1/4B.2. Speed ramps (4B.3) are
+  deferred pending production host proof and require source-mapped caption/audio/
+  rhythm consumers, explicit audio policy, arbitrary-seek evaluation and
+  Monitor/FFmpeg parity. Preserve the existing Composition and user-pin
+  contracts.
 - [x] **Phase 4C — shortcut profiles.** Merged in
       [PR #113](https://github.com/bynanci/open-film/pull/113). Profiles are
       validated declarative local preferences, separate from project content.
@@ -208,14 +220,14 @@ remain separate acceptance scopes. See the
 - [ ] **Phase 4E — compound editing (deferred).** Revisit only after the
       Storytelling host path is proven and a versioned Composition contract
       demonstrates that it cannot introduce a hidden second timeline.
-- [ ] **Phase 4F — multicamera (deferred).** Revisit only after Storytelling M1
+- [ ] **Phase 4F — multicamera (deferred).** Revisit only after production host proof
       and only with explicit synchronization and source-provenance evidence.
 
 #### Phase 4B — deterministic animation
 
 - [x] **4B.1 shared frame-time contract:** merged in PR [#125](https://github.com/bynanci/open-film/pull/125) at `7add4762fe8174d76f43b863375ea39b73121e76`; exact-head hosted verification passed before merge.
 - [x] **4B.2 visual keyframes:** merged in PR [#126](https://github.com/bynanci/open-film/pull/126); feature head `b4aba4c4bb70b8cb03edd54342f1b94cec649245`, main merge [`5f737a6c8f35dce48e213370ff27900962c9304c`](https://github.com/bynanci/open-film/commit/5f737a6c8f35dce48e213370ff27900962c9304c). Exact-head Verify, all six browser shards, heavy-media QA, three-platform Render QA, Windows FFmpeg9 recovery, native-shell, docs-site and DCO passed. See [validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
-- [ ] **4B.3 speed ramps:** deferred until Storytelling M1 proves the host path and source-mapped caption, audio and rhythm consumers are reconciled under an explicit audio policy. Keep existing audio timing unchanged until then.
+- [ ] **4B.3 speed ramps:** deferred until the production SDK host path is proven and source-mapped caption, audio and rhythm consumers are reconciled under an explicit audio policy. Keep existing audio timing unchanged until then.
 
 See the [4B design](docs/superpowers/specs/2026-11-06-cut-desk-phase-4b-deterministic-animation-design.md), [shared contract validation](docs/validation-cut-desk-phase-4b-time-contract.md) and [visual keyframe validation](docs/validation-cut-desk-phase-4b-visual-keyframes.md).
 
@@ -279,12 +291,16 @@ and in the long-range v1.0 readiness record.
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
       are recorded in the [independent Storytelling release track](docs/roadmap/incremental-release-train.md).
-- [ ] Continue with Storytelling M1-02 (finite OTIO and explicit loss report),
-      then validate M1-03 against an actual isolated FilmCraft project. Keep its
-      versioning independent from OpenFilm.
+- [ ] Prove a pinned, read-only OpenFilm → Storytelling compatibility capsule.
+      Storytelling now accepts bounded M1/M2, M3-01 and M3-02 scopes; M3-03 has
+      test-only readback proof but production approval/execution/quiescence/retry
+      remains open. Do not reimplement completed M1-02/M1-03 or enable an M4
+      writer/feature flag from those bounded proofs. Keep versions independent.
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
-      license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Packaging tools and candidate verification are merged; signed installers and physical workstation gates remain open.
+      license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Runtime staging and attribution tools are merged, but final candidate receipt
+      binding to post-build native/security/trust evidence is incomplete. Signed
+      installers and physical workstation gates also remain open.
 - PR [#120](https://github.com/bynanci/open-film/pull/120) merged on
   2026-11-06; Tokio is now 1.53.3 and RUSTSEC-2026-0386 is no longer reported
   by that audit. PR #128 now repairs the actual GLib source; both registry
@@ -361,8 +377,8 @@ change. Discuss their scope before implementation.
       shard sizes 61/61/61/60/60/60 and Transcript Productivity spread 4/4/5/5/4/4.
       The earlier hosted comparison showed the longest browser test step fall
       from 8m05s to 6m35s versus run 42403889374, while keeping one worker,
-      existing timeouts, assertions and zero retries. Merge readiness depends on
-      the refreshed PR's exact-head checks. See the
+      existing timeouts, assertions and zero retries. PR #131 is merged; subsequent main `08e38b6` verifies the 363-case
+      inventory. The earlier timings remain historical evidence. See the
       [E2E shard validation](docs/validation-ci-pages-e2e.md).
 - [ ] Executable plugin discovery/loading beyond built-in registration and SDK
       contracts. Keep the existing data-only preset format available.

@@ -1,7 +1,7 @@
 # Incremental release train
 
-Plan reviewed on 2026-11-08 against main
-[`23ac0a22a500b4454449da56436305c5c41292cc`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc).
+Plan reviewed on 2026-11-11 against main
+[`08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224).
 This schedules source releases as separate cumulative milestones, not a record
 of already published versions.
 
@@ -101,36 +101,37 @@ compatibility promises and release checks. Do not bundle a Storytelling SDK
 release into an OpenFilm desktop release or assign Storytelling milestones an
 OpenFilm version number.
 
-As checked on 2026-11-07, Storytelling `main` is
-[`610ed49673d6f554e539008b34f5fc5479b9dbc1`](https://github.com/bynanci/storytelling/commit/610ed49673d6f554e539008b34f5fc5479b9dbc1).
-The owner merged the three prerequisite deliveries:
+As checked on 2026-11-11, the inspected Storytelling snapshot is
+[`b7fcf869d01727dcf408c457fdd42929dca80c7a`](https://github.com/bynanci/storytelling/commit/b7fcf869d01727dcf408c457fdd42929dca80c7a).
+Its [accepted delivery ledger](https://github.com/bynanci/storytelling/blob/b7fcf869d01727dcf408c457fdd42929dca80c7a/docs/delivery/VIDEO_TASK_HISTORY.md#L101)
+and [tasks](https://github.com/bynanci/storytelling/blob/b7fcf869d01727dcf408c457fdd42929dca80c7a/TASKS.md#L77)
+supersede the earlier M1-next description:
 
-- PR #1, Rust M0 foundation/SDLC: head
-  [`4c5682c221b8d602ad7bbebe7a4c400c3e1ff95b`](https://github.com/bynanci/storytelling/commit/4c5682c221b8d602ad7bbebe7a4c400c3e1ff95b), merge
-  [`22279814ff6b147c386186569d7f77f3a803cf8b`](https://github.com/bynanci/storytelling/commit/22279814ff6b147c386186569d7f77f3a803cf8b).
-- PR #2, OpenFilm migration map: head
-  [`95291d31c47601181070bf89a28b1a182ddf6ed8`](https://github.com/bynanci/storytelling/commit/95291d31c47601181070bf89a28b1a182ddf6ed8), merge
-  [`9fb403be811643baf948acdb6d72232d4a6207bb`](https://github.com/bynanci/storytelling/commit/9fb403be811643baf948acdb6d72232d4a6207bb).
-- PR #7, finite read-only M1-01 visual snapshot importer: head
-  [`c2fb478c278550b682efba5f898082e8bcd20e24`](https://github.com/bynanci/storytelling/commit/c2fb478c278550b682efba5f898082e8bcd20e24), merge
-  [`610ed49673d6f554e539008b34f5fc5479b9dbc1`](https://github.com/bynanci/storytelling/commit/610ed49673d6f554e539008b34f5fc5479b9dbc1).
-  Its push and PR-integration runs both passed the required quality/contracts,
-  Linux/Windows/macOS Rust, and required-gates jobs: [push run 42327081582](https://github.com/bynanci/storytelling/actions/runs/42327081582),
-  [PR run 42327143353](https://github.com/bynanci/storytelling/actions/runs/42327143353).
-  This validates only the declared visual mapping profile; it is not an OTIO
-  export, actual FilmCraft handoff, source-byte verification, or release.
+- M1-01 read-only importer and M1-02 finite picture OTIO/loss handling are accepted
+  in their declared subsets, including the official parser oracle.
+- M1-03 accepts a synthetic FilmCraft v0.18.0 Linux/25fps CPU proof: a 45-frame
+  192×108 H.264 preview, source ranges/PTS and save/reopen/reimport. It does not
+  certify general audiovisual, Resolve, hardware or editorial fidelity.
+- M2 bounded planning/shadow proofs, M3-01 exact-input review binding/selected
+  proposal bridge, and M3-02 durable owner-fenced journal are accepted in scope.
+- M3-03 has merged test-only lost-reply/readback proof. Production trusted
+  approval, executor, in-flight timeout/quiescence and safe NotApplied retry
+  remain open. The test loses acknowledgement after successful host exit; it
+  does not prove recovery while a request is still executing.
 
-M1-01 is complete. M1-02 (finite OTIO compiler and explicit loss report) is the
-next implementation milestone; M1-03 still requires actual FilmCraft import,
-render, readback, save and reopen. Neither task is marked complete by M1-01 CI.
+The next OpenFilm work is a pinned read-only compatibility capsule over the
+existing JSON exporter and SDK import/review contracts. The finite profile
+rejects unsupported audio, transforms, effects, pins and animation; do not strip
+these fields to manufacture compatibility. A review probe additionally consumes
+the complete successful SDK proposal, snapshot and strict context, not merely
+the mapped importer output. Original project/Catalog/media hashes must remain
+unchanged. See the [issue plan](next-issues-2026-11-11.md).
 
-The next steps are:
-
-1. Implement M1-02 as a bounded OTIO compiler with an explicit, profile-bound
-   loss report and official parser oracle.
-2. Validate M1-03 through an actual FilmCraft import, render, save and reopen
-   inside an isolated project, without changing the original project.
-3. Only then consider a Rust planner feature flag or broader agent integration.
+A production M4 TypeScript client/one feature flag stays dependent on accepted
+M3-03 production authority, execution and reconciliation. Do not duplicate the
+existing SDK 48-item migration map and 16 gaps, or switch planner/write authority
+based only on bounded test proofs. Earlier accepted M1 work must not be reopened
+as missing implementation.
 
 Keep StoryPlan/solver ownership explicit while the transfer is in progress.
 Before code is copied or rewritten, review Apache-2.0/MIT source provenance and
@@ -172,9 +173,10 @@ expand a second NLE before the Storytelling host path is proven.
 - proc-macro-error RUSTSEC-2024-0370 remains a maintenance warning for explicit
   owner review with scope, expiry and recheck triggers. GLib source remediation
   is verified; no generic scanner-success waiver is used.
-- The current integration cannot confirm restricted repository alerting,
-  protection or signing-secret administration (HTTP 403). Ask administration to
-  confirm state; do not infer it from failed reads.
+- Direct branch metadata reports `protected: false`; repository Rulesets are
+  empty. Restricted protection/alert/signing-secret details remain HTTP 403 and
+  unknown. An owner-reviewed governance policy is tracked separately; this plan
+  does not change administrative settings.
 - The first four source milestones must not advertise native installers or
   physical workstation certification. Those observations remain under
   [Issue #7](https://github.com/bynanci/open-film/issues/7).

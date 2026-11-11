@@ -27,8 +27,8 @@ own version track. See the [release train](docs/roadmap/incremental-release-trai
 and [current release gate audit](docs/validation-release-gates.md).
 
 The current release status was reconciled against main
-[`23ac0a22a500b4454449da56436305c5c41292cc`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc)
-on 2026-11-08. The GLib source fix in PR #128 is merged after independent
+[`08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
+on 2026-11-11. The GLib source fix in PR #128 is merged after independent
 technical review and all 19 final-head checks. Draft PR
 [#129](https://github.com/bynanci/open-film/pull/129) remains on the dedicated
 historical `release/v0.5.0` track at `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
@@ -43,6 +43,12 @@ is merged in PR #111. Physical workstation and listening acceptance remain
 separate gates.
 
 ## Current focus
+
+Use the [2026-11-11 issue plan](docs/roadmap/next-issues-2026-11-11.md) for the
+next execution order and the complete unfinished-task classification. Prioritize
+a bounded read-only SDK compatibility proof, measured CI costs and native
+post-build evidence binding. Source-release ownership and physical acceptance
+remain separate workstreams; no new NLE expansion is selected by this plan.
 
 ### Bring the Tobi-ishi identity into everyday tasks
 
@@ -74,9 +80,10 @@ and unchanged Windows pixel probes. The PR records final review and CI results.
 Actual-media listening and workstation gates remain
 open. No Auto-Editor runtime or eleven upstream tools/models are installed.
 
-Next slices are hosted validation and integration review for the automation
-clock, followed by optional providers whose quality, timing, runtime costs and
-artifact rights are verified.
+The automation-clock implementation and hosted validation are complete. Next
+acceptance is real dialogue/music listening and candidate-bound workstation
+observations. Additional providers remain a separate admission scope whose
+quality, timing, runtime costs and artifact rights must first be verified.
 Existing scene/rhythm analysis, primary-color adjustment, role-based stems and
 GraphicScenes remain the foundation. See the
 [eleven-project integration reference](docs/en/media-intelligence-integrations.md),
@@ -194,8 +201,9 @@ Transcript Productivity tests split 4/4/4/5/5/4. After synchronizing the PR
 branch with main `07016dac8c23148181f7d36a402a86d8d8bc0533`, local partition
 validation covered 363 cases with shard sizes 61/61/61/60/60/60 and transcript
 distribution 4/4/5/5/4/4. These are measured CI and local preflight results, not a
-workstation guarantee. Merge readiness depends on the refreshed PR's exact-head
-checks; see the [E2E shard validation](docs/validation-ci-pages-e2e.md).
+workstation guarantee. PR #131 is merged; main `08e38b6` subsequently passed the
+363-case inventory. Earlier timings retain their original scope; see the
+[E2E shard validation](docs/validation-ci-pages-e2e.md).
 
 PR [#120](https://github.com/bynanci/open-film/pull/120) patches Tokio to 1.53.3.
 PR [#128](https://github.com/bynanci/open-film/pull/128) now merges the exact GLib

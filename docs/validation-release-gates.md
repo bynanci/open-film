@@ -157,3 +157,12 @@ Mocks and generated fixtures cannot close hardware or human-quality gates.
 - [Current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md), [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md) and [release train](roadmap/incremental-release-train.md).
 - [Independent main GLib disposition](security/glib-0429-independent-review.md) and [0.5.0 owner review](release-owner-review-v050.md).
 - [Native installer validation](validation-native-installer.md), [workstation checklist](workstation-qa.md) and [historical v0.4.0 validation](validation-stable-release.md).
+
+## 2026-11-11 backlog reconciliation
+
+The [current issue plan](roadmap/next-issues-2026-11-11.md) audits main `08e38b6` and
+Storytelling snapshot `b7fcf86`. It separates accepted bounded SDK scopes from
+production M3-03, identifies final native candidate evidence binding as code work,
+and preserves owner and physical acceptance as open gates. The dated records
+above keep their original source/measurement identities; no publication is
+approved by this update.
