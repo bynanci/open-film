@@ -188,8 +188,18 @@ remain separate acceptance scopes. See the
 - [x] Implement and locally validate immutable Silence rendered audition through the existing Record
       mix, accepted-render PCM comparisons, cancellation and stale-result guards
       ([candidate validation](docs/validation-silence-rendered-audition.md)).
+- [x] Record the bounded Linux objective proof with permissioned CC0 human
+      dialogue and guitar: existing durable Review → audition → explicit Accept
+      → MP4 decode → Undo/Redo → Save → cold Reopen, exact PCM/WAV parity and
+      source/protection checks. See the [real-media validation and retained
+      evidence](docs/validation-silence-real-media.md). This does not close
+      [#144](https://github.com/bynanci/open-film/issues/144): the mixed case's
+      existing frame-aligned MP4 export excludes 1,152 PCM samples / 24 ms,
+      explicitly retained as `qa.frameAlignedAudioTail` / manual review.
 - [ ] Complete real dialogue/music listening QA and Windows/macOS workstation
-      audition checks; synthetic PCM equivalence does not satisfy this gate.
+      audition checks, recorded A/V synchronization, more than two captured
+      channels and live browser lifecycle cases. The objective CC0 proof does
+      not establish listening quality or acceptance of its excluded tail.
 - [ ] Admit additional scene/rhythm, mask/restoration, stabilization/interpolation,
       separation or browser-rendering providers only after quality, timing,
       runtime and code/weight rights checks. Reuse existing capabilities.

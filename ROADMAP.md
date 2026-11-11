@@ -80,6 +80,15 @@ and unchanged Windows pixel probes. The PR records final review and CI results.
 Actual-media listening and workstation gates remain
 open. No Auto-Editor runtime or eleven upstream tools/models are installed.
 
+The [#144 recorded-media proof](docs/validation-silence-real-media.md) now
+exercises the existing Linux application workflow with permissioned CC0 human
+dialogue and guitar, actual MP4 decode, exact PCM/WAV parity and cold reopen.
+It preserves the existing frame-aligned export policy and explicitly records
+the mixed case's 1,152-sample / 24 ms excluded tail as manual review; it does
+not certify retained speech, seam quality or acceptable termination. Human
+listening, Windows/macOS devices, recorded A/V synchronization, more than two
+captured channels and live browser lifecycle observations remain open.
+
 The automation-clock implementation and hosted validation are complete. Next
 acceptance is real dialogue/music listening and candidate-bound workstation
 observations. Additional providers remain a separate admission scope whose
