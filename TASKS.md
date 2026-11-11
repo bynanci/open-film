@@ -8,8 +8,12 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Status reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
-on 2026-11-11. PRs #128, #130–#137 are merged. PR #137 final-head and post-merge
+Historical baseline reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
+on 2026-11-11. Planning PR #147 and CI/profiling PR #148 are merged;
+[the issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
+implementation PRs #149–#151, whole-code verification and remaining external gates.
+Their linked PR records carry current final-head checks and merge status.
+PRs #128, #130–#137 are merged. PR #137 final-head and post-merge
 checks passed, including 1,548 contracts, 4,429 media tests and 363 browser cases;
 workstation schema 1.1 does not certify physical observations. PR #128's head `e11051f`
 passed all 19 checks, including actual native source admission and independent
@@ -319,7 +323,8 @@ and in the long-range v1.0 readiness record.
       fields. Local verification passes 94 exporter/unit tests and 11 actual-SDK
       application/CLI tests, including unchanged project, Catalog and source bytes;
       see the [scope and evidence](docs/validation/storytelling-compatibility-138.md).
-      Integrated final-head CI remains pending. This is not production adapter or
+      The [PR #149 gate record](https://github.com/bynanci/open-film/pull/149)
+      tracks final-head verification. This is not production adapter or
       FilmCraft acceptance: production approval/execution/quiescence/retry remain
       open. Do not enable an M4 writer/authority switch or reimplement completed
       M1-02/M1-03 from bounded proofs. Keep versions independent.

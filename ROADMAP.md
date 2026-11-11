@@ -26,7 +26,7 @@ planning labels, not release tags or frozen candidates. Storytelling has its
 own version track. See the [release train](docs/roadmap/incremental-release-train.md)
 and [current release gate audit](docs/validation-release-gates.md).
 
-The current release status was reconciled against main
+The historical release-status baseline was reconciled against main
 [`08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
 on 2026-11-11. The GLib source fix in PR #128 is merged after independent
 technical review and all 19 final-head checks. Draft PR
@@ -37,6 +37,11 @@ adaptation review pass. The [prepared source/asset packet](docs/release-owner-re
 awaits the release-owner decision; no tag or publication is approved. Installer
 and physical workstation acceptance remain open. Latest published source release
 remains **v0.4.0**; historical feature records retain their original evidence.
+
+Planning PR #147 and CI/profiling PR #148 are merged. The
+[issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
+the reviewed #149–#151 implementation slices, final-head gate records and
+outstanding owner/platform acceptance; it does not label every slice merged.
 
 Durable Jobs and Desktop Review are merged in PRs #107/#108. Rendered audition
 is merged in PR #111. Physical workstation and listening acceptance remain
@@ -60,7 +65,8 @@ The [Issue #138 compatibility capsule](docs/validation/storytelling-compatibilit
 now exercises the existing exporter against a pinned Storytelling SDK finite
 profile. Local exporter/unit and actual-SDK application/CLI tests pass; protected
 or unsupported fields are rejected without stripping, and original project,
-Catalog and source bytes remain unchanged. Integrated final-head CI is pending.
+Catalog and source bytes remain unchanged. The [PR #149 gate
+record](https://github.com/bynanci/open-film/pull/149) tracks final-head verification.
 This read-only consumer proof grants no production adapter, FilmCraft, source
 verification or execution authority. Production M3-03/M4 approval, quiescence,
 ambiguous readback reconciliation and safe retry remain separate acceptance work.
