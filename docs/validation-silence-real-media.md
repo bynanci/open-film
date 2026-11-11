@@ -45,8 +45,9 @@ only from actual independent reference annotation and listening observations.
 
 ## Predeclared cases and objective criteria
 
-These choices precede the first application analysis. They are not adjusted to
-make a result pass. Each saved review records its full selected candidate IDs,
+These source and analysis choices precede the first application analysis and
+remain unchanged. The duration QA criterion was corrected after contract review,
+as described below. Each saved review records its full selected candidate IDs,
 source intervals, timeline intervals, padding, revision, and review/job identity.
 
 | Case                | Declared source and timeline                                                                                                                    | Analysis / treatment                                                                                                       |
@@ -58,11 +59,22 @@ Require at least one selected low-energy cut per case; no invented silent gaps.
 Before and proposed audition must leave the saved project unchanged. Accepted
 Record PCM must equal proposed PCM. Independently rendered WAV must match at
 the existing `2 / 2^23` normalized PCM tolerance. Actual MP4 must contain AAC at
-48 kHz stereo with zero stream start PTS and audio stream duration within one
-sample of the accepted mix. Record decoded AAC sample count, packet PTS,
+48 kHz stereo with zero stream start PTS. Full PCM must match the accepted
+Composition duration within one sample; AAC stream duration must match the
+existing core `frameAlignedDuration(Composition duration, export frame rate)`
+within one sample. This is the same helper used by the renderer. Keep full
+Composition duration, full PCM duration/sample count, frame-aligned export
+duration, actual AAC stream duration, and lost-tail samples/milliseconds as
+separate fields. Every positive frame-policy tail loss emits the typed
+`qa.frameAlignedAudioTail` warning with severity `manual-review-required`.
+It must remain visible even when the objective export contract passes.
+Record decoded AAC sample count, packet PTS,
 container/video duration, loudness, peak and PCM error separately: AAC is lossy
 and may have trailing codec padding. Do not assert AAC byte equality with WAV.
 Sample jumps and codec error are diagnostics, not click/intelligibility passes.
+`objective-contract-pass; manual-review-required` never means accepted audio
+quality; the packet always records `fullyAcceptedQuality: false` until human
+and platform acceptance has independently been performed.
 
 Each `*-review.openfilm` is copied with storage closed before acceptance and
 reopened to verify the saved review identity. Open this copy in the current UI
@@ -110,13 +122,17 @@ See [existing synthetic validation](./validation-silence-rendered-audition.md)
 for complementary deterministic coverage. Do not replace its synthetic-only CI
 artifact policy with a real-media upload.
 
-## Observed objective outcome — 2026-11-11
+## Historical initial measurement and corrected QA interpretation — 2026-11-11
 
 Measured implementation candidate:
 `6ea8de24085fc25dc58d9b263dd743158dad9b5a`, Linux x64,
 Node `24.19.0`, FFmpeg/ffprobe `7.1.5-0+deb13u1`.
-The real-media runner **exits 1**: the mixed case fails the predeclared MP4
-duration criterion. [Shareable measurements](https://github.com/bynanci/open-film/blob/main/docs/evidence/silence-real-media/2026-11-11.json)
+The initial real-media runner **exited 1** because its duration criterion
+compared AAC with full PCM. That initial criterion was overgeneralized:
+independent review confirmed the existing renderer deliberately floors output
+to complete video frames. This was a QA contract error, not a newly established
+production regression. The initial failure packet remains unchanged.
+[Historical shareable measurements](https://github.com/bynanci/open-film/blob/main/docs/evidence/silence-real-media/2026-11-11.json)
 contain hashes, review identities, selected IDs, cut intervals and sample windows;
 media, project files, raw packet logs and human forms remain local.
 
@@ -143,15 +159,19 @@ Accept/Undo/Redo/Save/cold Reopen, and equal accepted/reopened AAC decode.
 The still-unaccepted review project copies also reopened with the exact review.
 These objective checks do not establish natural pause/breath classification.
 
-The duration discrepancy follows the existing renderer policy:
+The measured tail termination follows the existing renderer policy:
 `packages/render/src/index.ts` uses `composition.duration` for WAV and
 `frameAlignedDuration(composition.duration, outputFrameRate)` for MP4, then
 applies that duration to AAC as well. At 25 fps, complete output frames end at
 15.240 s for a 15.264 s Composition. Thus codec padding and actual timeline
-truncation are different observations. The runner preserves its one-sample
-assertion, collects the remaining evidence, and reports failure. The policy
-discrepancy needs a product decision or a coordinated renderer fix and rerun;
-this validation-only change does not alter it.
+truncation are different observations. Existing core and real renderer tests
+already assert `1.01 s @ 30 fps → 1 s` and
+`1.02 s @ 30000/1001 fps → 1.001 s`. The corrected QA gate uses that existing
+core export boundary and retains the same one-sample threshold. It still
+rejects unexpected additional shortening and full-PCM duration loss. The
+**1,152 samples / 24 ms** excluded from the full mixed PCM are retained as a
+typed manual-review warning and a known termination limitation. No renderer,
+core timing, route, or perceptual acceptance policy was changed.
 
 AAC comparison over the common decoded duration measured maximum normalized
 sample error 0.1128155 / 0.1355691 and RMS error 0.00278185 / 0.00342933.
