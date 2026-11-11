@@ -32,9 +32,12 @@ above is not a substitute for the frozen build candidate.
 | Cold instrumentation | Approved external tracer/version, display/camera capture, clock/ready-event protocol                           | BLOCKED: not observed                               |
 
 Keep pre-trust identity, post-signing final-byte identity, and the final external
-receipt distinct. Signing/stapling changes bytes: regenerate final inventory and
-applicable final-shell attribution after that mutation, then collect trust and
-lifecycle evidence on those exact bytes. After the authorized signer produces final bytes, issue 140's command is:
+receipt distinct. Preserve the original compiler/build-shell evidence and
+recompute native attribution against the original pre-trust shell; do not
+overwrite that attribution with the signed shell. Signing/stapling changes
+bytes: regenerate the final artifact inventory, then bind post-signing bytes
+through `finalLinkage` and actual OS trust/lifecycle observations. After the
+authorized signer produces final bytes, issue 140's command is:
 
 ```sh
 pnpm exec tsx scripts/native/receipt.ts seal /absolute/candidate-root /absolute/candidate-root/candidate.json /absolute/new-final-bytes.json
