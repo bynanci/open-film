@@ -1,7 +1,7 @@
 # Runtime intake and target staging — issue 141
 
 Status on 2026-11-11: **partial delivery; runtime distribution remains blocked**.
-The checked-in [upstream evidence](evidence/runtime-intake-141/upstream-evidence.json)
+The checked-in [upstream evidence](https://github.com/bynanci/open-film/blob/9f4abb8de6f8f20b080c59dd50f1cd64af9dc2d5/docs/evidence/runtime-intake-141/upstream-evidence.json)
 records actual bytes fetched over HTTPS and inspected without executing payloads.
 It is an intake inventory, not an SPDX distribution document, independent license
 approval, or target execution receipt. No runtime artifact/run ID or independently
