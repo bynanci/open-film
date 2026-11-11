@@ -1,7 +1,10 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import {
   copyFile,
+  link,
+  symlink,
+  truncate,
   mkdir,
   mkdtemp,
   readFile,
@@ -17,6 +20,7 @@ import { build } from "esbuild";
 import {
   createBuildContributions,
   verifyBuildContributions,
+  resolveBuildContributionSource,
   recordEsbuildContributions,
   type PackageIdentity,
 } from "../../scripts/build-attribution.mjs";
@@ -32,8 +36,33 @@ import {
   runtimeHash,
   type RuntimeManifest,
 } from "../../apps/server/src/runtime-manifest.js";
+import * as receiptContract from "../../scripts/native/receipt-contract.js";
+import { verifyContributionInventory } from "../../scripts/native/receipt-attribution.js";
+async function checkCandidateInventory(
+  repository: string,
+  build: Parameters<typeof verifyContributionInventory>[1],
+) {
+  await writeFile(join(repository, "dist/native-shell"), "fixture shell");
+  const original = JSON.stringify(build);
+  await verifyContributionInventory(
+    repository,
+    build,
+    {
+      shell: {
+        path: "target/native-shell",
+        sha256: await runtimeHash(join(repository, "dist/native-shell")),
+        packageId: "fixture",
+      },
+      compilations: [],
+      generatedOutputs: [],
+    },
+    "dist",
+  );
+  expect(JSON.stringify(build)).toBe(original);
+}
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -409,6 +438,7 @@ it("attributes Vite's Vue export runtime helper to the actual frozen Vue build p
   });
   expect(c.packages.map((p) => p.name)).toEqual(["@vitejs/plugin-vue"]);
   await verifyBuildContributions(c, repository);
+  await checkCandidateInventory(repository, c);
 });
 it("refuses an edited bundle inventory that omits a package present in raw esbuild output", async () => {
   const f = await fixture();
@@ -550,6 +580,7 @@ it("attributes esbuild runtime helpers that are absent from its module metafile"
   );
   expect(c.packages.map((p) => p.name)).toContain("esbuild");
   await verifyBuildContributions(c, repository);
+  await checkCandidateInventory(repository, c);
   const withoutHelper = {
     ...c,
     packages: c.packages.filter((p) => p.name !== "esbuild"),
@@ -969,3 +1000,121 @@ it.each(["build", "target"] as const)(
     expect(e.blockers).toContain("native-link-owner-role-mismatch:compiled");
   },
 );
+
+async function generatedInventoryFixture() {
+  const repository = await generatedRuntimeFixture("esbuild");
+  await writeFile(join(repository, "dist/output.js"), "synthetic output");
+  const contributions = await createBuildContributions({
+    repository,
+    outputs: [
+      {
+        path: "dist/output.js",
+        delivery: "service",
+        inputs: [{ path: "\0esbuild/runtime", bytesInOutput: 1 }],
+      },
+    ],
+  });
+  const input = contributions.artifacts[0]!.inputs[0]!;
+  const entry = createRequire(join(repository, "package.json")).resolve(
+    "esbuild",
+  );
+  expect(input.path).toBe("generated:esbuild/runtime");
+  const resolved = await resolveBuildContributionSource(repository, input.path);
+  expect(resolved).toEqual({
+    absolute: entry,
+    path: input.path,
+    generated: true,
+  });
+  expect(input.sha256).toBe(await runtimeHash(entry));
+  return { repository, contributions, input, entry };
+}
+it.each([
+  "unknown",
+  "traversal",
+  "backslash",
+  "missing-entry",
+  "tampered-entry",
+  "generator-manifest",
+  "hardlink",
+  "escaping-symlink",
+  "oversized",
+  "inventory-limit",
+  "plain-traversal",
+  "plain-symlink",
+  "generated-artifact",
+  "generated-build-evidence",
+])("rejects %s in generated native contribution inventory", async (fault) => {
+  const f = await generatedInventoryFixture();
+  if (fault === "unknown") f.input.path = "generated:unknown";
+  if (fault === "traversal") f.input.path = "generated:vite/../runtime";
+  if (fault === "backslash") f.input.path = "generated:esbuild\\runtime";
+  if (fault === "missing-entry") await rm(f.entry);
+  if (fault === "tampered-entry") await writeFile(f.entry, "changed generator");
+  if (fault === "generator-manifest") {
+    const path = join(f.repository, "node_modules/esbuild/package.json");
+    const pkg = JSON.parse(await readFile(path, "utf8"));
+    pkg.license = "unreviewed";
+    await writeFile(path, JSON.stringify(pkg));
+  }
+  if (fault === "hardlink")
+    await link(f.entry, join(f.repository, "dist/entry-alias"));
+  if (fault === "escaping-symlink") {
+    const outside = await mkdtemp(join(tmpdir(), "generator-outside-"));
+    roots.push(outside);
+    await copyFile(f.entry, join(outside, "entry.js"));
+    await rm(f.entry);
+    await symlink(join(outside, "entry.js"), f.entry);
+  }
+  if (fault === "oversized")
+    await truncate(f.entry, receiptContract.MAX_ARTIFACT_BYTES + 1);
+  if (fault === "inventory-limit")
+    f.contributions.artifacts[0]!.inputs = Array(20001).fill(f.input);
+  if (fault === "plain-traversal")
+    f.input.path = "node_modules/../node_modules/esbuild/lib/main.js";
+  if (fault === "plain-symlink") {
+    await symlink(f.entry, join(f.repository, "dist/link.js"));
+    f.input.path = "dist/link.js";
+  }
+  if (fault === "generated-artifact")
+    f.contributions.artifacts[0]!.path = f.input.path;
+  if (fault === "generated-build-evidence")
+    f.contributions.buildEvidence.push({
+      path: f.input.path,
+      sha256: f.input.sha256,
+    });
+  const verify = async () => {
+    await checkCandidateInventory(f.repository, f.contributions);
+    await verifyBuildContributions(f.contributions, f.repository);
+  };
+  await expect(verify()).rejects.toThrow();
+});
+it("counts resolved generated entry bytes against the unchanged aggregate limit", async () => {
+  const f = await generatedInventoryFixture();
+  f.contributions.artifacts[0]!.inputs = Array(5).fill(f.input);
+  const actualPin = receiptContract.pinFile;
+  // Exercise aggregation without creating/hashing more than 16 GiB: retain
+  // actual path/read/hash checks, then model boundary-sized files in this unit.
+  vi.spyOn(receiptContract, "pinFile").mockImplementation(async (...args) => ({
+    ...(await actualPin(...args)),
+    size: receiptContract.MAX_ARTIFACT_BYTES,
+  }));
+  await expect(
+    checkCandidateInventory(f.repository, f.contributions),
+  ).rejects.toThrow("Contribution total byte limit");
+});
+
+it("never interprets a generated-looking Cargo shell path as a build input ID", async () => {
+  const f = await generatedInventoryFixture();
+  await expect(
+    verifyContributionInventory(
+      f.repository,
+      f.contributions,
+      {
+        shell: { ...f.input, packageId: "fixture" },
+        compilations: [],
+        generatedOutputs: [],
+      },
+      "dist",
+    ),
+  ).rejects.toThrow("runtime.invalid");
+});

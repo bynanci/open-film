@@ -2,6 +2,9 @@
 import { afterEach, expect, it } from "vitest";
 import {
   chmod,
+  link,
+  lstat,
+  rename,
   mkdir,
   mkdtemp,
   readFile,
@@ -297,3 +300,119 @@ it.each(["missing", "tampered"])(
     ).rejects.toThrow(fault === "missing" ? /ENOENT/u : /mismatch/u);
   },
 );
+
+async function defaultCargoFixture() {
+  const f = await fixture();
+  const runtimeRoot = "apps/desktop/src-tauri/resources/runtime";
+  const release = "apps/desktop/src-tauri/target/release";
+  const shell = `${release}/openfilm-desktop`;
+  await mkdir(join(f.root, "apps/desktop/src-tauri/resources"), {
+    recursive: true,
+  });
+  await rename(join(f.root, "runtime"), join(f.root, runtimeRoot));
+  await mkdir(join(f.root, release, "deps"), { recursive: true });
+  await mkdir(join(f.root, release, "bundle"));
+  await rename(join(f.root, "shell"), join(f.root, shell));
+  await chmod(join(f.root, shell), 0o755);
+  const alias = `${release}/deps/openfilm-desktop-buildhash`;
+  await link(join(f.root, shell), join(f.root, alias));
+  await rename(
+    join(f.root, "installer.deb"),
+    join(f.root, release, "bundle/installer.deb"),
+  );
+  const manifestPath = join(f.root, runtimeRoot, "runtime-manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const linkage = JSON.stringify({ baseline: { abi: "glibc-test-only" } });
+  await mkdir(join(f.root, runtimeRoot, "receipts"));
+  const linkagePath = join(
+    f.root,
+    runtimeRoot,
+    "receipts/linkage-evidence.json",
+  );
+  await writeFile(linkagePath, linkage);
+  manifest.files.push({
+    path: "receipts/linkage-evidence.json",
+    sha256: await runtimeHash(linkagePath),
+    size: Buffer.byteLength(linkage),
+    executable: false,
+    component: "openfilm",
+  });
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  execFileSync("git", ["init", "-q"], { cwd: f.root });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "--allow-empty",
+      "-qm",
+      "synthetic build",
+    ],
+    { cwd: f.root },
+  );
+  const cli = (...args: string[]) =>
+    execFileSync(
+      process.execPath,
+      [
+        "--import",
+        resolve("node_modules/tsx/dist/loader.mjs"),
+        resolve("scripts/native/receipt.ts"),
+        ...args,
+      ],
+      { cwd: f.root, encoding: "utf8", stdio: "pipe" },
+    );
+  return { ...f, runtimeRoot, release, shell, alias, manifestPath, cli };
+}
+it("stages the default Cargo hardlinked shell at its signing path before identity and seal", async () => {
+  const f = await defaultCargoFixture();
+  const before = await readFile(join(f.root, f.shell));
+  const mode = (await lstat(join(f.root, f.shell))).mode;
+  const manifest = await readFile(f.manifestPath);
+  expect((await lstat(join(f.root, f.shell))).nlink).toBe(2);
+  await expect(pinFile(f.root, f.shell)).rejects.toThrow("unlinked regular");
+  await expect(
+    createCandidateIdentity(f.root, {
+      ...f.options,
+      runtimeRoot: f.runtimeRoot,
+      shellPath: f.shell,
+      installerPaths: [`${f.release}/bundle/installer.deb`],
+    }),
+  ).rejects.toThrow("unlinked regular");
+  expect(JSON.parse(f.cli())).toMatchObject({
+    stage: "pre-trust",
+    disposition: "incomplete",
+    distributionApproved: false,
+  });
+  const candidatePath = `${f.release}/bundle/candidate.json`;
+  const identity = JSON.parse(
+    await readFile(join(f.root, candidatePath), "utf8"),
+  );
+  expect(identity.shell.path).toBe(f.shell);
+  expect(await readFile(join(f.root, f.shell))).toEqual(before);
+  expect(await readFile(join(f.root, f.alias))).toEqual(before);
+  expect((await lstat(join(f.root, f.shell))).mode).toBe(mode);
+  expect((await lstat(join(f.root, f.shell))).nlink).toBe(1);
+  expect((await lstat(join(f.root, f.alias))).nlink).toBe(1);
+  expect(await readFile(f.manifestPath)).toEqual(manifest);
+  await writeFile(join(f.root, f.shell), "synthetic signed final bytes");
+  f.cli("seal", ".", candidatePath, `${f.release}/bundle/final-bytes.json`);
+  const final = JSON.parse(
+    await readFile(join(f.root, f.release, "bundle/final-bytes.json"), "utf8"),
+  );
+  expect(final.shell.path).toBe(f.shell);
+  expect(final.shell.sha256).not.toBe(identity.shell.sha256);
+  expect(await readFile(join(f.root, f.alias))).toEqual(before);
+  expect(await readFile(f.manifestPath)).toEqual(manifest);
+});
+
+it("refuses an existing default candidate before detaching its build shell", async () => {
+  const f = await defaultCargoFixture();
+  const path = join(f.root, f.release, "bundle/candidate.json");
+  await writeFile(path, "existing candidate");
+  expect(() => f.cli()).toThrow("Candidate output already exists");
+  expect((await lstat(join(f.root, f.shell))).nlink).toBe(2);
+  expect(await readFile(path, "utf8")).toBe("existing candidate");
+});

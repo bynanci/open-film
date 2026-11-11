@@ -36,6 +36,10 @@ export interface BuildContributions {
   artifacts: BuildArtifact[];
   buildEvidence: { path: string; sha256: string }[];
 }
+export function resolveBuildContributionSource(
+  repository: string,
+  inputPath: string,
+): Promise<{ absolute: string; path: string; generated: boolean }>;
 export function identifyPackage(
   repository: string,
   modulePath: string,
