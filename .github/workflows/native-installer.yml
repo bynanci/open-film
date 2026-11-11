@@ -75,7 +75,10 @@ jobs:
       - name: Build Linux candidate
         if: runner.os == 'Linux'
         run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles deb,appimage
-      - run: pnpm exec tsx scripts/native/receipt.ts
+      - name: Record incomplete pre-trust candidate identity
+        run: pnpm exec tsx scripts/native/receipt.ts
+      - name: Snapshot current final bytes (trust and lifecycle remain incomplete)
+        run: pnpm exec tsx scripts/native/receipt.ts seal . apps/desktop/src-tauri/target/release/bundle/candidate.json apps/desktop/src-tauri/target/release/bundle/final-bytes.json
       - name: Archive installer outputs with executable modes
         shell: bash
         run: python scripts/native/archive-candidate.py apps/desktop/src-tauri/target/release/bundle native-candidate/installers.tar
@@ -86,6 +89,12 @@ jobs:
             native-candidate/installers.tar
             native-candidate/installers.tar.sha256
             apps/desktop/src-tauri/target/release/bundle/candidate.json
+            apps/desktop/src-tauri/target/release/bundle/final-bytes.json
+            dist/build-contributions.json
+            apps/desktop/src-tauri/target/release/openfilm-desktop
+            apps/desktop/src-tauri/target/release/openfilm-desktop.exe
+            apps/desktop/src-tauri/Cargo.lock
             apps/desktop/src-tauri/resources/runtime/runtime-manifest.json
             apps/desktop/src-tauri/resources/runtime/sbom.spdx.json
           if-no-files-found: error
+          retention-days: 30
