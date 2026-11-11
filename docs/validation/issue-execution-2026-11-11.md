@@ -96,6 +96,18 @@ timeouts, retry counts and source checks remain intact. These findings do not
 retroactively turn the earlier failed Verify into a pass or replace final-head
 six-shard verification. The 6,114-test run above does not include Playwright.
 
+A later `04cc127` Verify exposed a separate cancellation-test contract mismatch:
+the real import correctly retained a completed photo and showed Organize memories,
+while the test unconditionally required the empty-Library Add more media action.
+The correction first observes a positive real catalog and the same new import
+job still queued/running, then requires that job's successful cancellation,
+retention and visible cards for every pre-cancel asset, unchanged originals and
+project title, and recovery through the exact persistent Add media toolbar.
+The controlled original assertion failed at its original five-second boundary;
+the corrected focused case passed **3/3**, and the complete affected desktop
+spec passed **3/3**. No production UI or import-engine change was required.
+Current candidate and complete hosted results remain the linked PR records.
+
 ## Actual source-security producer evidence
 
 The actual [Dependency Security run 43006588414](https://github.com/bynanci/open-film/actions/runs/43006588414)
