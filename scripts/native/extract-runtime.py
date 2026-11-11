@@ -15,7 +15,9 @@ with tarfile.open(archive, "r:") as source:
     seen = set()
     for item in members:
         name = item.name.removeprefix("./").rstrip("/")
-        if not name and item.isdir():
+        # Standard tar -C <runtime> . root metadata carries no payload/path.
+        # Ignore only this directory marker; never normalize other unsafe names.
+        if item.isdir() and item.name in (".", "./") and item.size == 0:
             continue
         parts = PurePosixPath(name).parts
         if (not parts or name.startswith("/") or "\\" in name or ":" in name
