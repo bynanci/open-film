@@ -46,6 +46,26 @@ pnpm exec tsx scripts/native/receipt.ts finalize . dist/native-evidence/finaliza
 
 `attribution` points to an object with `schemaVersion: 1`, root-relative `targetDirectory`, and pins `report`, `spdx`, `buildContributions`, `cargo`, `cargoInputs`, `licenseReceipts`, `nativeRuntimeInputs`, `nativeLinkage`. Reuse `cargo-attribution.ts` and `attribute-distribution.ts` to produce the originals. Retain actual Cargo metadata/messages/invocation/lock, compilations, generated outputs, static-library inventories, Rust sysroot inventory, full license texts and obligations, original linkage, and report notice/receipt copies. Source paths may be relative or absolute inside the selected root; outside-root inputs are rejected. `cargoInputs` pins a version-1 object with `target`, root-relative `targetDirectory`, and file pins `metadata`, `messages`, `lock`, `invocation`, `shell` for the original Cargo collector inputs. The target and original shell must match the candidate, and every role is required. The finalizer reruns `collectCargoEvidence` and compares the entire derived Cargo inventory, including generated outputs and static link directives, before recomputing attribution through the existing contribution validator and compares the report and SPDX, rather than trusting a ready-status string. Any existing blocker fails finalization.
 
+For cross-host replay, `cargoInputs` may additionally contain this **data-only** `pathMapping` (no executable code):
+
+```json
+{
+  "syntax": "win32",
+  "repositoryRoot": "C:/agent/open-film",
+  "targetDirectory": "C:/agent/open-film/apps/desktop/src-tauri/target",
+  "externalRoots": [
+    {
+      "originalRoot": "D:/cargo/registry/src",
+      "localRoot": "dist/native-evidence/cargo-registry"
+    }
+  ]
+}
+```
+
+`syntax` is `win32` or `posix`, independent of the finalization host. Windows drive paths with either separator are supported; UNC/device paths, relative paths, traversal, duplicate separators, reserved names and ambiguous case aliases are rejected. The original repository root projects to the selected local repository, preserving the original repository-relative source and raw-input layout. The original target directory must project exactly to `cargoInputs.targetDirectory` and match the pinned metadata's original `target_directory`. External source/build roots project only to their declared bounded local directories. Original roots cannot overlap; external local destinations cannot overlap, and their prefixes are reserved against the implicit repository projection. Unknown original roots fail closed.
+
+The resolver changes **only where the collector reads files**. Original metadata/messages, raw package IDs, resolved-ID hashes, raw-role hashes and original source identities are not rewritten. Existing workspace locator normalization still uses the same original repository-relative path; workspace sources outside the original repository remain rejected. External registry identities retain their original registry locator, lock checksum and complete verified source-tree inventory. Place external retained trees outside workspace package trees, so adding a capsule does not change their original source inventory. The same complete collector then reconstructs and compares the entire Cargo receipt, including generated outputs and static links. Symlinked local parents and missing/changed retained bytes fail; no host path guessing, global path overrides or caller-supplied JavaScript runs. Omitting `pathMapping` preserves the previous native-host collection/replay behavior.
+
 `finalLinkagePolicy` and `finalLinkage` use the existing linkage contract, but binary paths are relative to the selected root and must include the final shell. All listed binary bytes, tool executions, policy identity, target, reviewed OS baseline and ABI must match. This is separate from the pre-signing attribution linkage.
 
 ## OS/security observation contract

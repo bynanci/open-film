@@ -5,6 +5,10 @@ import { isAbsolute, relative } from "node:path";
 import { runtimePath } from "../../apps/server/src/runtime-manifest.js";
 import type { CargoEvidence } from "./attribution.js";
 import { collectCargoEvidence } from "./cargo-attribution.js";
+import {
+  createCargoPathResolver,
+  type CargoPathMapping,
+} from "./receipt-paths.js";
 import { canonicalJson } from "./linkage.js";
 import {
   exactKeys,
@@ -25,6 +29,7 @@ export interface CargoReplayInputs {
   lock: FilePin;
   invocation: FilePin;
   shell: FilePin;
+  pathMapping?: CargoPathMapping;
 }
 /** A derived inventory is accepted only if the original collector reproduces it. */
 export async function verifyCandidateCargo(
@@ -43,6 +48,7 @@ export async function verifyCandidateCargo(
     "lock",
     "invocation",
     "shell",
+    ...(Object.hasOwn(inputs, "pathMapping") ? ["pathMapping"] : []),
   ]);
   requireEvidence(
     inputs.schemaVersion === 1 &&
@@ -51,6 +57,9 @@ export async function verifyCandidateCargo(
     "Cargo replay target/mode mismatch",
   );
   const targetDirectory = runtimePath(root, inputs.targetDirectory);
+  const resolveRecordedPath = Object.hasOwn(inputs, "pathMapping")
+    ? createCargoPathResolver(root, targetDirectory, inputs.pathMapping)
+    : undefined;
   requireEvidence(
     !expectedTargetDirectory ||
       inputs.targetDirectory === expectedTargetDirectory,
@@ -72,11 +81,12 @@ export async function verifyCandidateCargo(
     inputs.shell.sha256 === expected.shell.sha256,
     "Cargo replay shell mismatch",
   );
-  // Original package manifests must remain inside the selected input root.
+  // Resolved package manifest bytes remain inside the selected input root.
   // The collector independently inventories and validates their complete source
   // trees, lock identities, compiler messages, output files and link directives.
   const metadata = await readEvidence<{
-    packages: { manifest_path: string }[];
+    packages: { manifest_path: string; source: string | null }[];
+    target_directory?: string;
   }>(root, inputs.metadata);
   requireEvidence(
     Array.isArray(metadata.packages) && metadata.packages.length <= 2000,
@@ -84,12 +94,24 @@ export async function verifyCandidateCargo(
   );
   for (const pkg of metadata.packages) {
     requireEvidence(
-      typeof pkg.manifest_path === "string" && isAbsolute(pkg.manifest_path),
+      typeof pkg.manifest_path === "string" &&
+        (resolveRecordedPath || isAbsolute(pkg.manifest_path)),
       "Cargo manifest must use the original absolute path",
     );
-    await pinFile(
-      root,
-      relative(root, pkg.manifest_path).replaceAll("\\", "/"),
+    const local = resolveRecordedPath
+      ? resolveRecordedPath(
+          pkg.manifest_path,
+          pkg.source === null ? "workspace" : "registry",
+        )
+      : pkg.manifest_path;
+    await pinFile(root, relative(root, local).replaceAll("\\", "/"));
+  }
+  if (resolveRecordedPath) {
+    requireEvidence(
+      typeof metadata.target_directory === "string" &&
+        resolveRecordedPath(metadata.target_directory, "artifact") ===
+          targetDirectory,
+      "Original Cargo metadata target directory mismatch",
     );
   }
   const seen = new Set<string>();
@@ -135,10 +157,17 @@ export async function verifyCandidateCargo(
         Array.isArray(message.filenames),
         "Missing Cargo artifact filenames",
       );
-      for (const path of message.filenames) await boundArtifact(path);
+      for (const path of message.filenames)
+        await boundArtifact(
+          resolveRecordedPath ? resolveRecordedPath(path, "artifact") : path,
+        );
     }
     if (message.reason === "build-script-executed" && message.out_dir)
-      await boundArtifact(message.out_dir);
+      await boundArtifact(
+        resolveRecordedPath
+          ? resolveRecordedPath(message.out_dir, "artifact")
+          : message.out_dir,
+      );
   }
   const actual = await collectCargoEvidence({
     root,
@@ -150,6 +179,7 @@ export async function verifyCandidateCargo(
     invocation: runtimePath(root, inputs.invocation.path),
     shell: runtimePath(root, inputs.shell.path),
     observationMode: "executed",
+    resolveRecordedPath,
   });
   for (const pin of raw) await verifyPin(root, pin);
   await verifyPin(root, inputs.shell, MAX_ARTIFACT_BYTES);
