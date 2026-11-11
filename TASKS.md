@@ -35,6 +35,18 @@ capsule, measured CI profiling, and final native evidence binding. Runtime
 provisioning and target QA proceed through separate dependencies. Existing
 Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
 
+- [x] Complete the bounded [#139 media cost profile](docs/validation/media-test-profile.md)
+      using two fixed-source repetitions and 56 real tool calls. Render work
+      dominated the selected cases; no production speedup, fixture reuse or
+      weaker suite assertion is claimed.
+- [x] Implement actual-checkout source-head guards and unconditional Windows
+      recovery coverage in [PR #148](https://github.com/bynanci/open-film/pull/148).
+      The proposed [merge policy](docs/governance/merge-controls-operator-handoff.md)
+      remains unapplied; this implementation does not approve distribution.
+- [ ] Obtain the owner's decision and authorized administrator execution for
+      [#146](https://github.com/bynanci/open-film/issues/146). Native signing,
+      target lifecycle and performance observations remain separate open gates.
+
 ## Editing and story workflow
 
 ### Tobi-ishi workspace and control panels (merged in PR #119)
@@ -301,11 +313,16 @@ and in the long-range v1.0 readiness record.
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
       are recorded in the [independent Storytelling release track](docs/roadmap/incremental-release-train.md).
-- [ ] Prove a pinned, read-only OpenFilm → Storytelling compatibility capsule.
-      Storytelling now accepts bounded M1/M2, M3-01 and M3-02 scopes; M3-03 has
-      test-only readback proof but production approval/execution/quiescence/retry
-      remains open. Do not reimplement completed M1-02/M1-03 or enable an M4
-      writer/feature flag from those bounded proofs. Keep versions independent.
+- [x] Prove the bounded, read-only OpenFilm → Storytelling compatibility capsule
+      for [Issue #138](https://github.com/bynanci/open-film/issues/138): the existing
+      exporter feeds the pinned SDK's finite profile without stripping unsupported
+      fields. Local verification passes 94 exporter/unit tests and 11 actual-SDK
+      application/CLI tests, including unchanged project, Catalog and source bytes;
+      see the [scope and evidence](docs/validation/storytelling-compatibility-138.md).
+      Integrated final-head CI remains pending. This is not production adapter or
+      FilmCraft acceptance: production approval/execution/quiescence/retry remain
+      open. Do not enable an M4 writer/authority switch or reimplement completed
+      M1-02/M1-03 from bounded proofs. Keep versions independent.
 
 - [ ] **D7B / M7E:** complete audited runtime inputs, dependency/security review,
       license notices and the remaining native distribution requirements ([validation](docs/validation-native-installer.md)). Runtime staging and attribution tools are merged, but final candidate receipt

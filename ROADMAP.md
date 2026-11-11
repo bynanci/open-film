@@ -50,6 +50,21 @@ a bounded read-only SDK compatibility proof, measured CI costs and native
 post-build evidence binding. Source-release ownership and physical acceptance
 remain separate workstreams; no new NLE expansion is selected by this plan.
 
+The [fixed-source media profile](docs/validation/media-test-profile.md) now records
+real tool costs without changing the workload or claiming a product speedup.
+[PR #148](https://github.com/bynanci/open-film/pull/148) binds CI to the actual
+checkout and runs Windows recovery for every PR. Its proposed governance rules
+still require a separate owner decision and administrator activation.
+
+The [Issue #138 compatibility capsule](docs/validation/storytelling-compatibility-138.md)
+now exercises the existing exporter against a pinned Storytelling SDK finite
+profile. Local exporter/unit and actual-SDK application/CLI tests pass; protected
+or unsupported fields are rejected without stripping, and original project,
+Catalog and source bytes remain unchanged. Integrated final-head CI is pending.
+This read-only consumer proof grants no production adapter, FilmCraft, source
+verification or execution authority. Production M3-03/M4 approval, quiescence,
+ambiguous readback reconciliation and safe retry remain separate acceptance work.
+
 ### Bring the Tobi-ishi identity into everyday tasks
 
 PR #119 merged the warm stone tokens and original angular surfaces, removed
