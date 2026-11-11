@@ -142,6 +142,19 @@ tests plus typecheck, lint, formatting, inventory and license checks; independen
 review and final-head gates are recorded in PR #150/#151. Signed-byte simulations
 are structural tests and provide no real OS signature or distribution approval.
 
+A subsequent inline review found that the actual staging producer's
+`tar -cf runtime-review/runtime.tar -C staged-runtime .` emits a canonical
+`.` directory header that the strict extractor rejected. The exact same real
+10 KiB archive failed against the original CLI and passed with the correction.
+Only a literal `.` or `./`, directory type and zero-size root marker is ignored;
+it performs no filesystem operation and cannot change destination permissions.
+Files, links, noncanonical roots, traversal, duplicate paths and existing size/
+entry limits remain checked. Seven extraction regressions cover the real
+producer roundtrip, hidden files, executable modes, root permissions, overwrite
+rejection and oversized/count-limited archives. This is a producer compatibility
+fix, not an actual reviewed target-runtime or installer execution. Its review
+and new final-head gates remain recorded in PR #151.
+
 ## Actual source-security producer evidence
 
 The actual [Dependency Security run 43023766217](https://github.com/bynanci/open-film/actions/runs/43023766217)
