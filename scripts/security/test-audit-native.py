@@ -2,6 +2,9 @@
 import copy
 import importlib.util
 import json
+import shutil
+import subprocess
+import zipfile
 from pathlib import Path
 import tempfile
 import unittest
@@ -53,5 +56,37 @@ class CurrentRegistryTests(unittest.TestCase):
             self.assertEqual(current_lock,self.registry_lock)
             self.assertEqual((output/'current-registry-Cargo.lock').read_bytes(),self.registry_lock)
             self.assertTrue(m.compare_graphs(self.actual,current,self.actual_lock,current_lock))
+
+class AdvisoryBundleTests(unittest.TestCase):
+    def test_shallow_bundle_survives_visible_only_archive_and_detects_tampering(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);origin=root/'origin';origin.mkdir()
+            def git(cwd,*args):
+                return subprocess.check_output(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid',*args],cwd=cwd,stderr=subprocess.PIPE,text=True).strip()
+            git(origin,'init','-q')
+            for value in ('first','second'):
+                (origin/'advisory').write_text(value)
+                git(origin,'add','.');git(origin,'commit','-qm',value)
+            expected=git(origin,'rev-parse','HEAD')
+            evidence=root/'evidence';evidence.mkdir();db=evidence/'advisory-db'
+            git(root,'clone','--depth','1',origin.as_uri(),str(db))
+            self.assertEqual(git(db,'rev-parse','--is-shallow-repository'),'true')
+            bundle=evidence/'advisory-db.bundle'
+            m.retain_advisory_bundle(db,bundle,expected)
+            archive=root/'artifact.zip'
+            with zipfile.ZipFile(archive,'w') as output:
+                for path in evidence.rglob('*'):
+                    if path.is_file() and not any(part.startswith('.') for part in path.relative_to(evidence).parts):
+                        output.write(path,path.relative_to(evidence))
+            shutil.rmtree(evidence);shutil.rmtree(origin)
+            downloaded=root/'downloaded'
+            with zipfile.ZipFile(archive) as artifact:artifact.extractall(downloaded)
+            self.assertFalse((downloaded/'advisory-db/.git').exists())
+            retained=downloaded/'advisory-db.bundle'
+            m.verify_advisory_bundle(retained,expected)
+            with self.assertRaisesRegex(ValueError,'database bundle commit differs'):
+                m.verify_advisory_bundle(retained,'0'*40)
+            retained.write_bytes(b'corrupt bundle')
+            with self.assertRaises(subprocess.CalledProcessError):m.verify_advisory_bundle(retained,expected)
 
 if __name__=='__main__':unittest.main()
