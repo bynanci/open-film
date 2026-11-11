@@ -106,6 +106,21 @@ async function moduleSource(repository, identifier) {
   if (!info.isFile()) throw new Error("Non-file build contributor");
   return { absolute, path: inside(repository, absolute), generated: false };
 }
+/** Resolve a retained input ID using the same mapping as build capture. */
+export async function resolveBuildContributionSource(repository, inputPath) {
+  if (inputPath.startsWith("generated:")) {
+    const identifier = inputPath.slice(10);
+    if (
+      /[\\\0\r\n]/u.test(identifier) ||
+      identifier
+        .split("/")
+        .some((part) => !part || part === "." || part === "..")
+    )
+      throw new Error("Invalid generated contributor ID");
+    return moduleSource(repository, "\0" + identifier);
+  }
+  return moduleSource(repository, inputPath);
+}
 export async function identifyPackage(repository, modulePath) {
   repository = await realpath(repository);
   const absolute = await realpath(resolve(repository, modulePath));
@@ -241,10 +256,10 @@ export async function verifyBuildContributions(contributions, repository) {
       throw new Error("Stale emitted artifact hash");
     const found = new Set();
     for (const input of artifact.inputs) {
-      let module;
-      if (input.path.startsWith("generated:"))
-        module = await moduleSource(repository, "\0" + input.path.slice(10));
-      else module = await moduleSource(repository, input.path);
+      const module = await resolveBuildContributionSource(
+        repository,
+        input.path,
+      );
       const actual = await identifyPackage(repository, module.absolute),
         declared = contributions.packages.find((x) => x.id === input.packageId);
       if (

@@ -5,9 +5,10 @@ import {
   runtimePath,
   type RuntimeManifest,
 } from "../../apps/server/src/runtime-manifest.js";
-import type {
-  BuildContributions,
-  PackageIdentity,
+import {
+  resolveBuildContributionSource,
+  type BuildContributions,
+  type PackageIdentity,
 } from "../build-attribution.mjs";
 import {
   createDistributionAttribution,
@@ -82,6 +83,61 @@ async function verifySources(root: string, value: unknown): Promise<void> {
   }
   await visit(value, 0);
 }
+/** Bound original contribution files before rebuilding attribution. */
+export async function verifyContributionInventory(
+  root: string,
+  build: BuildContributions,
+  cargo: Pick<
+    CargoEvidence,
+    "evidenceFiles" | "shell" | "compilations" | "generatedOutputs"
+  >,
+  targetDirectory: string,
+): Promise<void> {
+  // Bounds/alias checks precede existing hash and contribution verification.
+  const originalFiles = [
+    ...build.buildEvidence.map((file) => ({ file, buildInput: false })),
+    ...build.artifacts.flatMap((artifact) => [
+      { file: artifact, buildInput: false },
+      ...artifact.inputs.map((file) => ({ file, buildInput: true })),
+    ]),
+    ...[
+      ...(cargo.evidenceFiles ?? []),
+      cargo.shell,
+      ...cargo.compilations.flatMap((c) => c.artifacts),
+      ...cargo.generatedOutputs,
+    ].map((file) => ({ file, buildInput: false })),
+  ];
+  requireEvidence(
+    originalFiles.length <= 20000,
+    "Excessive native contribution inventory",
+  );
+  let originalBytes = 0;
+  for (const { file, buildInput } of originalFiles) {
+    // Only build input IDs use the capture resolver. Ordinary evidence and
+    // artifact paths still reach pinFile unchanged; receipt bytes/IDs stay fixed.
+    const path =
+      buildInput && file.path.startsWith("generated:")
+        ? relative(
+            root,
+            (await resolveBuildContributionSource(root, file.path)).absolute,
+          )
+            .split("\\")
+            .join("/")
+        : file.path.startsWith("target/")
+          ? `${targetDirectory}/${file.path.slice(7)}`
+          : file.path;
+    const pin = await pinFile(root, path, MAX_ARTIFACT_BYTES);
+    originalBytes += pin.size;
+    requireEvidence(
+      originalBytes <= 16 * 1024 ** 3,
+      "Contribution total byte limit",
+    );
+    requireEvidence(
+      pin.sha256 === file.sha256,
+      "Contribution artifact hash mismatch",
+    );
+  }
+}
 export async function verifyCandidateAttribution(
   root: string,
   inputPin: FilePin,
@@ -151,35 +207,7 @@ export async function verifyCandidateAttribution(
   );
   await verifySources(root, licenses);
   await verifySources(root, nativeInputs);
-  // Bounds/alias checks precede existing hash and contribution verification.
-  const originalFiles = [
-    ...build.buildEvidence,
-    ...build.artifacts.flatMap((artifact) => [artifact, ...artifact.inputs]),
-    ...(cargo.evidenceFiles ?? []),
-    cargo.shell,
-    ...cargo.compilations.flatMap((c) => c.artifacts),
-    ...cargo.generatedOutputs,
-  ];
-  requireEvidence(
-    originalFiles.length <= 20000,
-    "Excessive native contribution inventory",
-  );
-  let originalBytes = 0;
-  for (const file of originalFiles) {
-    const path = file.path.startsWith("target/")
-      ? `${inputs.targetDirectory}/${file.path.slice(7)}`
-      : file.path;
-    const pin = await pinFile(root, path, MAX_ARTIFACT_BYTES);
-    originalBytes += pin.size;
-    requireEvidence(
-      originalBytes <= 16 * 1024 ** 3,
-      "Contribution total byte limit",
-    );
-    requireEvidence(
-      pin.sha256 === file.sha256,
-      "Contribution artifact hash mismatch",
-    );
-  }
+  await verifyContributionInventory(root, build, cargo, inputs.targetDirectory);
   const runtimeReport = await readEvidence<AttributionEvidence>(
     root,
     await pinFile(root, `${identity.runtimeRoot}/receipts/attribution.json`),
