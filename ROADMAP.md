@@ -58,8 +58,10 @@ remain separate workstreams; no new NLE expansion is selected by this plan.
 The [fixed-source media profile](docs/validation/media-test-profile.md) now records
 real tool costs without changing the workload or claiming a product speedup.
 [PR #148](https://github.com/bynanci/open-film/pull/148) binds CI to the actual
-checkout and runs Windows recovery for every PR. Its proposed governance rules
-still require a separate owner decision and administrator activation.
+checkout and runs Windows recovery for every PR. The owner approved the fixed
+main-ruleset proposal for activation after this validated PR round. Authorized
+administrator execution, safe control cases and role attestations remain open;
+this approval does not authorize release or native signing.
 
 The [Issue #138 compatibility capsule](docs/validation/storytelling-compatibility-138.md)
 now exercises the existing exporter against a pinned Storytelling SDK finite

@@ -47,9 +47,13 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
       recovery coverage in [PR #148](https://github.com/bynanci/open-film/pull/148).
       The proposed [merge policy](docs/governance/merge-controls-operator-handoff.md)
       remains unapplied; this implementation does not approve distribution.
-- [ ] Obtain the owner's decision and authorized administrator execution for
-      [#146](https://github.com/bynanci/open-film/issues/146). Native signing,
-      target lifecycle and performance observations remain separate open gates.
+- [x] Obtain the owner's approval for the fixed #146 main-ruleset proposal
+      `207bc7fed2804ad79d69e0c98ecf68f9ce4ba21c5d0e7fde8e68d4c158e3ce2e`
+      after this round of validated PRs. This approval excludes release/signing.
+- [ ] Apply that approved policy with authorized administrator access after the
+      PR round, verify safe control cases, and obtain alerting/release-role
+      attestations for [#146](https://github.com/bynanci/open-film/issues/146).
+      Native signing, lifecycle and performance observations remain separate.
 
 ## Editing and story workflow
 

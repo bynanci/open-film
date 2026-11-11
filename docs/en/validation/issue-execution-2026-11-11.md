@@ -108,6 +108,41 @@ the corrected focused case passed **3/3**, and the complete affected desktop
 spec passed **3/3**. No production UI or import-engine change was required.
 Current candidate and complete hosted results remain the linked PR records.
 
+The later collect-coverage failure occurred in teardown after its assertions
+passed: a direct API connection was idle for 6,001.291 ms, matching Node's
+5,000 ms keep-alive timeout plus 1,000 ms buffer. Controlled eviction at the
+actual HTTP agent's reuse boundary reproduced five stale-connection failures;
+five fresh owned contexts returned HTTP 200. Ordinary earlier eviction attempts
+reconnected and were retained as inconclusive. The actual ja-JP case reproduced
+the same teardown failure, then passed with a fresh strict cleanup context.
+The fixture sends one close request, rejects non-200 responses without a busy
+fallback or retry, disposes its context, and attempts every ordered stop callback
+while preserving failures. Six new real HTTP/lifecycle regressions plus three
+existing transport cases passed; all three collect locales passed with unchanged
+test bodies. These are additional tests beyond the 6,114-test snapshot above.
+
+## Native inline review closure
+
+The all-green earlier native candidate still had two supported real-build gaps
+identified by inline review. Generated contributor IDs were incorrectly passed
+to physical file pinning. The fix shares the existing build resolver only for
+artifact input records, preserves original IDs, and retains physical-path/hash,
+package identity, hard-link and inventory bounds. An actual production build's
+50 artifacts and 698 input occurrences, including five generated IDs, passed
+without changing the contribution receipt bytes; unsafe local dependency hard
+links were materialized only inside the isolated verification input tree.
+
+The default Cargo release shell can also share an inode with `release/deps`.
+The default candidate command now prepares an independent byte-identical shell
+at the same known build path before strict pinning, preserving its mode,
+compiler identity and later seal/sign/archive subject. Custom identity inputs
+and ordinary pinning retain hard-link rejection. Source/path race, symlink,
+exclusive-copy and rename-failure checks remain fail-closed. The original runtime
+and dependency alias bytes stay unchanged. The two-fix packet passed 219 focused
+tests plus typecheck, lint, formatting, inventory and license checks; independent
+review and final-head gates are recorded in PR #150/#151. Signed-byte simulations
+are structural tests and provide no real OS signature or distribution approval.
+
 ## Actual source-security producer evidence
 
 The actual [Dependency Security run 43006588414](https://github.com/bynanci/open-film/actions/runs/43006588414)
@@ -145,7 +180,7 @@ constraints](../validation-native-candidate-receipt.md).
 | [#143](https://github.com/bynanci/open-film/issues/143) | macOS operator/evidence handoff prepared                                                                                                 | Real signing/notarization, trust, clean install, update/rollback and uninstall                                                                                                 |
 | [#144](https://github.com/bynanci/open-film/issues/144) | CC0 recorded dialogue/guitar objective Silence pipeline, MP4 decode, exact PCM/WAV and cold reopen proof                                 | Human annotation/listening, 1,152-sample / 24 ms excluded-tail acceptance, native devices, recorded A/V synchronization, >2 captured channels and live browser lifecycle cases |
 | [#145](https://github.com/bynanci/open-film/issues/145) | Candidate-bound measurement handoff prepared                                                                                             | Installed cold startup, repeated launch, one-hour memory and long-form/4K/GPU workstation observations                                                                         |
-| [#146](https://github.com/bynanci/open-film/issues/146) | Tested CI/source-head guards and concrete ruleset/rollback proposal                                                                      | Concrete owner approval and authorized administrator activation; no settings changed                                                                                           |
+| [#146](https://github.com/bynanci/open-film/issues/146) | Tested CI/source-head guards and concrete ruleset/rollback proposal                                                                      | Owner approved fixed proposal207bc7f after this PR round; administrator activation, safe control cases and role attestations remain open; no settings changed                  |
 
 [Issue #7](https://github.com/bynanci/open-film/issues/7) remains the real-media/
 workstation umbrella. The [native operator handoff](../operations/native-platform-handoff.md)
