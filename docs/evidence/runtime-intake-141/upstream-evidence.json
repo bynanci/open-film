@@ -1,0 +1,489 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-11",
+  "status": "unreviewed-intake-evidence",
+  "executed": false,
+  "distributionApproved": false,
+  "records": [
+    {
+      "url": "https://nodejs.org/dist/v24.14.0/node-v24.14.0-win-x64.zip",
+      "file": "node-v24.14.0-win-x64.zip",
+      "sha256": "313fa40c0d7b18575821de8cb17483031fe07d95de5994f6f435f3b345f85c66",
+      "size": 36217529,
+      "kind": "node-release",
+      "version": "24.14.0",
+      "upstreamChecksumMatched": true,
+      "signatureVerified": false,
+      "members": [
+        {
+          "archiveMember": "node-v24.14.0-win-x64/LICENSE",
+          "file": "node-v24.14.0-win-x64-LICENSE",
+          "sha256": "8efdacdc1cfa3460aeb7fe98e3c54337b971d5da70e6eee292b73b981acb220c",
+          "size": 159872
+        },
+        {
+          "archiveMember": "node-v24.14.0-win-x64/node.exe",
+          "file": "node-v24.14.0-win-x64-node.exe",
+          "sha256": "63c259c81e5d472b5f11c8d506070130cb04a1ecf84b80377a34ed6ec9048088",
+          "size": 91380224,
+          "headerObservation": {
+            "format": "PE",
+            "machine": 34404,
+            "architecture": "x64"
+          }
+        }
+      ]
+    },
+    {
+      "url": "https://nodejs.org/dist/v24.14.0/node-v24.14.0-darwin-arm64.tar.xz",
+      "file": "node-v24.14.0-darwin-arm64.tar.xz",
+      "sha256": "448f01d4dfa5a21d280cfbacf00abc22b51aad52f38db0f4886e0e5d00df541d",
+      "size": 26499716,
+      "kind": "node-release",
+      "version": "24.14.0",
+      "upstreamChecksumMatched": true,
+      "signatureVerified": false,
+      "members": [
+        {
+          "archiveMember": "node-v24.14.0-darwin-arm64/LICENSE",
+          "file": "node-v24.14.0-darwin-arm64-LICENSE",
+          "sha256": "4573185d56580da2b890ba34a85a409257640f1c5632eade4300137266194d18",
+          "size": 156926
+        },
+        {
+          "archiveMember": "node-v24.14.0-darwin-arm64/bin/node",
+          "file": "node-v24.14.0-darwin-arm64-bin_node",
+          "sha256": "20a18709f0154d668f1bd6f6ea8c2a7ae001447b4b2c339732f22e57a8767a55",
+          "size": 119133456,
+          "headerObservation": {
+            "format": "Mach-O64",
+            "cpuType": 16777228,
+            "architecture": "arm64"
+          }
+        },
+        {
+          "archiveMember": "node-v24.14.0-darwin-arm64/include/node/config.gypi",
+          "file": "node-v24.14.0-darwin-arm64-include_node_config.gypi",
+          "sha256": "f06c03ddaa1a4cdf92adfae2e233d7d1c9c92daed6fda977fa02ff79e2ef28cd",
+          "size": 19147
+        }
+      ],
+      "buildConfigurationObservation": {
+        "target_arch": "arm64",
+        "node_module_version": 137,
+        "node_shared": "false",
+        "node_shared_openssl": "false",
+        "node_shared_uv": null,
+        "node_shared_zlib": "false",
+        "napi_build_version": "10"
+      }
+    },
+    {
+      "url": "https://registry.npmjs.org/koffi/-/koffi-3.3.3.tgz",
+      "file": "koffi-3.3.3.tgz",
+      "sha256": "c53f8da8e3c916ae8d666256650916768c7c4e8a579f188d794e8371b5773308",
+      "size": 299797,
+      "kind": "npm",
+      "package": "koffi",
+      "version": "3.3.3",
+      "integrity": "sha512-XWNI4eyxJJzR2MakPZzR3QeZ06JOklLbxglin0dHhx/qIQCby8lqHs9Acq4Q7CpCKnOrBSj+6b9J5y69wfr2ZA==",
+      "frozenLockMatched": true,
+      "registryEvidence": {
+        "url": "https://registry.npmjs.org/koffi/3.3.3",
+        "file": "koffi-registry.json",
+        "sha256": "8bc14b6f2d592a8c5d7f0d539abb1f1f514cd31570154d04d4734cb4e7f77613",
+        "size": 2977
+      },
+      "declaredLicense": "MIT",
+      "repository": {
+        "url": "git+https://github.com/Koromix/koffi.git",
+        "type": "git"
+      },
+      "gitHead": null,
+      "members": [
+        {
+          "archiveMember": "package/vendor/node-api-headers/LICENSE",
+          "file": "koffi-vendor_node-api-headers_LICENSE",
+          "sha256": "a553508f516031c91f3af1148d44970cb81bbae6c4f091be6835d39cc252238c",
+          "size": 1064
+        },
+        {
+          "archiveMember": "package/package.json",
+          "file": "koffi-package.json",
+          "sha256": "32348b820c55b8da99c14edd319eb4bc393c26f0bd405201031fd5b94d5c3046",
+          "size": 2304
+        },
+        {
+          "archiveMember": "package/vendor/node-addon-api/LICENSE.md",
+          "file": "koffi-vendor_node-addon-api_LICENSE.md",
+          "sha256": "89024017b88a9f2b763f79b941a4f2db3b4428edfcacdc0b23866b2da633ad0c",
+          "size": 1150
+        },
+        {
+          "archiveMember": "package/LICENSE.txt",
+          "file": "koffi-LICENSE.txt",
+          "sha256": "22bcbbbacd739b026a8dc484f62a31484ce4c4e31f3408b60b29b4e41d62b290",
+          "size": 1117
+        }
+      ],
+      "declaredNodeAPI": 8
+    },
+    {
+      "url": "https://registry.npmjs.org/@koromix/koffi-win32-x64/-/koffi-win32-x64-3.3.3.tgz",
+      "file": "koromix-koffi-win32-x64-3.3.3.tgz",
+      "sha256": "6f3601e24e865ede500dad7fefdc545bf305862185430ecd078ffca4c2962da4",
+      "size": 400702,
+      "kind": "npm",
+      "package": "@koromix/koffi-win32-x64",
+      "version": "3.3.3",
+      "integrity": "sha512-tLTF17wl4CCwOlo1Tt0NbduwUduDvM6c8JSyearcLu6hpNHQo44RF3rKN2i7UkxwCqXyiudZK0lS421CC/TPZA==",
+      "frozenLockMatched": true,
+      "registryEvidence": {
+        "url": "https://registry.npmjs.org/@koromix%2fkoffi-win32-x64/3.3.3",
+        "file": "koromix-koffi-win32-x64-registry.json",
+        "sha256": "18e1a12cc0a1eda0719dff0051fcf279cf18c08b9ea35de46d6a3679fc9c32bf",
+        "size": 1878
+      },
+      "declaredLicense": "MIT",
+      "repository": {
+        "url": "git+https://github.com/Koromix/koffi.git",
+        "type": "git"
+      },
+      "gitHead": null,
+      "members": [
+        {
+          "archiveMember": "package/package.json",
+          "file": "koromix-koffi-win32-x64-package.json",
+          "sha256": "0c190d0c2e35518967a254826e54c19f08e83de7097f47c89a5757e5bf3ec71b",
+          "size": 644
+        },
+        {
+          "archiveMember": "package/win32_x64/koffi.node",
+          "file": "koromix-koffi-win32-x64-win32_x64_koffi.node",
+          "sha256": "f7af4982457657d2e7ad46acb076614ed7122d6efbdbfbc75f21ec12681fa121",
+          "size": 1049600,
+          "headerObservation": {
+            "format": "PE",
+            "machine": 34404,
+            "architecture": "x64"
+          }
+        }
+      ]
+    },
+    {
+      "url": "https://registry.npmjs.org/@koromix/koffi-darwin-arm64/-/koffi-darwin-arm64-3.3.3.tgz",
+      "file": "koromix-koffi-darwin-arm64-3.3.3.tgz",
+      "sha256": "6195d71398107c38a74c39c416905d5ae61625709f2ac2da09d06bdac40b84fd",
+      "size": 409177,
+      "kind": "npm",
+      "package": "@koromix/koffi-darwin-arm64",
+      "version": "3.3.3",
+      "integrity": "sha512-aFYI3YMdQWOAmHlVA+GfBlJZTpvfbUv/NoeBBkqblWN7BxuY02bkWMyoksUEl+mnx7ScoMonnjzXKJkNQXmR3w==",
+      "frozenLockMatched": true,
+      "registryEvidence": {
+        "url": "https://registry.npmjs.org/@koromix%2fkoffi-darwin-arm64/3.3.3",
+        "file": "koromix-koffi-darwin-arm64-registry.json",
+        "sha256": "5edf3806dea8359e4b7d04c19bba06dc0ae4ea8632dbfa6ae45c34cf07ad3693",
+        "size": 1905
+      },
+      "declaredLicense": "MIT",
+      "repository": {
+        "url": "git+https://github.com/Koromix/koffi.git",
+        "type": "git"
+      },
+      "gitHead": null,
+      "members": [
+        {
+          "archiveMember": "package/package.json",
+          "file": "koromix-koffi-darwin-arm64-package.json",
+          "sha256": "e9b957c87db0d2120bcdf6bf9812c88f170b0c80419a0cfeddc08606805deaed",
+          "size": 653
+        },
+        {
+          "archiveMember": "package/darwin_arm64/koffi.node",
+          "file": "koromix-koffi-darwin-arm64-darwin_arm64_koffi.node",
+          "sha256": "9e4814a0593d95cd3fa1531fe5f06a9908a7505caefd8ccdce2ca758cdf0b5dc",
+          "size": 1226136,
+          "headerObservation": {
+            "format": "Mach-O64",
+            "cpuType": 16777228,
+            "architecture": "arm64"
+          }
+        }
+      ]
+    },
+    {
+      "url": "https://registry.npmjs.org/@resvg/resvg-js/-/resvg-js-2.6.2.tgz",
+      "file": "resvg-resvg-js-2.6.2.tgz",
+      "sha256": "5b4c67c32d593a42bca6d97320b57465cf340bee441f4cb6bf250b1086872a43",
+      "size": 12941,
+      "kind": "npm",
+      "package": "@resvg/resvg-js",
+      "version": "2.6.2",
+      "integrity": "sha512-xBaJish5OeGmniDj9cW5PRa/PtmuVU3ziqrbr5xJj901ZDN4TosrVaNZpEiLZAxdfnhAe7uQ7QFWfjPe9d9K2Q==",
+      "frozenLockMatched": true,
+      "registryEvidence": {
+        "url": "https://registry.npmjs.org/@resvg%2fresvg-js/2.6.2",
+        "file": "resvg-resvg-js-registry.json",
+        "sha256": "faf6b8311df2a970bc4c53c0bbfc3fb1cb2b4d544fd0dc32aab7732485b96172",
+        "size": 4959
+      },
+      "declaredLicense": "MPL-2.0",
+      "repository": {
+        "url": "git+ssh://git@github.com/yisibl/resvg-js.git",
+        "type": "git"
+      },
+      "gitHead": "9ca058462ac529120c8cc84ddcd6fef644cc5406",
+      "members": [
+        {
+          "archiveMember": "package/LICENSE",
+          "file": "resvg-resvg-js-LICENSE",
+          "sha256": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1",
+          "size": 16724
+        },
+        {
+          "archiveMember": "package/package.json",
+          "file": "resvg-resvg-js-package.json",
+          "sha256": "2669617af27d91b0dfc0828cc2190ba87b8d8ea6e4cf08619a23784a2f1d8c95",
+          "size": 4786
+        }
+      ],
+      "abiReviewStatus": "N-API package; exact minimum ABI and transitive native source/license closure require review"
+    },
+    {
+      "url": "https://registry.npmjs.org/@resvg/resvg-js-win32-x64-msvc/-/resvg-js-win32-x64-msvc-2.6.2.tgz",
+      "file": "resvg-resvg-js-win32-x64-msvc-2.6.2.tgz",
+      "sha256": "fe36f57bcf0654f5cac5a3af4d860a00b3a03404d107b05283bd76bbb4a0eeeb",
+      "size": 2012568,
+      "kind": "npm",
+      "package": "@resvg/resvg-js-win32-x64-msvc",
+      "version": "2.6.2",
+      "integrity": "sha512-ZXtYhtUr5SSaBrUDq7DiyjOFJqBVL/dOBN7N/qmi/pO0IgiWW/f/ue3nbvu9joWE5aAKDoIzy/CxsY0suwGosQ==",
+      "frozenLockMatched": true,
+      "registryEvidence": {
+        "url": "https://registry.npmjs.org/@resvg%2fresvg-js-win32-x64-msvc/2.6.2",
+        "file": "resvg-resvg-js-win32-x64-msvc-registry.json",
+        "sha256": "9bd7afe2990cb71fbbbac9635eab4d45e5a162efe0d6cab95dfc680fac8ef7ca",
+        "size": 1636
+      },
+      "declaredLicense": "MPL-2.0",
+      "repository": {
+        "url": "git+ssh://git@github.com/yisibl/resvg-js.git",
+        "type": "git"
+      },
+      "gitHead": "9ca058462ac529120c8cc84ddcd6fef644cc5406",
+      "members": [
+        {
+          "archiveMember": "package/package.json",
+          "file": "resvg-resvg-js-win32-x64-msvc-package.json",
+          "sha256": "6babfc8427ffd70dbefc451822a11cfbe68104ad1acab1b8d72702f578183229",
+          "size": 689
+        },
+        {
+          "archiveMember": "package/resvgjs.win32-x64-msvc.node",
+          "file": "resvg-resvg-js-win32-x64-msvc-resvgjs.win32-x64-msvc.node",
+          "sha256": "a762c7c3d34a0083e50e44a88b6bb95bbc156386ae473e6eb7231c27cb23c04d",
+          "size": 4518400,
+          "headerObservation": {
+            "format": "PE",
+            "machine": 34404,
+            "architecture": "x64"
+          }
+        }
+      ],
+      "abiReviewStatus": "N-API package; exact minimum ABI and transitive native source/license closure require review"
+    },
+    {
+      "url": "https://registry.npmjs.org/@resvg/resvg-js-darwin-arm64/-/resvg-js-darwin-arm64-2.6.2.tgz",
+      "file": "resvg-resvg-js-darwin-arm64-2.6.2.tgz",
+      "sha256": "15b46d346a220a38592423a986e8c5d10b740aa5cf6cf4755585738b4538daa8",
+      "size": 1772997,
+      "kind": "npm",
+      "package": "@resvg/resvg-js-darwin-arm64",
+      "version": "2.6.2",
+      "integrity": "sha512-nmok2LnAd6nLUKI16aEB9ydMC6Lidiiq2m1nEBDR1LaaP7FGs4AJ90qDraxX+CWlVuRlvNjyYJTNv8qFjtL9+A==",
+      "frozenLockMatched": true,
+      "registryEvidence": {
+        "url": "https://registry.npmjs.org/@resvg%2fresvg-js-darwin-arm64/2.6.2",
+        "file": "resvg-resvg-js-darwin-arm64-registry.json",
+        "sha256": "9047e39f5d5180864596d349a503620db5dd5a8b1fb68abca4949c40363d5529",
+        "size": 1627
+      },
+      "declaredLicense": "MPL-2.0",
+      "repository": {
+        "url": "git+ssh://git@github.com/yisibl/resvg-js.git",
+        "type": "git"
+      },
+      "gitHead": "9ca058462ac529120c8cc84ddcd6fef644cc5406",
+      "members": [
+        {
+          "archiveMember": "package/package.json",
+          "file": "resvg-resvg-js-darwin-arm64-package.json",
+          "sha256": "35e4838b3fa981db9f0bc5f1095fbe167e5a605447946a9239f1002862e3ce8e",
+          "size": 686
+        },
+        {
+          "archiveMember": "package/resvgjs.darwin-arm64.node",
+          "file": "resvg-resvg-js-darwin-arm64-resvgjs.darwin-arm64.node",
+          "sha256": "0f5288bc516ad6e30e9df0a660edf44d05ddb528beaf2eba10291ae6822bba78",
+          "size": 3537944,
+          "headerObservation": {
+            "format": "Mach-O64",
+            "cpuType": 16777228,
+            "architecture": "arm64"
+          }
+        }
+      ],
+      "abiReviewStatus": "N-API package; exact minimum ABI and transitive native source/license closure require review"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/LICENSE",
+      "file": "font-LICENSE",
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+      "size": 4301,
+      "kind": "font-source",
+      "version": "2.004",
+      "commit": "523d033d6cb47f4a80c58a35753646f5c3608a78"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf",
+      "file": "NotoSansCJKtc-Regular.otf",
+      "sha256": "dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4",
+      "size": 16435884,
+      "kind": "font-source",
+      "version": "2.004",
+      "commit": "523d033d6cb47f4a80c58a35753646f5c3608a78"
+    },
+    {
+      "url": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz",
+      "kind": "ffmpeg-source",
+      "status": "unavailable",
+      "error": "HTTP Error 503: Service Unavailable"
+    },
+    {
+      "url": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz.asc",
+      "kind": "ffmpeg-source",
+      "status": "unavailable",
+      "error": "HTTP Error 503: Service Unavailable"
+    },
+    {
+      "kind": "node-source",
+      "version": "24.14.0",
+      "commit": "f657bb8ed86365ff3fdbe32e27563e778b41486a",
+      "url": "https://nodejs.org/dist/v24.14.0/node-v24.14.0.tar.xz",
+      "file": "node-v24.14.0.tar.xz",
+      "sha256": "9fe025ef4028aba95d16e7810518bf4a5e8abfb0bdc07d8a3fdbb0afd538d77f",
+      "size": 53987528,
+      "executed": false,
+      "upstreamChecksumMatched": true,
+      "members": [
+        {
+          "archiveMember": "node-v24.14.0/LICENSE",
+          "file": "node-v24.14.0.tar.xz-LICENSE",
+          "sha256": "4573185d56580da2b890ba34a85a409257640f1c5632eade4300137266194d18",
+          "size": 156926
+        },
+        {
+          "archiveMember": "node-v24.14.0/configure",
+          "file": "node-v24.14.0.tar.xz-configure",
+          "sha256": "c4ad17ee9c76cccd83c0a8386264e1331d03fe624093763f464ce424cc0c4717",
+          "size": 1434
+        },
+        {
+          "archiveMember": "node-v24.14.0/configure.py",
+          "file": "node-v24.14.0.tar.xz-configure.py",
+          "sha256": "4016dbf3ab6c2b6f36da1eb902a6afdb5787940153a77346b0dc8e75690766c0",
+          "size": 90543
+        }
+      ]
+    },
+    {
+      "kind": "ffmpeg-source",
+      "version": "7.1.1",
+      "commit": "db69d06eeeab4f46da15030a80d539efb4503ca8",
+      "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/db69d06eeeab4f46da15030a80d539efb4503ca8",
+      "file": "ffmpeg-source-db69d06.tar.gz",
+      "sha256": "173ba614d8636491106cba08d79db469b5dee4b479388bc4fbcead8ca1fb79b1",
+      "size": 15914259,
+      "executed": false,
+      "members": [
+        {
+          "archiveMember": "FFmpeg-db69d06eeeab4f46da15030a80d539efb4503ca8/COPYING.GPLv2",
+          "file": "ffmpeg-source-db69d06.tar.gz-COPYING.GPLv2",
+          "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+          "size": 18092
+        },
+        {
+          "archiveMember": "FFmpeg-db69d06eeeab4f46da15030a80d539efb4503ca8/COPYING.LGPLv2.1",
+          "file": "ffmpeg-source-db69d06.tar.gz-COPYING.LGPLv2.1",
+          "sha256": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe",
+          "size": 26526
+        },
+        {
+          "archiveMember": "FFmpeg-db69d06eeeab4f46da15030a80d539efb4503ca8/LICENSE.md",
+          "file": "ffmpeg-source-db69d06.tar.gz-LICENSE.md",
+          "sha256": "cb48bf09a11f5fb576cddb0431c8f5ed0a60157a9ec942adffc13907cbe083f2",
+          "size": 4376
+        },
+        {
+          "archiveMember": "FFmpeg-db69d06eeeab4f46da15030a80d539efb4503ca8/configure",
+          "file": "ffmpeg-source-db69d06.tar.gz-configure",
+          "sha256": "e7c000ab52464fe5bf1e88b07ff2118875e79c056cd85ff0b877415f7d9deb54",
+          "size": 286727
+        }
+      ]
+    },
+    {
+      "kind": "resvg-source",
+      "version": "2.6.2",
+      "commit": "9ca058462ac529120c8cc84ddcd6fef644cc5406",
+      "url": "https://codeload.github.com/yisibl/resvg-js/tar.gz/9ca058462ac529120c8cc84ddcd6fef644cc5406",
+      "file": "resvg-source-9ca0584.tar.gz",
+      "sha256": "7ce8697451237577d473361aa688917a48cba00c4a8f3302a833455c9c2013fa",
+      "size": 17926847,
+      "executed": false,
+      "members": [
+        {
+          "archiveMember": "resvg-js-9ca058462ac529120c8cc84ddcd6fef644cc5406/Cargo.toml",
+          "file": "resvg-source-9ca0584.tar.gz-Cargo.toml",
+          "sha256": "72880b4d3e64bd62caf033579a21057c97ed069002bdef67a0029b7fc6e340a9",
+          "size": 1704
+        },
+        {
+          "archiveMember": "resvg-js-9ca058462ac529120c8cc84ddcd6fef644cc5406/LICENSE",
+          "file": "resvg-source-9ca0584.tar.gz-LICENSE",
+          "sha256": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1",
+          "size": 16724
+        }
+      ]
+    },
+    {
+      "kind": "upstream-metadata",
+      "url": "https://nodejs.org/dist/v24.14.0/SHASUMS256.txt",
+      "file": "node-SHASUMS256.txt",
+      "sha256": "e340782342ed6265ce9e14e9caa81e2260a9b4415bbd2c8ad20cea0e59617d65",
+      "size": 2967
+    },
+    {
+      "kind": "upstream-metadata",
+      "url": "https://api.github.com/repos/nodejs/node/git/tags/a3d5b4bca68d85dcb67d527b05409795f69c66e7",
+      "file": "node-tag-object.json",
+      "sha256": "32c35000a8acfa1dffc97ecb2015e03a4d7580845cb467754ccd62faa3521abb",
+      "size": 2997
+    },
+    {
+      "kind": "upstream-metadata",
+      "url": "https://api.github.com/repos/FFmpeg/FFmpeg/git/tags/a1328e68877e12ab5a6e5d92a84aefa566783ea5",
+      "file": "ffmpeg-tag-object.json",
+      "sha256": "0c79abfd31f337c5a2aa29558d4e6f729c2c0b2ef9c96a396166914f2dbbb684",
+      "size": 1429
+    }
+  ],
+  "reviewLimitations": [
+    "Upstream downloads over HTTPS; archive signatures not locally verified. GitHub tag verification is upstream metadata, not independent review.",
+    "Official Node checksums and frozen npm SHA-512 pins matched actual archives; headers inspected without executing payloads.",
+    "No Windows/macOS FFmpeg/FFprobe binary or exact binary configuration/source/relink evidence supplied.",
+    "No independently approved license receipts, executed target linkage, owned launch/close, runtime manifest, runtime SPDX, or CI runtime artifact/run ID produced.",
+    "All native shell/generated/sysroot/static-linkage evidence is a later post-build issue140 responsibility, not an input staging prerequisite."
+  ]
+}
