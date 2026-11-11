@@ -178,3 +178,12 @@ they do not stand in for physical Windows 10/popopc, external drives, calibrated
 displays, listening, Resolve or 4K/GPU acceptance. The release maintainer should document the candidate, workstation procedure and
 remaining observations before a release decision. Publish a stable v1 tag only
 after the applicable exit conditions are satisfied.
+
+## 2026-11-11 backlog reconciliation
+
+The [current issue plan](next-issues-2026-11-11.md) audits main `08e38b6` and
+Storytelling snapshot `b7fcf86`. It separates accepted bounded SDK scopes from
+production M3-03, identifies final native candidate evidence binding as code work,
+and preserves owner and physical acceptance as open gates. The dated records
+above keep their original source/measurement identities; no publication is
+approved by this update.

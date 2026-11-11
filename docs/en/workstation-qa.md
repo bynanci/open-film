@@ -185,8 +185,10 @@ matches. Windows uses a hashed machine/OS-boot identity and a non-destructive PI
 probe; actual child-process regressions cover live preservation, death, recovery
 and stale-writer fencing. An occupied PID with an old execution token is kept
 conservatively live; these tests do not force the OS to recycle a PID. Missing OS
-evidence, denied probes and foreign scopes remain unknown. macOS automatic proof
-is still unimplemented and unverified.
+evidence, denied probes and foreign scopes remain unknown. macOS automatic
+proof is implemented through Darwin boot-session identity in PR #98; see the
+[scoped validation](validation-macos-dead-owner.md). Candidate-bound physical
+observations remain unverified on both target platforms.
 
 Workstation observations should distinguish:
 
