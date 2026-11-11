@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified by OpenFilm contributors on 2026-11-11. See LICENSE and NOTICE.
+import { createHash, randomUUID } from "node:crypto";
+import type { Stats } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { lstat, mkdir, readdir, realpath, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  realpath,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -13,6 +24,7 @@ import {
   verifyLinkageInputs,
   type LinkageEvidence,
 } from "./linkage.js";
+import { assertRegularInput } from "./input-files.js";
 import { verifyCandidateAttribution } from "./receipt-attribution.js";
 import { verifySecurityClosure } from "./receipt-security.js";
 import {
@@ -38,6 +50,118 @@ import {
   type IndependentReview,
   type ObservationKind,
 } from "./receipt-contract.js";
+/** Detach only Cargo's default build subject; all caller-selected inputs stay strict. */
+export async function prepareDefaultBuildShell(
+  root: string,
+  platform: CandidateTarget["platform"],
+): Promise<string> {
+  requireEvidence(
+    ["linux", "darwin", "win32"].includes(platform),
+    "Unknown default shell platform",
+  );
+  const path =
+    "apps/desktop/src-tauri/target/release/openfilm-desktop" +
+    (platform === "win32" ? ".exe" : "");
+  const source = runtimePath(root, path);
+  // The sole hardlink exception is a read-only source for this bounded copy.
+  await assertRegularInput(source, false);
+  const input = await open(source, "r");
+  let output: Awaited<ReturnType<typeof open>> | undefined;
+  let created: Stats | undefined;
+  let promoted = false;
+  const temporaryPath = `${path}.receipt-stage-${randomUUID()}`;
+  const temporary = runtimePath(root, temporaryPath);
+  const same = (a: Stats, b: Stats) =>
+    ["dev", "ino", "size", "mode", "nlink", "mtimeMs", "ctimeMs"].every(
+      (key) => a[key as keyof Stats] === b[key as keyof Stats],
+    );
+  try {
+    const before = await input.stat();
+    requireEvidence(
+      before.isFile() &&
+        before.nlink >= 1 &&
+        before.size <= MAX_ARTIFACT_BYTES &&
+        (before.mode & 0o7000) === 0,
+      "Default shell must be a bounded ordinary build file",
+    );
+    await assertRegularInput(source, false);
+    requireEvidence(
+      same(before, await lstat(source)),
+      "Default shell changed before staging",
+    );
+    if (before.nlink === 1) {
+      await pinFile(root, path, MAX_ARTIFACT_BYTES);
+      return path;
+    }
+    output = await open(temporary, "wx", before.mode & 0o777);
+    created = await output.stat();
+    const hash = createHash("sha256");
+    let size = 0;
+    for await (const chunk of input.createReadStream({
+      autoClose: false,
+      start: 0,
+    })) {
+      const bytes = chunk as Buffer;
+      size += bytes.length;
+      requireEvidence(
+        size <= MAX_ARTIFACT_BYTES && size <= before.size,
+        "Default shell grew during staging",
+      );
+      hash.update(bytes);
+      await output.writeFile(bytes);
+    }
+    await output.chmod(before.mode & 0o777);
+    await output.sync();
+    await output.close();
+    output = undefined;
+    const expectedHash = hash.digest("hex");
+    const staged = await pinFile(root, temporaryPath, MAX_ARTIFACT_BYTES);
+    requireEvidence(
+      size === before.size &&
+        staged.size === size &&
+        staged.sha256 === expectedHash,
+      "Default shell staging byte mismatch",
+    );
+    await assertRegularInput(source, false);
+    requireEvidence(
+      same(before, await input.stat()) && same(before, await lstat(source)),
+      "Default shell changed during staging",
+    );
+    // Same-path atomic replacement keeps the compiler ID, signing subject and
+    // workflow upload path fixed. Never unlink first or fall back on Windows.
+    await rename(temporary, source);
+    promoted = true;
+    const original = await input.stat();
+    requireEvidence(
+      original.size === before.size &&
+        original.mode === before.mode &&
+        original.mtimeMs === before.mtimeMs &&
+        original.nlink === before.nlink - 1,
+      "Default shell source changed during promotion",
+    );
+    const pinned = await pinFile(root, path, MAX_ARTIFACT_BYTES);
+    requireEvidence(
+      pinned.sha256 === expectedHash &&
+        pinned.size === size &&
+        ((await lstat(source)).mode & 0o777) === (before.mode & 0o777),
+      "Default shell promotion mismatch",
+    );
+    return path;
+  } finally {
+    await output?.close();
+    await input.close();
+    if (created && !promoted) {
+      const current = await lstat(temporary).catch(
+        (error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+          return undefined;
+        },
+      );
+      if (current?.ino === created.ino && current.dev === created.dev)
+        await unlink(temporary);
+    }
+  }
+}
 export interface IdentityOptions {
   candidateSha: string;
   target: CandidateTarget;
@@ -547,6 +671,14 @@ async function main() {
     root,
     await pinFile(root, `${runtimeRoot}/receipts/linkage-evidence.json`),
   );
+  const candidatePath = `${directory}/candidate.json`;
+  try {
+    await lstat(runtimePath(root, candidatePath));
+    throw new Error("Candidate output already exists");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const shellPath = await prepareDefaultBuildShell(root, manifest.platform);
   const identity = await createCandidateIdentity(root, {
     candidateSha: execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
@@ -558,9 +690,7 @@ async function main() {
       abi: linkage.baseline.abi,
     },
     runtimeRoot,
-    shellPath:
-      "apps/desktop/src-tauri/target/release/openfilm-desktop" +
-      (manifest.platform === "win32" ? ".exe" : ""),
+    shellPath,
     installerPaths: await installers(root, directory),
   });
   await writeReceipt(
