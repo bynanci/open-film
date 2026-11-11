@@ -214,3 +214,99 @@ it("binds Cargo link directives to observed target or host output directories", 
     { packageId: "build-tool", name: "static=external_codec", role: "build" },
   ]);
 });
+
+import { pinFile } from "../../scripts/native/receipt-contract.js";
+import { verifyCandidateCargo } from "../../scripts/native/receipt-cargo.js";
+async function replayFixture() {
+  const f = await fixture();
+  const cargo = await collectCargoEvidence({
+    ...f,
+    observationMode: "executed",
+  });
+  const inputs = {
+    schemaVersion: 1,
+    target: f.target,
+    targetDirectory: "target",
+    metadata: await pinFile(f.root, "metadata.json"),
+    messages: await pinFile(f.root, "messages.jsonl"),
+    lock: await pinFile(f.root, "Cargo.lock"),
+    invocation: await pinFile(f.root, "invocation.json"),
+    shell: await pinFile(f.root, `target/${f.target}/release/openfilm`),
+  };
+  await writeFile(join(f.root, "cargo-inputs.json"), JSON.stringify(inputs));
+  return { f, cargo, inputs, pin: await pinFile(f.root, "cargo-inputs.json") };
+}
+it("reconstructs the complete Cargo receipt from explicit original input roles", async () => {
+  const { f, cargo, pin } = await replayFixture();
+  await expect(verifyCandidateCargo(f.root, pin, cargo)).resolves.toEqual(
+    cargo,
+  );
+});
+it.each([
+  "omitted-compilation",
+  "changed-messages-coherent-hashes",
+  "generated-output",
+  "static-link",
+])("rejects %s in derived Cargo inventory", async (fault) => {
+  const { f, cargo, inputs } = await replayFixture();
+  if (fault === "omitted-compilation") cargo.compilations.pop();
+  else {
+    const lines = (await readFile(f.messages, "utf8"))
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    if (fault === "changed-messages-coherent-hashes") lines.splice(1, 1);
+    else {
+      const out = join(f.targetDirectory, f.target, "release/build/generated");
+      await mkdir(out, { recursive: true });
+      await writeFile(
+        join(out, "generated.rs"),
+        "pub const GENERATED: bool = true;",
+      );
+      lines.splice(-1, 0, {
+        reason: "build-script-executed",
+        package_id: "compiled",
+        out_dir: out,
+        linked_libs: fault === "static-link" ? ["static=review-required"] : [],
+      });
+    }
+    await writeFile(
+      f.messages,
+      lines.map((line) => JSON.stringify(line)).join("\n"),
+    );
+    inputs.messages = await pinFile(f.root, "messages.jsonl");
+    cargo.evidenceFiles!.find(
+      (file) => file.path === "messages.jsonl",
+    )!.sha256 = inputs.messages.sha256;
+  }
+  await writeFile(join(f.root, "cargo-inputs.json"), JSON.stringify(inputs));
+  await expect(
+    verifyCandidateCargo(
+      f.root,
+      await pinFile(f.root, "cargo-inputs.json"),
+      cargo,
+    ),
+  ).rejects.toThrow("Reconstructed Cargo inventory mismatch");
+});
+
+it("bounds original compiler references even when the derived inventory omits them", async () => {
+  const { f, cargo, inputs } = await replayFixture();
+  const lines = (await readFile(f.messages, "utf8"))
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  lines[0].filenames.push(join(f.root, "Cargo.lock"));
+  await writeFile(
+    f.messages,
+    lines.map((line) => JSON.stringify(line)).join("\n"),
+  );
+  inputs.messages = await pinFile(f.root, "messages.jsonl");
+  cargo.evidenceFiles!.find((file) => file.path === "messages.jsonl")!.sha256 =
+    inputs.messages.sha256;
+  await writeFile(join(f.root, "cargo-inputs.json"), JSON.stringify(inputs));
+  await expect(
+    verifyCandidateCargo(
+      f.root,
+      await pinFile(f.root, "cargo-inputs.json"),
+      cargo,
+    ),
+  ).rejects.toThrow("runtime.invalid");
+});

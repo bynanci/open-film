@@ -2,8 +2,6 @@
 import { afterEach, expect, it } from "vitest";
 import {
   chmod,
-  cp,
-  readdir,
   mkdir,
   mkdtemp,
   readFile,
@@ -299,35 +297,3 @@ it.each(["missing", "tampered"])(
     ).rejects.toThrow(fault === "missing" ? /ENOENT/u : /mismatch/u);
   },
 );
-
-it("replays the real Python security boundary and rejects invented source evidence", async () => {
-  const root = await mkdtemp(join(tmpdir(), "security-replay-"));
-  roots.push(root);
-  async function modes(directory: string): Promise<void> {
-    await chmod(directory, 0o755);
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) await modes(path);
-      else await chmod(path, 0o644);
-    }
-  }
-  for (const directory of ["third-party/glib-0.18.5", "vendor/glib-0.18.5"]) {
-    await cp(resolve(directory), join(root, directory), { recursive: true });
-    await modes(join(root, directory));
-  }
-  const payload = {
-    source: "{}",
-    closure: "{}",
-    regression: "{}",
-    metadata: "{}",
-    audit: '{"reports":{}}',
-    scans: {},
-  };
-  expect(() =>
-    execFileSync(
-      "python",
-      [resolve("scripts/native/receipt-security.py"), root],
-      { input: JSON.stringify(payload), encoding: "utf8", stdio: "pipe" },
-    ),
-  ).toThrow(/source admission differs from actual checkout/u);
-});

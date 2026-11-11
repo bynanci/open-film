@@ -17,6 +17,7 @@ import {
   type NativeRuntimeInput,
 } from "./attribution.js";
 import { canonicalJson, type LinkageEvidence } from "./linkage.js";
+import { verifyCandidateCargo } from "./receipt-cargo.js";
 import {
   exactKeys,
   MAX_ARTIFACT_BYTES,
@@ -34,6 +35,7 @@ export interface CandidateAttributionInputs {
   spdx: FilePin;
   buildContributions: FilePin;
   cargo: FilePin;
+  cargoInputs: FilePin;
   licenseReceipts: FilePin;
   nativeRuntimeInputs: FilePin;
   nativeLinkage: FilePin;
@@ -93,6 +95,7 @@ export async function verifyCandidateAttribution(
     "spdx",
     "buildContributions",
     "cargo",
+    "cargoInputs",
     "licenseReceipts",
     "nativeRuntimeInputs",
     "nativeLinkage",
@@ -108,6 +111,7 @@ export async function verifyCandidateAttribution(
     inputs.spdx,
     inputs.buildContributions,
     inputs.cargo,
+    inputs.cargoInputs,
     inputs.licenseReceipts,
     inputs.nativeRuntimeInputs,
     inputs.nativeLinkage,
@@ -117,7 +121,12 @@ export async function verifyCandidateAttribution(
     root,
     inputs.buildContributions,
   );
-  const cargo = await readEvidence<CargoEvidence>(root, inputs.cargo);
+  const cargo = await verifyCandidateCargo(
+    root,
+    inputs.cargoInputs,
+    await readEvidence<CargoEvidence>(root, inputs.cargo),
+    inputs.targetDirectory,
+  );
   const licenses = await readEvidence<LicenseReceipt[]>(
     root,
     inputs.licenseReceipts,

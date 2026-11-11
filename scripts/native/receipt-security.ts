@@ -9,9 +9,10 @@ import {
   readPinnedBytes,
   requireEvidence,
   type CandidateIdentity,
+  type FilePin,
   type Observation,
 } from "./receipt-contract.js";
-/** Replay the existing source/closure/security policy using pinned original bytes. */
+/** Replay the full original admission boundary from pinned, unmodified bytes. */
 export async function verifySecurityClosure(
   root: string,
   observation: Observation,
@@ -28,12 +29,35 @@ export async function verifySecurityClosure(
     return matches[0]!;
   };
   const admission = await readEvidence(root, named("admission.json"));
-  const originalJson = async (name: string) =>
-    (await readPinnedBytes(root, named(name))).toString("utf8");
-  const source = await originalJson("source.json");
-  const closure = await originalJson("closure.json");
-  const regression = await originalJson("regression.json");
-  const metadata = await originalJson("metadata.json");
+  const files: Record<string, string> = {};
+  let total = 0;
+  async function retain(path: string, pin: FilePin) {
+    runtimePath(root, path);
+    requireEvidence(!(path in files), "Duplicate security snapshot path");
+    const bytes = await readPinnedBytes(root, pin);
+    total += bytes.length;
+    requireEvidence(
+      total <= 32 * 1024 ** 2,
+      "Security closure total byte limit",
+    );
+    files[path] = bytes.toString("base64");
+  }
+  for (const [destination, name] of [
+    ["source.json", "source.json"],
+    ["closure.json", "closure.json"],
+    ["controls/regression.json", "regression.json"],
+    ["metadata.json", "metadata.json"],
+    ["audit/audit.json", "audit.json"],
+    ["audit/actual-metadata.stdout", "actual-metadata.stdout"],
+    [
+      "audit/current-registry-metadata.stdout",
+      "current-registry-metadata.stdout",
+    ],
+    ["audit/current-registry-Cargo.lock", "current-registry-Cargo.lock"],
+    ["audit/historical-Cargo.lock", "historical-Cargo.lock"],
+    ["audit/advisory-db.bundle", "advisory-db.bundle"],
+  ])
+    await retain(destination!, named(name!));
   const auditPin = named("audit.json");
   const audit = await readEvidence<{
     candidateSHA: string;
@@ -44,9 +68,6 @@ export async function verifySecurityClosure(
         stdoutSHA256: string;
         stderrFile: string;
         stderrSHA256: string;
-        raw?: unknown;
-        stderr?: string;
-        validatedBytes?: boolean;
       }
     >;
   }>(root, auditPin);
@@ -57,9 +78,7 @@ export async function verifySecurityClosure(
     "Stale/incomplete retained audit",
   );
   const prefix = auditPin.path.slice(0, auditPin.path.lastIndexOf("/") + 1);
-  const scans: Record<string, { stdout: string; stderr: string }> = {};
-  for (const [name, report] of Object.entries(audit.reports)) {
-    const scan = { stdout: "", stderr: "" };
+  for (const report of Object.values(audit.reports)) {
     for (const field of ["stdout", "stderr"] as const) {
       const path = report[`${field}File`];
       runtimePath(root, path);
@@ -72,26 +91,21 @@ export async function verifySecurityClosure(
         matching.length === 1,
         "Missing/tampered retained scanner output",
       );
-      const bytes = await readPinnedBytes(root, matching[0]!);
-      scan[field] = bytes.toString("utf8");
+      await retain(`audit/${path}`, matching[0]!);
     }
-    scans[name] = scan;
   }
-  const input = JSON.stringify({
-    source,
-    closure,
-    regression,
-    metadata,
-    audit,
-  });
-  requireEvidence(
-    Buffer.byteLength(input) <= 32 * 1024 ** 2,
-    "Security closure total byte limit",
-  );
+  // Base64 preserves exact original JSON, including Python's 1.0 representation.
+  const input = JSON.stringify({ schemaVersion: 1, files });
   const output = execFileSync(
     "python",
     [fileURLToPath(new URL("./receipt-security.py", import.meta.url)), root],
-    { input, encoding: "utf8", maxBuffer: 32 * 1024 ** 2, timeout: 60000 },
+    {
+      input,
+      encoding: "utf8",
+      stdio: "pipe",
+      maxBuffer: 48 * 1024 ** 2,
+      timeout: 60000,
+    },
   );
   requireEvidence(
     canonicalJson(JSON.parse(output)) === canonicalJson(admission),

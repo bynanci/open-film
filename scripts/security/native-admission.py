@@ -120,6 +120,36 @@ def read_bound_file(root,relative,digest):
     data=path.read_bytes();require(source.sha(data)==digest,'stale/tampered evidence bytes: '+relative);return data
 
 
+def verify_admission(repository, directory, result=None):
+    """Complete admission boundary shared by the CLI and pinned receipt replay."""
+    repository=Path(repository).resolve();directory=Path(directory).resolve()
+    if result is None:result=dict(schemaVersion=1,upstreamVersionAffected=True,sourceRemediation='unverified',admission='blocked',reasons=[])
+    audit=json.loads((directory/'audit/audit.json').read_bytes())
+    result['candidateSHA']=audit.get('candidateSHA');result['reports']=audit.get('reports',{})
+    for name,report in audit['reports'].items():
+        raw=read_bound_file(directory/'audit',report['stdoutFile'],report['stdoutSHA256'])
+        stderr=read_bound_file(directory/'audit',report['stderrFile'],report['stderrSHA256'])
+        report['raw']=parse_raw(raw);report['stderr']=stderr.decode();report['validatedBytes']=True
+    actual_source=source.verify_source(repository)
+    source_evidence=json.loads((directory/'source.json').read_bytes());require(actual_source==source_evidence,'source evidence changed')
+    closure_evidence=json.loads((directory/'closure.json').read_bytes());regression=json.loads((directory/'controls/regression.json').read_bytes())
+    require(audit['candidateSHA']==closure.candidate(repository),'stale checkout')
+    require(not subprocess.check_output(['git','status','--porcelain','--untracked-files=all'],cwd=repository),'checkout differs from candidate commit')
+    lock=(repository/closure.APP/'Cargo.lock').read_bytes()
+    require(audit['lockSHA256']==source.sha(lock),'stale checkout lock')
+    metadata=json.loads((directory/'metadata.json').read_bytes())
+    core=closure.verify_closure(metadata,lock,repository,actual_source)
+    require(all(closure_evidence.get(k)==v for k,v in core.items()),'stale/forged closure evidence')
+    audit_actual=json.loads((directory/'audit/actual-metadata.stdout').read_bytes())
+    audit_registry=json.loads((directory/'audit/current-registry-metadata.stdout').read_bytes())
+    require(auditor.graph_identity(metadata,False)==auditor.graph_identity(audit_actual,False),'audit and closure graphs differ')
+    require(auditor.compare_graphs(audit_actual,audit_registry,lock,(directory/'audit/current-registry-Cargo.lock').read_bytes()),'current registry graph differs')
+    original=(directory/'audit/historical-Cargo.lock').read_bytes()
+    require(source.sha(original)==source.LOCK_SHA,'captured historical lock changed')
+    require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=directory/'audit/advisory-db',text=True).strip()==audit['dbCommit'],'captured database changed')
+    return evaluate_native(source_evidence,closure_evidence,regression,audit)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('repository','output','evidence-dir'):parser.add_argument('--'+name,required=True,type=Path)
@@ -127,30 +157,7 @@ def main():
     result=dict(schemaVersion=1,upstreamVersionAffected=True,sourceRemediation='unverified',admission='blocked',reasons=[])
     try:
         repository=args.repository.resolve();directory=args.evidence_dir.resolve()
-        audit=json.loads((directory/'audit/audit.json').read_bytes())
-        result['candidateSHA']=audit.get('candidateSHA');result['reports']=audit.get('reports',{})
-        for name,report in audit['reports'].items():
-            raw=read_bound_file(directory/'audit',report['stdoutFile'],report['stdoutSHA256'])
-            stderr=read_bound_file(directory/'audit',report['stderrFile'],report['stderrSHA256'])
-            report['raw']=parse_raw(raw);report['stderr']=stderr.decode();report['validatedBytes']=True
-        actual_source=source.verify_source(repository)
-        source_evidence=json.loads((directory/'source.json').read_bytes());require(actual_source==source_evidence,'source evidence changed')
-        closure_evidence=json.loads((directory/'closure.json').read_bytes());regression=json.loads((directory/'controls/regression.json').read_bytes())
-        require(audit['candidateSHA']==closure.candidate(repository),'stale checkout')
-        require(not subprocess.check_output(['git','status','--porcelain','--untracked-files=all'],cwd=repository),'checkout differs from candidate commit')
-        lock=(repository/closure.APP/'Cargo.lock').read_bytes()
-        require(audit['lockSHA256']==source.sha(lock),'stale checkout lock')
-        metadata=json.loads((directory/'metadata.json').read_bytes())
-        core=closure.verify_closure(metadata,lock,repository,actual_source)
-        require(all(closure_evidence.get(k)==v for k,v in core.items()),'stale/forged closure evidence')
-        audit_actual=json.loads((directory/'audit/actual-metadata.stdout').read_bytes())
-        audit_registry=json.loads((directory/'audit/current-registry-metadata.stdout').read_bytes())
-        require(auditor.graph_identity(metadata,False)==auditor.graph_identity(audit_actual,False),'audit and closure graphs differ')
-        require(auditor.compare_graphs(audit_actual,audit_registry,lock,(directory/'audit/current-registry-Cargo.lock').read_bytes()),'current registry graph differs')
-        original=(directory/'audit/historical-Cargo.lock').read_bytes()
-        require(source.sha(original)==source.LOCK_SHA,'captured historical lock changed')
-        require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=directory/'audit/advisory-db',text=True).strip()==audit['dbCommit'],'captured database changed')
-        result=evaluate_native(source_evidence,closure_evidence,regression,audit)
+        result=verify_admission(repository,directory,result)
     except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as exc:result['reasons'].append(str(exc))
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_bytes(source.canonical(result))
     print('Native security admission: '+result['admission'])
