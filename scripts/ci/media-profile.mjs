@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 
 export class StageRecorder {
@@ -100,4 +103,17 @@ export function assertEquivalentSources(baseline, candidate) {
     throw new Error("No synthetic source observations were recorded.");
   if (JSON.stringify(expected) !== JSON.stringify(manifest(candidate)))
     throw new Error("Synthetic source workload changed between repetitions.");
+}
+
+export async function observerIdentity(script, env = process.env) {
+  // Execute the actual shebang entry point, independent of PATH python3.
+  const identity = JSON.parse(
+    execFileSync(script, ["--observer-identity"], { env, encoding: "utf8" }),
+  );
+  return {
+    ...identity,
+    sha256: createHash("sha256")
+      .update(await readFile(identity.realPath))
+      .digest("hex"),
+  };
 }

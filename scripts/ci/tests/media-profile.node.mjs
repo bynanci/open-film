@@ -120,3 +120,37 @@ test("comparison rejects changed synthetic source bytes and multiplicity", async
   );
   assert.throws(() => assertEquivalentSources([], []), /No synthetic source/);
 });
+
+test("observer interpreter identity follows executable shebang even under a different PATH Python", async () => {
+  const { observerIdentity } = await import("../media-profile.mjs");
+  const { writeFile, chmod } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "openfilm-profile-python-"));
+  try {
+    const fakePython = join(dir, "python3");
+    await writeFile(fakePython, "#!/bin/sh\nprintf 'Python WRONG-PATH\\n'\n");
+    await chmod(fakePython, 0o755);
+    const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
+    assert.equal(
+      (await exec("python3", ["--version"], { env })).stdout.trim(),
+      "Python WRONG-PATH",
+    );
+    const identity = await observerIdentity(
+      resolve("scripts/ci/media-profile-command.py"),
+      env,
+    );
+    const expected = JSON.parse(
+      (
+        await exec("/usr/bin/python3", [
+          "-c",
+          "import json,os,sys; print(json.dumps(dict(executable=sys.executable,realPath=os.path.realpath(sys.executable),version=sys.version)))",
+        ])
+      ).stdout,
+    );
+    assert.equal(identity.executable, expected.executable);
+    assert.equal(identity.realPath, expected.realPath);
+    assert.equal(identity.version, expected.version);
+    assert.match(identity.sha256, /^[a-f0-9]{64}$/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

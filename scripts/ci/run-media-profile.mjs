@@ -13,7 +13,11 @@ import {
 } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertEquivalentSources, summarizeStages } from "./media-profile.mjs";
+import {
+  assertEquivalentSources,
+  observerIdentity,
+  summarizeStages,
+} from "./media-profile.mjs";
 
 const [sha, outputArg, repetitionsArg = "2", pattern = ".*"] =
   process.argv.slice(2);
@@ -82,11 +86,13 @@ const context = () => ({
   freeMemoryBytes: freemem(),
 });
 const metadata = {
-  schema: 1,
+  schema: 2,
   sha,
   node: process.version,
   pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
-  python: execFileSync("python3", ["--version"], { encoding: "utf8" }).trim(),
+  observerPython: await observerIdentity(
+    fileURLToPath(new URL("./media-profile-command.py", import.meta.url)),
+  ),
   tools,
   host: {
     platform: platform(),
