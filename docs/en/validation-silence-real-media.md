@@ -109,3 +109,60 @@ failures. A checked objective assertion never fills a listening field.
 See [existing synthetic validation](./validation-silence-rendered-audition.md)
 for complementary deterministic coverage. Do not replace its synthetic-only CI
 artifact policy with a real-media upload.
+
+## Observed objective outcome — 2026-11-11
+
+Measured implementation candidate:
+`6ea8de24085fc25dc58d9b263dd743158dad9b5a`, Linux x64,
+Node `24.19.0`, FFmpeg/ffprobe `7.1.5-0+deb13u1`.
+The real-media runner **exits 1**: the mixed case fails the predeclared MP4
+duration criterion. [Shareable measurements](https://github.com/bynanci/open-film/blob/main/docs/evidence/silence-real-media/2026-11-11.json)
+contain hashes, review identities, selected IDs, cut intervals and sample windows;
+media, project files, raw packet logs and human forms remain local.
+
+| Measurement                                 |                  Natural |          Mixed reuse/speed |
+| ------------------------------------------- | -----------------------: | -------------------------: |
+| Original / accepted PCM frames at 48 kHz    |      1,152,000 / 904,320 |          921,600 / 732,672 |
+| Selected source candidates / timeline seams |                  12 / 12 |                    12 / 12 |
+| Before / after WAV maximum PCM error        |                    0 / 0 |                      0 / 0 |
+| Accepted PCM duration                       |                 18.840 s |                   15.264 s |
+| Actual AAC stream duration                  |                 18.840 s |                   15.240 s |
+| AAC stream duration minus accepted PCM      |                 0 frames | **−1,152 frames (−24 ms)** |
+| Actual AAC decoded frames                   |                  905,216 |                    732,160 |
+| Decoded frames minus AAC stream duration    |                     +896 |                       +640 |
+| Decoded frames minus accepted PCM           |                     +896 |                   **−512** |
+| Before / proposed WAV / actual MP4 LUFS     | −26.50 / −26.26 / −26.32 |   −28.81 / −28.58 / −28.64 |
+| Actual MP4 true peak                        |               −8.79 dBTP |                 −9.63 dBTP |
+
+Both actual MP4s have AAC, zero audio start PTS, 48 kHz stereo and equal
+video/container/audio stream duration. Both cases passed unchanged saved-project
+checks during audition, exact proposed/accepted Record PCM comparison,
+independent WAV comparison, locks/pins/J/L rejection, cancelled queued analysis,
+wrong-project request rejection, descriptor revocation, shared-editor
+Accept/Undo/Redo/Save/cold Reopen, and equal accepted/reopened AAC decode.
+The still-unaccepted review project copies also reopened with the exact review.
+These objective checks do not establish natural pause/breath classification.
+
+The duration discrepancy follows the existing renderer policy:
+`packages/render/src/index.ts` uses `composition.duration` for WAV and
+`frameAlignedDuration(composition.duration, outputFrameRate)` for MP4, then
+applies that duration to AAC as well. At 25 fps, complete output frames end at
+15.240 s for a 15.264 s Composition. Thus codec padding and actual timeline
+truncation are different observations. The runner preserves its one-sample
+assertion, collects the remaining evidence, and reports failure. The policy
+discrepancy needs a product decision or a coordinated renderer fix and rerun;
+this validation-only change does not alter it.
+
+AAC comparison over the common decoded duration measured maximum normalized
+sample error 0.1128155 / 0.1355691 and RMS error 0.00278185 / 0.00342933.
+These are lossy-codec diagnostics with no perceptual pass threshold. Maximum
+PCM seam steps were 0.00362110 / 0.00286806. No click, intelligibility,
+speech-retention or acceptable-music-join conclusion is drawn from them.
+
+Related existing media regression selection passed **3 files / 22 tests** on
+the same implementation tree. Full typecheck, focused ESLint, documentation
+mirror and licensing checks passed. This is not a full-suite or CI claim.
+Human listening, real recorded A/V synchronization, more than two captured
+channels, live browser cancellation/project-switch behavior and both native
+workstation/device acceptance gates remain open. `/dev/snd` was absent on the
+Linux host; no output routing or playback sample rate was observed.
