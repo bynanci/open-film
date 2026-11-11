@@ -1,0 +1,97 @@
+{
+  "observedAt": "2026-11-11T09:06:33.166411+00:00",
+  "sourceSha": "08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224",
+  "queries": [
+    {
+      "name": "branch",
+      "endpoint": "repos/bynanci/open-film/branches/main",
+      "exitCode": 0,
+      "sha256": "0e00db5b5d821cd1c6c7347e39e29e7aca7ac9cfbec038804b500c390ffd8e41",
+      "stderr": ""
+    },
+    {
+      "name": "rulesets",
+      "endpoint": "repos/bynanci/open-film/rulesets",
+      "exitCode": 0,
+      "sha256": "99c652b597c737ba82d86db74efbe138481c0be39d14981c785215e4915e4064",
+      "stderr": ""
+    },
+    {
+      "name": "rules",
+      "endpoint": "repos/bynanci/open-film/rules/branches/main",
+      "exitCode": 0,
+      "sha256": "7e31dde80855369333f0703de946616e110fd42a8fad0a08c175d9a728b4fad4",
+      "stderr": ""
+    },
+    {
+      "name": "protection",
+      "endpoint": "repos/bynanci/open-film/branches/main/protection",
+      "exitCode": 1,
+      "sha256": "bfd4582920c14edcc5d8a2593a43cd80f882b7ac81face195af1b649a6a42dba",
+      "stderr": "gh: Resource not accessible by integration (HTTP 403)"
+    },
+    {
+      "name": "workflows",
+      "endpoint": "repos/bynanci/open-film/actions/workflows",
+      "exitCode": 0,
+      "sha256": "939c1541ef45d4e79057b3f72aca694c3b3b725cf57511c068539d635a907dc8",
+      "stderr": ""
+    },
+    {
+      "name": "collaborators",
+      "endpoint": "repos/bynanci/open-film/collaborators",
+      "exitCode": 0,
+      "sha256": "57c874e97d97b21ab5dae05534a98e58b7d548bbdaafc467b2443af8469e06d0",
+      "stderr": ""
+    },
+    {
+      "name": "checks",
+      "endpoint": "repos/bynanci/open-film/commits/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224/check-runs?per_page=100",
+      "exitCode": 0,
+      "sha256": "0dbbaa38e85d3b49ee3864c69f6966ca88d4d911d066810df4f319b148b694f1",
+      "stderr": ""
+    },
+    {
+      "name": "pr147-checks",
+      "endpoint": "repos/bynanci/open-film/commits/5daa77eeb347d22690a7020b5e37b0544914e17b/check-runs?per_page=100",
+      "exitCode": 0,
+      "sha256": "079c17b6f9248b8a25f81caa3329a49441d6a64403e75002f40a487d1fb30858",
+      "stderr": ""
+    },
+    {
+      "name": "alerts",
+      "endpoint": "repos/bynanci/open-film/dependabot/alerts?per_page=1",
+      "exitCode": 1,
+      "sha256": "3f46d3ca32e08107974d08f94a20ccf6c75cb76c003987a6e0c0f86d3f3dc86e",
+      "stderr": "gh: Dependabot alerts are disabled for this repository. (HTTP 403)"
+    },
+    {
+      "name": "signing-secret-metadata",
+      "endpoint": "repos/bynanci/open-film/actions/secrets?per_page=1",
+      "exitCode": 1,
+      "sha256": "d980001345ca0e75d42494571d570aea66cc5f94e23ef6bf8c7dbec26b72adbf",
+      "stderr": "gh: Resource not accessible by integration (HTTP 403)"
+    },
+    {
+      "name": "environments",
+      "endpoint": "repos/bynanci/open-film/environments",
+      "exitCode": 0,
+      "sha256": "99fc37de141a5d5b803bd99b69947733e926552ed464ab4ae0ad38d373bc9ad8",
+      "stderr": ""
+    }
+  ],
+  "files": {
+    "GOVERNANCE.md": "23067396a0ea813ca26afca4fb321fa697f27732b55060ea3ceb17e23b0c876b",
+    "docs/governance/repository-permissions.md": "96e6ed6634a334a969a36167057503c91434fe2544a95cdb8e329b62bb3cfa52",
+    "scripts/workstation-qa.ts": "193381b0cf058c3720347affe836cad157cd9b509d660b3bb3537ee90b7e2bab",
+    "docs/workstation-qa.md": "1c3e3b23e3105e85583e9c687be3c7a2fc714ee74c8bd0004e21bc058e8b2625",
+    "docs/native-performance.md": "579ef978295512c76b7fcd17f607757216c882eea7d13a5fea27f9a93bc997ec",
+    ".github/workflows/ci.yml": "f48c87afa6f52b8b1a6ea849debc947ac0c4f68384679aa1fe3ab5e407b7e830",
+    ".github/workflows/render-qa.yml": "257334dc52d8ea051f52935ab571975520e43c9b6fe5030aa60e6d9df001123f",
+    ".github/workflows/windows-media-recovery.yml": "cce8cc2499314ec2ec501082b1fbd137f9f74298a5a7f7aa9e2944b4f2cfc5e2",
+    ".github/workflows/contributor-provenance.yml": "e05e4c77dd968c2ca0a36f14022fc32673c8e36fe69c9aea7f4b833fbc96d0a7",
+    "scripts/native-benchmark/run.ts": "b8d0057cc319f4595dd8623957f6f067d3cbfae556eeb82fd795db670bf0508e",
+    "pnpm-lock.yaml": "173e22be4859fb74c702aec6fca31e3006b4b9eaeae632fee39f3d87606dc5ba",
+    "apps/desktop/src-tauri/Cargo.lock": "43a9697c934bbb71af0ff23d406a6310c47f217806c6634bf5e3cae7ac217353"
+  }
+}
