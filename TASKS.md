@@ -8,8 +8,12 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Status reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
-on 2026-11-11. PRs #128, #130–#137 are merged. PR #137 final-head and post-merge
+Historical baseline reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
+on 2026-11-11. Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged;
+[the issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
+implementation PRs #149–#151, whole-code verification and remaining external gates.
+Their linked PR records carry current final-head checks and merge status.
+PRs #128, #130–#137 are merged. PR #137 final-head and post-merge
 checks passed, including 1,548 contracts, 4,429 media tests and 363 browser cases;
 workstation schema 1.1 does not certify physical observations. PR #128's head `e11051f`
 passed all 19 checks, including actual native source admission and independent
@@ -43,9 +47,13 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
       recovery coverage in [PR #148](https://github.com/bynanci/open-film/pull/148).
       The proposed [merge policy](docs/governance/merge-controls-operator-handoff.md)
       remains unapplied; this implementation does not approve distribution.
-- [ ] Obtain the owner's decision and authorized administrator execution for
-      [#146](https://github.com/bynanci/open-film/issues/146). Native signing,
-      target lifecycle and performance observations remain separate open gates.
+- [x] Obtain the owner's approval for the fixed #146 main-ruleset proposal
+      `207bc7fed2804ad79d69e0c98ecf68f9ce4ba21c5d0e7fde8e68d4c158e3ce2e`
+      after this round of validated PRs. This approval excludes release/signing.
+- [ ] Apply that approved policy with authorized administrator access after the
+      PR round, verify safe control cases, and obtain alerting/release-role
+      attestations for [#146](https://github.com/bynanci/open-film/issues/146).
+      Native signing, lifecycle and performance observations remain separate.
 
 ## Editing and story workflow
 
@@ -200,8 +208,18 @@ remain separate acceptance scopes. See the
 - [x] Implement and locally validate immutable Silence rendered audition through the existing Record
       mix, accepted-render PCM comparisons, cancellation and stale-result guards
       ([candidate validation](docs/validation-silence-rendered-audition.md)).
+- [x] Record the bounded Linux objective proof with permissioned CC0 human
+      dialogue and guitar: existing durable Review → audition → explicit Accept
+      → MP4 decode → Undo/Redo → Save → cold Reopen, exact PCM/WAV parity and
+      source/protection checks. See the [real-media validation and retained
+      evidence](docs/validation-silence-real-media.md). This does not close
+      [#144](https://github.com/bynanci/open-film/issues/144): the mixed case's
+      existing frame-aligned MP4 export excludes 1,152 PCM samples / 24 ms,
+      explicitly retained as `qa.frameAlignedAudioTail` / manual review.
 - [ ] Complete real dialogue/music listening QA and Windows/macOS workstation
-      audition checks; synthetic PCM equivalence does not satisfy this gate.
+      audition checks, recorded A/V synchronization, more than two captured
+      channels and live browser lifecycle cases. The objective CC0 proof does
+      not establish listening quality or acceptance of its excluded tail.
 - [ ] Admit additional scene/rhythm, mask/restoration, stabilization/interpolation,
       separation or browser-rendering providers only after quality, timing,
       runtime and code/weight rights checks. Reuse existing capabilities.
@@ -309,7 +327,8 @@ and in the long-range v1.0 readiness record.
       fields. Local verification passes 94 exporter/unit tests and 11 actual-SDK
       application/CLI tests, including unchanged project, Catalog and source bytes;
       see the [scope and evidence](docs/validation/storytelling-compatibility-138.md).
-      Integrated final-head CI remains pending. This is not production adapter or
+      The [PR #149 gate record](https://github.com/bynanci/open-film/pull/149)
+      tracks final-head verification. This is not production adapter or
       FilmCraft acceptance: production approval/execution/quiescence/retry remain
       open. Do not enable an M4 writer/authority switch or reimplement completed
       M1-02/M1-03 from bounded proofs. Keep versions independent.

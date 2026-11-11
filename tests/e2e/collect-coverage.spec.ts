@@ -7,14 +7,12 @@ import axe from "axe-core";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile, runProcess } from "@openfilm/media";
 import { initialLocale, navigate, uiText } from "./ui-helpers.js";
+import { closeCollectFixture } from "../fixtures/close-collect-fixture.js";
 const base =
   process.env.OPENFILM_COLLECT_API_URL ?? "http://127.0.0.1:4310/api";
 const stops: Array<() => Promise<unknown>> = [];
-test.afterEach(async ({ request }) => {
-  expect((await request.post(`${base}/project/close`, { data: {} })).ok()).toBe(
-    true,
-  );
-  for (const stop of stops.splice(0).reverse()) await stop();
+test.afterEach(async () => {
+  await closeCollectFixture(base, stops.splice(0).reverse());
 });
 for (const locale of ["en-US", "zh-TW", "ja-JP"] as const) {
   test(`reviews source ranges with explicit delivery limits and accessible controls in ${locale}`, async ({
