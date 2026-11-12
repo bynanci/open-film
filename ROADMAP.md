@@ -229,8 +229,11 @@ The [retained input provenance matrix](docs/validation/runtime-provenance-141.md
 and [source-bound synthetic benchmark preparation](docs/validation/native-benchmark-preparation-145.md)
 close bounded offline engineering tasks. Actual runtime/source/rights closure and
 native measurements retain their own gates. The opt-in hosted source replay
-entry reuses the existing complete Python authority; its code/fixture checks must
-not be substituted for an actual authenticated original-path run.
+entry reuses the existing complete Python authority. After PR #152 merged, one
+fresh authenticated original-path run completed and was independently verified:
+[2026-11-12 source-replay and governance evidence](docs/validation/issue-followup-2026-11-12.md).
+Its record-only outcome and explicit shallow database-history limitation do not
+replace candidate-specific final receipts, runtime rights or OS observations.
 
 The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and

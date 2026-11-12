@@ -1,10 +1,43 @@
 # Main merge controls: owner review packet — issue 146
 
-Status: **proposed, not applied**. No rules, settings, secrets, roles, trust or
-publication permissions were changed. Owner approval must name the exact
-reviewed payload hash, no-bypass/recovery scope and validation plan before an
-administrator executes any write below. This is distinct from source-code
-review, AI review, DCO or general authorization to solve issues.
+Status: **fixed main policy approved; not applied**. The owner approved the
+reviewed payload after the original PR round. The sole recorded creation attempt
+returned HTTP 403; no rule or setting changed. Retain that approval rather than
+asking for the same decision again. Changed payloads or scope still require their
+own review and decision. This approval is distinct from source-code review,
+AI review, DCO, release authorization and native signing or notarization.
+
+## Approved policy and unsuccessful activation — 2026-11-11
+
+The owner's reply in this task was **「核准本輪 PR 驗證完成後套用」**,
+answering `request_user_input_async` call
+`call_5f282116cb8d4ae2b69ebf1520ade6ca`. It covered the fixed main-only policy:
+mandatory PR, six exact checks, no force-push/deletion or automatic admin bypass,
+and zero required approvals while there is one maintainer. It did not authorize
+a Release, native certificate, signing or notarization.
+
+- Approved proposal SHA-256:
+  `207bc7fed2804ad79d69e0c98ecf68f9ce4ba21c5d0e7fde8e68d4c158e3ce2e`.
+- Unchanged rollback SHA-256:
+  `3da51856576fdbc9990e6ece40bd8b0cc553f194b1f451005809f4f20d0a08fc`.
+- Original development PRs #147–#151 merged. Main
+  `9f4abb8de6f8f20b080c59dd50f1cd64af9dc2d5` subsequently passed all 17
+  applicable checks, satisfying the approved original-round timing condition.
+- At `2026-11-11T14:04:58.278007Z`, one POST used the unchanged proposal.
+  GitHub returned **HTTP 403, Resource not accessible by integration**. The
+  recorded readback had empty repository/effective rules and `protected: false`;
+  no rule ID exists, and no rollback, retry or credential change was performed.
+- The [issue execution comment](https://github.com/bynanci/open-film/issues/146#issuecomment-6794095647)
+  records the unsuccessful attempt and the later correction of PR #151's
+  unintended automatic issue closure. An issue's closed state is not enforcement
+  evidence. The resumed read-only inventory still found no repository rulesets.
+
+An existing administrator session with Rulesets write access must recheck the
+live baseline before using the same approved JSON. Repository metadata saying
+`admin: true` did not establish this integration's write capability. Do not
+create a duplicate rule if another administrator has already applied it. Safe
+control cases, alerting and release/signing-role attestations remain unobserved;
+this record does not declare them approved or executed.
 
 ## Read-only inventory observed 2026-11-11
 
@@ -84,8 +117,10 @@ Before activation:
 3. Confirm that the owner is still the sole administrator/maintainer and can use
    the Rules UI/API for recovery. Confirm GitHub plan/API support and the exact
    app identity. A 403 from this agent does not establish owner access.
-4. Obtain the explicit owner disposition below. Do not activate while any
-   required context is absent or a qualification is unresolved.
+4. Match the retained fixed-policy approval above to the unchanged payload and
+   scope. Request a new decision only for a changed policy or scope; do not ask
+   for the same approval again. Do not activate while any required context is
+   absent or a qualification is unresolved.
 
 ## Exact proposed policy and recovery tradeoff
 
@@ -115,7 +150,12 @@ this stage. Enabling one approval/CODEOWNER/last-pusher restriction requires a
 named second qualified reviewer, proof they can review these paths, an updated
 concrete payload and separate owner approval. AI review and DCO are not substitutes.
 
-Suggested exact owner disposition (currently **PENDING**, not signed):
+Additional administrator/control attestation template (**not yet supplied**):
+
+The fixed policy is already approved above. The broader role, recovery-access
+and test-actor statements in this template have not been attested by that reply;
+do not treat the following sample as a signature or another request to approve
+the unchanged policy:
 
 > I approve creation of the main-only ruleset from payload SHA-256 [REAL HASH],
 > the six check contexts/app ID, strict up-to-date branch policy and zero required
@@ -127,8 +167,9 @@ Suggested exact owner disposition (currently **PENDING**, not signed):
 
 ## Administrator execution after the disposition
 
-The following are reviewable commands, **not executed by this session**. Run
-from the reviewed checkout. `OPENFILM_APPROVAL` must refer to the retained owner
+The following commands are for an existing authorized administrator. The one
+recorded POST above failed; these examples are not a claim of successful
+activation or a request for another blind retry. Run from the reviewed checkout. `OPENFILM_APPROVAL` must refer to the retained owner
 decision covering the actual file hashes; setting a variable alone is not approval.
 Save a fresh baseline before any mutation; abort if rules have changed since
 review rather than overwriting another rule. The endpoint must remain this repo.
