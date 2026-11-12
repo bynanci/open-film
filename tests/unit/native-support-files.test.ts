@@ -1,3 +1,4 @@
+// Modified by OpenFilm contributors on 2026-11-12. See LICENSE and NOTICE.
 import { afterEach, expect, it } from "vitest";
 import {
   link,
@@ -48,7 +49,9 @@ afterEach(async () => {
   }
 });
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "openfilm-support-"));
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "openfilm-support-")),
+  );
   roots.push(root);
   const repository = join(root, "build");
   await mkdir(join(repository, "dist/server"), { recursive: true });
@@ -77,12 +80,22 @@ async function fixture() {
   // full host Node three times per negative case. These tools are never run;
   // genuine executable/owned-service coverage lives in native-runtime.test.ts.
   const source = join(root, "synthetic-tool");
-  const header = Buffer.alloc(64);
-  header.write("\x7fELF", 0, "binary");
-  header[4] = 2;
-  header[5] = 1;
-  header.writeUInt16LE(3, 16);
-  header.writeUInt16LE(process.arch === "x64" ? 62 : 183, 18);
+  const header = Buffer.alloc(128);
+  if (process.platform === "win32") {
+    header.write("MZ");
+    header.writeUInt32LE(64, 60);
+    header.write("PE\0\0", 64);
+    header.writeUInt16LE(process.arch === "x64" ? 34404 : 43620, 68);
+  } else if (process.platform === "darwin") {
+    header.writeUInt32LE(0xfeedfacf);
+    header.writeUInt32LE(process.arch === "x64" ? 16777223 : 16777228, 4);
+  } else {
+    header.write("\x7fELF", 0, "binary");
+    header[4] = 2;
+    header[5] = 1;
+    header.writeUInt16LE(3, 16);
+    header.writeUInt16LE(process.arch === "x64" ? 62 : 183, 18);
+  }
   await writeFile(source, header);
   const file = {
     source,
