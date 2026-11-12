@@ -609,6 +609,18 @@ export class SourceAnalysisService {
       contextRevision: member.contextRevision,
     }));
     let selectedBindings = manifestBindings;
+    const groupedBindings = new Map<string, typeof selectedBindings>();
+    for (const binding of selectedBindings) {
+      const group = groupedBindings.get(binding.assetId) ?? [];
+      group.push(binding);
+      groupedBindings.set(binding.assetId, group);
+    }
+    if (groupedBindings.size > MAX_ANALYSIS_ASSETS)
+      fail(
+        "request.tooLarge",
+        "Common analysis is limited to 10,000 distinct assets per run.",
+        413,
+      );
     let projectCatalogRevision: string | undefined;
     if (scopeMode === "project-catalog") {
       const assetCount = this.catalog.countAssets();
@@ -645,17 +657,9 @@ export class SourceAnalysisService {
     const inputBindingIds = [
       ...new Set(selectedBindings.map(({ bindingId }) => bindingId)),
     ].sort();
-    const groupedBindings = new Map<string, string[]>();
-    for (const binding of selectedBindings) {
-      const group = groupedBindings.get(binding.assetId) ?? [];
-      group.push(binding.bindingId);
-      groupedBindings.set(binding.assetId, group);
-    }
     const assets = [...groupedBindings.keys()].sort().map((assetId) => {
       const asset = this.catalog.getAsset(assetId);
-      const bindings = selectedBindings.filter(
-        (binding) => binding.assetId === assetId,
-      );
+      const bindings = groupedBindings.get(assetId)!;
       if (
         !asset ||
         !asset.contentHash ||
@@ -668,12 +672,6 @@ export class SourceAnalysisService {
         );
       return asset;
     });
-    if (assets.length > MAX_ANALYSIS_ASSETS)
-      fail(
-        "request.tooLarge",
-        "Common analysis is limited to 10,000 distinct assets per run.",
-        413,
-      );
     let travelContext: TravelContextV1 | undefined;
     if (rawTravelContext !== undefined) {
       try {
@@ -773,7 +771,12 @@ export class SourceAnalysisService {
         createdAt: new Date().toISOString(),
       },
       assets,
-      memberBindings: groupedBindings,
+      memberBindings: new Map(
+        [...groupedBindings].map(([assetId, bindings]) => [
+          assetId,
+          bindings.map(({ bindingId }) => bindingId),
+        ]),
+      ),
     };
   }
 
