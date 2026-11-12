@@ -6,6 +6,7 @@ export const contractTestPatterns = [
   "packages/story/tests/**/*.test.ts",
   "packages/metadata/tests/**/*.test.ts",
   "packages/events/tests/**/*.test.ts",
+  "tests/unit/silence-real-browser-state.test.ts",
 ] as const;
 
 export function validateTestPartition(

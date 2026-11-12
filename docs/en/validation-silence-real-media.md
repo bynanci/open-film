@@ -255,3 +255,21 @@ and post-creation containment are covered. Direct runner negative checks reject
 inside `..evidence`, unapproved source bytes and an existing evidence directory
 before media generation. Full typecheck and focused static checks pass. Windows
 lexical tests do not establish actual Windows device or filesystem acceptance.
+
+## Recorded browser lifecycle evidence — 2026-11-12
+
+The [dated browser validation](./validation/silence-recorded-browser-2026-11-12.md)
+records fresh I2 `5e9c06d91cb01ff44acae2eb5214e6829b60113a` local Linux evidence:
+packet runner exit 0 / 46.962 s, actual browser exit 0 / 35.919 s, nine checks
+and all ten cleanup entries passed. It covers real Reconnect/reload, in-flight
+HTTP cancellation, one predeclared delayed retry and a trusted project switch
+overlapping an actual native stereo buffer. Original run-01 remains FAILED;
+the narrow QA correction protects every working-project field except root
+`updatedAt` within observed successful close windows, with 33 pure guard tests.
+
+客觀 Linux browser 子項已記錄；人工聽感、recorded A/V、>2-channel capture、
+Windows/macOS 原生裝置與既有 1,152-sample / 24 ms tail warning 仍未接受。
+Issue #144 remains open. Independent local evidence review passed for exact
+I2. This proof does not attest final PR review or configured exact-head CI;
+evaluate those independently on the final PR. No release, physical sound or
+local full-suite pass is inferred; historical packets above remain unchanged.

@@ -110,7 +110,15 @@ It preserves the existing frame-aligned export policy and explicitly records
 the mixed case's 1,152-sample / 24 ms excluded tail as manual review; it does
 not certify retained speech, seam quality or acceptable termination. Human
 listening, Windows/macOS devices, recorded A/V synchronization, more than two
-captured channels and live browser lifecycle observations remain open.
+captured channels and native workstation lifecycle observations remain open.
+
+**2026-11-12:** [objective Linux recorded-browser evidence](docs/validation/silence-recorded-browser-2026-11-12.md)
+now records I2's actual Reconnect/reload, HTTP Cancel, one declared delayed retry
+and native-buffer overlap at a trusted project switch: nine checks and ten
+cleanup entries passed. Original run-01 stays FAILED; final PR exact-head
+review/CI is evaluated independently. This completes one narrow #144 child,
+with human/native acceptance,
+the excluded tail, PR #129 ownership and administrator gates unchanged.
 
 The automation-clock implementation and hosted validation are complete. Next
 acceptance is real dialogue/music listening and candidate-bound workstation

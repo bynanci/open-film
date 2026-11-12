@@ -1,0 +1,921 @@
+{
+  "schema": "openfilm.silence-recorded-browser-summary.v1",
+  "recordedDate": "2026-11-12",
+  "candidate": "5e9c06d91cb01ff44acae2eb5214e6829b60113a",
+  "scope": "Actual local Linux recorded-media browser evidence; manual quality and final PR/CI remain separate",
+  "productionEngineChanged": false,
+  "implementationFileSHA256": {
+    "tests/manual/silence-real-browser.mjs": "7cbdb216962eb7ee089c6783dcec2e9205976dfc2dc3e2be4c3ddab43a4d1480",
+    "tests/manual/silence-real-browser-state.ts": "db97a5beb540a184e1f40c1f1a66da60a2cb619842d43baabaa2cae62b06aaad",
+    "tests/unit/silence-real-browser-state.test.ts": "936c97f488706b0f4e0d817b55b6b967da839d9cf530fa4827f447e8c694d01c",
+    "scripts/ci/test-lanes.ts": "41072a1bb963ce7296dc2dc5bec02d054941406f53c99c5ed4f724a07f7d920c"
+  },
+  "tools": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "ffmpeg": "ffmpeg version 7.1.5-0+deb13u1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 7.1.5-0+deb13u1 Copyright (c) 2007-2026 the FFmpeg developers",
+    "browserVersion": "151.0.7922.173",
+    "headless": true
+  },
+  "status": "OBJECTIVE BROWSER CHECKS PASSED; MANUAL QUALITY GATES REMAIN",
+  "qualityAcceptance": "manual-review-required",
+  "fullyAcceptedQuality": false,
+  "sourceRights": {
+    "policyDocument": "docs/validation-silence-real-media.md",
+    "license": "CC0-1.0",
+    "newOwnershipOrRedistributionAcceptanceClaimed": false,
+    "sources": [
+      {
+        "name": "paddy-neary.opus",
+        "sha256": "42973f944af32809fe9f7446a7a745d64fe9fc3e51db521902563f7fa2946053",
+        "descriptionRevision": "976876871"
+      },
+      {
+        "name": "guitar.ogg",
+        "sha256": "d6ff6cafd3025db2e2215b32e3e7e6411fa08a8d2e0fca7c3353b5a4a82523a5",
+        "descriptionRevision": "1293865599"
+      }
+    ]
+  },
+  "derivedSourceHashes": [
+    {
+      "name": "voice.wav",
+      "sha256": "ea720904147fd579d5681d8db108640c9247d4059cbdc2e950a1e7cb610f9d89"
+    },
+    {
+      "name": "music.wav",
+      "sha256": "2492983a3cd9c057adac1a0a0f226e9a2f5e1ad34796935eac779f31d95d36f1"
+    },
+    {
+      "name": "picture.mkv",
+      "sha256": "a3cf2ed1fd2082a072a8570358958aa1757b8902174f30b1f003e9eb8cd8b191"
+    }
+  ],
+  "processRuns": [
+    {
+      "name": "packet",
+      "head": "5e9c06d91cb01ff44acae2eb5214e6829b60113a",
+      "exitCode": 0,
+      "seconds": 46.962,
+      "startedAt": "2026-11-12T11:43:04.380998+00:00",
+      "finishedAt": "2026-11-12T11:43:51.343754+00:00"
+    },
+    {
+      "name": "browser",
+      "head": "5e9c06d91cb01ff44acae2eb5214e6829b60113a",
+      "exitCode": 0,
+      "seconds": 35.919,
+      "startedAt": "2026-11-12T11:43:51.348290+00:00",
+      "finishedAt": "2026-11-12T11:44:27.267237+00:00"
+    }
+  ],
+  "packet": {
+    "status": "objective-contract-pass; manual-review-required",
+    "startedAt": "2026-11-12T11:43:07.366Z",
+    "finishedAt": "2026-11-12T11:43:51.282Z",
+    "rawResultsSHA256": "b787def883ff5bbc3324c0427ada63b70c74610542b55116d620e17aeabf2854",
+    "fullyAcceptedQuality": false
+  },
+  "browser": {
+    "status": "OBJECTIVE BROWSER CHECKS PASSED; MANUAL QUALITY GATES REMAIN",
+    "startedAt": "2026-11-12T11:43:51.667Z",
+    "finishedAt": "2026-11-12T11:44:27.068Z",
+    "rawResultsSHA256": "6a52ed3f9e42d4e2fb98705dd797ad554019b683519afd5e959d555af3da1306",
+    "completedChecks": 9,
+    "failures": 0,
+    "cleanupPassed": 10,
+    "cleanupFailed": 0,
+    "apiPortAdmission": "owned ephemeral loopback",
+    "uiOrigin": "http://127.0.0.1:1420",
+    "strictUiPort": true,
+    "occupiedUiPortMeansFailure": true,
+    "checks": [
+      {
+        "check": "initial-review",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "jobId": "70638417-57e6-4474-9907-82398fb8f26d",
+        "reviewId": "c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56",
+        "baseRevision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+        "freshness": "current",
+        "status": "passed"
+      },
+      {
+        "check": "reconnect-same-review",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "jobId": "70638417-57e6-4474-9907-82398fb8f26d",
+        "reviewId": "c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56",
+        "baseRevision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+        "freshness": "current",
+        "status": "passed"
+      },
+      {
+        "check": "reload-discovery-same-review",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "jobId": "70638417-57e6-4474-9907-82398fb8f26d",
+        "reviewId": "c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56",
+        "baseRevision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+        "freshness": "current",
+        "status": "passed"
+      },
+      {
+        "check": "active-owner-409-before-cancel",
+        "status": "passed",
+        "httpStatus": 409,
+        "code": "jobs.busy",
+        "auditionReceivedAt": 1794483847833,
+        "assertedAt": 1794483847876
+      },
+      {
+        "check": "real-http-cancel",
+        "phase": "Real in-flight HTTP/source-verification cancellation; FFmpeg phase unobserved",
+        "cancelledUi": true,
+        "prepareFocusRestored": true,
+        "lateResultAbsentAfterMilliseconds": 1000,
+        "configuredPostCancelSettlingMilliseconds": 1000,
+        "immediateOwnerRelease": "NOT MEASURED",
+        "status": "passed",
+        "browserError": "net::ERR_ABORTED",
+        "serverReceivedAt": 1794483847833,
+        "serverClosedAt": 1794483848076,
+        "serverResponseFinished": false,
+        "closedBeforeFinish": true
+      },
+      {
+        "check": "single-retry-same-durable-review-after-declared-delay",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "jobId": "70638417-57e6-4474-9907-82398fb8f26d",
+        "reviewId": "c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56",
+        "baseRevision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+        "freshness": "current",
+        "immediateOwnerRelease": "NOT MEASURED",
+        "retryCallEnteredAt": 1794483849223,
+        "retryHttpReceivedAt": 1794483849276,
+        "cancelClickCompletedAt": 1794483848116,
+        "retryHttpReceivedElapsedAfterCancelCompletedMilliseconds": 1160,
+        "status": "passed",
+        "rendererParity": "renderer",
+        "pcmDescriptors": {
+          "before": {
+            "version": 1,
+            "id": "5bad3dea-0089-406f-b3b7-9ac9189c4625",
+            "revision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+            "sourceKeyDigest": "247e4dabe001fa26c8e364cd6ec49d5f3de0a6167480aa4cae2503dfaa46d665",
+            "sampleRate": 48000,
+            "channels": 2,
+            "format": "pcm_s24le",
+            "lengthSamples": 1152000
+          },
+          "after": {
+            "version": 1,
+            "id": "dfd71fb4-32dd-4dd9-a51c-103658825e4f",
+            "revision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+            "sourceKeyDigest": "247e4dabe001fa26c8e364cd6ec49d5f3de0a6167480aa4cae2503dfaa46d665",
+            "sampleRate": 48000,
+            "channels": 2,
+            "format": "pcm_s24le",
+            "lengthSamples": 904320
+          }
+        }
+      },
+      {
+        "check": "prepared-switch-correct-second-review",
+        "name": "mixed-reuse-speed",
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "jobId": "3addc9b2-eec7-4bf3-b0e2-c27d578893e1",
+        "reviewId": "3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a",
+        "baseRevision": "a690fbedbe8f25e7dfa97742f43ccb8104fc701e42f02546a296d1e54309a2c2",
+        "freshness": "current",
+        "oldResultAbsent": true,
+        "retired": [
+          {
+            "id": "5bad3dea-0089-406f-b3b7-9ac9189c4625",
+            "status": 404,
+            "code": "request.notFound"
+          },
+          {
+            "id": "dfd71fb4-32dd-4dd9-a51c-103658825e4f",
+            "status": 404,
+            "code": "request.notFound"
+          }
+        ],
+        "status": "passed"
+      },
+      {
+        "check": "playing-switch-native-buffer-overlaps-click-and-context-closes",
+        "retired": [
+          {
+            "id": "8724958c-c958-47ee-b5d3-088ba9a625e7",
+            "status": 404,
+            "code": "request.notFound"
+          },
+          {
+            "id": "d57065b3-3244-4b10-888a-332911fe5622",
+            "status": 404,
+            "code": "request.notFound"
+          }
+        ],
+        "realPcmHttpStatus": 200,
+        "physicalListening": false,
+        "lateStartsAfterClose": 0,
+        "status": "passed",
+        "scheduledContext": 1,
+        "switchClick": {
+          "event": "switch-project-click",
+          "at": 14900,
+          "trusted": true,
+          "nodes": [
+            {
+              "nodeId": 1,
+              "contextId": 1,
+              "started": true,
+              "ended": false,
+              "bufferLength": 96000,
+              "bufferSampleRate": 48000,
+              "bufferChannels": 2,
+              "bufferDurationSeconds": 2,
+              "scheduledWhen": 0.33266666666666667,
+              "offsetSeconds": 0,
+              "requestedDurationSeconds": null,
+              "playbackRate": 1,
+              "detune": 0,
+              "loop": false,
+              "effectivePlaybackRate": 1,
+              "effectiveDurationSeconds": 2,
+              "beforeNativeCurrentTime": 0.08266666666666667,
+              "afterNativeCurrentTime": 0.08266666666666667,
+              "effectiveStartEarliest": 0.33266666666666667,
+              "effectiveStartLatest": 0.33266666666666667,
+              "effectiveEndEarliest": 2.3326666666666664,
+              "stopCalls": [],
+              "currentTimeAtClick": 0.6933333333333334,
+              "contextStateAtClick": "running",
+              "playbackRateAtClick": 1,
+              "detuneAtClick": 0,
+              "loopAtClick": false
+            }
+          ]
+        },
+        "overlappingNativeNodes": [
+          {
+            "nodeId": 1,
+            "contextId": 1,
+            "started": true,
+            "ended": false,
+            "bufferLength": 96000,
+            "bufferSampleRate": 48000,
+            "bufferChannels": 2,
+            "bufferDurationSeconds": 2,
+            "scheduledWhen": 0.33266666666666667,
+            "offsetSeconds": 0,
+            "requestedDurationSeconds": null,
+            "playbackRate": 1,
+            "detune": 0,
+            "loop": false,
+            "effectivePlaybackRate": 1,
+            "effectiveDurationSeconds": 2,
+            "beforeNativeCurrentTime": 0.08266666666666667,
+            "afterNativeCurrentTime": 0.08266666666666667,
+            "effectiveStartEarliest": 0.33266666666666667,
+            "effectiveStartLatest": 0.33266666666666667,
+            "effectiveEndEarliest": 2.3326666666666664,
+            "stopCalls": [],
+            "currentTimeAtClick": 0.6933333333333334,
+            "contextStateAtClick": "running",
+            "playbackRateAtClick": 1,
+            "detuneAtClick": 0,
+            "loopAtClick": false
+          }
+        ],
+        "closure": {
+          "event": "native-close-resolved",
+          "id": 1,
+          "at": 14926.10000000149,
+          "state": "closed"
+        },
+        "returnedReviewIdentity": {
+          "name": "natural",
+          "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+          "jobId": "70638417-57e6-4474-9907-82398fb8f26d",
+          "reviewId": "c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56",
+          "baseRevision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+          "freshness": "current"
+        }
+      },
+      {
+        "check": "second-review-remains-immutable-after-playing",
+        "name": "mixed-reuse-speed",
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "jobId": "3addc9b2-eec7-4bf3-b0e2-c27d578893e1",
+        "reviewId": "3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a",
+        "baseRevision": "a690fbedbe8f25e7dfa97742f43ccb8104fc701e42f02546a296d1e54309a2c2",
+        "freshness": "current",
+        "status": "passed"
+      }
+    ],
+    "cleanup": [
+      {
+        "name": "trace-preserved",
+        "ok": true
+      },
+      {
+        "name": "owned-browser-closed",
+        "ok": true
+      },
+      {
+        "name": "owned-vite-closed",
+        "ok": true
+      },
+      {
+        "name": "actual-project-before-server-close",
+        "ok": true
+      },
+      {
+        "name": "owned-openfilm-server-closed",
+        "ok": true
+      },
+      {
+        "name": "owned-api-port-closed",
+        "ok": true
+      },
+      {
+        "name": "owned-desktop-port-closed",
+        "ok": true
+      },
+      {
+        "name": "original-packet-and-source-bytes-unchanged",
+        "ok": true
+      },
+      {
+        "name": "session-project-state-and-durable-bytes:natural",
+        "ok": true
+      },
+      {
+        "name": "session-project-state-and-durable-bytes:mixed-reuse-speed",
+        "ok": true
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "natural",
+      "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+      "jobId": "70638417-57e6-4474-9907-82398fb8f26d",
+      "reviewId": "c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56",
+      "sourceHash": "ea720904147fd579d5681d8db108640c9247d4059cbdc2e950a1e7cb610f9d89",
+      "baseRevision": "2aa6b9395820032e15acceca1db9749086c040357e91bb212d56108b9e2dca4a",
+      "selectedCandidateIds": [
+        "silence-0001-hs-1k4",
+        "silence-0002-3xo-4ew",
+        "silence-0003-5ic-690",
+        "silence-0004-6xg-7d0",
+        "silence-0005-7y4-8aw",
+        "silence-0006-8i4-8s4",
+        "silence-0007-9s8-a50",
+        "silence-0008-azk-bao",
+        "silence-0009-csk-d98",
+        "silence-0010-fa0-fk0",
+        "silence-0011-gu4-h4o",
+        "silence-0012-ht4-i84"
+      ],
+      "sourceIntervalCount": 12,
+      "timelineIntervalCount": 12,
+      "sourceIntervalsCanonicalJSONSHA256": "69b42b0bfa12588f6691cc314233021d1aad8f9c40f4aaf54033d4d26f704c52",
+      "timelineIntervalsCanonicalJSONSHA256": "69b42b0bfa12588f6691cc314233021d1aad8f9c40f4aaf54033d4d26f704c52",
+      "sourceReviewReceiptSHA256": "6e4861d09d00293aec18156d3b0b3dbf461a3040cbdea92f9a7de3e384d48ddc",
+      "originalReviewProjectFileSHA256": {
+        "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+        "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e",
+        "project.json": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d"
+      },
+      "finalWorkingProjectJSONSHA256": "da16f39c6e894236b924443fe49016d4677c40f777bc8eccc9a9fc2151d3def0",
+      "initialRootUpdatedAt": "2026-11-12T11:43:12.445Z",
+      "finalRootUpdatedAt": "2026-11-12T11:44:22.186Z",
+      "allFieldsExceptRootUpdatedAtEqual": true,
+      "databaseAndDurableReviewBytesUnchanged": true,
+      "beforePcmFrames": 1152000,
+      "afterPcmFrames": 904320,
+      "beforePcmParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "wavParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "durationReview": {
+        "fullCompositionDurationSeconds": 18.83999999999999,
+        "fullPcmFrames": 904320,
+        "fullPcmDurationSeconds": 18.84,
+        "exportFrameRate": 25,
+        "expectedExportDurationSeconds": 18.84,
+        "expectedExportFrames": 904320,
+        "actualAacDurationSeconds": 18.84,
+        "pcmCompositionErrorSamples": 0,
+        "aacExportErrorSamples": 0,
+        "lostTailSamples": 0,
+        "lostTailMilliseconds": 0,
+        "objectiveContractPass": true,
+        "warnings": []
+      },
+      "derivedOutputs": [
+        {
+          "name": "natural-before.wav",
+          "sha256": "337118be626f728830d0676023cc58c4865dd1d5b68f5dd2acdb4d83a90671c6"
+        },
+        {
+          "name": "natural-proposed.wav",
+          "sha256": "94081cf719f0a2edb42f57c53bfc44e2a6636ddb807e6cdbdb62d5b5b0ae7ac5"
+        },
+        {
+          "name": "natural-accepted.wav",
+          "sha256": "94081cf719f0a2edb42f57c53bfc44e2a6636ddb807e6cdbdb62d5b5b0ae7ac5"
+        },
+        {
+          "name": "natural-accepted.mp4",
+          "sha256": "b37373e023605805a38047d709221e5781747062f57a9d3543f93b95f52fd821"
+        },
+        {
+          "name": "natural-mp4-decode.wav",
+          "sha256": "84d298a823f551f542d3d7295615e1917c0ca95f9b0f19775728a011353743e2"
+        },
+        {
+          "name": "natural-reopened.mp4",
+          "sha256": "b37373e023605805a38047d709221e5781747062f57a9d3543f93b95f52fd821"
+        }
+      ]
+    },
+    {
+      "name": "mixed-reuse-speed",
+      "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+      "jobId": "3addc9b2-eec7-4bf3-b0e2-c27d578893e1",
+      "reviewId": "3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a",
+      "sourceHash": "ea720904147fd579d5681d8db108640c9247d4059cbdc2e950a1e7cb610f9d89",
+      "baseRevision": "a690fbedbe8f25e7dfa97742f43ccb8104fc701e42f02546a296d1e54309a2c2",
+      "selectedCandidateIds": [
+        "silence-0001-hs-1k4",
+        "silence-0002-3xo-4ew",
+        "silence-0003-5ic-690",
+        "silence-0004-6xg-7d0",
+        "silence-0005-7y4-8aw",
+        "silence-0006-8i4-8s4",
+        "silence-0007-9s8-a50",
+        "silence-0008-azk-bao",
+        "silence-0009-csk-d98",
+        "silence-0010-fa0-fk0",
+        "silence-0011-gu4-h4o",
+        "silence-0012-ht4-i84"
+      ],
+      "sourceIntervalCount": 6,
+      "timelineIntervalCount": 12,
+      "sourceIntervalsCanonicalJSONSHA256": "b525b23d812992c46c9a753c94f15d12d806f048766fe2acd50ca7c68f5fc060",
+      "timelineIntervalsCanonicalJSONSHA256": "e25111dfaa00a2fc2612ca1f5e820a4e5c7728a559e0a125044f3d554c412e72",
+      "sourceReviewReceiptSHA256": "500d345451aa03d836e7be161a9ef65f28480089bc204e757f84444eec744e94",
+      "originalReviewProjectFileSHA256": {
+        "analysis/silence-reviews/3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a.json": "b0ae7c1e0776e8ff1bc148ef5b77b7c52f0be24ab9253e708a91d27d9c090afc",
+        "database.sqlite": "ed928d97db39ee5552b762294ec9ec252916775fa2ff412f0b6e67111da2adc6",
+        "project.json": "570d0878dcc2fe4b4451b31708e62148c3bfb6d0cc342cddc3b2b053c09722f0"
+      },
+      "finalWorkingProjectJSONSHA256": "138cfa60400907c7ea7ef07c167660b311bf253175159a57d53126794c81e070",
+      "initialRootUpdatedAt": "2026-11-12T11:43:28.168Z",
+      "finalRootUpdatedAt": "2026-11-12T11:44:24.413Z",
+      "allFieldsExceptRootUpdatedAtEqual": true,
+      "databaseAndDurableReviewBytesUnchanged": true,
+      "beforePcmFrames": 921600,
+      "afterPcmFrames": 732672,
+      "beforePcmParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "wavParity": {
+        "maximumError": 0,
+        "rmsError": 0
+      },
+      "durationReview": {
+        "fullCompositionDurationSeconds": 15.264000000000005,
+        "fullPcmFrames": 732672,
+        "fullPcmDurationSeconds": 15.264,
+        "exportFrameRate": 25,
+        "expectedExportDurationSeconds": 15.24,
+        "expectedExportFrames": 731520,
+        "actualAacDurationSeconds": 15.24,
+        "pcmCompositionErrorSamples": 0,
+        "aacExportErrorSamples": 0,
+        "lostTailSamples": 1152,
+        "lostTailMilliseconds": 24,
+        "objectiveContractPass": true,
+        "warnings": [
+          {
+            "code": "qa.frameAlignedAudioTail",
+            "severity": "manual-review-required",
+            "lostTailSamples": 1152,
+            "lostTailMilliseconds": 24
+          }
+        ]
+      },
+      "derivedOutputs": [
+        {
+          "name": "mixed-reuse-speed-before.wav",
+          "sha256": "76a9ab5dd7002a98c97264da244ba41314afbb987204e9ad15f51c99ad393a43"
+        },
+        {
+          "name": "mixed-reuse-speed-proposed.wav",
+          "sha256": "db448fb1e8c16d2a65c8a7ff8d58aef22fdc4a0d426bd5a6848fbc7ed39ae746"
+        },
+        {
+          "name": "mixed-reuse-speed-accepted.wav",
+          "sha256": "db448fb1e8c16d2a65c8a7ff8d58aef22fdc4a0d426bd5a6848fbc7ed39ae746"
+        },
+        {
+          "name": "mixed-reuse-speed-accepted.mp4",
+          "sha256": "3a733c34bd9efe0d7aa7d8becefd06e6820be2eeb06e13023b2ab0d350303c80"
+        },
+        {
+          "name": "mixed-reuse-speed-mp4-decode.wav",
+          "sha256": "6b2183177978e61efeaf0673a53550a358d1b774b87c8e9df2758c268a2fe0e3"
+        },
+        {
+          "name": "mixed-reuse-speed-reopened.mp4",
+          "sha256": "3a733c34bd9efe0d7aa7d8becefd06e6820be2eeb06e13023b2ab0d350303c80"
+        }
+      ]
+    }
+  ],
+  "sessionStateGuard": {
+    "sourceSHA256": "db97a5beb540a184e1f40c1f1a66da60a2cb619842d43baabaa2cae62b06aaad",
+    "rule": "Entire parsed JSON strict equality except canonical nondecreasing root updatedAt within a matching actual-project successful observed close window; no normalization or general metadata exclusion",
+    "stateChecksPassed": 9,
+    "rootTimestampUnchangedChecks": 5,
+    "rootTimestampOnlyChangedChecks": 4,
+    "actualCloseWindows": [
+      {
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "kind": "http-project-close",
+        "status": 200,
+        "identityObservedAt": 1794483851152,
+        "startedAt": 1794483851259,
+        "finishedAt": 1794483851266
+      },
+      {
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "kind": "http-project-close",
+        "status": 200,
+        "identityObservedAt": 1794483859183,
+        "startedAt": 1794483859316,
+        "finishedAt": 1794483859324
+      },
+      {
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "kind": "http-project-close",
+        "status": 200,
+        "identityObservedAt": 1794483862003,
+        "startedAt": 1794483862185,
+        "finishedAt": 1794483862195
+      },
+      {
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "kind": "http-project-close",
+        "status": 200,
+        "identityObservedAt": 1794483864322,
+        "startedAt": 1794483864412,
+        "finishedAt": 1794483864416
+      }
+    ],
+    "checks": [
+      {
+        "phase": "verify",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "observedAt": 1794483844134,
+        "originalTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "currentTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+          "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "currentUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "rootUpdatedAtChanged": false,
+        "closeObservation": null
+      },
+      {
+        "phase": "verify",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "observedAt": 1794483844298,
+        "originalTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "currentTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+          "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "currentUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "rootUpdatedAtChanged": false,
+        "closeObservation": null
+      },
+      {
+        "phase": "verify",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "observedAt": 1794483847636,
+        "originalTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "currentTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+          "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "currentUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "rootUpdatedAtChanged": false,
+        "closeObservation": null
+      },
+      {
+        "phase": "verify",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "observedAt": 1794483850947,
+        "originalTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "currentTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+          "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "currentUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "rootUpdatedAtChanged": false,
+        "closeObservation": null
+      },
+      {
+        "phase": "verify",
+        "name": "mixed-reuse-speed",
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "observedAt": 1794483853159,
+        "originalTextSha256": "570d0878dcc2fe4b4451b31708e62148c3bfb6d0cc342cddc3b2b053c09722f0",
+        "currentTextSha256": "570d0878dcc2fe4b4451b31708e62148c3bfb6d0cc342cddc3b2b053c09722f0",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a.json": "b0ae7c1e0776e8ff1bc148ef5b77b7c52f0be24ab9253e708a91d27d9c090afc",
+          "database.sqlite": "ed928d97db39ee5552b762294ec9ec252916775fa2ff412f0b6e67111da2adc6"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:28.168Z",
+        "currentUpdatedAt": "2026-11-12T11:43:28.168Z",
+        "rootUpdatedAtChanged": false,
+        "closeObservation": null
+      },
+      {
+        "phase": "verify",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "observedAt": 1794483861750,
+        "originalTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "currentTextSha256": "181378c3a55c5b6f83c289b5465d4602d2017ccfd36bbb493743697c4fc3c326",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+          "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "currentUpdatedAt": "2026-11-12T11:44:11.260Z",
+        "rootUpdatedAtChanged": true,
+        "closeObservation": {
+          "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+          "kind": "http-project-close",
+          "status": 200,
+          "identityObservedAt": 1794483851152,
+          "startedAt": 1794483851259,
+          "finishedAt": 1794483851266
+        }
+      },
+      {
+        "phase": "verify",
+        "name": "mixed-reuse-speed",
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "observedAt": 1794483864315,
+        "originalTextSha256": "570d0878dcc2fe4b4451b31708e62148c3bfb6d0cc342cddc3b2b053c09722f0",
+        "currentTextSha256": "980ce5617887d47fcdfe5fd49c992bf10967db0c518c53e021baad6460d4dfbb",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a.json": "b0ae7c1e0776e8ff1bc148ef5b77b7c52f0be24ab9253e708a91d27d9c090afc",
+          "database.sqlite": "ed928d97db39ee5552b762294ec9ec252916775fa2ff412f0b6e67111da2adc6"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:28.168Z",
+        "currentUpdatedAt": "2026-11-12T11:44:19.317Z",
+        "rootUpdatedAtChanged": true,
+        "closeObservation": {
+          "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+          "kind": "http-project-close",
+          "status": 200,
+          "identityObservedAt": 1794483859183,
+          "startedAt": 1794483859316,
+          "finishedAt": 1794483859324
+        }
+      },
+      {
+        "phase": "finally",
+        "name": "natural",
+        "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+        "observedAt": 1794483867053,
+        "originalTextSha256": "830e4a15712a28eac3007f14dd29572e71fd50e06b5aa06451df6f680b2d2c2d",
+        "currentTextSha256": "da16f39c6e894236b924443fe49016d4677c40f777bc8eccc9a9fc2151d3def0",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/c6c82bb5e32a51d65bf8586630f0d17505033e4d516895796b407c3e98bf9b56.json": "8dba0a13104e763fa5c767b6f46c470752c1c91854afb53a204e325ff1799842",
+          "database.sqlite": "f0abd03bb97502325de995e140bb6a40f47e8e63171ea88580136c59ef86a46e"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:12.445Z",
+        "currentUpdatedAt": "2026-11-12T11:44:22.186Z",
+        "rootUpdatedAtChanged": true,
+        "closeObservation": {
+          "projectId": "project-89cc77bf-47cd-4332-8bb1-fdac4cb531ff",
+          "kind": "http-project-close",
+          "status": 200,
+          "identityObservedAt": 1794483862003,
+          "startedAt": 1794483862185,
+          "finishedAt": 1794483862195
+        }
+      },
+      {
+        "phase": "finally",
+        "name": "mixed-reuse-speed",
+        "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+        "observedAt": 1794483867066,
+        "originalTextSha256": "570d0878dcc2fe4b4451b31708e62148c3bfb6d0cc342cddc3b2b053c09722f0",
+        "currentTextSha256": "138cfa60400907c7ea7ef07c167660b311bf253175159a57d53126794c81e070",
+        "status": "passed",
+        "protectedFileHashes": {
+          "analysis/silence-reviews/3918b1f983c6d53bb04ff648296c3a5ddd76293cce568bced8e9eea06e72848a.json": "b0ae7c1e0776e8ff1bc148ef5b77b7c52f0be24ab9253e708a91d27d9c090afc",
+          "database.sqlite": "ed928d97db39ee5552b762294ec9ec252916775fa2ff412f0b6e67111da2adc6"
+        },
+        "originalUpdatedAt": "2026-11-12T11:43:28.168Z",
+        "currentUpdatedAt": "2026-11-12T11:44:24.413Z",
+        "rootUpdatedAtChanged": true,
+        "closeObservation": {
+          "projectId": "project-42334133-2c89-41fa-b598-6ccac0017a06",
+          "kind": "http-project-close",
+          "status": 200,
+          "identityObservedAt": 1794483864322,
+          "startedAt": 1794483864412,
+          "finishedAt": 1794483864416
+        }
+      }
+    ],
+    "originalPacketAndSourceBytesUnchanged": true,
+    "workingSessionDirectoriesByteImmutable": false
+  },
+  "developmentChecks": {
+    "recordedBeforeBrowserRun": true,
+    "guardRed": {
+      "exitCode": 1,
+      "failed": 4,
+      "passed": 29,
+      "total": 33,
+      "reason": "Old byte-equality rule rejects both legitimate successful-close timestamps; unchanged wrong project identity and invalid timestamp were previously unguarded."
+    },
+    "guardGreen": {
+      "exitCode": 0,
+      "passed": 33,
+      "total": 33
+    },
+    "guardDevelopmentResultsSHA256": "924a97173357e2c93896d2fb49682a84076aa38531226b07b9278b250e9d5ba8",
+    "guardRedLogSHA256": "d0a90ebf46fa933379b0c53b790a2d053f33e81815d43d21f191b7620bf15d7e",
+    "guardFinalGreenLogSHA256": "8116554b8e0661ecabceb80a654a4f9bcbf9c8530367888b52b240ad1c1cd28e",
+    "pureContracts": {
+      "exitCode": 0,
+      "passedTests": 1581,
+      "failedTests": 0,
+      "pendingTests": 0,
+      "todoTests": 0,
+      "files": 82,
+      "rawReportSHA256": "7d87134df786d93dbc8808e742f8ae8292ea85160d17564f18a0eb7ad6c5d001"
+    },
+    "partition": {
+      "command": "pnpm exec tsx scripts/ci/check-test-partition.ts",
+      "exitCode": 0,
+      "total": 471,
+      "contracts": 82,
+      "media": 389
+    },
+    "typecheckExitCode": 0,
+    "finalStaticChecks": [
+      {
+        "name": "syntax",
+        "cmd": "node --check tests/manual/silence-real-browser.mjs",
+        "exit_code": 0
+      },
+      {
+        "name": "lint",
+        "cmd": "pnpm exec eslint tests/manual/silence-real-browser.mjs tests/manual/silence-real-browser-state.ts tests/unit/silence-real-browser-state.test.ts scripts/ci/test-lanes.ts --max-warnings=0",
+        "exit_code": 0
+      },
+      {
+        "name": "format",
+        "cmd": "pnpm exec prettier --check tests/manual/silence-real-browser.mjs tests/manual/silence-real-browser-state.ts tests/unit/silence-real-browser-state.test.ts scripts/ci/test-lanes.ts",
+        "exit_code": 0
+      }
+    ],
+    "localFullSuitePassClaimed": false
+  },
+  "priorFailedAttempt": {
+    "candidate": "925b98f51151fb57695e96dd44d8c89f07796d7a",
+    "status": "FAILED",
+    "packetProcessSeconds": 47.219,
+    "packetExitCode": 0,
+    "browserProcessSeconds": 44.27,
+    "browserExitCode": 1,
+    "completedChecks": 7,
+    "driverSHA256": "f301826b17e2e53ec3ed113217c74f8ee65a6a781dbaa87d1a8a0321cd2b7f97",
+    "rawBrowserResultsSHA256": "5723953be9b5f844c71da01e5b449e9296d14fa70957dd9818064d29daba1638",
+    "rawPacketResultsSHA256": "108e011a73fada17a595e2ff8aec6d60ea55801c1d9ad075ef63d4efb41b9312",
+    "originalFailurePreserved": true,
+    "failureFacts": [
+      "strict wrapped-label selector did not match live SELECT options",
+      "normal copied-project close-save updated root updatedAt; all other JSON/DB/Review/source unchanged"
+    ],
+    "newEvidenceDoesNotRelabelOldRun": true
+  },
+  "manualReviewWarnings": [
+    {
+      "name": "mixed-reuse-speed",
+      "code": "qa.frameAlignedAudioTail",
+      "severity": "manual-review-required",
+      "lostTailSamples": 1152,
+      "lostTailMilliseconds": 24
+    }
+  ],
+  "unfinishedGates": [
+    {
+      "gate": "human-reference-listening-quality",
+      "status": "unaccepted",
+      "includes": "speech/breath/seams/music and excluded export tail"
+    },
+    {
+      "gate": "recorded-av-synchronization",
+      "status": "not performed"
+    },
+    {
+      "gate": "captured-inputs-above-stereo",
+      "status": "not performed"
+    },
+    {
+      "gate": "windows-macos-native-workstations-physical-audio",
+      "status": "not observed"
+    },
+    {
+      "gate": "installation-installer-trust-signing-update-lifecycle",
+      "status": "open"
+    },
+    {
+      "gate": "native-hardware-gpu-4k-production-performance",
+      "status": "open"
+    },
+    {
+      "gate": "PR129-source-owner-archive-maintenance-warning",
+      "status": "Draft; owner decision remains separate"
+    },
+    {
+      "gate": "Issue146-admin-policy-and-attestations",
+      "status": "separate; no administrator writes authorized"
+    }
+  ],
+  "finalBranchReviewAndCI": {
+    "attestationStatus": "not-attested-in-local-proof",
+    "wholeBranchIndependentReview": "Evaluate independently on the final PR exact head",
+    "configuredExactHeadCI": "Evaluate independently on the final PR exact head",
+    "PRAndMergeOutcome": "Not attested by this local receipt; consult the final PR",
+    "unrelatedMainOrHistoricalCISubstituted": false
+  },
+  "governance": {
+    "issue144Closed": false,
+    "uncheckedTasksParentCount": 27,
+    "latestPublishedSourceReleaseAsOf2026_11_12": "v0.4.0",
+    "releaseNativeSigningPublicationOrAdminWritesAuthorized": false
+  },
+  "retention": {
+    "originalWrapperResultsSHA256": "5826f3f515010b2581ee919c062bc129a6235d17310bcc87323305438d402811",
+    "originalPacketBaselineSHA256": "5de7cbf49fb005de3de47d134acd3b18fe3dc6da69374be06026ad7c130115ec",
+    "sourcePacketAndPriorRunMutatedByDocumentation": false,
+    "repositoryOrCiContainsMediaProjectsTracesScreenshotsRawLogsOrPrivateAbsoluteURIs": false
+  },
+  "independentLocalEvidenceReview": {
+    "decision": "PASS",
+    "candidate": "5e9c06d91cb01ff44acae2eb5214e6829b60113a",
+    "scope": "Exact I2 objective Linux recorded-media browser lifecycle; no CI/quality/release approval",
+    "reviewedAt": "2026-11-12T11:52:46.401106+00:00",
+    "verificationReceiptSHA256": "f7510ae4446f26ed0c44fa1792e19d485b223796a3c1809495f7502ab55e6aa6",
+    "independentReviewReportSHA256": "997ccf32ba41ac80df5cf91c4efb01c139f9aef184a661ec41695211f4bd94ab",
+    "rawBrowserResultsSHA256": "6a52ed3f9e42d4e2fb98705dd797ad554019b683519afd5e959d555af3da1306",
+    "packetResultsSHA256": "b787def883ff5bbc3324c0427ada63b70c74610542b55116d620e17aeabf2854",
+    "finalPrOrCiAttested": false
+  },
+  "ciScope": "not-attested-in-local-proof"
+}
