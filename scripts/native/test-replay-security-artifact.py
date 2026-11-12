@@ -186,6 +186,28 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(git(root, 'status', '--porcelain'), '')
         self.assertFalse((root/'evidence').exists())
 
+    def test_v2_payload_contains_all_17_original_roles(self):
+        root,_=self.fixture();payload,_,pins=m.build_payload(root/'evidence')
+        expected=set(m.FIXED_FILES)|{'audit/'+name+'.'+kind for name in ('actual','currentRegistry','historical') for kind in ('stdout','stderr')}
+        self.assertEqual(len(expected),17);self.assertEqual(set(json.loads(payload)['files']),expected)
+        self.assertEqual(len(pins),17);self.assertEqual({p['path'] for p in pins},expected)
+        for name in expected:
+            p=root/'evidence'/name;saved=p.read_bytes();p.unlink()
+            with self.subTest(missing=name),self.assertRaises((ValueError,OSError)):m.build_payload(root/'evidence')
+            p.write_bytes(saved)
+        p=root/'evidence/audit/audit.json';saved=p.read_bytes();audit=json.loads(saved)
+        audit['reports']['actual']['stdoutFile']='advisory-db.shallow';p.write_text(json.dumps(audit))
+        with self.assertRaisesRegex(ValueError,'Duplicate'):m.build_payload(root/'evidence')
+
+    def test_new_policy_rejects_clean_v1_and_stripped_v2_before_restore(self):
+        root,_=self.fixture();p=root/'evidence/audit/audit.json';saved=p.read_bytes()
+        for version in (1,3,True,2.0,'2'):
+            audit=json.loads(saved);audit['schemaVersion']=version
+            for stripped in (False,True):
+                if stripped:audit.pop('dbSnapshot',None)
+                p.write_text(json.dumps(audit))
+                with self.subTest(version=version,stripped=stripped),self.assertRaisesRegex(ValueError,'v2'):m.build_payload(root/'evidence')
+
     def test_each_policy_blob_and_working_bytes_must_match_before_execution(self):
         root, _ = self.fixture()
         self.assertEqual(len(m.verify_policy(self.repo, root)), 6)
@@ -206,7 +228,7 @@ class ReplayTests(unittest.TestCase):
             altered = copy.deepcopy(admission); altered[field] = 'optimistic-but-different'
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'differs'):
                 m.replay_snapshot(self.repo, root, payload, altered)
-        for name in ('metadata.json', 'audit/current-registry-Cargo.lock', 'audit/historical-Cargo.lock', 'audit/actual-metadata.stdout', 'audit/advisory-db.bundle'):
+        for name in ('metadata.json', 'audit/current-registry-Cargo.lock', 'audit/historical-Cargo.lock', 'audit/actual-metadata.stdout', 'audit/advisory-db.bundle', 'audit/advisory-db.shallow'):
             p=root/'evidence'/name; saved=p.read_bytes(); p.write_bytes(b'{}' if name.endswith(('json','stdout')) else b'changed')
             with self.subTest(name=name), self.assertRaises((ValueError, subprocess.CalledProcessError)):
                 value, original, _ = m.build_payload(root/'evidence'); m.replay_snapshot(self.repo, root, value, original)

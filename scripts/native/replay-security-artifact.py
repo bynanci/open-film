@@ -305,7 +305,7 @@ HISTORICAL_LOCK = 'b4b8b94363f731001e2b42bf74778d79f725a1e4'
 ORIGINAL_ROOT = Path('/home/runner/work/open-film/open-film')
 FIXED_FILES = ('source.json', 'closure.json', 'controls/regression.json', 'metadata.json', 'audit/audit.json',
                'audit/actual-metadata.stdout', 'audit/current-registry-metadata.stdout',
-               'audit/current-registry-Cargo.lock', 'audit/historical-Cargo.lock', 'audit/advisory-db.bundle')
+               'audit/current-registry-Cargo.lock', 'audit/historical-Cargo.lock', 'audit/advisory-db.bundle', 'audit/advisory-db.shallow')
 
 
 def build_payload(evidence):
@@ -326,6 +326,7 @@ def build_payload(evidence):
     for name in FIXED_FILES:
         retain(name)
     audit = parse_json(regular(evidence/'audit/audit.json', RAW_BYTES))
+    require(type(audit.get('schemaVersion')) is int and audit['schemaVersion'] == 2 and isinstance(audit.get('dbSnapshot'), dict), 'Audit v2 snapshot required')
     require(isinstance(audit.get('reports'), dict) and set(audit['reports']) == {'actual', 'currentRegistry', 'historical'}, 'Expected three raw audit reports')
     for report in audit['reports'].values():
         for kind in ('stdout', 'stderr'):

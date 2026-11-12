@@ -56,10 +56,16 @@ export async function verifySecurityClosure(
     ["audit/current-registry-Cargo.lock", "current-registry-Cargo.lock"],
     ["audit/historical-Cargo.lock", "historical-Cargo.lock"],
     ["audit/advisory-db.bundle", "advisory-db.bundle"],
+    ["audit/advisory-db.shallow", "advisory-db.shallow"],
   ])
     await retain(destination!, named(name!));
   const auditPin = named("audit.json");
   const audit = await readEvidence<{
+    schemaVersion: number;
+    dbSnapshot: {
+      bundle: { path: string; size: number; sha256: string };
+      shallow: { path: string; size: number; sha256: string };
+    };
     candidateSHA: string;
     reports: Record<
       string,
@@ -72,6 +78,10 @@ export async function verifySecurityClosure(
     >;
   }>(root, auditPin);
   requireEvidence(
+    audit.schemaVersion === 2 && !!audit.dbSnapshot,
+    "Audit v2 snapshot required",
+  );
+  requireEvidence(
     audit.candidateSHA === identity.candidateSha &&
       audit.reports &&
       Object.keys(audit.reports).length === 3,
@@ -82,6 +92,10 @@ export async function verifySecurityClosure(
     for (const field of ["stdout", "stderr"] as const) {
       const path = report[`${field}File`];
       runtimePath(root, path);
+      requireEvidence(
+        !path.includes("/"),
+        "Scanner output must be a direct leaf",
+      );
       const matching = observation.raw.filter(
         (pin) =>
           pin.path === `${prefix}${path}` &&
@@ -107,6 +121,19 @@ export async function verifySecurityClosure(
       timeout: 60000,
     },
   );
+  // The complete Python preflight must diagnose original source paths before
+  // attempting snapshot restoration. Its shared auditor validates metadata and
+  // exact bytes; also bind each original observation pin to that metadata here.
+  for (const kind of ["bundle", "shallow"] as const) {
+    const captured = audit.dbSnapshot[kind];
+    const pin = named(`advisory-db.${kind}`);
+    requireEvidence(
+      captured.path === `advisory-db.${kind}` &&
+        captured.size === pin.size &&
+        captured.sha256 === pin.sha256,
+      "Captured advisory snapshot pin differs",
+    );
+  }
   requireEvidence(
     canonicalJson(JSON.parse(output)) === canonicalJson(admission),
     "Replayed native security admission differs",

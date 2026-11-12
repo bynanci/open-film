@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -36,6 +37,7 @@ async function fixture() {
     "audit/current-registry-Cargo.lock",
     "audit/historical-Cargo.lock",
     "audit/advisory-db.bundle",
+    "audit/advisory-db.shallow",
     ...["actual", "currentRegistry", "historical"].flatMap((name) => [
       `audit/${name}.stdout`,
       `audit/${name}.stderr`,
@@ -135,7 +137,7 @@ it.each([
       "current-registry-Cargo.lock":
         /current registry complete lock graph differs/u,
       "historical-Cargo.lock": /captured historical lock changed/u,
-      "advisory-db.bundle": /captured database changed/u,
+      "advisory-db.bundle": /advisory snapshot bytes differ/u,
       "dirty-source": /checkout differs from candidate commit/u,
       "source.json": /source evidence changed/u,
       "stale-candidate": /stale checkout/u,
@@ -170,22 +172,22 @@ it.each([
     }
   },
 );
-it("requires every original audit role rather than accepting optimistic summary flags", async () => {
+it("requires all 17 v2 payload roles and 18 minimal observation pins", async () => {
   const f = await fixture();
-  for (const name of [
-    "actual-metadata.stdout",
-    "current-registry-metadata.stdout",
-    "current-registry-Cargo.lock",
-    "historical-Cargo.lock",
-    "advisory-db.bundle",
-  ]) {
+  expect((await f.observation()).raw).toHaveLength(18);
+  expect(f.paths.filter((path) => path !== "admission.json")).toHaveLength(17);
+  for (const name of f.paths.map((path) => path.split("/").at(-1)!)) {
     const observation = await f.observation();
     observation.raw = observation.raw.filter(
       (pin) => !pin.path.endsWith(`/${name}`),
     );
     await expect(
       verifySecurityClosure(f.root, observation, f.identity),
-    ).rejects.toThrow(`Security closure requires exactly one retained ${name}`);
+    ).rejects.toThrow(
+      /^(actual|currentRegistry|historical)\.(stdout|stderr)$/u.test(name)
+        ? /Missing\/tampered retained scanner output/u
+        : `Security closure requires exactly one retained ${name}`,
+    );
   }
 });
 
@@ -201,7 +203,7 @@ it("rejects relocated source admission with an explicit original-path preflight"
     /Source admission requires its original absolute checkout path/u,
   );
 });
-it("replays a visible-only producer artifact in a fresh independent checkout at the recorded path", async () => {
+it("replays a visible-only v2 producer artifact without upstream repositories", async () => {
   const f = await fixture();
   const observation = await f.observation();
   const metadata = await readFile(join(f.root, "evidence/metadata.json"));
@@ -268,3 +270,87 @@ it.each(["workspace", "root-manifest", "glib-manifest"])(
     );
   },
 );
+
+it("rejects re-pinned invalid original shallow bytes", async () => {
+  const f = await fixture();
+  const path = join(f.root, "evidence/audit/advisory-db.shallow");
+  const auditPath = join(f.root, "evidence/audit/audit.json");
+  const original = await readFile(path);
+  const audit = JSON.parse(await readFile(auditPath, "utf8"));
+  for (const bytes of [
+    Buffer.alloc(0),
+    Buffer.from("0".repeat(40) + "\n"),
+    original.subarray(0, 40),
+    Buffer.from(original.toString().replace("\n", "\r\n")),
+    Buffer.concat([original, original]),
+  ]) {
+    await writeFile(path, bytes);
+    audit.dbSnapshot.shallow.size = bytes.length;
+    audit.dbSnapshot.shallow.sha256 = createHash("sha256")
+      .update(bytes)
+      .digest("hex");
+    await writeFile(auditPath, JSON.stringify(audit));
+    await expect(
+      verifySecurityClosure(f.root, await f.observation(), f.identity),
+    ).rejects.toThrow(/advisory snapshot|shallow boundary/u);
+  }
+});
+it("rejects duplicate sidecar roles and clean or stripped legacy captures", async () => {
+  const f = await fixture();
+  const observation = await f.observation();
+  observation.raw.push(
+    observation.raw.find((pin) => pin.path.endsWith("/advisory-db.shallow"))!,
+  );
+  await expect(
+    verifySecurityClosure(f.root, observation, f.identity),
+  ).rejects.toThrow(/exactly one retained advisory-db.shallow/u);
+  const path = join(f.root, "evidence/audit/audit.json");
+  const saved = JSON.parse(await readFile(path, "utf8"));
+  for (const schemaVersion of [1, 3, true, "2"]) {
+    for (const stripped of [false, true]) {
+      const audit = { ...saved, schemaVersion };
+      if (stripped) delete audit.dbSnapshot;
+      await writeFile(path, JSON.stringify(audit));
+      await expect(
+        verifySecurityClosure(f.root, await f.observation(), f.identity),
+      ).rejects.toThrow(/v2/u);
+    }
+  }
+});
+it("isolates DB replay from caller Git boundary, object, config and hook overrides", async () => {
+  const f = await fixture();
+  const observation = await f.observation();
+  const foreign = join(f.root, "evidence/foreign-shallow");
+  const config = join(f.root, "evidence/gitconfig");
+  const sentinel = join(f.root, "evidence/executed");
+  await writeFile(foreign, "0".repeat(40) + "\n");
+  await writeFile(config, `[core]\n hooksPath = ${sentinel}\n`);
+  const overrides = {
+    GIT_SHALLOW_FILE: foreign,
+    GIT_OBJECT_DIRECTORY: join(f.root, "evidence/absent-objects"),
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: join(
+      f.root,
+      "evidence/absent-alternates",
+    ),
+    GIT_CONFIG_GLOBAL: config,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.hooksPath",
+    GIT_CONFIG_VALUE_0: sentinel,
+  };
+  const saved = Object.fromEntries(
+    Object.keys(overrides).map((key) => [key, process.env[key]]),
+  );
+  try {
+    Object.assign(process.env, overrides);
+    await expect(
+      verifySecurityClosure(f.root, observation, f.identity),
+    ).resolves.toBeUndefined();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  expect(await readFile(foreign, "utf8")).toBe("0".repeat(40) + "\n");
+  await expect(readFile(sentinel)).rejects.toThrow();
+});

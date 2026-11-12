@@ -71,7 +71,7 @@ db.rename(origin)
 git(ad, "clone", "--depth", "1", origin.as_uri(), str(db))
 shutil.rmtree(origin)
 audit["dbCommit"] = git(db, "rev-parse", "HEAD")
-policy.auditor.retain_advisory_bundle(db, ad / "advisory-db.bundle", audit["dbCommit"])
+audit["dbSnapshot"] = policy.auditor.retain_advisory_bundle(db, ad / "advisory-db.bundle", audit["dbCommit"])
 for name, report in audit["reports"].items():
     raw = policy.source.canonical(report.pop("raw"))
     report.pop("stderr")

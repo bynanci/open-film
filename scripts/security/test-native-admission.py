@@ -4,6 +4,10 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+import subprocess
+import sys
+import tempfile
+from unittest.mock import patch
 
 HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('admission',HERE/'native-admission.py')
@@ -27,9 +31,10 @@ class AdmissionTests(unittest.TestCase):
         source=dict(schemaVersion=1,verified=True,linuxModesVerified=True,patchedTreeSHA256=m.source.PATCHED_SHA)
         closure=dict(identity,verified=True,target=m.closure.TARGET,patchedTreeSHA256=m.source.PATCHED_SHA)
         regression=dict(identity,verified=True,sourceAndLockUnchanged=True,sourceSHA256='s'*64)
-        audit=dict(identity,schemaVersion=1,verified=True,scannerVersion='cargo-audit-audit 0.22.2',dbCommit='d'*40,dbFresh=True,
+        audit=dict(identity,schemaVersion=2,verified=True,scannerVersion='cargo-audit-audit 0.22.2',dbCommit='d'*40,dbFresh=True,
                    dbFetchedAt=m.datetime.datetime.now(m.datetime.timezone.utc).isoformat(),originalLockSHA256=m.source.LOCK_SHA,originalLockBlob=m.source.LOCK_BLOB,currentRegistryGraphEquivalent=True,
                    reports=reports)
+        audit['dbSnapshot']=dict(format='git-shallow-bundle-v1',tree='a'*40,bundle=dict(path='advisory-db.bundle',size=123,sha256='b'*64),shallow=dict(path='advisory-db.shallow',size=41,sha256=m.source.sha(b'd'*40+b'\n')))
         regression.update(nativeBuild=dict(returncode=0,timeout=False),compiler='release: 1.99.0\n',profile=copy.deepcopy(m.controls.PROFILE),expectedSourceSHA256='s'*64,targetDirectories=['/one','/two','/three'],transitiveIdentities={k:['identical'] for k in ('baseline','patched','application')})
         for group,outcome in [('baseline','reproduced-null-pointer-ub'),('patched','passed'),('application','passed')]:
             regression[group]=[dict(method=method,outcome=outcome,executableSHA256='a'*64) for method in m.controls.METHODS]
@@ -106,5 +111,39 @@ class AdmissionTests(unittest.TestCase):
         v=self.fixture();v[3]['reports']['currentRegistry']['raw']['warnings']['unsound'][0]['advisory']['unknown']=True;self.blocked(v)
     def test_stale_db(self):
         v=self.fixture();v[3]['dbFresh']=False;self.blocked(v)
+
+
+    def test_new_policy_rejects_clean_v1_and_stripped_v2_before_restore(self):
+        for version in (1,3,True,2.0,'2'):
+            v=self.fixture();v[3]['schemaVersion']=version
+            self.blocked(v)
+            del v[3]['dbSnapshot'];self.blocked(v)
+        v=self.fixture();del v[3]['dbSnapshot'];self.blocked(v)
+
+    def test_future_db_timestamp(self):
+        v=self.fixture();v[3]['dbFetchedAt']=(m.datetime.datetime.now(m.datetime.timezone.utc)+m.datetime.timedelta(hours=1)).isoformat();self.blocked(v)
+
+    def test_duplicate_audit_keys_and_expiry_during_complete_verification(self):
+        with tempfile.TemporaryDirectory() as private:
+            root=Path(private)/'candidate'
+            subprocess.run([sys.executable,str(HERE.parents[1]/'tests/fixtures/native-security-replay.py'),str(root)],check=True,capture_output=True)
+            evidence=root/'evidence';path=evidence/'audit/audit.json';original=path.read_bytes()
+            path.write_bytes(original.rstrip()[:-1]+b',"schemaVersion":2}')
+            with self.assertRaisesRegex(ValueError,'duplicate JSON key'):m.verify_admission(root,evidence)
+            path.write_bytes(original)
+            audit=json.loads(original);fetched=m.datetime.datetime.fromisoformat(audit['dbFetchedAt'])
+            clock=[fetched+m.datetime.timedelta(hours=5)]
+            class Clock(m.datetime.datetime):
+                @classmethod
+                def now(cls,tz=None):return clock[0]
+            real=m.auditor.advisory_git
+            def advance(directory,*args,**kwargs):
+                result=real(directory,*args,**kwargs)
+                if args==('fsck','--full','--no-reflogs'):clock[0]=fetched+m.datetime.timedelta(hours=6,seconds=1)
+                return result
+            with patch.object(m.datetime,'datetime',Clock),patch.object(m.auditor,'advisory_git',side_effect=advance):
+                result=m.verify_admission(root,evidence)
+            self.assertEqual(result['admission'],'blocked');self.assertIn('stale/future advisory fetch timestamp',result['reasons'])
+            self.assertEqual(path.read_bytes(),original)
 
 if __name__=='__main__':unittest.main()
