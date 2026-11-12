@@ -197,7 +197,8 @@ def retain_advisory_bundle(database,bundle,expected_commit,*,captured=None):
     current=read_advisory_state(database,expected_commit)
     if captured is not None:require(current==captured,'database changed during scans')
     tree,boundary=current if captured is None else captured
-    advisory_git(database,'bundle','create',str(bundle),'HEAD')
+    data=advisory_git(database,'bundle','create','-','HEAD')
+    with bundle.open('xb') as output:output.write(data)
     with sidecar.open('xb') as output:output.write(boundary)
     snapshot=dict(format='git-shallow-bundle-v1',tree=tree)
     for kind,path in (('bundle',bundle),('shallow',sidecar)):

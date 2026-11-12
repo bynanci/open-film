@@ -158,6 +158,16 @@ class SnapshotTests(unittest.TestCase):
         linked=self.root/'linked';linked.mkdir();(linked/'.git').write_text('gitdir: '+str(self.db/'.git')+'\n')
         with self.assertRaises(ValueError):m.read_advisory_state(linked,self.head)
 
+    def test_bundle_destination_is_exclusive_even_if_created_during_git(self):
+        destination=self.root/'advisory-db.bundle';real=m.advisory_git
+        def race(directory,*args,**kwargs):
+            if args[:2]==('bundle','create'):destination.write_bytes(b'owned sentinel')
+            return real(directory,*args,**kwargs)
+        with patch.object(m,'advisory_git',side_effect=race),self.assertRaises(FileExistsError):
+            m.retain_advisory_bundle(self.db,destination,self.head)
+        self.assertEqual(destination.read_bytes(),b'owned sentinel')
+        self.assertFalse((self.root/'advisory-db.shallow').exists())
+
     def test_restored_boundary_requires_original_bytes_and_private_destination(self):
         sidecar=self.evidence/'advisory-db.shallow';bundle=self.evidence/'advisory-db.bundle'
         for boundary in (b'',b'0'*40+b'\n',self.boundary.rstrip(),self.boundary.replace(b'\n',b'\r\n'),self.boundary*2):
