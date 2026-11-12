@@ -372,9 +372,12 @@ and in the long-range v1.0 readiness record.
       read-only offline full Git object verification. See the
       [snapshot protocol and regression evidence](docs/validation/advisory-db-snapshot-v2-2026-11-12.md).
       Historical v1 artifacts remain bound to their original tools and timestamps.
-- [ ] Authenticate a fresh actual v2 source capture and complete original-path
+- [x] Authenticate a fresh actual v2 direct source capture and complete original-path
       hosted replay for its exact changed-policy candidate, before its original
-      six-hour deadline. Synthetic protocol regressions do not close this gate.
+      six-hour deadline. Independent review verified the unchanged original ZIP,
+      all 17 roles/six policies and entire admission equality; distribution remains
+      unapproved. See [actual v2 evidence](docs/validation/native-v2-replay-2026-11-12.md).
+      Final native receipts, runtime rights and workstation gates remain open.
 - [ ] **D7B / M7E:** issues [#140](https://github.com/bynanci/open-film/issues/140)
       and [#141](https://github.com/bynanci/open-film/issues/141) remain open for
       actual reviewed runtime inputs, rights/license and security closure, signed

@@ -244,9 +244,11 @@ acceptance open.
 The [audit-v2 snapshot contract](docs/validation/advisory-db-snapshot-v2-2026-11-12.md)
 now retains the original shallow boundary and requires complete offline Git
 object verification through the same admission authority. Historical captures
-stay with their original policy and timestamps. New-policy actual source capture
-and original-path replay are a separate evidence gate, followed by the existing
-candidate-specific native rights, signed-byte and workstation gates.
+stay with their original policy and timestamps. One new-policy direct source
+capture and actual original-path replay have now passed independent verification:
+[exact v2 evidence and remaining gates](docs/validation/native-v2-replay-2026-11-12.md).
+Future candidates retain their own freshness/identity gate, followed by the
+existing native rights, signed-byte and workstation requirements.
 
 The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and
