@@ -1,4 +1,4 @@
-// Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
+// Modified by OpenFilm contributors on 2026-11-12. See LICENSE and NOTICE.
 import { createRequire } from "node:module";
 import { constants } from "node:fs";
 import {
@@ -43,6 +43,7 @@ import {
   type LicenseReceipt,
 } from "./attribution.js";
 import { assertBinaryArchitecture, assertRegularInput } from "./input-files.js";
+import { inspectRuntimeInputs } from "./inspect-runtime-inputs.js";
 import { getExclusiveDirectoryRenamer } from "../../packages/application/src/exclusive-directory-rename.js";
 
 // Full upstream notices reviewed from the integrity-pinned Koffi3.3.3 tarball.
@@ -105,6 +106,7 @@ export async function stageRuntime(
     inputs.architecture !== process.arch
   )
     throw new Error("Stage on the target platform/architecture");
+  if (inputs.distributionReview) await inspectRuntimeInputs(inputs);
   const renameDirectory = await getExclusiveDirectoryRenamer();
   output = resolve(output);
   if (output === repository || repository.startsWith(`${output}/`))
