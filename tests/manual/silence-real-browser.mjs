@@ -18,6 +18,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { assertSessionProjectState } from "./silence-real-browser-state.ts";
 
 const execFileAsync = promisify(execFile);
 const pins = {
@@ -98,6 +99,9 @@ const report = {
   failures: [],
   serverRequests: [],
   browserRequests: [],
+  projectIdentityObservations: [],
+  projectCloseWindows: [],
+  sessionProjectStateChecks: [],
 };
 const save = () =>
   writeFile(
@@ -166,6 +170,7 @@ async function portClosed(port) {
 let runtime, vite, browser, context, page, expect;
 let serverOrigin, desktopOrigin, serverPort, desktopPort;
 let baseline, cases;
+let lastObservedProjectIdentity;
 let interrupted;
 const browserEventTasks = new Set();
 const serverAuditions = [];
@@ -222,6 +227,20 @@ async function api(path, method = "GET", body) {
     value,
     headers: Object.fromEntries(response.headers),
   };
+}
+async function observeProjectIdentity() {
+  const response = await api("/project");
+  assert.equal(response.status, 200);
+  const projectId = response.value.project?.id ?? null;
+  assert(projectId === null || typeof projectId === "string");
+  const identity = {
+    projectId,
+    observedAt: Date.now(),
+    source: "GET /api/project",
+  };
+  report.projectIdentityObservations.push(identity);
+  lastObservedProjectIdentity = identity;
+  return { response, identity };
 }
 function auditionRegion() {
   return page.getByRole("region", {
@@ -365,7 +384,7 @@ async function assertReviewDom(item) {
   return { reviewId: item.review.reviewId, ...(await read()) };
 }
 async function verify(item) {
-  const current = await api("/project");
+  const { response: current } = await observeProjectIdentity();
   assert.equal(current.status, 200);
   assert.equal(current.value.project.id, item.project.id);
   assert.equal(current.value.path, item.sessionPath);
@@ -381,10 +400,7 @@ async function verify(item) {
   assert.equal(saved.value.freshness, "current");
   assert.equal(saved.value.job.id, item.jobId);
   assert.deepEqual(saved.value.review, item.review);
-  assert.equal(
-    await sha(join(item.sessionPath, "project.json")),
-    item.projectSha256,
-  );
+  const sessionState = await verifySessionProject(item, "verify");
   return {
     name: item.name,
     projectId: item.project.id,
@@ -392,13 +408,72 @@ async function verify(item) {
     reviewId: item.review.reviewId,
     baseRevision: item.review.proposal.baseRevision,
     freshness: saved.value.freshness,
+    sessionState,
   };
 }
-async function switchTo(item) {
+async function verifySessionProject(item, phase) {
+  const currentText = await readFile(
+    join(item.sessionPath, "project.json"),
+    "utf8",
+  );
+  const observation = {
+    phase,
+    name: item.name,
+    projectId: item.project.id,
+    observedAt: Date.now(),
+    originalTextSha256: item.projectSha256,
+    currentTextSha256: createHash("sha256").update(currentText).digest("hex"),
+    status: "checking",
+    protectedFileHashes: {},
+  };
+  report.sessionProjectStateChecks.push(observation);
+  try {
+    Object.assign(
+      observation,
+      assertSessionProjectState(
+        item.projectText,
+        currentText,
+        item.project.id,
+        report.projectCloseWindows,
+      ),
+    );
+    assert.equal(observation.originalTextSha256, item.projectSha256);
+    // Protect all original catalog/Review files; new audition cache files are separate.
+    for (const [path, expected] of Object.entries(
+      baseline.projects[item.originalPath],
+    )) {
+      if (path === "project.json") continue;
+      const actual = await sha(join(item.sessionPath, path));
+      observation.protectedFileHashes[path] = actual;
+      assert.equal(actual, expected, `${item.name}: ${path}`);
+    }
+    observation.status = "passed";
+    return observation;
+  } catch (error) {
+    observation.status = "failed";
+    observation.failure = String(error);
+    throw error;
+  }
+}
+async function switchProject() {
+  const { response: current } = await observeProjectIdentity();
+  assert(
+    cases.some(
+      (item) =>
+        item.project.id === current.value.project?.id &&
+        item.sessionPath === current.value.path,
+    ),
+    "Switch must close an actual known session project",
+  );
   await page
     .getByRole("button", { name: "Switch project", exact: true })
     .click();
   await expect(page.locator(".launcher-actions")).toBeVisible();
+  const { response: closed } = await observeProjectIdentity();
+  assert.equal(closed.value.project, null);
+}
+async function switchTo(item) {
+  await switchProject();
   await openFilm(item);
   return openReview(item);
 }
@@ -483,6 +558,12 @@ try {
     "Candidate must be clean, including untracked files",
   );
   report.driverSha256 = await sha(fileURLToPath(import.meta.url));
+  report.stateGuardSha256 = await sha(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "silence-real-browser-state.ts",
+    ),
+  );
   const receipt = await json(join(packet, "results.json"));
   assert.equal(
     receipt.candidate,
@@ -530,7 +611,11 @@ try {
       force: false,
     });
     assert.deepEqual(await tree(sessionPath), baseline.projects[originalPath]);
-    const project = await json(join(sessionPath, "project.json"));
+    const projectText = await readFile(
+      join(sessionPath, "project.json"),
+      "utf8",
+    );
+    const project = JSON.parse(projectText);
     const composition = project.timelines.find(
       (item) => item.id === saved.review.proposal.compositionId,
     );
@@ -548,6 +633,7 @@ try {
       name,
       ...saved,
       project,
+      projectText,
       sessionPath,
       originalPath,
       voiceClipId: voiceClip.id,
@@ -599,6 +685,12 @@ try {
       finished: false,
       closed: false,
     };
+    const projectClose =
+      request.method === "POST" && request.url === "/api/project/close";
+    if (projectClose)
+      row.actualProjectIdentityAtReceipt = lastObservedProjectIdentity
+        ? { ...lastObservedProjectIdentity }
+        : null;
     report.serverRequests.push(row);
     request.once("end", () => {
       row.ended = true;
@@ -608,6 +700,26 @@ try {
       row.finished = true;
       row.finishedAt = Date.now();
       row.status = response.statusCode;
+      if (projectClose && row.status === 200) {
+        const identity = row.actualProjectIdentityAtReceipt;
+        if (identity?.projectId)
+          report.projectCloseWindows.push({
+            projectId: identity.projectId,
+            kind: "http-project-close",
+            status: row.status,
+            identityObservedAt: identity.observedAt,
+            startedAt: row.receivedAt,
+            finishedAt: row.finishedAt,
+          });
+        else
+          fail(
+            "project-close-identity",
+            new Error(
+              "Successful project close had no observed actual project identity",
+            ),
+          );
+        lastObservedProjectIdentity = undefined;
+      }
     });
     response.once("close", () => {
       row.closed = true;
@@ -1101,9 +1213,33 @@ try {
     longestSeam.samples >= 48000,
     "Need at least one second of real scheduled audio for the playing-switch observation",
   );
-  await auditionRegion()
-    .getByLabel("Timeline seam", { exact: true })
-    .selectOption(String(longestSeam.index));
+  const seamSelect = auditionRegion().locator("label > select");
+  await expect(seamSelect).toHaveCount(1);
+  assert.equal(
+    await seamSelect.evaluate((select) =>
+      Array.from(select.parentElement.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent)
+        .join("")
+        .trim(),
+    ),
+    "Timeline seam",
+  );
+  const expectedSeamOptions = secondRendered.seams.map((seam, index) => ({
+    value: String(index),
+    text: `${index + 1} · ${(seam.removedStartSample / 48000).toFixed(3)}–${(seam.removedEndSample / 48000).toFixed(3)} s`,
+  }));
+  const readSeamOptions = () =>
+    seamSelect.locator("option").evaluateAll((options) =>
+      options.map((option) => ({
+        value: option.value,
+        text: option.textContent.replace(/\s+/gu, " ").trim(),
+      })),
+    );
+  assert.deepEqual(await readSeamOptions(), expectedSeamOptions);
+  await seamSelect.selectOption(String(longestSeam.index));
+  await expect(seamSelect).toHaveValue(String(longestSeam.index));
+  assert.deepEqual(await readSeamOptions(), expectedSeamOptions);
   const pcmResponse = observedWait(
     page.waitForResponse(
       (response) =>
@@ -1238,11 +1374,7 @@ try {
     check: "second-review-remains-immutable-after-playing",
     ...(await switchTo(mixed)),
   });
-  await page
-    .getByRole("button", { name: "Switch project", exact: true })
-    .click();
-  await expect(page.locator(".launcher-actions")).toBeVisible();
-  assert.equal((await api("/project")).value.project, null);
+  await switchProject();
   const forbidden = report.serverRequests.filter(
     (row) =>
       row.method === "POST" &&
@@ -1282,8 +1414,26 @@ try {
       Promise.allSettled([...browserEventTasks]),
     );
   if (vite) await cleanup("owned-vite-closed", () => vite.close());
-  if (runtime)
-    await cleanup("owned-openfilm-server-closed", () => runtime.close());
+  if (runtime) {
+    let actualIdentity;
+    await cleanup("actual-project-before-server-close", async () => {
+      actualIdentity = (await observeProjectIdentity()).identity;
+    });
+    await cleanup("owned-openfilm-server-closed", async () => {
+      const startedAt = Date.now();
+      await runtime.close();
+      const finishedAt = Date.now();
+      if (actualIdentity?.projectId)
+        report.projectCloseWindows.push({
+          projectId: actualIdentity.projectId,
+          kind: "owned-server-close",
+          status: "closed",
+          identityObservedAt: actualIdentity.observedAt,
+          startedAt,
+          finishedAt,
+        });
+    });
+  }
   if (serverPort)
     await cleanup("owned-api-port-closed", async () =>
       assert(await portClosed(serverPort)),
@@ -1300,14 +1450,11 @@ try {
         assert.deepEqual(await tree(path), expected, path);
     });
   if (cases)
-    await cleanup("session-project-json-unchanged", async () => {
-      for (const item of cases)
-        assert.equal(
-          await sha(join(item.sessionPath, "project.json")),
-          item.projectSha256,
-          item.name,
-        );
-    });
+    for (const item of cases)
+      await cleanup(
+        `session-project-state-and-durable-bytes:${item.name}`,
+        () => verifySessionProject(item, "finally"),
+      );
   if (report.failures.length) report.status = "FAILED";
   report.finishedAt = new Date().toISOString();
   await save();
