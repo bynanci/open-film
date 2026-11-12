@@ -43,6 +43,12 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
       using two fixed-source repetitions and 56 real tool calls. Render work
       dominated the selected cases; no production speedup, fixture reuse or
       weaker suite assertion is claimed.
+- [x] Cancel and drain the acceptance fixture's owned Pipeline actions before
+      closing Catalog or removing temporary media. Preserve all four journeys,
+      original assertions, 10s 1080p30 output and 120s budgets. See
+      [failure-cleanup evidence](docs/validation/pipeline-fixture-drain-2026-11-12.md).
+      This fixes demonstrated leftover work, not an established cause of the
+      historical local full-run timeouts or a production render speedup.
 - [x] Implement actual-checkout source-head guards and unconditional Windows
       recovery coverage in [PR #148](https://github.com/bynanci/open-film/pull/148).
       The approved, unapplied [merge policy](docs/governance/merge-controls-operator-handoff.md)
