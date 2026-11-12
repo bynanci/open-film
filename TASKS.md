@@ -53,7 +53,10 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
 - [ ] Apply that approved policy with authorized administrator access after the
       PR round, verify safe control cases, and obtain alerting/release-role
       attestations for [#146](https://github.com/bynanci/open-film/issues/146).
-      Native signing, lifecycle and performance observations remain separate.
+      The exact approved POST after round #147–#151 main verification returned
+      HTTP 403 (integration administration access); no rule was created. Owner
+      approval remains valid, and an existing Rulesets administrator must apply
+      the fixed JSON. Native signing, lifecycle and performance remain separate.
 
 ## Editing and story workflow
 
@@ -339,6 +342,13 @@ and in the long-range v1.0 readiness record.
       [candidate receipt validation](docs/validation-native-candidate-receipt.md)
       and [runtime intake evidence](docs/runtime-intake-141.md). Fixture checks
       remain record-only and do not authorize distribution.
+- [x] Record the [retained runtime provenance and obligations](docs/validation/runtime-provenance-141.md)
+      for 50 existing inputs; keep actual target binaries, complete source/license
+      closure, OS trust and redistribution approval open.
+- [x] Prepare the original 2,000-asset synthetic benchmark fixture from an owned
+      frozen-lock installation and verify its source/manifest/inventory identities;
+      see [preparation evidence](docs/validation/native-benchmark-preparation-145.md).
+      This is not a native warm/cold, memory/soak or hardware measurement.
 - [ ] **D7B / M7E:** issues [#140](https://github.com/bynanci/open-film/issues/140)
       and [#141](https://github.com/bynanci/open-film/issues/141) remain open for
       actual reviewed runtime inputs, rights/license and security closure, signed

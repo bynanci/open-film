@@ -40,8 +40,13 @@ through `finalLinkage` and actual OS trust/lifecycle observations. After the
 authorized signer produces final bytes, issue 140's command is:
 
 ```sh
-pnpm exec tsx scripts/native/receipt.ts seal /absolute/candidate-root /absolute/candidate-root/candidate.json /absolute/new-final-bytes.json
+pnpm exec tsx scripts/native/receipt.ts seal /absolute/candidate-root dist/native-evidence/candidate.json dist/native-evidence/new-final-bytes.json
 ```
+
+The candidate root is absolute; the input and new output paths are relative to
+that root. These examples keep external evidence in its ignored
+`dist/native-evidence` directory. Substitute the actual retained relative paths;
+do not repeat the absolute root in either file argument.
 
 Run only once those tools are integrated and the independently reviewed artifact
 root is real; this session has not run it. `candidate.json` remains an incomplete
@@ -54,7 +59,7 @@ them `passed` before execution. After attaching independently hash-pinned execut
 observations and review inputs, its finalization command is:
 
 ```sh
-pnpm exec tsx scripts/native/receipt.ts finalize /absolute/candidate-root /absolute/finalization-inputs.json /absolute/new-candidate-receipt.json
+pnpm exec tsx scripts/native/receipt.ts finalize /absolute/candidate-root dist/native-evidence/finalization-inputs.json dist/native-evidence/new-candidate-receipt.json
 ```
 
 Use the exact contract in `docs/validation-native-candidate-receipt.md` supplied
