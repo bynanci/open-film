@@ -226,9 +226,16 @@ remain separate acceptance scopes. See the
       existing frame-aligned MP4 export excludes 1,152 PCM samples / 24 ms,
       explicitly retained as `qa.frameAlignedAudioTail` / manual review.
 - [ ] Complete real dialogue/music listening QA and Windows/macOS workstation
-      audition checks, recorded A/V synchronization, more than two captured
-      channels and live browser lifecycle cases. The objective CC0 proof does
-      not establish listening quality or acceptance of its excluded tail.
+      audition/device lifecycle checks, recorded A/V synchronization and more
+      than two captured channels. The objective CC0 and Linux browser proofs
+      do not establish listening quality or acceptance of the excluded tail.
+  - [x] Record the **objective Linux recorded-browser** child on 2026-11-12:
+        I2 `5e9c06d91cb01ff44acae2eb5214e6829b60113a`, fresh packet and actual
+        Reconnect/reload, real HTTP Cancel, one declared delayed retry and native
+        buffer overlap at trusted project switch; nine checks / ten cleanup
+        entries passed. See [candidate-bound evidence](docs/validation/silence-recorded-browser-2026-11-12.md).
+        This local proof leaves the parent and native/human acceptance open;
+        it does not attest final PR review/CI. Original run-01 remains FAILED.
 - [ ] Admit additional scene/rhythm, mask/restoration, stabilization/interpolation,
       separation or browser-rendering providers only after quality, timing,
       runtime and code/weight rights checks. Reuse existing capabilities.
