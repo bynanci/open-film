@@ -477,6 +477,12 @@ change. Discuss their scope before implementation.
 - [ ] Additional local vision, embedding and language-provider implementations;
       optional local transcription already has an implementation.
 - [ ] Archive-scale incremental analysis and background worker scheduling.
+- [x] Reuse per-asset verified bindings during Common Analysis preparation and
+      reject oversized scopes before asset hydration. Preserve within-limit
+      fingerprints, every source hash check and all three freshness passes.
+      The [preparation measurements](docs/validation/source-analysis-preparation-2026-11-12.md)
+      cover synthetic metadata and real SQLite publication; they do not complete
+      incremental scheduling, media decoding or workstation acceptance.
 - [x] Reproducible 10,000–100,000-row Catalog benchmark for chronological paging,
       search, lookup, summary scans and seeding ([method, results and limits](docs/validation-catalog-scale-benchmark.md)).
       This is Catalog evidence, not end-to-end support at those library sizes.

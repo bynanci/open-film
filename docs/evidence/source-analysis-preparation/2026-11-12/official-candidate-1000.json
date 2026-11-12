@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-12T23:46:08.624Z",
+  "completedAt": "2026-11-12T23:46:12.694Z",
+  "fixtureVersion": "common-analysis-metadata-v1",
+  "fixtureSha256": "06b663f861904de04d82097abd90081e118f136e14d6112bf143f59902d339af",
+  "source": {
+    "head": "bc96b292e8fc8eb47b872a49fa27b2ad56ff9221",
+    "dirty": "M packages/application/src/source-analysis.ts\n M tsconfig.json\n?? docs/superpowers/plans/2026-11-12-analysis-preparation.md\n?? packages/application/tests/source-analysis-preparation.test.ts\n?? scripts/benchmark-source-analysis.ts",
+    "diffSha256": "66e9a66088b42a47cba06d7a1c95fa7eea62fb0076a6ab5185a2d14b4afa1730",
+    "sourceSha256": {
+      "scripts/benchmark-source-analysis.ts": "b618076383c0020e92744f382787fd7099bcf0d446966443aee3459fdb3a4754",
+      "packages/application/src/source-analysis.ts": "4c467e7196e43446706b9e28c5eb45c80d8c4ef5866b8905209e96319d9509d9",
+      "packages/catalog/src/index.ts": "2edc2920dcd0c3e22c5a3f263b18c2a8d44a0ad7de6e83c1b012139ccb0f6f1c",
+      "packages/catalog/src/multi-source-store.ts": "940d82b0378e694907ebfcc12bdf2cadade20a898499ae581a1af31902b8abed",
+      "packages/events/src/index.ts": "a2e7030533f6c8f933d6955b4b846ba5e4a6501089d7497c3d626e66d46f8625"
+    }
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "release": "6.18.57",
+    "architecture": "x64",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "logicalCpus": 5,
+    "sqliteVersion": "3.53.3",
+    "pnpm": "11.19.0",
+    "tsx": "4.23.15"
+  },
+  "assetCount": 1000,
+  "bindings": 5000,
+  "repetitions": 3,
+  "warmupRuns": 1,
+  "processMaximumRSSKiB": 273172,
+  "limitations": [
+    "Synthetic metadata, not an import or file-hash benchmark",
+    "No FFmpeg decode, encode, seek, native UI or physical memory certification",
+    "Heap/RSS snapshots are not per-operation peaks; processMaximumRSS includes setup and all repetitions",
+    "Method wrapper is benchmark-only; no production API or scheduler"
+  ],
+  "rows": [
+    {
+      "repetition": 0,
+      "warmup": true,
+      "setupMilliseconds": 926.206007,
+      "workflowMilliseconds": 269.6993709999999,
+      "preparationMilliseconds": [
+        89.17051300000003, 57.433476000000155, 57.76515399999994
+      ],
+      "preparationTotalMilliseconds": 204.36914300000012,
+      "cpuUserMilliseconds": 254.505,
+      "cpuSystemMilliseconds": 64.466,
+      "memoryBefore": {
+        "rss": 137392128,
+        "heapTotal": 51113984,
+        "heapUsed": 22314776,
+        "external": 5962850,
+        "arrayBuffers": 3345316
+      },
+      "memoryAfter": {
+        "rss": 166113280,
+        "heapTotal": 94273536,
+        "heapUsed": 29422464,
+        "external": 5964954,
+        "arrayBuffers": 3345332
+      },
+      "semanticSha256": "7cb8d4a2f86b7f4575f10f66ab18fc538082362ceaebd9717a94ffcb873c318d",
+      "runId": "analysis:d2dbc5ef35b5da7ffc739fbbd86b5933723b82b1fa892fc9769fea940c2713c9",
+      "inputFingerprint": "d2be299791072b72669d3f2d9f58e8948add6f7e3aa47eb2a88968c752c0db47",
+      "resultCount": 10
+    },
+    {
+      "repetition": 1,
+      "warmup": false,
+      "setupMilliseconds": 881.54766,
+      "workflowMilliseconds": 287.9387320000001,
+      "preparationMilliseconds": [
+        111.70705699999962, 52.06917899999962, 57.23879299999999
+      ],
+      "preparationTotalMilliseconds": 221.01502899999923,
+      "cpuUserMilliseconds": 253.567,
+      "cpuSystemMilliseconds": 54.573,
+      "memoryBefore": {
+        "rss": 232275968,
+        "heapTotal": 88506368,
+        "heapUsed": 38805088,
+        "external": 2763861,
+        "arrayBuffers": 144239
+      },
+      "memoryAfter": {
+        "rss": 244482048,
+        "heapTotal": 90492928,
+        "heapUsed": 38646448,
+        "external": 2763861,
+        "arrayBuffers": 144239
+      },
+      "semanticSha256": "7cb8d4a2f86b7f4575f10f66ab18fc538082362ceaebd9717a94ffcb873c318d",
+      "runId": "analysis:d2dbc5ef35b5da7ffc739fbbd86b5933723b82b1fa892fc9769fea940c2713c9",
+      "inputFingerprint": "d2be299791072b72669d3f2d9f58e8948add6f7e3aa47eb2a88968c752c0db47",
+      "resultCount": 10
+    },
+    {
+      "repetition": 2,
+      "warmup": false,
+      "setupMilliseconds": 645.8026830000003,
+      "workflowMilliseconds": 190.6767460000001,
+      "preparationMilliseconds": [
+        48.49101400000018, 63.14354100000037, 39.979983000000175
+      ],
+      "preparationTotalMilliseconds": 151.61453800000072,
+      "cpuUserMilliseconds": 190.364,
+      "cpuSystemMilliseconds": 12.273,
+      "memoryBefore": {
+        "rss": 245399552,
+        "heapTotal": 93843456,
+        "heapUsed": 32765136,
+        "external": 2764069,
+        "arrayBuffers": 144447
+      },
+      "memoryAfter": {
+        "rss": 252723200,
+        "heapTotal": 101748736,
+        "heapUsed": 60541568,
+        "external": 2764069,
+        "arrayBuffers": 144447
+      },
+      "semanticSha256": "7cb8d4a2f86b7f4575f10f66ab18fc538082362ceaebd9717a94ffcb873c318d",
+      "runId": "analysis:d2dbc5ef35b5da7ffc739fbbd86b5933723b82b1fa892fc9769fea940c2713c9",
+      "inputFingerprint": "d2be299791072b72669d3f2d9f58e8948add6f7e3aa47eb2a88968c752c0db47",
+      "resultCount": 10
+    },
+    {
+      "repetition": 3,
+      "warmup": false,
+      "setupMilliseconds": 620.1537989999997,
+      "workflowMilliseconds": 192.2656420000003,
+      "preparationMilliseconds": [
+        39.46257400000013, 45.31106399999953, 38.26539099999991
+      ],
+      "preparationTotalMilliseconds": 123.03902899999957,
+      "cpuUserMilliseconds": 177.571,
+      "cpuSystemMilliseconds": 29.01,
+      "memoryBefore": {
+        "rss": 269971456,
+        "heapTotal": 105021440,
+        "heapUsed": 52061112,
+        "external": 2764277,
+        "arrayBuffers": 144655
+      },
+      "memoryAfter": {
+        "rss": 278728704,
+        "heapTotal": 179994624,
+        "heapUsed": 51289256,
+        "external": 2764277,
+        "arrayBuffers": 144655
+      },
+      "semanticSha256": "7cb8d4a2f86b7f4575f10f66ab18fc538082362ceaebd9717a94ffcb873c318d",
+      "runId": "analysis:d2dbc5ef35b5da7ffc739fbbd86b5933723b82b1fa892fc9769fea940c2713c9",
+      "inputFingerprint": "d2be299791072b72669d3f2d9f58e8948add6f7e3aa47eb2a88968c752c0db47",
+      "resultCount": 10
+    }
+  ]
+}

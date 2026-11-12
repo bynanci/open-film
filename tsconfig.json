@@ -45,6 +45,7 @@
     "scripts/photo-film-quality.ts",
     "scripts/native/**/*.ts",
     "scripts/benchmark-review-selection.ts",
+    "scripts/benchmark-source-analysis.ts",
     "scripts/ci/**/*.ts"
   ],
   "exclude": ["node_modules", "**/dist", "apps/desktop/src-tauri"]
