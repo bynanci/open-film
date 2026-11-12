@@ -235,6 +235,12 @@ fresh authenticated original-path run completed and was independently verified:
 Its record-only outcome and explicit shallow database-history limitation do not
 replace candidate-specific final receipts, runtime rights or OS observations.
 
+Direct reviewed staging now reuses the existing read-only intake before any
+output-side filesystem work. The [input-parity validation](docs/validation/runtime-stage-input-parity-2026-11-12.md)
+records synthetic hostile-input checks and preserved test-only runtime controls.
+This stricter entry point leaves target provenance, rights and installation
+acceptance open.
+
 The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding
