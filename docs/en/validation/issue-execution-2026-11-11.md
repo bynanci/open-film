@@ -5,6 +5,13 @@ owner/platform acceptance. It does not approve an installer or release. The
 latest published source release remains v0.4.0; the exact source/asset decision
 for historical [PR #129](https://github.com/bynanci/open-film/pull/129) remains separate.
 
+## Later follow-up
+
+The [2026-11-12 follow-up](issue-followup-2026-11-12.md) records the later merged
+PR #152, recovered actual CI, fresh capture and successful actual original-path
+replay. The earlier blocked attempts and source identities below remain historical
+evidence, not the latest execution state. Native/rights/owner gates remain open.
+
 ## Source and delivery identities
 
 | Scope                                  | Exact identity / record                                                                                                                                                    |

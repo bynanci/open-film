@@ -45,7 +45,7 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
       weaker suite assertion is claimed.
 - [x] Implement actual-checkout source-head guards and unconditional Windows
       recovery coverage in [PR #148](https://github.com/bynanci/open-film/pull/148).
-      The proposed [merge policy](docs/governance/merge-controls-operator-handoff.md)
+      The approved, unapplied [merge policy](docs/governance/merge-controls-operator-handoff.md)
       remains unapplied; this implementation does not approve distribution.
 - [x] Obtain the owner's approval for the fixed #146 main-ruleset proposal
       `207bc7fed2804ad79d69e0c98ecf68f9ce4ba21c5d0e7fde8e68d4c158e3ce2e`
@@ -349,6 +349,12 @@ and in the long-range v1.0 readiness record.
       frozen-lock installation and verify its source/manifest/inventory identities;
       see [preparation evidence](docs/validation/native-benchmark-preparation-145.md).
       This is not a native warm/cold, memory/soak or hardware measurement.
+- [x] Execute and independently verify one authenticated, fresh original-path
+      hosted source replay after [PR #152](https://github.com/bynanci/open-film/pull/152)
+      merged. All six policy identities, 16 raw pins, unchanged original ZIP and
+      complete replayed admission matched; `distributionApproved: false`.
+      See the [2026-11-12 evidence and snapshot-history limitation](docs/validation/issue-followup-2026-11-12.md).
+      This checks only source replay; final native receipts and OS gates remain open.
 - [ ] **D7B / M7E:** issues [#140](https://github.com/bynanci/open-film/issues/140)
       and [#141](https://github.com/bynanci/open-film/issues/141) remain open for
       actual reviewed runtime inputs, rights/license and security closure, signed
