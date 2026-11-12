@@ -355,6 +355,12 @@ and in the long-range v1.0 readiness record.
       complete replayed admission matched; `distributionApproved: false`.
       See the [2026-11-12 evidence and snapshot-history limitation](docs/validation/issue-followup-2026-11-12.md).
       This checks only source replay; final native receipts and OS gates remain open.
+- [x] Reuse the strict read-only runtime intake in direct reviewed staging,
+      before destination, lock or staging side effects. The new hostile-input
+      regression cases and existing native wrapper controls are recorded in
+      [reviewed stage input parity](docs/validation/runtime-stage-input-parity-2026-11-12.md).
+      This closes an input-validation inconsistency, not the outstanding runtime
+      provenance, redistribution, signing or workstation gates.
 - [ ] **D7B / M7E:** issues [#140](https://github.com/bynanci/open-film/issues/140)
       and [#141](https://github.com/bynanci/open-film/issues/141) remain open for
       actual reviewed runtime inputs, rights/license and security closure, signed
