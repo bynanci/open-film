@@ -3,8 +3,8 @@
 import base64
 import importlib.util
 import json
+import os
 from pathlib import Path, PurePosixPath
-import subprocess
 import sys
 import tempfile
 
@@ -46,15 +46,17 @@ def replay(repository, value):
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(data)
         preflight_source_path(repository, json.loads((directory / "metadata.json").read_bytes(), object_pairs_hook=policy.no_duplicates))
-        # A local self-contained Git bundle preserves the actual DB commit and
-        # objects. Clone performs no network fetch and cannot use caller hooks.
-        subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--bare", "--", str(directory / "audit/advisory-db.bundle"), str(directory / "audit/advisory-db")], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        audit = json.loads((directory / "audit/audit.json").read_bytes(), object_pairs_hook=policy.no_duplicates)
+        policy.auditor.restore_advisory_snapshot(directory / "audit", directory / "audit/advisory-db", audit)
         result = policy.verify_admission(repository, directory)
         policy.require(result["admission"] == "pass", "native security replay blocked: " + "; ".join(result["reasons"]))
         return result
 
 
 if __name__ == "__main__":
+    isolated = policy.auditor.advisory_git_environment()
+    os.environ.clear()
+    os.environ.update(isolated)
     data = sys.stdin.buffer.read(48 * 1024 ** 2 + 1)
     policy.require(len(data) <= 48 * 1024 ** 2, "security replay byte limit")
     value = json.loads(data, object_pairs_hook=policy.no_duplicates)

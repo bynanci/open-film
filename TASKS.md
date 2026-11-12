@@ -361,6 +361,14 @@ and in the long-range v1.0 readiness record.
       [reviewed stage input parity](docs/validation/runtime-stage-input-parity-2026-11-12.md).
       This closes an input-validation inconsistency, not the outstanding runtime
       provenance, redistribution, signing or workstation gates.
+- [x] Implement cohesive audit-v2 capture and replay with the original shallow
+      boundary, all 17 required payload roles, exclusive evidence outputs and
+      read-only offline full Git object verification. See the
+      [snapshot protocol and regression evidence](docs/validation/advisory-db-snapshot-v2-2026-11-12.md).
+      Historical v1 artifacts remain bound to their original tools and timestamps.
+- [ ] Authenticate a fresh actual v2 source capture and complete original-path
+      hosted replay for its exact changed-policy candidate, before its original
+      six-hour deadline. Synthetic protocol regressions do not close this gate.
 - [ ] **D7B / M7E:** issues [#140](https://github.com/bynanci/open-film/issues/140)
       and [#141](https://github.com/bynanci/open-film/issues/141) remain open for
       actual reviewed runtime inputs, rights/license and security closure, signed

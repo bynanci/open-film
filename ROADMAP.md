@@ -241,6 +241,13 @@ records synthetic hostile-input checks and preserved test-only runtime controls.
 This stricter entry point leaves target provenance, rights and installation
 acceptance open.
 
+The [audit-v2 snapshot contract](docs/validation/advisory-db-snapshot-v2-2026-11-12.md)
+now retains the original shallow boundary and requires complete offline Git
+object verification through the same admission authority. Historical captures
+stay with their original policy and timestamps. New-policy actual source capture
+and original-path replay are a separate evidence gate, followed by the existing
+candidate-specific native rights, signed-byte and workstation gates.
+
 The [installer guide](docs/native-installer.md),
 [workstation checklist](docs/workstation-qa.md) and
 [Issue #7](https://github.com/bynanci/open-film/issues/7) describe the outstanding

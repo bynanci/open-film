@@ -100,6 +100,7 @@ def evaluate_native(source_evidence,closure_evidence,regression,audit):
         require(closure_evidence.get('verified') is True and closure_evidence.get('target')==closure.TARGET and closure_evidence.get('patchedTreeSHA256')==source.PATCHED_SHA,'Linux closure not verified')
         require(regression.get('verified') is True and regression.get('sourceAndLockUnchanged') is True and controls.controls_verified(regression),'optimized controls incomplete or not reproduced')
         require(audit.get('verified') is True and audit.get('scannerVersion')=='cargo-audit-audit 0.22.2' and audit.get('dbFresh') is True,'scanner/capture/fresh database not verified')
+        auditor.validate_advisory_snapshot_metadata(audit)
         fetched=datetime.datetime.fromisoformat(audit['dbFetchedAt'])
         require(fetched.tzinfo is not None and 0<=(datetime.datetime.now(datetime.timezone.utc)-fetched).total_seconds()<=21600,'stale/future advisory fetch timestamp')
         require(audit.get('sourceSHA256')==source.sha(source.canonical(source_evidence)),'source evidence digest mismatch')
@@ -124,7 +125,8 @@ def verify_admission(repository, directory, result=None):
     """Complete admission boundary shared by the CLI and pinned receipt replay."""
     repository=Path(repository).resolve();directory=Path(directory).resolve()
     if result is None:result=dict(schemaVersion=1,upstreamVersionAffected=True,sourceRemediation='unverified',admission='blocked',reasons=[])
-    audit=json.loads((directory/'audit/audit.json').read_bytes())
+    audit=json.loads((directory/'audit/audit.json').read_bytes(),object_pairs_hook=no_duplicates)
+    auditor.validate_advisory_snapshot_metadata(audit)
     result['candidateSHA']=audit.get('candidateSHA');result['reports']=audit.get('reports',{})
     for name,report in audit['reports'].items():
         raw=read_bound_file(directory/'audit',report['stdoutFile'],report['stdoutSHA256'])
@@ -146,7 +148,7 @@ def verify_admission(repository, directory, result=None):
     require(auditor.compare_graphs(audit_actual,audit_registry,lock,(directory/'audit/current-registry-Cargo.lock').read_bytes()),'current registry graph differs')
     original=(directory/'audit/historical-Cargo.lock').read_bytes()
     require(source.sha(original)==source.LOCK_SHA,'captured historical lock changed')
-    require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=directory/'audit/advisory-db',text=True).strip()==audit['dbCommit'],'captured database changed')
+    auditor.verify_advisory_database(directory/'audit/advisory-db',directory/'audit',audit)
     return evaluate_native(source_evidence,closure_evidence,regression,audit)
 
 
