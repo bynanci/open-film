@@ -155,6 +155,13 @@ check, independent of runtime provisioning, signing and platform observations.
 The workflow must first be reviewed and registered on main. It does not replace
 or alter automatic source admission, final receipt assembly or owner approval.
 
+Source transport also authenticates the producer workflow reference. A reusable
+PR workflow pointing to a merge commit instead of the exact candidate is rejected
+even when its producer checks pass. The directly registered native-security.yml
+producer is supported for a reviewed exact-candidate capture; a reusable security
+workflow must retain the exact candidate native-workflow identity. Keep rejected
+artifacts unchanged. See the [actual v2 capture/replay evidence](validation/native-v2-replay-2026-11-12.md).
+
 Supply all five values from the same reviewed successful source capture:
 
 | Input                   | Required identity                                              |
