@@ -88,7 +88,64 @@ Required checks:
 | trust     | signature, publisher, os-trust                                      |
 | lifecycle | install, launch, close, reopen, uninstall, original-media-preserved |
 
-Security must include exactly one raw file named `admission.json`, produced by the existing native source-admission workflow for the same candidate. The validator requires passing source remediation, no reasons, all four closure digests and three audit report identities. Retain exactly one each of `source.json`, `closure.json`, `regression.json`, `metadata.json`, `audit.json`, and the stdout/stderr files named by all three audit reports in `security.raw`. Also retain `actual-metadata.stdout`, `current-registry-metadata.stdout`, `current-registry-Cargo.lock`, `historical-Cargo.lock`, and the self-contained `audit/advisory-db.bundle` emitted by `audit-native.py` before marking capture verified. The producer bundles the already captured shallow database without another fetch, clones that bundle locally into a temporary bare repository, and requires its HEAD to equal the recorded `dbCommit`. The native-security artifact retains this ordinary file; hidden `.git` files are unnecessary. All these pins are required even if summary flags say they passed. The finalizer materializes the original pinned bytes, reconstructs the database locally from the bundle without network access, and calls the same complete `verify_admission` function as the original native-admission CLI. That includes source checkout cleanliness, exact candidate/lock identity, both metadata graphs, registry and historical locks, captured database commit, raw scans, closure and freshness. The resulting admission must equal the original retained receipt. Original JSON bytes are preserved, including Python floating-point representations. Put evidence and local input configs in an already ignored directory such as `dist/native-evidence`; untracked source files block admission. Replay requires Linux and the **original absolute POSIX source-admission checkout path**, matching the existing source-admission verifier. A preflight compares the original `metadata.json` workspace and root/GLib manifest paths to the selected checkout before cloning the database or running full admission. Arbitrary-root security replay is unsupported. The independent Cargo path mapping does not relocate source-admission metadata. Retain Windows/macOS target observations and perform final external assembly on an isolated Linux runner with the exact candidate at that original path and unchanged artifact bytes. Preserve the complete original source-admission artifact for independent review. Source admission alone does not satisfy the post-build scan or target dependency-closure checks. Security observation must be refreshed within six hours of finalization. Future observation timestamps fail.
+Security must include exactly one raw file named `admission.json`, produced by
+the existing native source-admission workflow for the same candidate. The
+validator requires passing source remediation, no reasons, all four closure
+digests and three audit report identities. Retain exactly one each of
+`source.json`, `closure.json`, `regression.json`, `metadata.json`, `audit.json`,
+and the stdout/stderr files named by all three audit reports in `security.raw`.
+Also retain `actual-metadata.stdout`, `current-registry-metadata.stdout`,
+`current-registry-Cargo.lock`, `historical-Cargo.lock`, and the ordinary
+`audit/advisory-db.bundle` and `audit/advisory-db.shallow` files. All original
+roles remain required even when summary flags say they passed: **17 payload
+files**, or **18 pins** including `admission.json` in a minimal observation.
+Extra raw observations do not replace any required role.
+
+### Audit capture v2 and faithful database restoration
+
+New policy requires integer audit `schemaVersion: 2` and a required `dbSnapshot`
+with format `git-shallow-bundle-v1`, the exact HEAD root tree, and size/SHA-256
+pins for fixed leaves `advisory-db.bundle` and `advisory-db.shallow`. The sidecar
+contains the **original** single HEAD SHA-1 plus LF bytes read from the real
+depth-one database; it is not generated from receipt metadata. The producer
+checks the original clean database state before and after the three unchanged
+scans and retains both ordinary files without another fetch. Unknown, incomplete
+or downgraded formats fail closed.
+
+The shared auditor validates those bytes and restores them only into a newly
+created private bare clone. It requires the expected HEAD/tree, exact original
+boundary, shallow status and successful ordinary
+`git --no-replace-objects fsck --full --no-reflogs`. A missing parent beyond the
+captured shallow boundary is legitimate; a missing current tree/blob is not.
+Caller Git overrides, config, hooks, external object stores and lazy fetch cannot
+supply missing objects. Source/candidate repositories and original artifacts are
+never repaired, unshallowed or retimed by replay.
+
+Historical v1 captures remain immutable and tied to their exact original policy
+authority. Their bundle-only bounded snapshot result is not a new v2/fsck pass.
+New tools do not infer a missing boundary or offer a caller-selected legacy mode;
+the existing six-file tool/subject identity gate remains mandatory. A candidate
+with changed policy needs its own fresh v2 capture and actual replay.
+
+The finalizer materializes original pinned bytes and calls the same complete
+`verify_admission` function as the original native-admission CLI. This includes
+source checkout cleanliness, exact candidate/lock identity, both metadata
+graphs, registry and historical locks, captured database state, raw scans,
+closure and freshness. The entire result must equal the original receipt.
+Original JSON bytes, including Python float representations, remain unchanged.
+Put evidence and local input configs in an already ignored directory such as
+`dist/native-evidence`; untracked source files block admission.
+
+Replay requires Linux and the **original absolute POSIX source-admission checkout
+path**, matching the existing source verifier. Preflight checks the original
+metadata workspace and root/GLib manifest paths before database restoration or
+full admission. Arbitrary-root replay is unsupported; the independent Cargo path
+mapping does not relocate source-admission metadata. Retain Windows/macOS target
+observations and perform external final assembly on an isolated Linux runner
+with that exact candidate/path and unchanged artifact bytes. Preserve the complete
+original artifact for independent review. Source admission alone does not satisfy
+post-build scan or target dependency-closure checks. Security must be fresh
+within six hours of finalization; future observation timestamps fail.
 
 ### Source-only hosted replay
 

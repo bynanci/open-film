@@ -61,7 +61,7 @@ jobs:
       - name: Build the native application and run five optimized controls independently
         id: controls
         run: python3 scripts/security/run-glib-controls.py --repository . --output "$NATIVE_EVIDENCE/controls"
-      - name: Capture three raw audits and verify the retained database bundle
+      - name: Capture three raw audits and verify the original database boundary
         if: ${{ always() && steps.metadata.outcome == 'success' }}
         run: python3 scripts/security/audit-native.py --repository . --output "$NATIVE_EVIDENCE/audit"
       - name: Evaluate candidate security admission
@@ -71,8 +71,8 @@ jobs:
         if: always()
         with:
           name: native-security-${{ inputs.candidate_sha || github.sha }}
-          # audit/advisory-db.bundle is an ordinary file verified by the producer.
-          # Replay does not depend on hidden advisory-db/.git artifact contents.
+          # audit/advisory-db.bundle and advisory-db.shallow are ordinary pinned files.
+          # Replay restores the original boundary, without hidden .git artifact contents.
           path: ${{ runner.temp }}/native-security-evidence/
           if-no-files-found: error
           retention-days: 30
