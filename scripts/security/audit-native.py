@@ -79,7 +79,7 @@ def advisory_git_environment() -> dict[str,str]:
 
 
 def advisory_git_command(*args:str,allow_https:bool=False) -> list[str]:
-    command=['git','--no-replace-objects','-c','core.hooksPath=/dev/null','-c','init.templateDir=',
+    command=['git','--no-replace-objects','--no-optional-locks','-c','core.hooksPath=/dev/null','-c','init.templateDir=',
              '-c','core.attributesFile=/dev/null','-c','protocol.allow=never','-c','protocol.file.allow=always']
     if allow_https:command+=['-c','protocol.https.allow=always']
     return command+list(args)

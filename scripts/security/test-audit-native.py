@@ -158,6 +158,14 @@ class SnapshotTests(unittest.TestCase):
         linked=self.root/'linked';linked.mkdir();(linked/'.git').write_text('gitdir: '+str(self.db/'.git')+'\n')
         with self.assertRaises(ValueError):m.read_advisory_state(linked,self.head)
 
+    def test_verifying_original_database_does_not_refresh_its_index(self):
+        index=self.db/'.git/index';original=index.read_bytes()
+        advisory=self.db/'advisory';status=advisory.stat()
+        os.utime(advisory,ns=(status.st_atime_ns,status.st_mtime_ns+10**9))
+        m.verify_advisory_database(self.db,self.evidence,self.audit)
+        self.assertEqual(index.read_bytes(),original)
+        self.assertEqual((self.db/'.git/shallow').read_bytes(),self.boundary)
+
     def test_bundle_destination_is_exclusive_even_if_created_during_git(self):
         destination=self.root/'advisory-db.bundle';real=m.advisory_git
         def race(directory,*args,**kwargs):
