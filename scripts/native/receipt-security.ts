@@ -97,12 +97,12 @@ export async function verifySecurityClosure(
         "Scanner output must be a direct leaf",
       );
       const matching = observation.raw.filter(
-        (pin) =>
-          pin.path === `${prefix}${path}` &&
-          pin.sha256 === report[`${field}SHA256`],
+        (pin) => pin.path.split("/").at(-1) === path,
       );
       requireEvidence(
-        matching.length === 1,
+        matching.length === 1 &&
+          matching[0]!.path === `${prefix}${path}` &&
+          matching[0]!.sha256 === report[`${field}SHA256`],
         "Missing/tampered retained scanner output",
       );
       await retain(`audit/${path}`, matching[0]!);

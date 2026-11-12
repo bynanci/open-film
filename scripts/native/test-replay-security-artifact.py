@@ -206,7 +206,9 @@ class ReplayTests(unittest.TestCase):
             for stripped in (False,True):
                 if stripped:audit.pop('dbSnapshot',None)
                 p.write_text(json.dumps(audit))
-                with self.subTest(version=version,stripped=stripped),self.assertRaisesRegex(ValueError,'v2'):m.build_payload(root/'evidence')
+                with self.subTest(version=version,stripped=stripped),self.assertRaises(m.ReplayFailure) as failure:m.build_payload(root/'evidence')
+                self.assertEqual(failure.exception.code,'guard_rejected')
+                self.assertEqual(str(failure.exception),m.SAFE_FAILURES['guard_rejected'])
 
     def test_each_policy_blob_and_working_bytes_must_match_before_execution(self):
         root, _ = self.fixture()

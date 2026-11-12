@@ -188,6 +188,18 @@ it("requires all 17 v2 payload roles and 18 minimal observation pins", async () 
         ? /Missing\/tampered retained scanner output/u
         : `Security closure requires exactly one retained ${name}`,
     );
+    const duplicate = await f.observation();
+    const original = duplicate.raw.find((pin) =>
+      pin.path.endsWith(`/${name}`),
+    )!;
+    duplicate.raw.push({ ...original, sha256: "0".repeat(64) });
+    await expect(
+      verifySecurityClosure(f.root, duplicate, f.identity),
+    ).rejects.toThrow(
+      /^(actual|currentRegistry|historical)\.(stdout|stderr)$/u.test(name)
+        ? /Missing\/tampered retained scanner output/u
+        : `Security closure requires exactly one retained ${name}`,
+    );
   }
 });
 
