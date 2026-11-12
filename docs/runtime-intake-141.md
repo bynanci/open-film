@@ -49,6 +49,15 @@ license receipt as approval, load addons, execute a tool, or claim font validity
 Target staging and the existing attribution/linkage verifiers remain mandatory.
 A successful synthetic unit fixture is only evidence about this checker.
 
+Direct `stageRuntime` calls with `distributionReview` run this same read-only
+inspection immediately after the host/target guard, before loading the exclusive
+directory renamer or creating destination parents, locks or staging directories.
+Reviewed primary tools and notices therefore receive the same header, alias,
+nonempty-file and hash checks as producer intake. Test-only staging without
+`distributionReview` retains the FFmpeg fault-wrapper script used by native tests;
+it is not a reviewed distribution path. Passing inspection still requires all
+existing attribution, linkage and rights gates, plus actual target execution.
+
 ## Manual target producer
 
 `.github/workflows/native-runtime-stage.yml` is a new manual producer; it has not
