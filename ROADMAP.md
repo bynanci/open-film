@@ -258,6 +258,12 @@ acceptance in separate gates. The record tool still reads historical 1.0 records
 without inferring observations for missing platforms. New installer gates start
 `not-run`; a schema check does not approve a release or certify installation.
 
+Acceptance fixtures now [cancel and drain their owned Pipeline actions](docs/validation/pipeline-fixture-drain-2026-11-12.md)
+before closing Catalog/removing temporary media. Review/retry controller gaps and
+late callbacks retain case ownership; real failure-path regression and all four
+original journeys preserve output quality, assertions and test budgets. The
+original local timeout cause remains unproven and no production speedup is claimed.
+
 The E2E distribution follow-up keeps one worker per isolated runner and builds
 deterministic per-test Playwright lists from full discovery. PR #131's original
 exact-head run passed 358 browser cases and the full Verify aggregate; the
