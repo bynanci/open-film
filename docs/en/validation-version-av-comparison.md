@@ -47,12 +47,33 @@ cleanup and project close/reopen while saved versions remain. It checks for
 horizontal overflow at 1024×768 and 1920×1080 and attaches a synthetic UI
 screenshot at each size to the Playwright result.
 
+### Synthetic UI screenshots
+
+These screenshots come from the synthetic A/B project used by Playwright; they
+contain no personal media.
+
+![Named-version A/V comparison at 1024×768](images/named-version-av-1024x768.png)
+
+![Named-version A/V comparison at 1920×1080](images/named-version-av-1920x1080.png)
+
 Local toolchain: Node `v24.19.0`, pnpm `11.19.0`, FFmpeg `7.1.5-0+deb13u1`,
-Chromium `151.0.7922.173` on Debian 13. Focused Vitest suites passed 66 tests
-across four files; the real HTTP integration passed one scenario; the targeted
-Playwright file passed two scenarios. The full Vitest run and final static/build
-gates are recorded below when completed. Exact-head GitHub checks are pending
-until the Draft PR is created.
+Chromium `151.0.7922.173` on Debian 13.
+
+Focused A/V Vitest checks passed `47` tests across four files, including the
+actual FFmpeg application render and real HTTP integration scenario. The App
+navigation extraction suite passed another `38` tests. The combined Playwright
+run passed `12` tests across `editor-mount-lifecycle.spec.ts` and
+`project-versions.spec.ts`; this includes the project-switch case that first
+failed on exact head `d17bbb6` due a duplicate initial editor read. The fix
+reloads only an editor instance that was already mounted before the awaited
+workspace transition. `pnpm test:i18n`, `pnpm test:docs-i18n`, and Prettier on
+changed files passed. The complete `pnpm test` run did not reach a terminal
+summary: the execution environment became unavailable after about 30 minutes.
+Before that interruption, Vitest reported one 30-second timeout in
+`tests/integration/native-runtime.test.ts` (the failed-close/restart case).
+That native-runtime failure still needs isolated reproduction. The full
+format/static/build/interchange gates and exact-head CI for the updated PR head
+remain pending.
 
 ## Limits and separate gates
 
@@ -74,11 +95,15 @@ until the Draft PR is created.
 
 ## Test record
 
-| Check                                                                    | Result                                                                |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| Focused application/playback Vitest (4 files)                            | Passed, 66 tests                                                      |
-| Real HTTP integration                                                    | Passed, 1 scenario                                                    |
-| Targeted Playwright `project-versions.spec.ts`                           | Passed, 2 scenarios; screenshot attachments at 1024×768 and 1920×1080 |
-| Full `pnpm test`                                                         | Pending                                                               |
-| `pnpm test:contracts`, format, i18n, lint, typecheck, build, interchange | Pending                                                               |
-| Exact-head GitHub CI                                                     | Pending Draft PR                                                      |
+| Check                                                                     | Result                                                                           |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Focused A/V application, HTTP, UI and playback Vitest (4 files)           | Passed, 47 tests; includes real HTTP and FFmpeg output                           |
+| App navigation extraction Vitest                                          | Passed, 38 tests                                                                 |
+| Playwright Editor lifecycle + Named Versions                              | Passed, 12 scenarios; screenshot attachments at 1024×768 and 1920×1080           |
+| `pnpm test:i18n`, `pnpm test:docs-i18n`                                   | Passed; 3,288 semantic keys, 195 English mirrors                                 |
+| `pnpm format:check`                                                       | Passed in exact-head `fast-contract-check` for `d17bbb6`                         |
+| `pnpm test`                                                               | Interrupted at ~30 min; no terminal summary; one native-runtime timeout observed |
+| `pnpm lint`, `typecheck`, `test:contracts`                                | Passed in exact-head `fast-contract-check` for `d17bbb6`                         |
+| Build, heavy-media, Windows recovery, three-platform Render QA, docs-site | Passed in exact-head CI for `d17bbb6`                                            |
+| Browser shards                                                            | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally         |
+| Exact-head GitHub CI for the updated PR head                              | Pending                                                                          |

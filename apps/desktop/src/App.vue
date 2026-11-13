@@ -1022,9 +1022,19 @@ async function changeTab(next: Tab) {
       activeComposition.value
     )
       nativeBenchmark.record("edit-enter", { clipCount: clipCount.value });
+    // A lazy first mount reads the editor snapshot itself. Capture an already
+    // mounted instance before awaiting the workspace transition so we only
+    // reload an editor that existed beforehand; otherwise Vue can mount during
+    // the await and the follow-up reload duplicates the initial GET.
+    const mountedEditor = timelineEditor.value;
     editorMountRequested.value = true;
     if (!(await setWorkspace(next))) return;
-    if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
+    if (
+      mountedEditor &&
+      mountedEditor === timelineEditor.value &&
+      !mountedEditor.hasPending
+    )
+      await mountedEditor.reload();
     return;
   }
   if (!(await flushEditor())) return;

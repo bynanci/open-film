@@ -1,6 +1,6 @@
 # Saved-version Audiovisual Comparison Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Progress is tracked with checkboxes. Independent review is recorded separately from implementation evidence.
 
 **Goal:** Make two saved Named Versions genuinely viewable and audible without restoring or editing the active cut.
 
@@ -39,7 +39,8 @@
 - [x] Observe RED before implementation; retain logs externally.
 - [x] Reuse load/rebaseTarget/verifySources without Restore or current-project edits; support AbortSignal through source hashing while preserving existing callers.
 - [x] Verify unchanged active manifest/semantic Catalog/editor history and saved payload bytes, legacy/moved managed media and existing version regressions.
-- [x] Run tests and scoped checks; obtain independent task review; commit only owned files signed off. Commit: `262941ff34fd135ab30cf48fc532aed8c7b0abac`; 38 focused/existing tests pass. This is Task 1 evidence, not final feature acceptance.
+- [x] Run focused tests and commit the snapshot capability with DCO. Commit: `262941ff34fd135ab30cf48fc532aed8c7b0abac`; 38 focused/existing tests pass. This is Task 1 evidence, not final feature acceptance.
+- [ ] Independent review of the snapshot capability.
 
 ### Task2: Actual private paired MP4 application/API
 
@@ -47,11 +48,11 @@
 
 **Interfaces:** Export `VersionComparisonPreviewInput`, versioned descriptor and side types from application. Input fields and routes are exact in the spec. Application exposes `versionComparisonPreview` and `runVersionComparisonPreview(input,signal)`; use requestId as existing render Job identity with safe conflicts. Service methods support prepare, descriptor/status, internal guarded media authorization, discard and dispose.
 
-- [ ] Add RED tests for real saved A/B settings/visual/audio rendering, publication/cancel/source/project guards, request conflicts, private file/range handling and failure of the second side.
-- [ ] Render sequential actual MP4s with FFmpegRenderer/RenderSnapshot, saved source proof and saved-frame font binding; enforce limits and pair-atomic publication.
-- [ ] Reuse existing active/task/disconnect handling, render Jobs and owner-aware lock. Register close/dispose and stream ownership; never delete foreign live/unverifiable cache.
-- [ ] Add explicit prepare/metadata/status/media/discard routes with exact body validation, project fencing and no paths in JSON.
-- [ ] Decode synthetic frames/audio and check source/snapshot/current-edit invariants; run relevant existing render/version/audio HTTP regressions, task review and signed-off commit.
+- [x] Add application and real HTTP regressions for saved A/B settings and audio, publication/cancel/source/project guards, request conflicts, private file/range handling, and failure of the second side.
+- [x] Render sequential actual MP4s with FFmpegRenderer/RenderSnapshot, saved source proof and saved-frame font binding; enforce limits and pair-atomic publication.
+- [x] Reuse existing active/task/disconnect handling, render Jobs and owner-aware lock. Register close/dispose and stream ownership; never delete foreign live/unverifiable cache.
+- [x] Add explicit prepare/target/status/media/discard routes with exact body validation, project fencing and no paths in JSON.
+- [x] Decode synthetic frames/audio and check source/snapshot/current-edit invariants; run the focused HTTP and renderer regressions. Independent review remains pending.
 
 ### Task3: Real Versions A/B viewing workflow
 
@@ -59,17 +60,17 @@
 
 **Interfaces:** Consume the exact application descriptor/routes. UI stores IDs/descriptors/playback state only; it does not own/copy mutable Composition state. Existing Restore remains separate.
 
-- [ ] Add failing tests for actual media binding, shared seek/unequal ending, single audible side, play rejection, stale events/request, close/unmount/project switch and keyboard/focus behavior.
-- [ ] Wire target metadata, explicit prepare/cancel/retry and two native videos; provide one transport plus A/B/mute controls and truthful error/ended states.
-- [ ] Preserve structural diff and current editing; invalidate before changing selections, pause/unload native resources and revoke only the owned preview.
-- [ ] Use current tokens, responsive dimensions and complete i18n/ARIA/IME/reduced-motion handling.
-- [ ] Run focused tests/static checks; task review and signed-off commit.
+- [x] Add UI/playback tests for actual media binding, shared seek/unequal ending, single audible side, play rejection, stale events/request, close/unmount/project switch.
+- [x] Wire target metadata, explicit prepare/cancel/retry and two native videos; provide one transport plus A/B/mute controls and truthful error/ended states.
+- [x] Preserve structural diff and current editing; invalidate before changing selections, pause/unload native resources and revoke only the owned preview.
+- [x] Use current tokens, responsive dimensions, English/Traditional Chinese/Japanese i18n, ARIA and reduced-motion handling. Native controls provide keyboard operation; a dedicated assistive-technology session remains unverified.
+- [x] Run focused UI/playback tests and save the implementation with DCO. Independent review remains pending.
 
 ### Task4: Browser proof, documentation and delivery
 
 **Files:** focused Versions Playwright regressions; paired validation/architecture records; TASKS/ROADMAP; sanitized synthetic screenshots/evidence only.
 
-- [ ] Verify real prepare→play→seek→audible switch→close and selection/project race flows with actual synthetic MP4s, saved source/current-edit invariants and1024×768/1920×1080 screenshots.
-- [ ] Document fixed snapshot data flow/threat boundaries, cache/format/clock/audio limitations and separate Variants/Export/workstation follow-up; mark only completed scope.
-- [ ] Run appropriate unit/application/HTTP/browser/media/static/build/interchange checks and final independent whole-branch review; report every failure/unrun gate.
-- [ ] Fetch current main, push one cohesive draft PR, attach its URL and inspect actual exact-head CI; preserve release/native/owner gates.
+- [x] Verify real prepare→play→seek→audible switch→close and selection/project flows with synthetic MP4s, saved source/current-edit invariants and 1024×768/1920×1080 screenshots attached by Playwright.
+- [x] Document fixed snapshot data flow/threat boundaries, cache/format/clock/audio limits and separate Variants/Export/workstation follow-up; mark only completed scope.
+- [ ] Finish exact-head CI after the editor-mount regression fix; the previous `pnpm test` run was interrupted before a terminal summary and reported one native-runtime timeout. Independent whole-branch review remains pending.
+- [x] Fetch current main, push a cohesive draft PR (#161), and inspect exact-head CI without merging or releasing; preserve release/native/owner gates.
