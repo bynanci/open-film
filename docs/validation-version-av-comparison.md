@@ -67,26 +67,25 @@ run passed `12` tests across `editor-mount-lifecycle.spec.ts` and
 failed on exact head `d17bbb6` due a duplicate initial editor read. The fix
 reloads only an editor instance that was already mounted before the awaited
 workspace transition. `pnpm test:i18n`, `pnpm test:docs-i18n`, and Prettier on
-changed files passed. The complete `pnpm test` run did not reach a terminal
-summary: the execution environment became unavailable after about 30 minutes.
-Before that interruption, Vitest reported one 30-second timeout in
-`tests/integration/native-runtime.test.ts` (the failed-close/restart case).
-The subsequent full-file rerun of `tests/integration/native-runtime.test.ts`
-passed all `52` tests in 154.98 seconds, including the previously timed-out
-case. The timeout did not reproduce; its cause is undetermined. Exact head
-`30b9bde59216300a66647ed32e18cbf058db4b5c` passed `fast-contract-check`,
-including format, i18n, docs-i18n, lint, typecheck and contract checks. Its
-first Verify run exposed a
-docs-site failure: the English mirror referenced the two screenshots above,
-but the image files were only present under `docs/images`. The same synthetic
-screenshots are now mirrored under `docs/en/images`; `npm run build` in
-`docs/` completed locally after that correction. A new exact-head CI run is
-required to verify the fix. On `d49f13992cd0d448d343b59c3391552acc5377c1`,
-fast-contract, docs-site, Linux and Windows Render QA, and DCO passed. Darwin
-Render QA, Windows recovery, native-shell, heavy-media and all six browser
-shards were still running when this validation record was updated. The
-documentation-only update that records these results requires its own exact-head
-CI run.
+workspace transition. An initial, incomplete full-suite attempt without
+`OPENFILM_OTIO_PYTHON` surfaced an NLE handoff failure because it selected
+system `python3`, which did not have OpenTimelineIO installed. With the CI-pinned
+OpenTimelineIO `0.18.1` in an isolated Python 3.12 environment, the NLE case
+passed and the complete `pnpm test` passed all `6,313` tests across `477` files
+in `1,471.12` seconds. `tests/integration/native-runtime.test.ts` also passed
+all `52` tests in `154.98` seconds, including the case that timed out in an
+earlier interrupted run.
+
+Exact head `30b9bde59216300a66647ed32e18cbf058db4b5c` passed
+`fast-contract-check` and all six browser shards, but docs-site failed because
+the English mirror referenced screenshots present only under `docs/images`;
+heavy-media was cancelled when the branch advanced. Both synthetic screenshots
+are now mirrored under `docs/en/images`, and the VitePress build passed locally.
+Exact head `12a382a7f44b2e233491ca693d4d506691cf8167` passed every GitHub check:
+DCO, fast-contract, all six browser shards, heavy-media, native-shell, Windows
+recovery, Linux/Windows/macOS Render QA, docs-site and the Verify aggregate.
+The documentation-only update that records these results requires its own
+exact-head CI run.
 
 ## Limits and separate gates
 
@@ -108,18 +107,18 @@ CI run.
 
 ## Test record
 
-| Check                                                                     | Result                                                                                                                                  |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Focused A/V application, HTTP, UI and playback Vitest (4 files)           | Passed, 47 tests; includes real HTTP and FFmpeg output                                                                                  |
-| App navigation extraction Vitest                                          | Passed, 38 tests                                                                                                                        |
-| Playwright Editor lifecycle + Named Versions                              | Passed, 12 scenarios; screenshot attachments at 1024×768 and 1920×1080                                                                  |
-| `pnpm test:i18n`, `pnpm test:docs-i18n`                                   | Passed; 3,288 semantic keys, 195 English mirrors                                                                                        |
-| `pnpm format:check`                                                       | Passed in exact-head `fast-contract-check` for `30b9bde5`                                                                               |
-| `pnpm test`                                                               | Interrupted at ~30 min; no terminal summary; one native-runtime timeout observed                                                        |
-| `tests/integration/native-runtime.test.ts`                                | Passed, 52 tests in 154.98 s, including the previously timed-out case                                                                   |
-| `pnpm lint`, `typecheck`, `test:contracts`                                | Passed in exact-head `fast-contract-check` for `30b9bde5`                                                                               |
-| Build, heavy-media, Windows recovery, three-platform Render QA, docs-site | Passed in exact-head CI for `d17bbb6`                                                                                                   |
-| Browser shards                                                            | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally                                                                |
-| Exact-head `30b9bde5` Verify                                              | fast-contract and 6/6 browser shards passed; docs-site failed on missing English screenshots; heavy-media was cancelled when superseded |
-| Exact-head `d49f1399` CI                                                  | DCO, fast-contract, docs-site, Linux and Windows Render QA passed; other jobs were still running when recorded                          |
-| Exact-head CI for this documentation update                               | Pending                                                                                                                                 |
+| Check                                                                          | Result                                                                                                                                  |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused A/V application, HTTP, UI and playback Vitest (4 files)                | Passed, 47 tests; includes real HTTP and FFmpeg output                                                                                  |
+| App navigation extraction Vitest                                               | Passed, 38 tests                                                                                                                        |
+| Playwright Editor lifecycle + Named Versions                                   | Passed, 12 scenarios; screenshot attachments at 1024×768 and 1920×1080                                                                  |
+| `pnpm test:i18n`, `pnpm test:docs-i18n`                                        | Passed; 3,288 semantic keys, 195 English mirrors                                                                                        |
+| `pnpm format:check`                                                            | Passed in exact-head `fast-contract-check` for `12a382a7`                                                                               |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-version-av-otio-venv/bin/python pnpm test` | Passed, 477 files and 6,313 tests in 1,471.12 s; OTIO 0.18.1 selected explicitly                                                        |
+| `tests/integration/native-runtime.test.ts`                                     | Passed, 52 tests in 154.98 s, including the previously timed-out case                                                                   |
+| `pnpm lint`, `typecheck`, `test:contracts`                                     | Passed in exact-head `fast-contract-check` for `12a382a7`                                                                               |
+| Build, heavy-media, Windows recovery, three-platform Render QA, docs-site      | Passed in exact-head CI for `12a382a7`                                                                                                  |
+| Browser shards                                                                 | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally                                                                |
+| Exact-head `30b9bde5` Verify                                                   | fast-contract and 6/6 browser shards passed; docs-site failed on missing English screenshots; heavy-media was cancelled when superseded |
+| Exact-head `12a382a7` CI                                                       | Passed all checks: DCO, fast-contract, 6/6 E2E, heavy-media, native-shell, Windows recovery, 3-platform Render QA, docs-site, aggregate |
+| Exact-head CI for this documentation update                                    | Pending                                                                                                                                 |
