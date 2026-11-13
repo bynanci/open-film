@@ -71,9 +71,15 @@ changed files passed. The complete `pnpm test` run did not reach a terminal
 summary: the execution environment became unavailable after about 30 minutes.
 Before that interruption, Vitest reported one 30-second timeout in
 `tests/integration/native-runtime.test.ts` (the failed-close/restart case).
-That native-runtime failure still needs isolated reproduction. The full
-format/static/build/interchange gates and exact-head CI for the updated PR head
-remain pending.
+That native-runtime failure still needs isolated reproduction. Exact head
+`30b9bde59216300a66647ed32e18cbf058db4b5c` passed `fast-contract-check`,
+including format, i18n, docs-i18n, lint, typecheck and contract checks. Its
+first Verify run exposed a
+docs-site failure: the English mirror referenced the two screenshots above,
+but the image files were only present under `docs/images`. The same synthetic
+screenshots are now mirrored under `docs/en/images`; `npm run build` in
+`docs/` completed locally after that correction. A new exact-head CI run is
+required to verify the fix.
 
 ## Limits and separate gates
 
@@ -95,15 +101,16 @@ remain pending.
 
 ## Test record
 
-| Check                                                                     | Result                                                                           |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Focused A/V application, HTTP, UI and playback Vitest (4 files)           | Passed, 47 tests; includes real HTTP and FFmpeg output                           |
-| App navigation extraction Vitest                                          | Passed, 38 tests                                                                 |
-| Playwright Editor lifecycle + Named Versions                              | Passed, 12 scenarios; screenshot attachments at 1024×768 and 1920×1080           |
-| `pnpm test:i18n`, `pnpm test:docs-i18n`                                   | Passed; 3,288 semantic keys, 195 English mirrors                                 |
-| `pnpm format:check`                                                       | Passed in exact-head `fast-contract-check` for `d17bbb6`                         |
-| `pnpm test`                                                               | Interrupted at ~30 min; no terminal summary; one native-runtime timeout observed |
-| `pnpm lint`, `typecheck`, `test:contracts`                                | Passed in exact-head `fast-contract-check` for `d17bbb6`                         |
-| Build, heavy-media, Windows recovery, three-platform Render QA, docs-site | Passed in exact-head CI for `d17bbb6`                                            |
-| Browser shards                                                            | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally         |
-| Exact-head GitHub CI for the updated PR head                              | Pending                                                                          |
+| Check                                                                     | Result                                                                                                        |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Focused A/V application, HTTP, UI and playback Vitest (4 files)           | Passed, 47 tests; includes real HTTP and FFmpeg output                                                        |
+| App navigation extraction Vitest                                          | Passed, 38 tests                                                                                              |
+| Playwright Editor lifecycle + Named Versions                              | Passed, 12 scenarios; screenshot attachments at 1024×768 and 1920×1080                                        |
+| `pnpm test:i18n`, `pnpm test:docs-i18n`                                   | Passed; 3,288 semantic keys, 195 English mirrors                                                              |
+| `pnpm format:check`                                                       | Passed in exact-head `fast-contract-check` for `30b9bde5`                                                     |
+| `pnpm test`                                                               | Interrupted at ~30 min; no terminal summary; one native-runtime timeout observed                              |
+| `pnpm lint`, `typecheck`, `test:contracts`                                | Passed in exact-head `fast-contract-check` for `30b9bde5`                                                     |
+| Build, heavy-media, Windows recovery, three-platform Render QA, docs-site | Passed in exact-head CI for `d17bbb6`                                                                         |
+| Browser shards                                                            | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally                                      |
+| Exact-head `30b9bde5` Verify                                              | fast-contract passed; docs-site failed on missing English screenshots; other jobs still running when recorded |
+| Exact-head GitHub CI after docs-site correction                           | Pending                                                                                                       |
