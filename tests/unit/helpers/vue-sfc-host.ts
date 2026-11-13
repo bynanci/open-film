@@ -17,7 +17,11 @@ export interface HostNode {
   currentTime: number;
   playbackRate: number;
   volume: number;
+  duration: number;
+  paused: boolean;
   pause: () => void;
+  play: () => Promise<void>;
+  load: () => void;
   addEventListener: () => void;
   removeEventListener: () => void;
   getRootNode: () => unknown;
@@ -35,7 +39,15 @@ function node(tag: string): HostNode {
     currentTime: 0,
     playbackRate: 1,
     volume: 1,
-    pause() {},
+    duration: Number.NaN,
+    paused: true,
+    pause() {
+      this.paused = true;
+    },
+    async play() {
+      this.paused = false;
+    },
+    load() {},
     addEventListener() {},
     removeEventListener() {},
     getRootNode: () => globalThis.document,

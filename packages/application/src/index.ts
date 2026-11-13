@@ -114,6 +114,7 @@ import {
   validateProject,
   validateFilmLook,
   validateExportProfile,
+  frameAlignedAudioTail,
   type Composition,
   type Event,
   type Job,
@@ -368,8 +369,22 @@ export interface ProjectTimebaseUpdateInput {
 export interface ExportReport {
   format: "json" | "otio" | "fcpxml" | "edl" | "mp4";
   warnings: string[];
+  audioTail?: FrameAlignedAudioTailWarning;
   realNleVerified?: false;
   advancedEdits?: "metadata-only";
+}
+
+export interface FrameAlignedAudioTailWarning {
+  code: "qa.frameAlignedAudioTail";
+  severity: "manual-review-required";
+  measurement: "render-frame-policy";
+  compositionDurationSeconds: number;
+  exportFrameRate: number;
+  frameAlignedDurationSeconds: number;
+  fullMixSampleCount: number;
+  frameAlignedSampleCount: number;
+  lostTailSamples: number;
+  lostTailMilliseconds: number;
 }
 
 function safeDirectorySync(directory: string): void {
@@ -2168,8 +2183,33 @@ export class OpenFilmApplication {
     const path = await this.renderFilm(compositionId, options, true);
     const manifest = JSON.parse(
       await readFile(`${path}.manifest.json`, "utf8"),
-    ) as { warnings: string[] };
-    return { path, report: { format: "mp4", warnings: manifest.warnings } };
+    ) as {
+      warnings: string[];
+      composition: Composition;
+      output: { frameRate: number | null };
+    };
+    const tail = frameAlignedAudioTail(
+      manifest.composition.duration,
+      manifest.output.frameRate ?? NaN,
+    );
+    const audioTail: FrameAlignedAudioTailWarning | undefined = tail
+      ? {
+          code: "qa.frameAlignedAudioTail",
+          severity: "manual-review-required",
+          measurement: "render-frame-policy",
+          ...tail,
+        }
+      : undefined;
+    return {
+      path,
+      report: {
+        format: "mp4",
+        // Keep renderer warnings identical to the durable render receipt.
+        // Application-level manual-review measurements are carried separately.
+        warnings: manifest.warnings,
+        ...(audioTail ? { audioTail } : {}),
+      },
+    };
   }
 
   previewExportFrame(input: {

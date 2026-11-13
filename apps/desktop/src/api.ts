@@ -119,6 +119,7 @@ import type {
   SourceBatchSealResult,
   SourceAnalysisProgress,
   SourceAnalysisRunRecord,
+  FrameAlignedAudioTailWarning,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -230,6 +231,7 @@ export interface ScenePlan {
 export interface ExportCompatibilityReport {
   format: string;
   warnings: string[];
+  audioTail?: FrameAlignedAudioTailWarning;
   realNleVerified?: false;
   advancedEdits?: "metadata-only";
   metadataOnlyEdits?: { clipId: string; features: string[] }[];
@@ -622,6 +624,8 @@ export const captionDownloadUrl = (
   `${prefix}/captions/file?${new URLSearchParams({ id, projectId, kind })}`;
 export const exportDownloadUrl = (filename: string): string =>
   `${prefix}/export/file?${new URLSearchParams({ name: filename })}`;
+export const exportAudioPreviewUrl = (filename: string): string =>
+  `${prefix}/export/file?${new URLSearchParams({ name: filename, inline: "audio" })}`;
 /** Fetch local artifacts with CORS Origin semantics, never a native navigation.
  * Callers own cancellation and publication of the resulting window-local blob.
  */

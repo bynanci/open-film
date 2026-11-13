@@ -40,3 +40,46 @@ export function frameAlignedDuration(
     frameRate
   );
 }
+
+export interface FrameAlignedAudioTail {
+  compositionDurationSeconds: number;
+  exportFrameRate: number;
+  frameAlignedDurationSeconds: number;
+  fullMixSampleCount: number;
+  frameAlignedSampleCount: number;
+  lostTailSamples: number;
+  lostTailMilliseconds: number;
+}
+
+/**
+ * Describes the Composition audio interval after the final complete MP4 frame.
+ * WAV export retains the full mix; this helper only reports the existing MP4
+ * frame-aligned termination policy.
+ */
+export function frameAlignedAudioTail(
+  compositionDurationSeconds: number,
+  exportFrameRate: number,
+): FrameAlignedAudioTail | null {
+  const frameAlignedDurationSeconds = frameAlignedDuration(
+    compositionDurationSeconds,
+    exportFrameRate,
+  );
+  const fullMixSampleCount = Math.round(compositionDurationSeconds * 48_000);
+  const frameAlignedSampleCount = Math.round(
+    frameAlignedDurationSeconds * 48_000,
+  );
+  const lostTailSamples = Math.max(
+    0,
+    fullMixSampleCount - frameAlignedSampleCount,
+  );
+  if (lostTailSamples === 0) return null;
+  return {
+    compositionDurationSeconds,
+    exportFrameRate,
+    frameAlignedDurationSeconds,
+    fullMixSampleCount,
+    frameAlignedSampleCount,
+    lostTailSamples,
+    lostTailMilliseconds: lostTailSamples / 48,
+  };
+}

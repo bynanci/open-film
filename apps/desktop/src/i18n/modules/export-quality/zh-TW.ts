@@ -48,6 +48,19 @@ export default {
     audioHeading: "音訊輸出",
     audioDescription:
       "WAV 混音與角色分軌沿用目前片段、淡入淡出、增益、靜音與閃避設定；檔案共用 Composition 時間範圍。",
+    audioTailHeading: "檢查音訊結尾",
+    audioTailWarning:
+      "MP4 會在 {frameAlignedDuration} 秒結束；已儲存的 Composition 長 {compositionDuration} 秒。依完整影格輸出的音訊會省略最後 {lostTailSamples} 個樣本（共 {fullMixSampleCount} 個樣本中的 {lostTailMilliseconds} 毫秒）。剪輯內容不會被修改，WAV 會保留完整長度。",
+    audioTailListenHint:
+      "先在下方輸出完整混音 WAV，再試聽最後 1.5 秒後交付。這項時間警示仍需人工聆聽確認。",
+    audioPreviewLabel: "完整混音 WAV 預聽",
+    playAudioTail: "播放最後 1.5 秒",
+    audioPreviewError:
+      "無法載入或播放 WAV 預聽。請重試完整混音輸出，或使用下載檔案播放。",
+    audioTailReport:
+      "MP4 依完整影格在 {frameAlignedDuration} 秒結束，Composition 長 {compositionDuration} 秒；編碼音訊不包含最後 {lostTailSamples} 個樣本（{lostTailMilliseconds} 毫秒）。",
+    audioTailManualReview:
+      "需要人工聆聽。這項影格時間量測不判斷爆音、語音保留或音樂結尾是否合宜。",
     saveMix: "儲存完整混音 WAV",
     saveStems: "儲存角色分軌",
     exportingAudio: "正在輸出音訊…",

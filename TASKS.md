@@ -225,6 +225,12 @@ remain separate acceptance scopes. See the
       [#144](https://github.com/bynanci/open-film/issues/144): the mixed case's
       existing frame-aligned MP4 export excludes 1,152 PCM samples / 24 ms,
       explicitly retained as `qa.frameAlignedAudioTail` / manual review.
+- [x] Make the existing MP4 frame-aligned audio tail actionable in Export:
+      report the measured tail, retain the renderer receipt's warning list, and
+      let users audition the final 1.5 seconds of the existing full-mix WAV.
+      Synthetic MP4/WAV and browser evidence are recorded in
+      [Export Profiles validation](docs/validation-export-profiles.md). This
+      does not change the export policy or close the human/device gate below.
 - [ ] Complete real dialogue/music listening QA and Windows/macOS workstation
       audition/device lifecycle checks, recorded A/V synchronization and more
       than two captured channels. The objective CC0 and Linux browser proofs
