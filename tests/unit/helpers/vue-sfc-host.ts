@@ -15,9 +15,16 @@ export interface HostNode {
   parent: HostNode | null;
   text: string;
   currentTime: number;
+  duration: number;
   playbackRate: number;
   volume: number;
+  paused: boolean;
+  ended: boolean;
+  muted: boolean;
   pause: () => void;
+  play: () => Promise<void>;
+  load: () => void;
+  removeAttribute: (name: string) => void;
   addEventListener: () => void;
   removeEventListener: () => void;
   getRootNode: () => unknown;
@@ -33,9 +40,25 @@ function node(tag: string): HostNode {
     parent: null,
     text: "",
     currentTime: 0,
+    duration: 0,
     playbackRate: 1,
     volume: 1,
-    pause() {},
+    paused: true,
+    ended: false,
+    muted: true,
+    pause() {
+      this.paused = true;
+    },
+    async play() {
+      this.paused = false;
+    },
+    load() {
+      this.currentTime = 0;
+      this.paused = true;
+    },
+    removeAttribute(name: string) {
+      delete this.props[name];
+    },
     addEventListener() {},
     removeEventListener() {},
     getRootNode: () => globalThis.document,

@@ -193,6 +193,9 @@ function host(
         analysisRecovery: analysisRecovery.value,
       })),
     },
+    tab: vue.ref("library"),
+    pauseRenderedPlayer: vi.fn(),
+    stopVersionComparison: vi.fn(async () => true),
   };
   const app = new Function(
     "dependencies",
@@ -298,6 +301,28 @@ describe("project navigation during analysis owned by another process", () => {
     expect(h.buttonDisabled()).toBe(true);
     await h.changeWorkspace();
     expect(h.post).not.toHaveBeenCalled();
+  });
+
+  it("waits for the saved-version preview to stop before closing its project", async () => {
+    const h = host();
+    h.tab.value = "versions";
+    await h.changeWorkspace();
+    expect(h.pauseRenderedPlayer).toHaveBeenCalledOnce();
+    expect(h.stopVersionComparison).toHaveBeenCalledOnce();
+    expect(h.post).toHaveBeenCalledExactlyOnceWith("/project/close");
+    expect(h.project.value).toBeNull();
+  });
+
+  it("keeps the project open when the saved-version preview cannot drain", async () => {
+    const h = host();
+    h.tab.value = "versions";
+    h.stopVersionComparison.mockResolvedValue(false);
+    await h.changeWorkspace();
+    expect(h.pauseRenderedPlayer).toHaveBeenCalledOnce();
+    expect(h.stopVersionComparison).toHaveBeenCalledOnce();
+    expect(h.api.jobs).not.toHaveBeenCalled();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.project.value).toMatchObject(h.originalProject);
   });
 
   it.each(["render", "import", "review", "future-background-job"])(

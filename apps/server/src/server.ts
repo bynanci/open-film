@@ -49,12 +49,15 @@ import {
   resolveUserDataDirectory,
   createReviewOwner,
   resolveRenderQuality,
+  validateVersionComparisonPreviewInput,
   type ReviewOptions,
   type ScenePlanAcceptance,
   type ScenePlanOptions,
   type DirectionReviewAcceptance,
   type GraphicSceneAgentAcceptance,
   type ProjectVersionCreateInput,
+  type VersionComparisonPreviewInput,
+  type VersionComparisonPreviewDescriptor,
   type ProjectVersionRestoreInput,
   type CollectPlanInput,
   type CollectCoveragePlanInput,
@@ -152,6 +155,44 @@ function text(body: Body, key: string): string {
 function keys(data: Body, allowed: string[]): void {
   if (Object.keys(data).some((key) => !allowed.includes(key)))
     throw new HttpError(400, "Unsupported request field.");
+}
+function exactSingleQuery(url: URL, key: string): string {
+  const values = url.searchParams.getAll(key);
+  if (
+    [...url.searchParams.keys()].some((candidate) => candidate !== key) ||
+    values.length !== 1 ||
+    !values[0]
+  )
+    throw new HttpError(400, `Supply exactly one ${key} query parameter.`);
+  return values[0];
+}
+function mediaByteRange(
+  header: string | undefined,
+  size: number,
+  response: ServerResponse,
+): { start: number; end: number; status: 200 | 206 } {
+  if (!header) return { start: 0, end: size - 1, status: 200 };
+  const invalid = () => {
+    response.setHeader("Content-Range", `bytes */${size}`);
+    throw new HttpError(416, "The requested media range is invalid.");
+  };
+  const match = /^bytes=(\d*)-(\d*)$/u.exec(header);
+  if (!match || (!match[1] && !match[2])) return invalid();
+  let start: number, end: number;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    if (!Number.isSafeInteger(suffix) || suffix <= 0) return invalid();
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : size - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end))
+      return invalid();
+    end = Math.min(end, size - 1);
+  }
+  if (start < 0 || start >= size || end < start) return invalid();
+  return { start, end, status: 206 };
 }
 function pageOptions(url: URL, maximum = 200) {
   const offset = Number(url.searchParams.get("offset") ?? 0);
@@ -696,6 +737,16 @@ export async function startServer(options: ServerOptions = {}) {
       await OpenFilmApplication.open(resolve(options.project), runtimeOptions),
     );
   const active = new Map<string, AbortController>();
+  type VersionComparisonOperation = {
+    projectId: string;
+    application: OpenFilmApplication;
+    controller: AbortController;
+    task?: Promise<VersionComparisonPreviewDescriptor>;
+  };
+  const versionComparisonOperations = new Map<
+    string,
+    VersionComparisonOperation
+  >();
   const proxyOperations = new Map<
     string,
     { projectId: string; controller: AbortController }
@@ -883,6 +934,13 @@ export async function startServer(options: ServerOptions = {}) {
       );
     return app;
   };
+  const disposeVersionComparison = async (
+    application: OpenFilmApplication | undefined,
+  ) => {
+    if (!application) return;
+    application.versionComparisonPreview.dispose();
+    await application.versionComparisonPreview.drain();
+  };
   const discardUploads = async () => {
     for (const [id, upload] of uploads) {
       await rm(upload.directory, { recursive: true, force: true });
@@ -949,7 +1007,8 @@ export async function startServer(options: ServerOptions = {}) {
           method === "POST" &&
           (/^\/api\/(?:jobs|analysis-runs)\/[^/]+\/cancel$/.test(route) ||
             /^\/api\/silence\/jobs\/[^/]+\/cancel$/.test(route) ||
-            route === "/api/proxy-cache/cancel");
+            route === "/api/proxy-cache/cancel" ||
+            route === "/api/version-comparisons/cancel");
         const nonMutatingGraphicAgentPreview =
           method === "POST" &&
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
@@ -1402,11 +1461,13 @@ export async function startServer(options: ServerOptions = {}) {
           requireIdleProject();
           await discardUploads();
           await cancelMediaReads();
+          const closingApp = app;
+          await disposeVersionComparison(closingApp);
           // A caption GET can capture this project during upload cleanup.
           // Recheck immediately before close; do not await after this guard.
           requireIdleProject();
           cancelGraphicSceneAgentPreviews();
-          app?.close();
+          closingApp?.close();
           app = undefined;
           json(response, 200, { ok: true });
           return;
@@ -1446,9 +1507,11 @@ export async function startServer(options: ServerOptions = {}) {
           const previousPath = app?.directory;
           await discardUploads();
           await cancelMediaReads();
+          const previousApp = app;
+          await disposeVersionComparison(previousApp);
           requireIdleProject();
           cancelGraphicSceneAgentPreviews();
-          app?.close();
+          previousApp?.close();
           app = undefined;
           let next: OpenFilmApplication;
           try {
@@ -2766,6 +2829,269 @@ export async function startServer(options: ServerOptions = {}) {
             after,
           );
           json(response, 200, { diff });
+          return;
+        }
+        const previewTargetsRoute =
+          /^\/api\/versions\/([^/]+)\/preview-targets$/u.exec(route);
+        if (previewTargetsRoute && method === "GET") {
+          const application = current(),
+            projectId = exactSingleQuery(url, "projectId");
+          if (projectId !== application.project.id)
+            throw new HttpError(
+              409,
+              "Saved version belongs to another project.",
+            );
+          const versionId = decodeURIComponent(previewTargetsRoute[1]!);
+          const targets = await trackedMediaRead((signal) =>
+            Promise.resolve().then(() => {
+              signal.throwIfAborted();
+              if (app !== application)
+                throw new HttpError(409, "The project changed.");
+              const result = application.versions.previewTargets(versionId);
+              signal.throwIfAborted();
+              if (app !== application)
+                throw new HttpError(409, "The project changed.");
+              if (result.projectId !== projectId)
+                throw new HttpError(
+                  409,
+                  "Saved version belongs to another project.",
+                );
+              return result;
+            }),
+          );
+          json(response, 200, { targets });
+          return;
+        }
+        if (route === "/api/version-comparisons/prepare" && method === "POST") {
+          const application = current(),
+            data = await body(request);
+          keys(data, ["projectId", "requestId", "a", "b"]);
+          const input = data as unknown as VersionComparisonPreviewInput;
+          validateVersionComparisonPreviewInput(input);
+          if (input.projectId !== application.project.id)
+            throw new HttpError(409, "Comparison belongs to another project.");
+          if (versionComparisonOperations.has(input.requestId))
+            throw new HttpError(
+              409,
+              "This comparison request is already preparing.",
+            );
+          if (hasActiveProjectWork() || application.hasActiveJobs) {
+            // Completed, exact requests can reuse their owned ready pair without
+            // starting another render while unrelated work is active.
+            const ready =
+              await application.versionComparisonPreview.reuse(input);
+            if (ready) {
+              json(response, 200, ready);
+              return;
+            }
+            throw new HttpError(409, "Wait for active project work to finish.");
+          }
+          const controller = new AbortController(),
+            operation: VersionComparisonOperation = {
+              projectId: input.projectId,
+              application,
+              controller,
+            },
+            disconnected = () => {
+              if (!response.writableEnded) controller.abort();
+            };
+          response.once("close", disconnected);
+          versionComparisonOperations.set(input.requestId, operation);
+          active.set(input.requestId, controller);
+          const task = application.runVersionComparisonPreview(
+            input,
+            controller.signal,
+          );
+          const tracked = task.finally(() => {
+            active.delete(input.requestId);
+            tasks.delete(tracked);
+          });
+          operation.task = tracked;
+          tasks.add(tracked);
+          // Let the renderer and a concurrent owned cancel finish without holding
+          // the HTTP mutation lane. The tracked promise still owns its Job writes.
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const rendered = await tracked;
+            if (response.destroyed || !response.writable) {
+              await application.versionComparisonPreview.discardRequest(
+                input.projectId,
+                input.requestId,
+              );
+              return;
+            }
+            if (controller.signal.aborted) {
+              await application.versionComparisonPreview.discardRequest(
+                input.projectId,
+                input.requestId,
+              );
+              throw new HttpError(409, "Comparison was cancelled.");
+            }
+            await acquireMutation();
+            if (controller.signal.aborted || app !== application) {
+              await application.versionComparisonPreview.discardRequest(
+                input.projectId,
+                input.requestId,
+              );
+              throw new HttpError(409, "Comparison was cancelled or changed.");
+            }
+            const descriptor = await application.versionComparisonPreview.get(
+              input.projectId,
+              rendered.id,
+            );
+            if (controller.signal.aborted || app !== application) {
+              await application.versionComparisonPreview.discardRequest(
+                input.projectId,
+                input.requestId,
+              );
+              throw new HttpError(409, "Comparison was cancelled or changed.");
+            }
+            json(response, 200, descriptor);
+          } catch (error) {
+            if (controller.signal.aborted && !response.destroyed)
+              throw new HttpError(409, "Comparison was cancelled.");
+            throw error;
+          } finally {
+            if (versionComparisonOperations.get(input.requestId) === operation)
+              versionComparisonOperations.delete(input.requestId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
+        const versionComparisonRoute =
+          /^\/api\/version-comparisons\/([a-f\d-]{36})(?:\/(media)\/([^/]+))?$/iu.exec(
+            route,
+          );
+        if (versionComparisonRoute) {
+          const id = decodeURIComponent(versionComparisonRoute[1]!);
+          if (method === "GET" && versionComparisonRoute[2] === "media") {
+            const projectId = exactSingleQuery(url, "projectId"),
+              side = versionComparisonRoute[3];
+            if (side !== "a" && side !== "b")
+              throw new HttpError(404, "Comparison media side was not found.");
+            const application = current();
+            if (projectId !== application.project.id)
+              throw new HttpError(
+                409,
+                "Comparison belongs to another project.",
+              );
+            await trackedMediaRead((requestSignal) =>
+              application.versionComparisonPreview.withMedia(
+                projectId,
+                id,
+                side,
+                async (file, facts, signal) => {
+                  if (facts.size <= 0 || facts.size > 1024 ** 3)
+                    throw new HttpError(
+                      409,
+                      "Comparison media is unavailable.",
+                    );
+                  const info = await file.stat();
+                  signal.throwIfAborted();
+                  if (!info.isFile() || info.size !== facts.size)
+                    throw new HttpError(409, "Comparison media changed.");
+                  const { start, end, status } = mediaByteRange(
+                    request.headers.range,
+                    facts.size,
+                    response,
+                  );
+                  response.writeHead(status, {
+                    "Content-Type": "video/mp4",
+                    "Content-Length": end - start + 1,
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "private, no-store",
+                    "X-Content-Type-Options": "nosniff",
+                    ...(status === 206
+                      ? {
+                          "Content-Range": `bytes ${start}-${end}/${facts.size}`,
+                        }
+                      : {}),
+                  });
+                  await pipeline(
+                    file.createReadStream({ start, end, autoClose: false }),
+                    response,
+                    { signal },
+                  );
+                  return undefined;
+                },
+                requestSignal,
+              ),
+            );
+            return;
+          }
+          if (method === "GET" && !versionComparisonRoute[2]) {
+            const projectId = exactSingleQuery(url, "projectId"),
+              application = current();
+            if (projectId !== application.project.id)
+              throw new HttpError(
+                409,
+                "Comparison belongs to another project.",
+              );
+            const descriptor = await trackedMediaRead((signal) =>
+              application.versionComparisonPreview.get(projectId, id, signal),
+            );
+            if (app !== application)
+              throw new HttpError(409, "The project changed.");
+            json(response, 200, descriptor);
+            return;
+          }
+          if (method === "DELETE" && !versionComparisonRoute[2]) {
+            if ([...url.searchParams.keys()].length)
+              throw new HttpError(
+                400,
+                "Unexpected comparison query parameter.",
+              );
+            const data = await body(request);
+            keys(data, ["projectId"]);
+            const application = current(),
+              projectId = text(data, "projectId");
+            if (projectId !== application.project.id)
+              throw new HttpError(
+                409,
+                "Comparison belongs to another project.",
+              );
+            await application.versionComparisonPreview.discard(projectId, id);
+            json(response, 200, { ok: true });
+            return;
+          }
+        }
+        if (method === "POST" && route === "/api/version-comparisons/cancel") {
+          const data = await body(request);
+          keys(data, ["projectId", "requestId"]);
+          const application = current(),
+            projectId = text(data, "projectId"),
+            requestId = text(data, "requestId");
+          if (projectId !== application.project.id)
+            throw new HttpError(409, "Comparison belongs to another project.");
+          const operation = versionComparisonOperations.get(requestId);
+          if (
+            operation &&
+            (operation.application !== application ||
+              operation.projectId !== projectId)
+          )
+            throw new HttpError(409, "Comparison ownership changed.");
+          const durable = application.catalog.getJob(requestId);
+          if (
+            !operation &&
+            durable?.type === "render" &&
+            durable.stage === "version-comparison-preview" &&
+            (durable.status === "queued" || durable.status === "running")
+          )
+            throw new HttpError(
+              409,
+              "This comparison is owned by another process and cannot be cancelled here.",
+            );
+          operation?.controller.abort();
+          if (operation?.task) await Promise.allSettled([operation.task]);
+          await application.versionComparisonPreview.discardRequest(
+            projectId,
+            requestId,
+          );
+          await acquireMutation();
+          if (app !== application)
+            throw new HttpError(409, "The project changed while cancelling.");
+          json(response, 200, { ok: true, projectId, requestId });
           return;
         }
         const versionRoute = /^\/api\/versions\/([^/]+)(?:\/(restore))?$/u.exec(
@@ -6923,6 +7249,7 @@ export async function startServer(options: ServerOptions = {}) {
     await Promise.allSettled(mediaStreams.values());
     await stopped;
     await discardUploads();
+    await disposeVersionComparison(app);
     await app?.motionGeneration.dispose();
     app?.close({ requireSave: true });
   };

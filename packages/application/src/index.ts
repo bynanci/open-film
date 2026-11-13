@@ -1,3 +1,10 @@
+import {
+  VersionComparisonPreviewService,
+  validateVersionComparisonPreviewInput,
+  type VersionComparisonPreviewInput,
+} from "./version-comparison-preview.js";
+export * from "./version-comparison-preview.js";
+import { createReviewOwner, reviewOwnerState } from "./review-owner.js";
 import { RecordAudioPreviewService } from "./record-audio-preview.js";
 export * from "./record-audio-preview.js";
 import { PrimaryColorReviewService } from "./primary-color-review.js";
@@ -276,6 +283,8 @@ export { resolveUserDataDirectory } from "./user-data.js";
 export {
   ProjectVersionService,
   ProjectVersionError,
+  type ProjectVersionPreviewSnapshot,
+  type ProjectVersionPreviewTargets,
   type ProjectVersionCreateInput,
   type ProjectVersionRestoreInput,
   type ProjectVersionRestoreResult,
@@ -415,6 +424,7 @@ export class OpenFilmApplication {
   readonly handoff: NleHandoffService;
   readonly audioQuality: AudioQualityService;
   readonly recordAudioPreview: RecordAudioPreviewService;
+  readonly versionComparisonPreview: VersionComparisonPreviewService;
   readonly primaryColorReview: PrimaryColorReviewService;
   readonly audioGeneration: AudioGenerationService;
   readonly motionGeneration: MotionGenerationService;
@@ -642,6 +652,11 @@ export class OpenFilmApplication {
             },
           ),
       );
+      this.versionComparisonPreview = new VersionComparisonPreviewService(
+        this,
+        (style, settings) =>
+          collectFontPathForStyle(this.packageFontBindings, style, settings),
+      );
       const readProject = () => this.project;
       this.handoff = new NleHandoffService({
         directory: this.directory,
@@ -769,6 +784,43 @@ export class OpenFilmApplication {
       application.sourceAnalysis.recoverInterruptedAttempts();
       application.proxyCache.recoverInterrupted();
       for (const job of application.catalog.listJobs()) {
+        if (
+          job.type === "render" &&
+          job.stage === "version-comparison-preview"
+        ) {
+          if (
+            (job.status === "running" || job.status === "queued") &&
+            reviewOwnerState(job.reviewOwner) === "dead"
+          ) {
+            application.catalog.withProjectWrite(() => {
+              const current = application.catalog.getJob(job.id);
+              if (
+                !current ||
+                current.type !== "render" ||
+                current.stage !== "version-comparison-preview" ||
+                current.status !== job.status ||
+                JSON.stringify(current.reviewOwner) !==
+                  JSON.stringify(job.reviewOwner) ||
+                reviewOwnerState(current.reviewOwner) !== "dead"
+              )
+                return;
+              application.catalog.saveJob({
+                ...current,
+                status: "failed",
+                updatedAt: new Date().toISOString(),
+                errors: [
+                  {
+                    uri: "",
+                    stage: "interrupted",
+                    message:
+                      "The comparison owner stopped. Prepare again with a new request ID.",
+                  },
+                ],
+              });
+            });
+          }
+          continue;
+        }
         if (
           [
             "language-review",
@@ -1108,6 +1160,160 @@ export class OpenFilmApplication {
     }
   }
 
+  async runVersionComparisonPreview(
+    input: VersionComparisonPreviewInput,
+    signal?: AbortSignal,
+  ) {
+    validateVersionComparisonPreviewInput(input);
+    input = structuredClone(input);
+    if (input.projectId !== this.project.id)
+      throw new ApplicationError(
+        "request.invalid",
+        "Comparison project does not match the open project.",
+        400,
+      );
+    const ready = await this.versionComparisonPreview.reuse(input, signal);
+    if (ready) return ready;
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    const owner = createReviewOwner();
+    this.activeJobs++;
+    let reserved = false;
+    let progressFailure: unknown;
+    const progressAbort = new AbortController();
+    const executionSignal = AbortSignal.any([
+      progressAbort.signal,
+      ...(signal ? [signal] : []),
+    ]);
+    const owned = (ready = false) => {
+      const row = this.catalog.getJob(input.requestId);
+      if (
+        !row ||
+        row.type !== "render" ||
+        row.stage !== "version-comparison-preview" ||
+        (row.status !== "running" && !(ready && row.status === "completed")) ||
+        row.reviewOwner?.token !== owner.token ||
+        row.reviewOwner.host !== owner.host ||
+        row.reviewOwner.pid !== owner.pid
+      )
+        throw new ApplicationError(
+          "jobs.busy",
+          "Comparison request ownership changed. Choose a new request ID.",
+          409,
+        );
+      return row;
+    };
+    const update = (status: Job["status"], progress?: number) =>
+      this.catalog.withProjectWrite(() => {
+        const row = owned();
+        this.catalog.saveJob({
+          ...row,
+          status,
+          progress: progress ?? row.progress,
+          updatedAt: new Date().toISOString(),
+          ...(status === "failed" || status === "cancelled"
+            ? {
+                errors: [
+                  {
+                    uri: "",
+                    stage: "version-comparison-preview",
+                    message:
+                      "Comparison did not complete. Prepare again with a new request ID.",
+                  },
+                ],
+              }
+            : {}),
+        });
+      });
+    let descriptor:
+      | Awaited<ReturnType<VersionComparisonPreviewService["prepare"]>>
+      | undefined;
+    try {
+      this.catalog.withProjectWrite(() => {
+        if (this.catalog.getJob(input.requestId))
+          throw new ApplicationError(
+            "jobs.busy",
+            "This request ID already exists. Choose a new comparison request ID.",
+            409,
+          );
+        this.catalog.saveJob({
+          id: input.requestId,
+          type: "render",
+          stage: "version-comparison-preview",
+          reviewOwner: owner,
+          status: "running",
+          progress: 0,
+          createdAt: new Date().toISOString(),
+        });
+      });
+      reserved = true;
+      descriptor = await this.versionComparisonPreview.prepare(
+        input,
+        executionSignal,
+        (progress) => {
+          try {
+            update("running", Math.min(0.99, progress));
+          } catch (error) {
+            progressFailure ??= error;
+            progressAbort.abort();
+          }
+        },
+        {
+          owner,
+          assertCurrent: (ready) => {
+            if (progressFailure) throw progressFailure;
+            this.catalog.withProjectWrite(() => owned(ready));
+          },
+        },
+      );
+      if (progressFailure) throw progressFailure;
+      checkAbort(signal);
+      update("completed", 1);
+      return descriptor;
+    } catch (error) {
+      if (descriptor)
+        await this.versionComparisonPreview.discard(
+          input.projectId,
+          descriptor.id,
+        );
+      if (reserved) {
+        try {
+          update(
+            !progressFailure &&
+              (signal?.aborted ||
+                (error instanceof Error && error.name === "AbortError"))
+              ? "cancelled"
+              : "failed",
+          );
+        } catch {
+          /* A foreign owner or unavailable storage must never be overwritten. */
+        }
+      }
+      if (progressFailure)
+        throw new ApplicationError(
+          "media.previewUnavailable",
+          "Comparison progress could not be saved. Retry with a new request ID.",
+          409,
+        );
+      if (
+        error instanceof ApplicationError ||
+        (error instanceof Error && error.name === "AbortError")
+      )
+        throw error;
+      throw new ApplicationError(
+        "media.previewUnavailable",
+        "Comparison could not be completed or saved. Retry with a new request ID.",
+        409,
+      );
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
   async runRecordAudioPreview(
     compositionId: string,
     baseRevision: string,
@@ -1355,7 +1561,7 @@ export class OpenFilmApplication {
 
   /** Lifecycle owners may require a successful workspace save before closing. */
   close(options: { requireSave?: boolean } = {}): void {
-    if (this.activeJobs)
+    if (this.activeJobs || this.versionComparisonPreview.isPreparing)
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
@@ -1373,6 +1579,7 @@ export class OpenFilmApplication {
     });
     void this.motionGeneration.dispose().catch(() => undefined);
     this.recordAudioPreview.dispose();
+    this.versionComparisonPreview.dispose();
     this.graphics.close();
     this.textOverlays.close();
     this.photoPresentation.close();

@@ -18,6 +18,9 @@ import type {
   NativeTextInspection,
   MotionGenerationReceipt,
   AudioGenerationReceipt,
+  ProjectVersionPreviewTargets,
+  VersionComparisonPreviewDescriptor,
+  VersionComparisonPreviewInput,
 } from "@openfilm/application";
 import type {
   MediaAsset,
@@ -572,6 +575,12 @@ export const thumbnailUrl = (id: string): string =>
   `${prefix}/thumbnail/${encodeURIComponent(id)}`;
 export const previewUrl = (version: number): string =>
   `${prefix}/preview?v=${version}`;
+export const versionComparisonMediaUrl = (
+  id: string,
+  side: "a" | "b",
+  projectId: string,
+): string =>
+  `${prefix}/version-comparisons/${encodeURIComponent(id)}/media/${side}?${new URLSearchParams({ projectId })}`;
 export const visualQaFrameUrl = (
   reportId: string,
   sampleIndex: number,
@@ -977,6 +986,39 @@ export const api = {
     }),
   projectVersions: (signal?: AbortSignal) =>
     request<{ versions: ProjectVersionRecord[] }>("/versions", { signal }),
+  versionPreviewTargets: (
+    id: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ) =>
+    request<{ targets: ProjectVersionPreviewTargets }>(
+      `/versions/${encodeURIComponent(id)}/preview-targets?${new URLSearchParams({ projectId })}`,
+      { signal },
+    ),
+  prepareVersionComparison: (
+    input: VersionComparisonPreviewInput,
+    signal?: AbortSignal,
+  ) =>
+    post<VersionComparisonPreviewDescriptor>(
+      "/version-comparisons/prepare",
+      input,
+      signal,
+    ),
+  getVersionComparison: (id: string, projectId: string, signal?: AbortSignal) =>
+    request<VersionComparisonPreviewDescriptor>(
+      `/version-comparisons/${encodeURIComponent(id)}?${new URLSearchParams({ projectId })}`,
+      { signal },
+    ),
+  discardVersionComparison: (id: string, body: { projectId: string }) =>
+    request<{ ok: true }>(`/version-comparisons/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      body: JSON.stringify(body),
+    }),
+  cancelVersionComparison: (body: { projectId: string; requestId: string }) =>
+    post<{ ok: true; projectId: string; requestId: string }>(
+      "/version-comparisons/cancel",
+      body,
+    ),
   createProjectVersion: (body: ProjectVersionCreateInput) =>
     post<{ version: ProjectVersionRecord }>("/versions", body),
   inspectProjectVersion: (id: string, signal?: AbortSignal) =>

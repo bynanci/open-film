@@ -12,6 +12,7 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  type Stats,
 } from "node:fs";
 import { lstat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
@@ -152,6 +153,52 @@ interface LoadedVersion {
   catalog: Buffer;
   project: OpenFilmProject;
   directory: string;
+  state: {
+    directory: FileIdentity;
+    files: Record<string, FileIdentity>;
+    index: FileIdentity;
+  };
+}
+
+interface FileIdentity {
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+}
+
+function fileIdentity(info: Stats): FileIdentity {
+  return {
+    dev: info.dev,
+    ino: info.ino,
+    size: info.size,
+    mtimeMs: info.mtimeMs,
+    ctimeMs: info.ctimeMs,
+  };
+}
+
+function sameFileIdentity(info: Stats, identity: FileIdentity): boolean {
+  return (
+    info.isFile() &&
+    !info.isSymbolicLink() &&
+    info.dev === identity.dev &&
+    info.ino === identity.ino &&
+    info.size === identity.size &&
+    info.mtimeMs === identity.mtimeMs &&
+    info.ctimeMs === identity.ctimeMs
+  );
+}
+
+function sameDirectoryIdentity(info: Stats, identity: FileIdentity): boolean {
+  return (
+    info.isDirectory() &&
+    !info.isSymbolicLink() &&
+    info.dev === identity.dev &&
+    info.ino === identity.ino &&
+    info.mtimeMs === identity.mtimeMs &&
+    info.ctimeMs === identity.ctimeMs
+  );
 }
 
 export interface ProjectVersionCreateInput {
@@ -642,6 +689,72 @@ export class ProjectVersionService {
     return validateIndex(parsed, this.app.project.id);
   }
 
+  private readIndexSnapshot(): {
+    index: VersionIndex;
+    identity: FileIdentity;
+  } {
+    const before = lstatSync(this.indexPath);
+    if (before.isSymbolicLink() || !before.isFile())
+      fail("request.invalid", "The project version index is unsafe.");
+    const index = this.readIndex(),
+      after = lstatSync(this.indexPath);
+    if (!sameFileIdentity(after, fileIdentity(before)))
+      fail(
+        "story.planConflict",
+        "The saved version index changed during preview capture.",
+        409,
+      );
+    return { index, identity: fileIdentity(after) };
+  }
+
+  /** Recheck small filesystem identities without re-reading and hashing the full catalog snapshot. */
+  private assertLoadedVersionCurrent(loaded: LoadedVersion): void {
+    try {
+      const directory = lstatSync(loaded.directory);
+      if (!sameDirectoryIdentity(directory, loaded.state.directory))
+        fail(
+          "story.planConflict",
+          "The named version folder changed after preview capture.",
+          409,
+        );
+      for (const [name, identity] of Object.entries(loaded.state.files)) {
+        if (
+          !sameFileIdentity(lstatSync(join(loaded.directory, name)), identity)
+        )
+          fail(
+            "story.planConflict",
+            "The named version payload changed after preview capture.",
+            409,
+          );
+      }
+      const indexInfo = lstatSync(this.indexPath);
+      if (!sameFileIdentity(indexInfo, loaded.state.index)) {
+        const current = this.readIndexSnapshot(),
+          entry = current.index.entries.find(
+            (item) => item.id === loaded.entry.id,
+          );
+        if (
+          !entry ||
+          entry.recordHash !== loaded.entry.recordHash ||
+          entry.payloadBytes !== loaded.entry.payloadBytes
+        )
+          fail(
+            "story.planConflict",
+            "The named version is no longer available for preview.",
+            409,
+          );
+        loaded.state.index = current.identity;
+      }
+    } catch (error) {
+      if (error instanceof ProjectVersionError) throw error;
+      fail(
+        "story.planConflict",
+        "The named version is no longer available for preview.",
+        409,
+      );
+    }
+  }
+
   private capture(): Snapshot {
     if (this.app.hasActiveJobs)
       fail(
@@ -782,12 +895,22 @@ export class ProjectVersionService {
     const dirInfo = lstatSync(directory);
     if (dirInfo.isSymbolicLink() || !dirInfo.isDirectory())
       fail("request.invalid", "The named version folder is unsafe.");
+    const fileIdentities: Record<string, FileIdentity> = {};
     const file = (name: string, maximum: number) => {
       const path = join(directory, name);
-      const info = lstatSync(path);
-      if (info.isSymbolicLink() || !info.isFile() || info.size > maximum)
+      const before = lstatSync(path);
+      if (before.isSymbolicLink() || !before.isFile() || before.size > maximum)
         fail("request.invalid", `The saved version ${name} file is invalid.`);
-      return readFileSync(path);
+      const bytes = readFileSync(path),
+        after = lstatSync(path);
+      if (!sameFileIdentity(after, fileIdentity(before)))
+        fail(
+          "story.planConflict",
+          "The named version payload changed during preview capture.",
+          409,
+        );
+      fileIdentities[name] = fileIdentity(after);
+      return bytes;
     };
     const manifest = file("project.json", MAX_PROJECT_BYTES);
     const catalog = file("database.sqlite", CATALOG_SNAPSHOT_MAX_BYTES);
@@ -829,6 +952,22 @@ export class ProjectVersionService {
     }
     if (project.id !== this.app.project.id)
       fail("request.invalid", "The named version belongs to another project.");
+    const finalIndex = this.readIndexSnapshot(),
+      finalEntry = finalIndex.index.entries.find(
+        (item) => item.id === entry.id,
+      ),
+      finalDirectory = lstatSync(directory);
+    if (
+      !finalEntry ||
+      finalEntry.recordHash !== entry.recordHash ||
+      finalEntry.payloadBytes !== entry.payloadBytes ||
+      !sameDirectoryIdentity(finalDirectory, fileIdentity(dirInfo))
+    )
+      fail(
+        "story.planConflict",
+        "The named version changed during preview capture.",
+        409,
+      );
     return {
       entry,
       record: this.metadataRecord(entry, decoded),
@@ -836,6 +975,11 @@ export class ProjectVersionService {
       catalog,
       project,
       directory,
+      state: {
+        directory: fileIdentity(finalDirectory),
+        files: fileIdentities,
+        index: finalIndex.identity,
+      },
     };
   }
 
@@ -1271,9 +1415,9 @@ export class ProjectVersionService {
     const compositionSha256 = jsonDigest(composition);
     const settingsSha256 = jsonDigest(target.project.settings);
     const assetsSha256 = jsonDigest(assets);
-    const projectSha256 = jsonDigest(target.project);
-    const referencesSha256 = jsonDigest(sourceReferences);
-    const recordSha256 = jsonDigest(record);
+    const projectSha256 = jsonDigest(target.project),
+      referencesSha256 = jsonDigest(sourceReferences),
+      recordSha256 = jsonDigest(record);
     const identity = jsonDigest({
       payload,
       compositionSha256,
@@ -1307,7 +1451,12 @@ export class ProjectVersionService {
         checkAbort(signal);
         if (
           this.app.project.id !== projectId ||
-          payloadIdentity(this.load(loaded.record.id)) !== payload
+          snapshot.projectId !== projectId ||
+          snapshot.versionId !== loaded.record.id ||
+          snapshot.identity !== identity ||
+          snapshot.compositionSha256 !== compositionSha256 ||
+          snapshot.settingsSha256 !== settingsSha256 ||
+          snapshot.assetsSha256 !== assetsSha256
         )
           fail(
             "story.planConflict",
@@ -1320,19 +1469,14 @@ export class ProjectVersionService {
           jsonDigest(snapshot.project.settings) !== settingsSha256 ||
           jsonDigest(snapshot.assets) !== assetsSha256 ||
           jsonDigest(snapshot.sourceReferences) !== referencesSha256 ||
-          jsonDigest(snapshot.record) !== recordSha256 ||
-          snapshot.identity !== identity ||
-          snapshot.projectId !== projectId ||
-          snapshot.versionId !== loaded.record.id ||
-          snapshot.compositionSha256 !== compositionSha256 ||
-          snapshot.settingsSha256 !== settingsSha256 ||
-          snapshot.assetsSha256 !== assetsSha256
+          jsonDigest(snapshot.record) !== recordSha256
         )
           fail(
             "story.planConflict",
             "The historical render inputs changed after capture. Prepare their preview again.",
             409,
           );
+        this.assertLoadedVersionCurrent(loaded);
         for (const source of sourceStates)
           if (
             previewSourceState(this.app.directory, source.asset) !==

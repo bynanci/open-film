@@ -369,6 +369,21 @@ export function visualSourceAssetIds(
   ]);
 }
 
+/** Exact full-output source evidence set; includes muted and hidden clip dependencies. */
+export function renderSourceAssetIds(composition: Composition): Set<string> {
+  return new Set([
+    ...composition.tracks
+      .filter((track) => track.type !== "titles")
+      .flatMap((track) =>
+        track.clips.flatMap((clip) => [
+          clip.assetId,
+          ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+        ]),
+      ),
+    ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+  ]);
+}
+
 function outputFrameFilters(profile: ExportProfile): string[] {
   if (profile.framing === "contain")
     return [
@@ -676,20 +691,7 @@ export class FFmpegRenderer {
         )
       : videoOnly
         ? visualSourceAssetIds(composition, assets)
-        : new Set(
-            composition.tracks
-              .filter((track) => track.type !== "titles")
-              .flatMap((track) =>
-                track.clips.flatMap((clip) => {
-                  return [
-                    clip.assetId,
-                    ...(clip.layout?.secondary
-                      ? [clip.layout.secondary.assetId]
-                      : []),
-                  ];
-                }),
-              ),
-          );
+        : renderSourceAssetIds(composition);
     if (!audioOnly)
       for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
         if (!assetMap.has(id))
