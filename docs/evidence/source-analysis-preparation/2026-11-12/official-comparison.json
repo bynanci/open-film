@@ -1,0 +1,74 @@
+[
+  {
+    "assets": 1000,
+    "bindings": 5000,
+    "baseline": {
+      "sourceSha256": "1c95750e43bb29784db1943ef56768e35a3abd40f9839019876d954da7a1dad6",
+      "scriptSha256": "b618076383c0020e92744f382787fd7099bcf0d446966443aee3459fdb3a4754",
+      "fixtureSha256": "06b663f861904de04d82097abd90081e118f136e14d6112bf143f59902d339af",
+      "semanticSha256": "7cb8d4a2f86b7f4575f10f66ab18fc538082362ceaebd9717a94ffcb873c318d",
+      "workflowMedianMilliseconds": 457.8585750000002,
+      "workflowRangeMilliseconds": [377.07958099999996, 470.16977599999973],
+      "preparationMedianMilliseconds": 387.681157,
+      "cpuMedianMilliseconds": 496.44399999999996,
+      "setupMedianMilliseconds": 741.8230659999999,
+      "processMaximumRSSMiB": 246.66015625,
+      "heapAfterMedianMiB": 48.838462829589844,
+      "originalRawSha256": "c39657737b54d6ee22a9e837219070a0099f6e6d664ecffb8a95a081a70f99d4",
+      "repositoryJsonSha256": "71cc47bbf4d6691d339620947fc9a1e0349685e00d762584700eca16b974b3b9"
+    },
+    "candidate": {
+      "sourceSha256": "4c467e7196e43446706b9e28c5eb45c80d8c4ef5866b8905209e96319d9509d9",
+      "scriptSha256": "b618076383c0020e92744f382787fd7099bcf0d446966443aee3459fdb3a4754",
+      "fixtureSha256": "06b663f861904de04d82097abd90081e118f136e14d6112bf143f59902d339af",
+      "semanticSha256": "7cb8d4a2f86b7f4575f10f66ab18fc538082362ceaebd9717a94ffcb873c318d",
+      "workflowMedianMilliseconds": 192.2656420000003,
+      "workflowRangeMilliseconds": [190.6767460000001, 287.9387320000001],
+      "preparationMedianMilliseconds": 151.61453800000072,
+      "cpuMedianMilliseconds": 206.581,
+      "setupMedianMilliseconds": 645.8026830000003,
+      "processMaximumRSSMiB": 266.76953125,
+      "heapAfterMedianMiB": 48.913246154785156,
+      "originalRawSha256": "08fc847a50ffbb01bc58c088f3fad421db9d6eb2e87cdf8c0839633e19a2b91e",
+      "repositoryJsonSha256": "c824571c99cd94b38cf182629b78974a7f8d5c7de84c154861908f6972320609"
+    },
+    "workflowRatio": 2.3813853075215565,
+    "preparationRatio": 2.5570183579624675
+  },
+  {
+    "assets": 10000,
+    "bindings": 50000,
+    "baseline": {
+      "sourceSha256": "1c95750e43bb29784db1943ef56768e35a3abd40f9839019876d954da7a1dad6",
+      "scriptSha256": "b618076383c0020e92744f382787fd7099bcf0d446966443aee3459fdb3a4754",
+      "fixtureSha256": "d023f72608df340c16e6da3d9bbde523d0bb96ed3ca40428efd423e4ad5630d8",
+      "semanticSha256": "e6aa3dd4fc2dce577d5bed3769b135ba4d13fd37c11be0ba7ad40f8043fd169f",
+      "workflowMedianMilliseconds": 20759.906613,
+      "workflowRangeMilliseconds": [19897.141346000004, 29143.405141999996],
+      "preparationMedianMilliseconds": 20263.733003999994,
+      "cpuMedianMilliseconds": 21014.533,
+      "setupMedianMilliseconds": 8000.096335999995,
+      "processMaximumRSSMiB": 672.2578125,
+      "heapAfterMedianMiB": 125.49178314208984,
+      "originalRawSha256": "281fc888ab834b805d1c4ec786e2683e4d7b2ff4ea6108074fe9c372ed0238ce",
+      "repositoryJsonSha256": "e0c5c8648ba8eafd0b476a0d513009f4b12317c758415afd2b27342344895eff"
+    },
+    "candidate": {
+      "sourceSha256": "4c467e7196e43446706b9e28c5eb45c80d8c4ef5866b8905209e96319d9509d9",
+      "scriptSha256": "b618076383c0020e92744f382787fd7099bcf0d446966443aee3459fdb3a4754",
+      "fixtureSha256": "d023f72608df340c16e6da3d9bbde523d0bb96ed3ca40428efd423e4ad5630d8",
+      "semanticSha256": "e6aa3dd4fc2dce577d5bed3769b135ba4d13fd37c11be0ba7ad40f8043fd169f",
+      "workflowMedianMilliseconds": 2898.9262480000034,
+      "workflowRangeMilliseconds": [2834.481307000002, 3128.3865689999984],
+      "preparationMedianMilliseconds": 2318.8957829999963,
+      "cpuMedianMilliseconds": 3293.675,
+      "setupMedianMilliseconds": 9576.324139999997,
+      "processMaximumRSSMiB": 823.3125,
+      "heapAfterMedianMiB": 198.08873748779297,
+      "originalRawSha256": "f0a9237535bcdcc0310b80f230eaa05fdc7d418c5b1a392e0caaeb8c927de590",
+      "repositoryJsonSha256": "5e4b146490a3a28cd2bc17bf4d09856fcd716062f3e2148a1e41feb76f20f7f6"
+    },
+    "workflowRatio": 7.161240003026105,
+    "preparationRatio": 8.738526824946158
+  }
+]

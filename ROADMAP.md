@@ -321,6 +321,9 @@ release date:
   implementations.
 - Archive-scale analysis and background scheduling, plus native cold-start
   measurements for the existing Desktop locale/workspace code splitting.
+  Common Analysis now reuses verified-binding groups and rejects oversized
+  scopes before asset hydration; the [bounded preparation evidence](docs/validation/source-analysis-preparation-2026-11-12.md)
+  separates synthetic metadata costs from real archive decoding and scheduling.
   Chronological cursor paging, literal substring
   search indexing, and lazy Story Template / PhotoDepth selectors are implemented;
   see the [Catalog scale validation](docs/validation-catalog-scale-benchmark.md)

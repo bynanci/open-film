@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-12T23:48:23.340Z",
+  "completedAt": "2026-11-12T23:49:11.033Z",
+  "fixtureVersion": "common-analysis-metadata-v1",
+  "fixtureSha256": "d023f72608df340c16e6da3d9bbde523d0bb96ed3ca40428efd423e4ad5630d8",
+  "source": {
+    "head": "bc96b292e8fc8eb47b872a49fa27b2ad56ff9221",
+    "dirty": "M ROADMAP.md\n M TASKS.md\n M packages/application/src/source-analysis.ts\n M tsconfig.json\n?? docs/superpowers/plans/2026-11-12-analysis-preparation.md\n?? docs/validation/source-analysis-preparation-2026-11-12.md\n?? packages/application/tests/source-analysis-preparation.test.ts\n?? scripts/benchmark-source-analysis.ts",
+    "diffSha256": "66e9a66088b42a47cba06d7a1c95fa7eea62fb0076a6ab5185a2d14b4afa1730",
+    "sourceSha256": {
+      "scripts/benchmark-source-analysis.ts": "b618076383c0020e92744f382787fd7099bcf0d446966443aee3459fdb3a4754",
+      "packages/application/src/source-analysis.ts": "4c467e7196e43446706b9e28c5eb45c80d8c4ef5866b8905209e96319d9509d9",
+      "packages/catalog/src/index.ts": "2edc2920dcd0c3e22c5a3f263b18c2a8d44a0ad7de6e83c1b012139ccb0f6f1c",
+      "packages/catalog/src/multi-source-store.ts": "940d82b0378e694907ebfcc12bdf2cadade20a898499ae581a1af31902b8abed",
+      "packages/events/src/index.ts": "a2e7030533f6c8f933d6955b4b846ba5e4a6501089d7497c3d626e66d46f8625"
+    }
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "release": "6.18.57",
+    "architecture": "x64",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "logicalCpus": 5,
+    "sqliteVersion": "3.53.3",
+    "pnpm": "11.19.0",
+    "tsx": "4.23.15"
+  },
+  "assetCount": 10000,
+  "bindings": 50000,
+  "repetitions": 3,
+  "warmupRuns": 1,
+  "processMaximumRSSKiB": 843072,
+  "limitations": [
+    "Synthetic metadata, not an import or file-hash benchmark",
+    "No FFmpeg decode, encode, seek, native UI or physical memory certification",
+    "Heap/RSS snapshots are not per-operation peaks; processMaximumRSS includes setup and all repetitions",
+    "Method wrapper is benchmark-only; no production API or scheduler"
+  ],
+  "rows": [
+    {
+      "repetition": 0,
+      "warmup": true,
+      "setupMilliseconds": 7959.544057000001,
+      "workflowMilliseconds": 2539.20234,
+      "preparationMilliseconds": [
+        688.7017770000002, 504.1720349999996, 687.2477550000003
+      ],
+      "preparationTotalMilliseconds": 1880.1215670000001,
+      "cpuUserMilliseconds": 2446.827,
+      "cpuSystemMilliseconds": 509.841,
+      "memoryBefore": {
+        "rss": 416763904,
+        "heapTotal": 190345216,
+        "heapUsed": 109529888,
+        "external": 2983974,
+        "arrayBuffers": 366312
+      },
+      "memoryAfter": {
+        "rss": 607309824,
+        "heapTotal": 316645376,
+        "heapUsed": 231934208,
+        "external": 2763861,
+        "arrayBuffers": 144111
+      },
+      "semanticSha256": "e6aa3dd4fc2dce577d5bed3769b135ba4d13fd37c11be0ba7ad40f8043fd169f",
+      "runId": "analysis:3c0a1cef264dd5ff7988f1578f23fce4f06d2be30922256b7b22a95f0296ee72",
+      "inputFingerprint": "2580823d31c01ce5cd11300832a905ea86f0f767803293f89d84f36023ba678b",
+      "resultCount": 100
+    },
+    {
+      "repetition": 1,
+      "warmup": false,
+      "setupMilliseconds": 9643.682249,
+      "workflowMilliseconds": 3128.3865689999984,
+      "preparationMilliseconds": [
+        561.2582719999991, 1365.333757999997, 625.9868180000012
+      ],
+      "preparationTotalMilliseconds": 2552.5788479999974,
+      "cpuUserMilliseconds": 3156.875,
+      "cpuSystemMilliseconds": 402.259,
+      "memoryBefore": {
+        "rss": 676974592,
+        "heapTotal": 196775936,
+        "heapUsed": 67323880,
+        "external": 2763861,
+        "arrayBuffers": 144111
+      },
+      "memoryAfter": {
+        "rss": 703987712,
+        "heapTotal": 294940672,
+        "heapUsed": 207711096,
+        "external": 2763653,
+        "arrayBuffers": 143903
+      },
+      "semanticSha256": "e6aa3dd4fc2dce577d5bed3769b135ba4d13fd37c11be0ba7ad40f8043fd169f",
+      "runId": "analysis:3c0a1cef264dd5ff7988f1578f23fce4f06d2be30922256b7b22a95f0296ee72",
+      "inputFingerprint": "2580823d31c01ce5cd11300832a905ea86f0f767803293f89d84f36023ba678b",
+      "resultCount": 100
+    },
+    {
+      "repetition": 2,
+      "warmup": false,
+      "setupMilliseconds": 8921.419746,
+      "workflowMilliseconds": 2898.9262480000034,
+      "preparationMilliseconds": [
+        907.6833329999972, 762.8848300000027, 648.3276199999964
+      ],
+      "preparationTotalMilliseconds": 2318.8957829999963,
+      "cpuUserMilliseconds": 2623.621,
+      "cpuSystemMilliseconds": 670.054,
+      "memoryBefore": {
+        "rss": 702169088,
+        "heapTotal": 314089472,
+        "heapUsed": 217060432,
+        "external": 2763861,
+        "arrayBuffers": 144111
+      },
+      "memoryAfter": {
+        "rss": 776724480,
+        "heapTotal": 292704256,
+        "heapUsed": 206766808,
+        "external": 2763653,
+        "arrayBuffers": 143903
+      },
+      "semanticSha256": "e6aa3dd4fc2dce577d5bed3769b135ba4d13fd37c11be0ba7ad40f8043fd169f",
+      "runId": "analysis:3c0a1cef264dd5ff7988f1578f23fce4f06d2be30922256b7b22a95f0296ee72",
+      "inputFingerprint": "2580823d31c01ce5cd11300832a905ea86f0f767803293f89d84f36023ba678b",
+      "resultCount": 100
+    },
+    {
+      "repetition": 3,
+      "warmup": false,
+      "setupMilliseconds": 9576.324139999997,
+      "workflowMilliseconds": 2834.481307000002,
+      "preparationMilliseconds": [
+        769.2615740000037, 724.0715880000062, 720.7250879999992
+      ],
+      "preparationTotalMilliseconds": 2214.058250000009,
+      "cpuUserMilliseconds": 2401.049,
+      "cpuSystemMilliseconds": 800.661,
+      "memoryBefore": {
+        "rss": 760766464,
+        "heapTotal": 311590912,
+        "heapUsed": 216300568,
+        "external": 2763861,
+        "arrayBuffers": 144111
+      },
+      "memoryAfter": {
+        "rss": 861339648,
+        "heapTotal": 467021824,
+        "heapUsed": 380174176,
+        "external": 2763861,
+        "arrayBuffers": 144111
+      },
+      "semanticSha256": "e6aa3dd4fc2dce577d5bed3769b135ba4d13fd37c11be0ba7ad40f8043fd169f",
+      "runId": "analysis:3c0a1cef264dd5ff7988f1578f23fce4f06d2be30922256b7b22a95f0296ee72",
+      "inputFingerprint": "2580823d31c01ce5cd11300832a905ea86f0f767803293f89d84f36023ba678b",
+      "resultCount": 100
+    }
+  ]
+}
