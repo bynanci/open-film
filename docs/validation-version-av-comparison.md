@@ -71,9 +71,9 @@ changed files passed. The complete `pnpm test` run did not reach a terminal
 summary: the execution environment became unavailable after about 30 minutes.
 Before that interruption, Vitest reported one 30-second timeout in
 `tests/integration/native-runtime.test.ts` (the failed-close/restart case).
-An isolated rerun of that exact native-runtime test passed (`1` passed, `51`
-filtered; 23.36 seconds), so the full-suite timeout did not reproduce. Its cause
-is undetermined. Exact head
+The subsequent full-file rerun of `tests/integration/native-runtime.test.ts`
+passed all `52` tests in 154.98 seconds, including the previously timed-out
+case. The timeout did not reproduce; its cause is undetermined. Exact head
 `30b9bde59216300a66647ed32e18cbf058db4b5c` passed `fast-contract-check`,
 including format, i18n, docs-i18n, lint, typecheck and contract checks. Its
 first Verify run exposed a
@@ -116,7 +116,7 @@ CI run.
 | `pnpm test:i18n`, `pnpm test:docs-i18n`                                   | Passed; 3,288 semantic keys, 195 English mirrors                                                                                        |
 | `pnpm format:check`                                                       | Passed in exact-head `fast-contract-check` for `30b9bde5`                                                                               |
 | `pnpm test`                                                               | Interrupted at ~30 min; no terminal summary; one native-runtime timeout observed                                                        |
-| Isolated native-runtime failed-close/restart case                         | Passed, 1 test in 23.36 s; earlier full-suite timeout not reproduced                                                                    |
+| `tests/integration/native-runtime.test.ts`                                | Passed, 52 tests in 154.98 s, including the previously timed-out case                                                                   |
 | `pnpm lint`, `typecheck`, `test:contracts`                                | Passed in exact-head `fast-contract-check` for `30b9bde5`                                                                               |
 | Build, heavy-media, Windows recovery, three-platform Render QA, docs-site | Passed in exact-head CI for `d17bbb6`                                                                                                   |
 | Browser shards                                                            | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally                                                                |
