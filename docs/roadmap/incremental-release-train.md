@@ -1,7 +1,9 @@
 # Incremental release train
 
-Plan reviewed on 2026-11-11 against main
+Plan baseline reviewed on 2026-11-11 against main
 [`08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224).
+Current status reconciled on 2026-11-14 against main
+[`9b8df866134e12e864d642005c46231b41d9da53`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53).
 This schedules source releases as separate cumulative milestones, not a record
 of already published versions.
 
@@ -13,21 +15,24 @@ of already published versions.
   review; this does not select main's 1.0.0 metadata as a release version.
 - Main already contains work through the proposed v0.8.0 scope. Repeated tags
   from the same main would ship that whole feature set rather than staged cuts.
-- The source-only v0.5.0 candidate remains Draft PR
-  [#129](https://github.com/bynanci/open-film/pull/129) on dedicated
+- The source-only v0.5.0 candidate was merged by PR
+  [#129](https://github.com/bynanci/open-film/pull/129) to dedicated
   `release/v0.5.0`, based on PR #75's historical scope at
   `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. New candidate head
   `54534d8cf985203e8b5abbd09a771436f8fe09e5` retains all 22 version surfaces at
-  0.5.0 and adds the independently reviewed GLib source-security backport.
+  0.5.0 and adds the independently reviewed GLib source-security backport. The
+  release branch merge is `1b8d386e2a68b2448d20742138b4b100c799289b`.
 - The candidate's [Verify 42493427242](https://github.com/bynanci/open-film/actions/runs/42493427242),
   [native source admission 42493427131](https://github.com/bynanci/open-film/actions/runs/42493427131),
   Windows Recovery, DCO and Linux/Windows/macOS Render QA passed on that SHA.
   Downloaded reports validate 313 browser cases and 57 render tests per target.
   Its own independent technical source-security review returned PASS; no older
   main execution receipt substitutes for this candidate.
-- The [exact source/asset owner packet](../release-owner-review-v050.md) is
-  prepared. Owner approval of the scope, hashes and retained maintenance warning
-  remains pending. No tag or release was created; native acceptance stays open.
+- The owner accepted the scope as a source-only branch update and accepted the
+  disclosed `proc-macro-error` maintenance warning only for that merge. The
+  archive digest discrepancy and Git-tree content verification are documented
+  in the [owner review record](../release-owner-review-v050.md). No tag or
+  release was created; native acceptance stays open.
 
 ## Proposed staged sequence
 
@@ -44,10 +49,11 @@ candidate or approved tag target.
 - Historical scope anchor: after PR #75, commit
   [`d5a286ed9250872e8eb9b1c3e40adb926f913d34`](https://github.com/bynanci/open-film/commit/d5a286ed9250872e8eb9b1c3e40adb926f913d34).
 - Distribution target: source archive only; no installer claim.
-- Candidate work: PR #129 is technically validated at
+- Candidate work: PR #129 was technically validated at
   `54534d8cf985203e8b5abbd09a771436f8fe09e5`, including its own reviewed GLib
-  backport and fresh controls/audits. Keep it Draft until the release-owner
-  decision on the [prepared source/asset packet](../release-owner-review-v050.md).
+  backport and fresh controls/audits. The branch update is complete. No tag or
+  public asset is approved; future publication needs a refreshed archive,
+  current advisory check and explicit release decision.
 
 ### v0.6.0 — Rhythm, continuity and precision editing
 
@@ -168,15 +174,22 @@ expand a second NLE before the Storytelling host path is proven.
 
 - Candidate `54534d8cf985203e8b5abbd09a771436f8fe09e5` passed its technical gates,
   including independent source-security review and actual optimized native
-  admission. The source archive/owner-review packet is prepared, but owner
-  approval and the release-branch merge are pending.
-- proc-macro-error RUSTSEC-2024-0370 remains a maintenance warning for explicit
-  owner review with scope, expiry and recheck triggers. GLib source remediation
-  is verified; no generic scanner-success waiver is used.
-- Direct branch metadata reports `protected: false`; repository Rulesets are
-  empty. Restricted protection/alert/signing-secret details remain HTTP 403 and
-  unknown. An owner-reviewed governance policy is tracked separately; this plan
-  does not change administrative settings.
+  admission. The owner approved and PR #129 merged the source-only branch update;
+  this did not approve a tag, public asset or binary distribution. The later
+  compressed archive differed in bytes, while all 1,417 tracked file contents
+  matched the candidate Git tree.
+- proc-macro-error RUSTSEC-2024-0370 remains a disclosed maintenance warning.
+  Its owner disposition is limited to the source-only branch merge; recheck by
+  2026-12-08 or on the documented source/toolchain/advisory triggers. It is not
+  accepted for binary distribution. GLib source remediation is verified; no
+  generic scanner-success waiver is used.
+- Direct main-branch metadata reports `protected: false`; repository Rulesets
+  and effective main rules are empty. The branch-protection and Actions-secrets
+  endpoints return HTTP 403, so classic protection and signing-secret metadata
+  are unknown. The Dependabot alerts endpoint explicitly reports alerts
+  disabled; other alert sources and notification/response roles remain
+  unverified. An owner-reviewed governance policy is tracked separately; this
+  plan does not change administrative settings.
 - The first four source milestones must not advertise native installers or
   physical workstation certification. Those observations remain under
   [Issue #7](https://github.com/bynanci/open-film/issues/7).

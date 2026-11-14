@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-only-release-branch-owner-disposition",
+  "dispositionDate": "2026-11-14",
+  "candidateSha": "54534d8cf985203e8b5abbd09a771436f8fe09e5",
+  "pullRequest": {
+    "number": 129,
+    "url": "https://github.com/bynanci/open-film/pull/129",
+    "targetBranch": "release/v0.5.0",
+    "mergeCommitSha": "1b8d386e2a68b2448d20742138b4b100c799289b"
+  },
+  "ownerDisposition": {
+    "sourceOnlyCandidateBranchMerge": "accepted",
+    "procMacroErrorRUSTSEC20240370": "accepted-as-nonblocking-for-this-source-only-branch-merge-only",
+    "evidence": "PR #129 owner disposition recorded 2026-11-14 before merge",
+    "notApproved": [
+      "public-tag",
+      "github-release",
+      "source-archive-publication",
+      "binary-distribution",
+      "signing-or-notarization",
+      "workstation-certification"
+    ]
+  },
+  "archiveEvidence": {
+    "historicalReceipt": {
+      "sha256": "40e170e682c1a518f16a572edddf0260247293c846986bd827582ba9b825e458",
+      "bytes": 5116663,
+      "status": "historical-not-reproduced-byte-for-byte"
+    },
+    "laterReproduction": {
+      "sha256": "1e8a7e458470b44abec7e4b88aa66c4d5faffa91b30db9f83f9ce0d34ddfe152",
+      "bytes": 5112004,
+      "toolchain": "Git 2.52.0 / GNU gzip 1.13",
+      "status": "different-compressed-bytes"
+    },
+    "gitTreeContentCheck": {
+      "trackedFiles": 1417,
+      "missing": 0,
+      "extra": 0,
+      "blobContentMismatches": 0,
+      "scope": "source file contents only; does not establish compressed archive byte identity"
+    },
+    "originalReviewBundle": "not-retrieved-or-reconstructed"
+  },
+  "publication": {
+    "tagCreated": false,
+    "releaseCreated": false,
+    "published": false,
+    "latestPublicRelease": "v0.4.0"
+  }
+}

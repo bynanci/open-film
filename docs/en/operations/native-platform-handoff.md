@@ -2,9 +2,24 @@
 
 Prepared against source `08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224` on
 2026-11-11. This document is an execution packet, not a platform acceptance
-record. No Windows/macOS target, reviewed candidate, signing input or installed
-cold-start observation was available in this Linux session. The existing Popo-PC
-connection request is still pending; do not create another request or infer access.
+record. This cloud task has no connected Windows/macOS target or Popo-PC
+workstation capability; do not infer access or create duplicate connection requests.
+
+## Status update — 2026-11-14
+
+The original packet below is a dated handoff, not a current acceptance record.
+Issue #140's receipt/finalization tooling and source replay are implemented and
+verified. Draft PR [#163](https://github.com/bynanci/open-film/pull/163), head
+`23f9642ea542dbc515e4244c8f331ffa0652492c`, adds capture of the exact Cargo
+invocation, compiler inputs and shell used by Tauri's target-specific bundle
+build. It is not merged; exact-head checks are still running. The native-installer
+workflow has not been run and has not produced a candidate receipt. Do not
+create a separate Cargo build and attribute its outputs to the installer.
+Issue #141 still needs
+reviewed Windows/macOS runtime binaries, complete redistribution/license/SBOM
+closure and target artifacts. This headless cloud session has no connected
+Windows/macOS workstation; signing, clean install, launch, update/rollback,
+uninstall and cold-start evidence remain unobserved.
 
 ## Stop conditions and identities
 
@@ -19,17 +34,17 @@ artifact or independently reviewed receipt. `BLOCKED`, blank and placeholder
 values cannot be submitted as hashes or accepted as passes. The preparation SHA
 above is not a substitute for the frozen build candidate.
 
-| Input                | Required value / owner                                                                                         | Current disposition                                 |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Source candidate     | Full Git SHA, clean checkout, version and lockfile digests; release owner                                      | BLOCKED: no candidate designated for this packet    |
-| Tool identity        | Build OS/arch, Node/pnpm/Rust, build commands and logs, instrumentation SHA                                    | Record per actual build                             |
-| Reviewed runtime     | Target, workflow run/artifact IDs, transport SHA-256, manifest SHA-256, license/SBOM/linkage review; issue 141 | BLOCKED: reviewed target inputs pending             |
-| Build identity       | Issue 140 pre-trust candidate identity and native attribution files with SHA-256                               | BLOCKED: tooling/artifact pending                   |
-| Final distribution   | Signed installer/app/DMG, final artifact inventory and independent hash pins                                   | BLOCKED: no final bytes                             |
-| Trust observations   | Authorized signer identity, certificate chain/timestamp or notary submission/staple and clean OS assessment    | BLOCKED: no authorized signing inputs/target        |
-| Lifecycle pair       | Previous verified supported installer + candidate; independent project/source backup                           | BLOCKED: no actual pair                             |
-| Target operator      | Named tester, clean supported OS build/arch, local nonadmin QA account, target access                          | BLOCKED: Popo-PC request pending; no macOS endpoint |
-| Cold instrumentation | Approved external tracer/version, display/camera capture, clock/ready-event protocol                           | BLOCKED: not observed                               |
+| Input                | Required value / owner                                                                                         | Current disposition                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Source candidate     | Full Git SHA, clean checkout, version and lockfile digests; release owner                                      | BLOCKED: no candidate designated for this packet      |
+| Tool identity        | Build OS/arch, Node/pnpm/Rust, build commands and logs, instrumentation SHA                                    | Record per actual build                               |
+| Reviewed runtime     | Target, workflow run/artifact IDs, transport SHA-256, manifest SHA-256, license/SBOM/linkage review; issue 141 | BLOCKED: reviewed target inputs pending               |
+| Build identity       | Issue 140 pre-trust identity and native attribution files with SHA-256                                         | Tooling implemented; candidate-specific files pending |
+| Final distribution   | Signed installer/app/DMG, final artifact inventory and independent hash pins                                   | BLOCKED: no final bytes                               |
+| Trust observations   | Authorized signer identity, certificate chain/timestamp or notary submission/staple and clean OS assessment    | BLOCKED: no authorized signing inputs/target          |
+| Lifecycle pair       | Previous verified supported installer + candidate; independent project/source backup                           | BLOCKED: no actual pair                               |
+| Target operator      | Named tester, clean supported OS build/arch, local nonadmin QA account, target access                          | BLOCKED: Popo-PC request pending; no macOS endpoint   |
+| Cold instrumentation | Approved external tracer/version, display/camera capture, clock/ready-event protocol                           | BLOCKED: not observed                                 |
 
 Keep pre-trust identity, post-signing final-byte identity, and the final external
 receipt distinct. Preserve the original compiler/build-shell evidence and
@@ -48,8 +63,9 @@ that root. These examples keep external evidence in its ignored
 `dist/native-evidence` directory. Substitute the actual retained relative paths;
 do not repeat the absolute root in either file argument.
 
-Run only once those tools are integrated and the independently reviewed artifact
-root is real; this session has not run it. `candidate.json` remains an incomplete
+The tools are integrated, but the native-installer workflow has not been run.
+Execute only when the independently reviewed artifact root is real; this session
+has not run it. `candidate.json` remains an incomplete
 `native-candidate-identity`, while `new-final-bytes.json` pins
 `candidateIdentitySha256` and the final `artifactsSha256`. Each executed trust,
 lifecycle and security observation must reference the same `candidateSha`,

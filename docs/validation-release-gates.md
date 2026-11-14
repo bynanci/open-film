@@ -1,15 +1,17 @@
 # Stable release gates: current audit
 
-Audit date: 2026-11-08. Development base: merged main
-[`23ac0a22a500b4454449da56436305c5c41292cc`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc).
-Proposed source candidate: `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
-This assessment records technical readiness and pending owner decisions; it is
-not release approval. Source delivery, native installers and physical claims
+Audit date: 2026-11-14. Development base: merged main
+[`9b8df866134e12e864d642005c46231b41d9da53`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53).
+Source-only branch candidate: `54534d8cf985203e8b5abbd09a771436f8fe09e5`,
+merged by PR #129 to `release/v0.5.0` at
+`1b8d386e2a68b2448d20742138b4b100c799289b`. This audit records technical
+readiness and remaining gates; it is not a tag or release approval. Source
+delivery, native installers and physical claims
 have distinct gates under the [release train](roadmap/incremental-release-train.md).
 
 ![Release gates: freeze one candidate, pass source and security gates, add platform-specific checks for the distribution and claims, then approve and verify published artifacts.](images/release-gates.svg)
 
-![Candidate 54534d8 passes source, native source-security and three-platform Render QA; independent technical review passes, owner approval is pending, and native installer/workstation gates remain blocked.](images/release-gate-evidence.svg)
+![Source candidate 54534d8 is merged to the v0.5.0 release branch; no tag or publication exists. Native installer and workstation gates remain open.](images/release-gate-evidence.svg)
 
 ## Candidate-bound evidence
 
@@ -21,14 +23,17 @@ have distinct gates under the [release train](roadmap/incremental-release-train.
   Windows Recovery, DCO and three-platform Render QA. The
   [independent technical disposition](security/glib-0429-independent-review.md)
   retains source, closure, optimized controls and fresh audit evidence. Main's
-  post-merge Windows Recovery/Render QA/Pages passed; its
+  post-merge Windows Recovery/Render QA/Pages passed. Its
   [Verify 42494577085](https://github.com/bynanci/open-film/actions/runs/42494577085)
-  is still running the media lane at this snapshot. This does not substitute
-  for the historical release candidate's own checks.
-- **v0.5.0 source candidate.** Draft PR
-  [#129](https://github.com/bynanci/open-film/pull/129), targeting dedicated
-  `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, now has head
-  `54534d8cf985203e8b5abbd09a771436f8fe09e5`. It carries only the reviewed GLib
+  completed successfully on `main@23ac0a22a500b4454449da56436305c5c41292cc`
+  on 2026-11-08. This historical run does not replace the release candidate's
+  own checks or the later `main@9b8df866` results below.
+- **v0.5.0 source candidate.** PR
+  [#129](https://github.com/bynanci/open-film/pull/129), whose base was
+  `release/v0.5.0` at `d5a286ed9250872e8eb9b1c3e40adb926f913d34`, has candidate
+  PR head `54534d8cf985203e8b5abbd09a771436f8fe09e5`. GitHub merged it as
+  `1b8d386e2a68b2448d20742138b4b100c799289b`, the current
+  `release/v0.5.0` branch head. It carries only the reviewed GLib
   fix/admission backport over its prior candidate; all 431 package versions
   remain fixed and all 22 version surfaces agree on 0.5.0. Exact-head
   [Verify 42493427242](https://github.com/bynanci/open-film/actions/runs/42493427242),
@@ -47,32 +52,53 @@ have distinct gates under the [release train](roadmap/incremental-release-train.
   Actual optimized pristine failures, patched/application passes, native build
   and fresh actual/registry/historical audit exits 0/1/1 are verified. A path
   crate's default scanner omission is not accepted as remediation proof.
-- **Owner review inputs.** A reproducible source archive and candidate-bound
-  evidence packet are prepared. Archive SHA-256 is
+- **Owner review inputs.** The historical owner packet records source archive
+  SHA-256
   `40e170e682c1a518f16a572edddf0260247293c846986bd827582ba9b825e458`.
   The [owner review](release-owner-review-v050.md) names the exact scope, assets,
-  checks and remaining maintenance-warning decision. It keeps approval pending.
-  DCO and AI technical review are not an owner decision.
+  checks and branch-only maintenance-warning decision. The later archive-byte
+  reproduction differed; all 1,417 tracked Git-tree file contents matched.
+  Neither source archive hash is approved as a published asset.
 - **Published state.** Latest public release remains source-only
   [v0.4.0](https://github.com/bynanci/open-film/releases/tag/v0.4.0), published
   2026-10-20. Main package metadata remains 1.0.0; that is not a published tag.
+- **Main after PRs #161/#162.** Exact head
+  `9b8df866134e12e864d642005c46231b41d9da53` passed Verify
+  [43577698735](https://github.com/bynanci/open-film/actions/runs/43577698735)
+  (11/11 jobs), Windows Recovery
+  [43577698778](https://github.com/bynanci/open-film/actions/runs/43577698778),
+  Render QA [43577698703](https://github.com/bynanci/open-film/actions/runs/43577698703)
+  (Linux/Windows/macOS and strict aggregate), and Pages
+  [43577698719](https://github.com/bynanci/open-film/actions/runs/43577698719).
+  These are hosted checks, not physical listening or workstation acceptance.
+
+- **Open native receipt follow-up.** Draft PR
+  [#163](https://github.com/bynanci/open-film/pull/163), head
+  `23f9642ea542dbc515e4244c8f331ffa0652492c`, proposes capturing the exact
+  Tauri Cargo invocation and build inputs for Issue #140. It is not merged and
+  its exact-head checks are still running. No native installer workflow run or
+  candidate-bound receipt exists.
 
 ## Gate state and limits
 
-| Gate                                                          | Current state                                                        | Consequence                                                                       |
-| ------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Candidate identity/version/source checks                      | PASS for 54534d8                                                     | Ready for owner review, not tag approval                                          |
-| GLib RUSTSEC-2024-0429                                        | Exact source repair technically verified on main and 0.5.0 candidate | Upstream 0.18.5 remains affected; retain source-aware proof and registry controls |
-| proc-macro-error RUSTSEC-2024-0370                            | Maintenance warning retained                                         | Owner decision with scope/expiry/recheck remains pending                          |
-| Release-owner decision and release-branch merge               | Pending                                                              | Keep PR #129 Draft; no publication approval                                       |
-| Audited native runtime, licenses/SBOM and installer artifacts | Missing; native installer workflow has no candidate runs             | Native distribution blocked                                                       |
-| Signing/notarization and clean target lifecycle               | Not verified                                                         | No signed installer/update/rollback claim                                         |
-| Windows/macOS physical QA                                     | No connected workstation or candidate-bound observations             | Keep gates not-run; record schema 1.1 does not supply observations                |
-| Repository alert/protection/signing-secret administration     | Current integration cannot read restricted metadata (HTTP 403)       | State is unknown; administrator confirmation is still needed                      |
+| Gate                                                          | Current state                                                                                                                   | Consequence                                                                                                                                                                                           |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Candidate identity/version/source checks                      | PASS for 54534d8                                                                                                                | Branch update complete; no tag approval                                                                                                                                                               |
+| GLib RUSTSEC-2024-0429                                        | Exact source repair technically verified on main and 0.5.0 candidate                                                            | Upstream 0.18.5 remains affected; retain source-aware proof and registry controls                                                                                                                     |
+| proc-macro-error RUSTSEC-2024-0370                            | Maintenance warning retained; branch-only disposition recorded                                                                  | Recheck by 2026-12-08 or on source/lock/features/toolchain/advisory change; no binary acceptance                                                                                                      |
+| Release-owner decision and release-branch merge               | Source-only branch merge approved and complete                                                                                  | No tag, publication, installer or distribution approval                                                                                                                                               |
+| Audited native runtime, licenses/SBOM and installer artifacts | Missing; native installer workflow has no candidate runs                                                                        | Native distribution blocked                                                                                                                                                                           |
+| Signing/notarization and clean target lifecycle               | Not verified                                                                                                                    | No signed installer/update/rollback claim                                                                                                                                                             |
+| Windows/macOS physical QA                                     | No connected workstation or candidate-bound observations                                                                        | Keep gates not-run; record schema 1.1 does not supply observations                                                                                                                                    |
+| Repository alert/protection/signing-secret administration     | Branch API reports `protected: false`; Rulesets API is empty; classic protection and secrets metadata are restricted (HTTP 403) | Approved ruleset has not been applied; prior POST returned 403. An authorized administrator must recheck/apply the fixed proposal and capture effective rules, rule ID, alerts and role attestations. |
 
-The next reviewable delivery is source-only v0.5.0. Its technical gates have
-passed; owner acceptance of the exact source/asset scope and maintenance warning
-remains required. Signed Windows/macOS installers are a separate M7E objective.
+The v0.5.0 source-only candidate branch update is complete. Its technical gates
+passed, and the owner approved that branch merge with the maintenance-warning
+disposition limited to the branch update. The compressed source archive digest
+did not reproduce byte-for-byte in the later environment, although all 1,417
+Git-tree file contents matched; neither archive is approved as a published
+asset. There is no tag or GitHub Release. Signed Windows/macOS installers are
+a separate M7E objective.
 Resolve, GPU/4K, real camera/external media and listening claims remain under
 [Issue #7](https://github.com/bynanci/open-film/issues/7).
 
@@ -146,11 +172,11 @@ Mocks and generated fixtures cannot close hardware or human-quality gates.
 
 ## Next actions
 
-1. Obtain the release-owner decision on the [prepared exact candidate and assets](release-owner-review-v050.md); retain PR #129 as Draft until that decision.
+1. Keep the source-only branch candidate separate from publication. Any asset preparation requires a fresh exact-byte review, current advisory admission and explicit release authorization.
 2. Preserve the source-aware GLib review, raw audit/control evidence and all asset hashes beyond temporary CI retention. Re-audit on changed sources, locks, features, compilers, targets, advisories or candidate SHA.
-3. Obtain the reviewed per-target runtime artifact/run ID and manifest digest, with full distribution license/source/SBOM receipts, before dispatching native packaging.
+3. Obtain reviewed per-target runtime inputs, full distribution license/source/SBOM closure and a candidate-bound native receipt before dispatching installer packaging.
 4. Connect the actual Windows/macOS targets and collect signing/notarization, clean install, first launch, update failure, rollback, uninstall and project-preservation observations using the existing [M7E checklist](workstation-qa.md#m7e-native-installer-candidate).
-5. Have repository administration confirm alerting, branch rules and release/signing permissions; failed metadata access is not evidence of either enabled or disabled settings.
+5. Ask an authorized administrator to apply the already-approved fixed ruleset only after rechecking its exact hash against current policy; verify the returned rule ID and safe controls. Alerting, signing and release-role attestations remain required. A 403 is not authority to bypass the approved procedure.
 
 ## Sources
 

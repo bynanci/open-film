@@ -273,3 +273,30 @@ Issue #144 remains open. Independent local evidence review passed for exact
 I2. This proof does not attest final PR review or configured exact-head CI;
 evaluate those independently on the final PR. No release, physical sound or
 local full-suite pass is inferred; historical packets above remain unchanged.
+
+## Current-main objective revalidation — 2026-11-14
+
+The existing runner was executed on exact main
+`9b8df866134e12e864d642005c46231b41d9da53` using the same two hash-verified
+CC0 sources and parameters. It completed in 46.855 seconds with
+`objective-contract-pass; manual-review-required`. The candidate-bound,
+payload-free [summary record](https://github.com/bynanci/open-film/blob/main/docs/evidence/silence-real-media/2026-11-14-main.json)
+binds source hashes, output MP4 hashes, frame-aligned timing, and the objective
+regression outcomes. Raw media, projects, PCM/WAV and MP4 outputs stayed outside
+the checkout and are not committed.
+
+Both cases selected 12 candidates and preserved exact proposed/accepted WAV
+PCM. Accept/Undo/Redo/Save/cold Reopen verified composition and decoded output;
+clip, track, source and User Pin protections rejected unsafe edits, the
+unsupported J/L mapping was rejected, wrong-project requests were rejected and
+cancelled analysis was observed. Both accepted MP4s decode as 48 kHz stereo
+AAC with zero stream-start PTS; reopened output hashes matched their accepted
+MP4s. Natural retained PCM was 904,320 samples with no frame-policy tail. The
+mixed reuse/speed case retained 732,672 full PCM samples while the existing
+25 fps frame-aligned MP4 policy emitted 15.240 seconds and reported the known
+1,152-sample / 24 ms `qa.frameAlignedAudioTail` warning.
+
+This rebinds objective application/media evidence to main@9b8df86. It does not
+provide human listening, physical device output, actual recorded A/V sync,
+multichannel capture or Windows/macOS lifecycle observations. The warning
+remains manual-review-required and Issue #144 remains open.

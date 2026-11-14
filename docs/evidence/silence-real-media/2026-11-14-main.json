@@ -1,0 +1,91 @@
+{
+  "schema": "openfilm.silence-real-media-revalidation.v1",
+  "candidateSha": "9b8df866134e12e864d642005c46231b41d9da53",
+  "startedAt": "2026-11-14T14:08:27.392Z",
+  "finishedAt": "2026-11-14T14:09:14.247Z",
+  "status": "objective-contract-pass; manual-review-required",
+  "environment": {
+    "platform": "linux",
+    "architecture": "x64",
+    "node": "24.19.0",
+    "ffmpeg": "7.1.5-0+deb13u1",
+    "ffprobe": "7.1.5-0+deb13u1",
+    "outputDevice": "not available; headless service run"
+  },
+  "parameters": {
+    "thresholdDb": -35,
+    "minimumSilenceSeconds": 0.3,
+    "paddingSeconds": 0.08
+  },
+  "sources": [
+    {
+      "name": "paddy-neary.opus",
+      "sha256": "42973f944af32809fe9f7446a7a745d64fe9fc3e51db521902563f7fa2946053"
+    },
+    {
+      "name": "guitar.ogg",
+      "sha256": "d6ff6cafd3025db2e2215b32e3e7e6411fa08a8d2e0fca7c3353b5a4a82523a5"
+    }
+  ],
+  "cases": [
+    {
+      "name": "natural",
+      "selectedCandidates": 12,
+      "beforePcmFrames": 1152000,
+      "acceptedPcmFrames": 904320,
+      "wavMaximumError": 0,
+      "wavRmsError": 0,
+      "aacStreamDurationSeconds": 18.84,
+      "frameAlignedTailSamples": 0,
+      "mp4Audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 2,
+        "startPts": 0
+      },
+      "acceptedMp4Sha256": "b37373e023605805a38047d709221e5781747062f57a9d3543f93b95f52fd821",
+      "reopenedMp4Sha256": "b37373e023605805a38047d709221e5781747062f57a9d3543f93b95f52fd821"
+    },
+    {
+      "name": "mixed-reuse-speed",
+      "selectedCandidates": 12,
+      "beforePcmFrames": 921600,
+      "acceptedPcmFrames": 732672,
+      "wavMaximumError": 0,
+      "wavRmsError": 0,
+      "aacStreamDurationSeconds": 15.24,
+      "frameAlignedTailSamples": 1152,
+      "frameAlignedTailMilliseconds": 24,
+      "warning": {
+        "code": "qa.frameAlignedAudioTail",
+        "severity": "manual-review-required"
+      },
+      "mp4Audio": {
+        "codec": "aac",
+        "sampleRate": 48000,
+        "channels": 2,
+        "startPts": 0
+      },
+      "acceptedMp4Sha256": "3a733c34bd9efe0d7aa7d8becefd06e6820be2eeb06e13023b2ab0d350303c80",
+      "reopenedMp4Sha256": "3a733c34bd9efe0d7aa7d8becefd06e6820be2eeb06e13023b2ab0d350303c80"
+    }
+  ],
+  "objectiveChecks": {
+    "proposalAndAcceptedWavParity": "exact",
+    "mp4DecodeAndFrameAlignedDuration": "passed",
+    "lockedClipTrackSourceAndUserPinRejection": "passed",
+    "unsupportedJLOutcome": "rejected",
+    "wrongProjectRequest": "rejected",
+    "cancelledAnalysis": "verified",
+    "acceptUndoRedoSaveColdReopen": "passed",
+    "acceptedAndReopenedMp4Hash": "matched-per-case"
+  },
+  "manualGates": {
+    "humanListening": "not performed",
+    "actualAvSynchronization": "not observed",
+    "physicalAudioDevice": "not available",
+    "windowsMacosDeviceLifecycle": "not run",
+    "qualityAcceptance": false
+  },
+  "retention": "This public summary contains no audio/video payload. Raw source media and generated project/render files were kept outside the checkout."
+}

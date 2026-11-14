@@ -26,17 +26,24 @@ planning labels, not release tags or frozen candidates. Storytelling has its
 own version track. See the [release train](docs/roadmap/incremental-release-train.md)
 and [current release gate audit](docs/validation-release-gates.md).
 
-The historical release-status baseline was reconciled against main
-[`08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
-on 2026-11-11. The GLib source fix in PR #128 is merged after independent
-technical review and all 19 final-head checks. Draft PR
-[#129](https://github.com/bynanci/open-film/pull/129) remains on the dedicated
-historical `release/v0.5.0` track at `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
-Its own full CI, native source admission, three-platform Render QA and independent
-adaptation review pass. The [prepared source/asset packet](docs/release-owner-review-v050.md)
-awaits the release-owner decision; no tag or publication is approved. Installer
-and physical workstation acceptance remain open. Latest published source release
-remains **v0.4.0**; historical feature records retain their original evidence.
+Release status reconciled against main
+[`9b8df866134e12e864d642005c46231b41d9da53`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53)
+on 2026-11-14. The GLib source fix in PR #128 is merged after independent
+technical review. Source-only PR
+[#129](https://github.com/bynanci/open-film/pull/129) merged to the dedicated
+`release/v0.5.0` branch at `1b8d386e2a68b2448d20742138b4b100c799289b`, with
+the owner's scope limited to that branch update and its disclosed
+`proc-macro-error` maintenance warning. This did not create a tag, GitHub
+Release, installer, or distribution approval. The recorded archive hash
+discrepancy and the exact Git-tree content check are documented in the
+[owner review record](docs/release-owner-review-v050.md). Installer and physical
+workstation acceptance remain open. Latest published source release remains
+**v0.4.0**; historical feature records retain their original evidence.
+
+The audiovisual comparison and export tail warning merged in PRs #161 and #162.
+Their post-merge main SHA is `9b8df866`; exact-head Verify, Windows Recovery,
+three-platform Render QA, and Pages passed. This does not close human listening,
+device, Creative Variants A/V migration or native installer gates.
 
 Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged. The
 [issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
@@ -49,10 +56,11 @@ separate gates.
 
 ## Current focus
 
-Use the [2026-11-11 issue plan](docs/roadmap/next-issues-2026-11-11.md) for the
-next execution order and the complete unfinished-task classification. Prioritize
-a bounded read-only SDK compatibility proof, measured CI costs and native
-post-build evidence binding. Source-release ownership and physical acceptance
+Use the [current tasks](TASKS.md) and [release-gate audit](docs/validation-release-gates.md)
+for the open work list. The 2026-11-11 plan remains a historical record. The
+current engineering follow-up is to safely connect the exact Tauri Cargo build
+and bundled shell to the existing native evidence contracts, then validate
+candidate-bound runtime inputs. Source-release status and physical acceptance
 remain separate workstreams; no new NLE expansion is selected by this plan.
 
 The [fixed-source media profile](docs/validation/media-test-profile.md) now records
@@ -67,9 +75,8 @@ The [Issue #138 compatibility capsule](docs/validation/storytelling-compatibilit
 now exercises the existing exporter against a pinned Storytelling SDK finite
 profile. Local exporter/unit and actual-SDK application/CLI tests pass; protected
 or unsupported fields are rejected without stripping, and original project,
-Catalog and source bytes remain unchanged. The [PR #149 gate
-record](https://github.com/bynanci/open-film/pull/149) tracks final-head verification.
-This read-only consumer proof grants no production adapter, FilmCraft, source
+Catalog and source bytes remain unchanged. PR #149 is merged and Issue #138 is
+closed. This read-only consumer proof grants no production adapter, FilmCraft, source
 verification or execution authority. Production M3-03/M4 approval, quiescence,
 ambiguous readback reconciliation and safe retry remain separate acceptance work.
 
@@ -127,6 +134,16 @@ warning list stay unchanged. Synthetic FFmpeg and browser evidence is recorded
 in [Export Profiles validation](docs/validation-export-profiles.md). This makes
 the known 1,152-sample / 24 ms case visible and reviewable; it does not accept
 the tail or close Issue #144's listening and workstation checks.
+
+**2026-11-14:** PR #129 merged the source-only v0.5.0 candidate to
+`release/v0.5.0`. The owner scope is limited to that branch update; no tag,
+public archive or binary distribution was approved. PRs #161 and #162 also
+merged to main and passed post-merge Verify, Windows Recovery, three-platform
+Render QA and Pages. Issue #144 listening/device acceptance, the #140/#141
+candidate evidence, #142/#143 installer lifecycle, #145 native performance,
+#146 administrator execution and the Issue #7 hardware gates remain open.
+The [release-gate audit](docs/validation-release-gates.md) records exact heads
+and runs.
 
 The automation-clock implementation and hosted validation are complete. Next
 acceptance is real dialogue/music listening and candidate-bound workstation
