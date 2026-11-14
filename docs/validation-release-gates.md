@@ -87,11 +87,17 @@ were in progress at that update; Pages passed
   [#163](https://github.com/bynanci/open-film/pull/163), head
   `23f9642ea542dbc515e4244c8f331ffa0652492c`, merged as main commit `a335b09`,
   captures the exact Tauri Cargo invocation and build inputs for Issue #140.
-  All 20 exact-head hosted checks passed. The local monolithic `pnpm test` was stopped
-  after 25 minutes without a final summary and reported one native benchmark
-  runner failure. Its isolated 30-test file passed and the reported test passed
-  three isolated repetitions, but the cause remains unresolved. No native
-  installer workflow run or candidate-bound receipt exists.
+  All 20 exact-head hosted checks passed. The partial local `pnpm test` run at
+  main `86afec8` was interrupted after about 25 minutes during an environment
+  transition. Its preserved log shows one timeout in
+  `tests/integration/native-runtime.test.ts`: the failed-close/fresh-start case
+  took 30.124 seconds against its unchanged 30-second budget. The 30-test
+  `native-benchmark-runner.test.ts` file passed. No final Vitest summary, exit
+  code or failure stack was captured. One unmodified isolated rerun passed in
+  21.682 seconds (28.241-second wrapper, no retry); this does not establish the
+  cause or a full-suite pass. Later main `8604af87` Verify passed
+  ([43619739468](https://github.com/bynanci/open-film/actions/runs/43619739468)).
+  No native installer workflow run or candidate-bound receipt exists.
 
 ## Gate state and limits
 

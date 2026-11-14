@@ -34,9 +34,17 @@ and Render QA
 ([43615235307](https://github.com/bynanci/open-film/actions/runs/43615235307))
 are still running; Pages passed
 ([43615235320](https://github.com/bynanci/open-film/actions/runs/43615235320)).
-The local monolithic `pnpm test` stopped after 25 minutes without a full summary;
-it reported one native benchmark runner failure. The 30-test file and three
-isolated repetitions of that test passed, but the cause remains unresolved.
+The partial local `pnpm test` run at
+[`86afec8`](https://github.com/bynanci/open-film/commit/86afec88978a385c690b547397259c8b077cd85a)
+was interrupted after about 25 minutes during an environment transition. Its
+preserved log shows one timeout in
+`tests/integration/native-runtime.test.ts`: the failed-close/fresh-start case
+took 30.124 seconds against its unchanged 30-second budget. The 30-test
+`native-benchmark-runner.test.ts` file passed. No final Vitest summary, exit
+code or failure stack was captured. One unmodified isolated rerun passed in
+21.682 seconds (28.241-second wrapper, no retry); this does not establish the
+cause or a full-suite pass. Later main `8604af87` Verify passed
+([43619739468](https://github.com/bynanci/open-film/actions/runs/43619739468)).
 The native installer workflow has not run, so Issue #140 stays open. PR
 [#164](https://github.com/bynanci/open-film/pull/164) merged this documentation
 follow-up at main `8604af87`.
