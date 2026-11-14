@@ -147,6 +147,7 @@ a candidate before observing #142/#143. In parallel, use the existing
 workstation protocols for #144/#145. #146 remains an authorized-admin action.
 Hosted CI is evidence for source behavior only and does not substitute for any
 physical observation.
+
 - [x] Extend the shared named-version preview flow into Creative Variants review
       on this candidate branch: flush pending edits, save one project/revision-
       fenced named snapshot, and render both selected Composition IDs with the
