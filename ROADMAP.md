@@ -41,17 +41,25 @@ workstation acceptance remain open. Latest published source release remains
 **v0.4.0**; historical feature records retain their original evidence.
 
 The audiovisual comparison and export tail warning merged in PRs #161 and #162.
-Their post-merge main SHA is `9b8df866`; exact-head Verify, Windows Recovery,
-three-platform Render QA, and Pages passed. This does not close human listening,
-device, Creative Variants A/V migration or native installer gates.
+PR #165 now extends the same A/V preview service to Creative Variants; its
+feature head passed exact-head CI and independent roundtable review. Human
+listening, device, and native installer gates remain open.
 
 Post-audit update, 2026-11-14 16:22 UTC: PR #163 merged the same-build Cargo
 capture into main at [`a335b09`](https://github.com/bynanci/open-film/commit/a335b09cd766c3b53926360c713e0b24ce6294ce).
 Its PR head passed all 20 hosted checks. Post-merge Verify, Windows recovery and
 Render QA were still running at that timestamp; Pages passed. Issue #140 remains
 open until a reviewed runtime is staged and a real native candidate receipt is
-produced. No installer, tag or release was created. Draft PR #164 carries the
-current documentation reconciliation.
+produced. No installer, tag or release was created. PR #164 subsequently merged
+the documentation reconciliation at main `8604af87`.
+
+Post-audit update, 2026-11-14 18:28 UTC: PR #165 adds synchronized A/V preview
+to Creative Variants using the existing Named Version snapshot and comparison
+renderer. Feature source head `039d6c20` is based on `8604af87`; an independent
+roundtable review found no code findings. Exact-head Verify, all six browser
+shards, 398 files / 4,758 heavy-media tests, native-shell, docs-site, Windows
+recovery, DCO and Linux/Windows/macOS Render QA passed. This does not certify
+human listening, physical-device behavior, installers or release readiness.
 
 Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged. The
 [issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
@@ -249,12 +257,11 @@ and User Pins; infeasible plans fail without rewriting them. See the
 Further work should explain the evidence behind suggestions and continue
 professional editorial review without inferring identity or overriding choices.
 
-Creative Variants have structured differences; the current A/V bridge candidate
-adds a synchronized, local MP4 preview by reusing the Named Version snapshot and
-comparison renderer. The saved checkpoint remains in project history after the
-temporary render is cancelled. Exact-head checks and code review are still
-required before this candidate is part of main; human listening and device
-acceptance remain separate release evidence.
+Creative Variants have structured differences and PR #165 adds a synchronized,
+local MP4 preview by reusing the Named Version snapshot and comparison renderer.
+The saved checkpoint remains in project history after the temporary render is
+cancelled. Its exact feature head passed CI and independent code review. Human
+listening and device acceptance remain separate release evidence.
 
 ### Finish distribution and real-world verification
 

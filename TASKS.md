@@ -37,9 +37,26 @@ are still running; Pages passed
 The local monolithic `pnpm test` stopped after 25 minutes without a full summary;
 it reported one native benchmark runner failure. The 30-test file and three
 isolated repetitions of that test passed, but the cause remains unresolved.
-The native installer workflow has not run, so Issue #140 stays open. Draft PR
-[#164](https://github.com/bynanci/open-film/pull/164) contains this documentation
-follow-up and remains unmerged.
+The native installer workflow has not run, so Issue #140 stays open. PR
+[#164](https://github.com/bynanci/open-film/pull/164) merged this documentation
+follow-up at main `8604af87`.
+
+Post-audit update, 2026-11-14 18:28 UTC: PR
+[#165](https://github.com/bynanci/open-film/pull/165) adds synchronized local
+A/V review to Creative Variants. Its feature source head
+[`039d6c20`](https://github.com/bynanci/open-film/commit/039d6c20f3e05aacb5f3c5da7a0dbb92072dedbb)
+is based on main `8604af87`. An independent roundtable review of that exact
+head found no code findings. Verify
+([43626767825](https://github.com/bynanci/open-film/actions/runs/43626767825)),
+three-platform Render QA
+([43626767826](https://github.com/bynanci/open-film/actions/runs/43626767826)),
+Windows media recovery
+([43626767796](https://github.com/bynanci/open-film/actions/runs/43626767796))
+and DCO ([43626766089](https://github.com/bynanci/open-film/actions/runs/43626766089))
+all passed. Verify included fast-contract, all six browser shards, 398 files /
+4,758 heavy-media tests, docs-site, native-shell and aggregate checks. This is
+source-code verification only; listening, workstation, installer and release
+acceptance remain open.
 
 Historical baseline reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
 on 2026-11-11. Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged;
@@ -119,9 +136,10 @@ attribute its outputs to the installer.
       Export audio-tail review in [PR #162](https://github.com/bynanci/open-film/pull/162)
       as `384738545289107afa46a209bd5991c1166220c0`. Main Verify 43577698735,
       Windows Recovery 43577698778 and three-platform Render QA 43577698703 passed.
-- [ ] Complete actual listening/device QA, Creative Variants A/V migration, and
-      native installer/workstation acceptance. The merged comparison and Export
-      warning do not close Issue #144 or the distribution gates.
+- [ ] Complete actual listening/device QA and native installer/workstation
+      acceptance. PR #165 adds the Creative Variants A/V migration, but neither
+      it nor the earlier comparison/Export warning closes Issue #144 or the
+      distribution gates.
 
 ## Open GitHub issues checked 2026-11-14
 
@@ -153,9 +171,12 @@ physical observation.
       fenced named snapshot, and render both selected Composition IDs with the
       existing preview service. The durable snapshot remains after preview
       cancellation; see [validation](docs/validation-version-av-comparison.md).
-- [ ] Complete exact-head checks and independent review for this candidate.
-      Human listening/device QA, native installer/workstation and release gates
-      remain separate.
+- [x] Complete exact-head checks and independent roundtable code review on PR
+      #165 source head `039d6c20`; Verify, all six browser shards, heavy-media,
+      native-shell, Windows recovery, three-platform Render QA, docs-site, DCO
+      and aggregate passed. See [run records](docs/validation-version-av-comparison.md).
+- [ ] Complete human listening/device QA, native installer/workstation and
+      release gates separately; hosted CI and code review do not satisfy them.
 
 ## Editing and story workflow
 

@@ -94,8 +94,8 @@ are now mirrored under `docs/en/images`, and the VitePress build passed locally.
 Exact head `12a382a7f44b2e233491ca693d4d506691cf8167` passed every GitHub check:
 DCO, fast-contract, all six browser shards, heavy-media, native-shell, Windows
 recovery, Linux/Windows/macOS Render QA, docs-site and the Verify aggregate.
-The documentation-only update that records these results requires its own
-exact-head CI run.
+PR #165 later extends the comparison to Creative Variants; its exact source-head
+results are recorded below.
 
 ## Limits and separate gates
 
@@ -133,7 +133,7 @@ exact-head CI run.
 | Browser shards                                                                 | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally                                                                |
 | Exact-head `30b9bde5` Verify                                                   | fast-contract and 6/6 browser shards passed; docs-site failed on missing English screenshots; heavy-media was cancelled when superseded |
 | Exact-head `12a382a7` CI                                                       | Passed all checks: DCO, fast-contract, 6/6 E2E, heavy-media, native-shell, Windows recovery, 3-platform Render QA, docs-site, aggregate |
-| Exact-head CI for this documentation update                                    | Pending                                                                                                                                 |
+| PR #165 source-head Verify                                                     | Passed on `039d6c20`: fast-contract, 6/6 browser shards, heavy-media, native-shell, docs-site and aggregate                             |
 
 ### Creative Variants bridge candidate
 
@@ -162,5 +162,40 @@ Local candidate results on the feature worktree, before rebase and PR creation:
   the final local rerun. One earlier run exceeded the unchanged 5 s glossary
   benchmark at 6.50 s; the same test passed in isolation, then the full lane
   passed on rerun. No threshold or assertion was changed.
-- Candidate exact commit, GitHub exact-head CI and post-merge main checks are
-  pending; these results are separate from the earlier `12a382a7` CI record.
+- The feature source candidate was rebased onto main `8604af87` and is PR #165.
+  Its exact-head CI and independent roundtable review are recorded below; no
+  post-merge main result is implied by the pre-merge checks above.
+
+### PR #165 exact-head verification
+
+Base: main `8604af87d81811f0394677d58f2fa9dd7382a90a`.
+Feature source head: `039d6c20f3e05aacb5f3c5da7a0dbb92072dedbb`.
+An independent roundtable code review of this exact source head found no code
+findings. Verify
+([43626767825](https://github.com/bynanci/open-film/actions/runs/43626767825))
+passed fast-contract, all six browser shards, heavy-media (398 files / 4,758
+tests), native-shell, docs-site and the aggregate. Three-platform Render QA
+([43626767826](https://github.com/bynanci/open-film/actions/runs/43626767826)),
+Windows media recovery
+([43626767796](https://github.com/bynanci/open-film/actions/runs/43626767796))
+and DCO ([43626766089](https://github.com/bynanci/open-film/actions/runs/43626766089))
+also passed.
+
+On the same feature source tree, local `pnpm format:check`, `pnpm test:i18n`
+(3,316 keys), `pnpm test:docs-i18n` (195 English mirrors), `pnpm lint`,
+`pnpm typecheck`, `pnpm test:contracts` (82 files / 1,582 tests) and `pnpm
+build` passed. Focused App navigation tests passed 40/40. The build retains the
+existing large-chunk advisory. Full Verify also exercises the browser A/V flow;
+the synthetic render test decodes both actual MP4s and checks synchronized
+transport, selected audio, source/version hashes, cache behavior and lifecycle
+cleanup. UI screenshots at 1024×768 and 1920×1080 are attached above.
+
+During earlier exact-head attempts, fast-contract formatting and English mirror
+drift were corrected; the browser regression now asserts audio controls remain
+disabled before a rendered preview exists; and the stale App-navigation test
+harness was updated to exercise preview draining on project close. The final
+head passed without weakening the assertions or adding retries.
+
+These checks do not replace human listening, physical-device A/V review,
+Windows/macOS installer and signing acceptance, Resolve interchange, GPU/4K,
+or release-owner approval. Those remain separate release gates.
