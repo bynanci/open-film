@@ -9,12 +9,19 @@ workstation capability; do not infer access or create duplicate connection reque
 
 The original packet below is a dated handoff, not a current acceptance record.
 Issue #140's receipt/finalization tooling and source replay are implemented and
-verified. Draft PR [#163](https://github.com/bynanci/open-film/pull/163), head
-`23f9642ea542dbc515e4244c8f331ffa0652492c`, adds capture of the exact Cargo
-invocation, compiler inputs and shell used by Tauri's target-specific bundle
-build. It is not merged. All exact-head hosted checks passed, including Verify,
-six browser shards, heavy-media QA, three-platform Render QA, Windows recovery,
-native-shell, native source admission, dependency security, DCO and docs-site.
+verified. PR [#163](https://github.com/bynanci/open-film/pull/163), head
+`23f9642ea542dbc515e4244c8f331ffa0652492c`, merged to main as
+[`a335b09`](https://github.com/bynanci/open-film/commit/a335b09cd766c3b53926360c713e0b24ce6294ce).
+It adds capture of the exact Cargo invocation, compiler inputs and shell used by
+Tauri's target-specific bundle build. Its PR head passed all 20 hosted checks.
+At 2026-11-14 16:22 UTC, post-merge Verify
+([43615235479](https://github.com/bynanci/open-film/actions/runs/43615235479)),
+Windows recovery
+([43615235406](https://github.com/bynanci/open-film/actions/runs/43615235406))
+and Render QA
+([43615235307](https://github.com/bynanci/open-film/actions/runs/43615235307))
+were still running; Pages passed
+([43615235320](https://github.com/bynanci/open-film/actions/runs/43615235320)).
 The monolithic local `pnpm test` was stopped after 25 minutes without a final
 summary; it reported one native benchmark runner failure, while the isolated
 30-test file and three repetitions of that test passed. The cause is unresolved,

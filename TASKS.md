@@ -8,7 +8,7 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
-Current status was checked against [main `9b8df866`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53)
+Status baseline was checked against [main `9b8df866`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53)
 on 2026-11-14. PR #161 and #162 are merged to main; exact-head Verify, Windows
 Recovery, three-platform Render QA and Pages passed (Verify run
 [43577698735](https://github.com/bynanci/open-film/actions/runs/43577698735),
@@ -23,6 +23,23 @@ open Issues: #146, #145, #144,
 repository administration, candidate-bound runtime/installer evidence, or
 human/workstation acceptance; hosted CI does not close them. See the
 [current release-gate audit](docs/validation-release-gates.md).
+
+Post-audit update, 2026-11-14 16:22 UTC: PR #163 merged to main as
+[`a335b09`](https://github.com/bynanci/open-film/commit/a335b09cd766c3b53926360c713e0b24ce6294ce).
+Its PR head `23f9642` passed all 20 exact-head hosted checks. Post-merge Verify
+([43615235479](https://github.com/bynanci/open-film/actions/runs/43615235479)),
+Windows recovery
+([43615235406](https://github.com/bynanci/open-film/actions/runs/43615235406))
+and Render QA
+([43615235307](https://github.com/bynanci/open-film/actions/runs/43615235307))
+are still running; Pages passed
+([43615235320](https://github.com/bynanci/open-film/actions/runs/43615235320)).
+The local monolithic `pnpm test` stopped after 25 minutes without a full summary;
+it reported one native benchmark runner failure. The 30-test file and three
+isolated repetitions of that test passed, but the cause remains unresolved.
+The native installer workflow has not run, so Issue #140 stays open. Draft PR
+[#164](https://github.com/bynanci/open-film/pull/164) contains this documentation
+follow-up and remains unmerged.
 
 Historical baseline reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
 on 2026-11-11. Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged;
@@ -54,15 +71,12 @@ The [2026-11-11 issue plan](docs/roadmap/next-issues-2026-11-11.md) is a dated
 historical queue, not the current open-PR list. Its code and source-replay work
 has progressed; the remaining live Issues are tracked above and in the
 [release-gate audit](docs/validation-release-gates.md). Draft PR
-[#163](https://github.com/bynanci/open-film/pull/163), head
-`23f9642ea542dbc515e4244c8f331ffa0652492c`, connects the existing native receipt
-workflow to the exact Tauri Cargo invocation and packaged shell. It is not
-merged; all exact-head hosted checks passed. The monolithic local `pnpm test`
-was stopped after 25 minutes without a final summary and reported one native
-benchmark runner failure; its isolated 30-test file passed, and the reported
-test passed three repeated isolated runs. The cause remains unresolved. No
-actual native installer workflow/build has run. It must not create a separate
-Cargo build and attribute its outputs to the installer.
+PR [#163](https://github.com/bynanci/open-film/pull/163) integrated capture of
+the exact Tauri Cargo invocation and packaged shell. Its code is on main, but
+the native installer workflow/build has not run and no candidate receipt exists.
+Issue #141 still blocks that workflow until reviewed target runtime inputs and
+rights/SBOM evidence are supplied. Do not create a separate Cargo build and
+attribute its outputs to the installer.
 
 - [x] Complete the bounded [#139 media cost profile](docs/validation/media-test-profile.md)
       using two fixed-source repetitions and 56 real tool calls. Render work
@@ -124,12 +138,12 @@ human/workstation evidence; keep each gate open until its evidence is recorded.
 | [#143](https://github.com/bynanci/open-film/issues/143) | macOS operator kit and schema 1.1 evidence tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                            | Reviewed runtime rights/SBOM, signed and notarized candidate, Gatekeeper/notary/staple receipts, and clean-workstation install/update-failure/rollback/uninstall evidence.                                                                                                                                                                                                                                                                                      |
 | [#142](https://github.com/bynanci/open-film/issues/142) | Windows operator kit and schema 1.1 evidence tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                          | Reviewed runtime rights/SBOM, signed candidate, clean-machine trust/install/first launch/update-failure/rollback/project-preserving uninstall evidence.                                                                                                                                                                                                                                                                                                         |
 | [#141](https://github.com/bynanci/open-film/issues/141) | Intake, staging, provenance and source/license review tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                 | Actual per-target runtime binaries and reviewed manifest/run IDs with complete license, source-offer/relink and SPDX closure; then owned target launch/close.                                                                                                                                                                                                                                                                                                   |
-| [#140](https://github.com/bynanci/open-film/issues/140) | Versioned pre-trust/final-byte receipt contracts and source replay exist. Draft PR [#163](https://github.com/bynanci/open-film/pull/163) proposes exact Tauri-build Cargo capture; its exact-head hosted checks passed, but it is not merged.                                                                                                                                                                                                                                                        | After code integration, run the native workflow on a reviewed target and collect same-candidate final shell/installer/runtime/contribution/security/trust/lifecycle receipts and independent acceptance. The workflow has not run.                                                                                                                                                                                                                              |
+| [#140](https://github.com/bynanci/open-film/issues/140) | Versioned pre-trust/final-byte receipt contracts and source replay exist. PR [#163](https://github.com/bynanci/open-film/pull/163) integrated exact Tauri-build Cargo capture in main `a335b09`; its 20 exact-head hosted checks passed.                                                                                                                                                                                                                                                             | After Issue #141 supplies reviewed runtime inputs, run the native workflow on a reviewed target and collect same-candidate final shell/installer/runtime/contribution/security/trust/lifecycle receipts and independent acceptance. The workflow has not run.                                                                                                                                                                                                   |
 | [#7](https://github.com/bynanci/open-film/issues/7)     | Hosted CI and synthetic regression suites cover the software contracts.                                                                                                                                                                                                                                                                                                                                                                                                                              | Resolve round trip, ASR/LLM reference quality, real camera/HDR/Motion Photo, external media, GPU/4K, long-form performance, listening, platform installers, and candidate-bound Windows/macOS owner-recovery observations for live/dead/reused-PID/foreign/unknown owners.                                                                                                                                                                                      |
 
-Roundtable follow-up is sequenced by dependency: resolve #140's exact-build
-capture without a second Cargo build; close #141 runtime provenance and rights;
-only then build and observe #142/#143 candidates. In parallel, use the existing
+Roundtable follow-up is sequenced by dependency: close #141 runtime provenance
+and rights; then use #140's integrated exact-build capture to produce and review
+a candidate before observing #142/#143. In parallel, use the existing
 workstation protocols for #144/#145. #146 remains an authorized-admin action.
 Hosted CI is evidence for source behavior only and does not substitute for any
 physical observation.

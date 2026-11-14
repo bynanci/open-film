@@ -45,6 +45,14 @@ Their post-merge main SHA is `9b8df866`; exact-head Verify, Windows Recovery,
 three-platform Render QA, and Pages passed. This does not close human listening,
 device, Creative Variants A/V migration or native installer gates.
 
+Post-audit update, 2026-11-14 16:22 UTC: PR #163 merged the same-build Cargo
+capture into main at [`a335b09`](https://github.com/bynanci/open-film/commit/a335b09cd766c3b53926360c713e0b24ce6294ce).
+Its PR head passed all 20 hosted checks. Post-merge Verify, Windows recovery and
+Render QA were still running at that timestamp; Pages passed. Issue #140 remains
+open until a reviewed runtime is staged and a real native candidate receipt is
+produced. No installer, tag or release was created. Draft PR #164 carries the
+current documentation reconciliation.
+
 Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged. The
 [issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
 the reviewed #149–#151 implementation slices, final-head gate records and

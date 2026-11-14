@@ -1,6 +1,6 @@
 # Stable release gates: current audit
 
-Audit date: 2026-11-14. Development base: merged main
+Audit date: 2026-11-14. Pre-PR #163 evidence baseline: merged main
 [`9b8df866134e12e864d642005c46231b41d9da53`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53).
 Source-only branch candidate: `54534d8cf985203e8b5abbd09a771436f8fe09e5`,
 merged by PR #129 to `release/v0.5.0` at
@@ -8,6 +8,17 @@ merged by PR #129 to `release/v0.5.0` at
 readiness and remaining gates; it is not a tag or release approval. Source
 delivery, native installers and physical claims
 have distinct gates under the [release train](roadmap/incremental-release-train.md).
+
+Post-audit update, 2026-11-14 16:22 UTC: PR #163 merged to main at
+[`a335b09`](https://github.com/bynanci/open-film/commit/a335b09cd766c3b53926360c713e0b24ce6294ce).
+Its exact PR head `23f9642` passed all 20 hosted checks. Post-merge Verify
+([43615235479](https://github.com/bynanci/open-film/actions/runs/43615235479)),
+Windows recovery
+([43615235406](https://github.com/bynanci/open-film/actions/runs/43615235406))
+and Render QA
+([43615235307](https://github.com/bynanci/open-film/actions/runs/43615235307))
+were in progress at that update; Pages passed
+([43615235320](https://github.com/bynanci/open-film/actions/runs/43615235320)).
 
 ![Release gates: freeze one candidate, pass source and security gates, add platform-specific checks for the distribution and claims, then approve and verify published artifacts.](images/release-gates.svg)
 
@@ -72,11 +83,11 @@ have distinct gates under the [release train](roadmap/incremental-release-train.
   [43577698719](https://github.com/bynanci/open-film/actions/runs/43577698719).
   These are hosted checks, not physical listening or workstation acceptance.
 
-- **Open native receipt follow-up.** Draft PR
+- **Native receipt code integrated; candidate acceptance open.** PR
   [#163](https://github.com/bynanci/open-film/pull/163), head
-  `23f9642ea542dbc515e4244c8f331ffa0652492c`, proposes capturing the exact
-  Tauri Cargo invocation and build inputs for Issue #140. It is not merged; all
-  exact-head hosted checks passed. The local monolithic `pnpm test` was stopped
+  `23f9642ea542dbc515e4244c8f331ffa0652492c`, merged as main commit `a335b09`,
+  captures the exact Tauri Cargo invocation and build inputs for Issue #140.
+  All 20 exact-head hosted checks passed. The local monolithic `pnpm test` was stopped
   after 25 minutes without a final summary and reported one native benchmark
   runner failure. Its isolated 30-test file passed and the reported test passed
   three isolated repetitions, but the cause remains unresolved. No native

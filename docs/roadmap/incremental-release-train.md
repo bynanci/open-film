@@ -7,6 +7,16 @@ Current status reconciled on 2026-11-14 against main
 This schedules source releases as separate cumulative milestones, not a record
 of already published versions.
 
+## Post-audit update — 2026-11-14
+
+The 9b status below is the audit baseline. PR #163 later merged to main at
+`a335b09`, adding exact same-build Cargo capture to the existing native receipt
+flow. Its 20 PR-head hosted checks passed; post-merge Verify, Windows recovery
+and Render QA were still running at 16:22 UTC, while Pages passed. No candidate
+installer receipt, tag or release exists. Issue #141's reviewed per-target
+runtime inputs and rights/SBOM closure are still prerequisites to running the
+native installer workflow. The public release remains v0.4.0.
+
 ## Current release state
 
 - Latest public source release remains `v0.4.0`, published 2026-10-20.

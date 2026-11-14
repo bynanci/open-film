@@ -20,6 +20,16 @@ installer or physical workstation acceptance. See the
 [release train](incremental-release-train.md). Main metadata is not a published
 version; Storytelling maintains a separate repository and release track.
 
+## Post-audit update — 2026-11-14
+
+PR #163 subsequently merged to main at `a335b09`, adding same-build Cargo
+evidence capture to the native receipt workflow. All 20 PR-head hosted checks
+passed. The corresponding post-merge Verify, Windows recovery and Render QA
+were in progress at 16:22 UTC; Pages passed. This source tooling does not close
+Issue #140: no reviewed runtime input set, native installer candidate, signed
+artifact or candidate-bound receipt has been produced. Issue #141 and the
+Windows/macOS workstation gates remain open.
+
 For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
 and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
 Status was reconciled against the exact main SHA above; dated validation records
