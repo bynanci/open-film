@@ -26,14 +26,27 @@ describe("Phase M11B: Creative Variants & A/B Review UI/UX Component", () => {
     expect(content).toContain('data-testid="creative-variant-modal"');
 
     // 3 tabs / views: list, create, compare
-    expect(content).toContain("currentView = 'list'");
-    expect(content).toContain("currentView = 'create'");
-    expect(content).toContain("currentView = 'compare'");
+    expect(content).toContain("selectModalView('list')");
+    expect(content).toContain("selectModalView('create')");
+    expect(content).toContain("selectModalView('compare')");
+    expect(content).toContain("currentView.value = view");
+    expect(content).toContain("disposed ||");
+    expect(content).toContain("onBeforeUnmount");
+    expect(content).toContain("app.versions.previewTailWarning");
+    expect(content).toContain("app.variants.audio.playSide");
+    expect(content).toContain("app.variants.audio.muteSide");
 
-    // Single-audio rule: only one variant channel plays audio at any time
-    expect(content).toContain("activeAudioChannel");
-    expect(content).toContain("selectAudio('A')");
-    expect(content).toContain("selectAudio('B')");
+    // Real A/V previews use the shared comparison transport and permit only
+    // one audible side while both saved Compositions remain synchronized.
+    expect(content).toContain("VersionComparisonPlayback");
+    expect(content).toContain("versionComparisonMediaUrl");
+    expect(content).toContain("transportState.audibleSide === 'a'");
+    expect(content).toContain("selectAudio('a')");
+    expect(content).toContain("selectAudio('b')");
+    expect(content).toContain("previewDescriptor?.a.hasAudio");
+    expect(content).toContain("previewDescriptor?.b.hasAudio");
+    expect(content).toContain("api.prepareVersionComparison");
+    expect(content).toContain("api.createProjectVersion");
     expect(content).toContain("audio-rule-notice");
 
     // Section alignment navigation (never falsely claim differing runtimes align by timestamp)

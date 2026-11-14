@@ -44,10 +44,13 @@ describe("shared named-version API and CLI adapters", () => {
     const post = (path: string, body: unknown) =>
       request(path, { method: "POST", body: JSON.stringify(body) });
 
+    const firstProjectId = (await request("/project")).body.project
+      .id as string;
     const revision = (await request("/versions/revision")).body as {
       revision: string;
     };
     const input = {
+      expectedProjectId: firstProjectId,
       name: "Opening",
       baseRevision: revision.revision,
       requestId: "50000000-0000-4000-8000-000000000001",
@@ -135,6 +138,17 @@ describe("shared named-version API and CLI adapters", () => {
     ).toBe(400);
     const switched = await post("/project/open", { path: secondPath });
     expect(switched.response.status).toBe(200);
+    expect((await request("/versions")).body.versions).toEqual([]);
+    const secondRevision = (await request("/versions/revision")).body as {
+      revision: string;
+    };
+    const staleCapture = await post("/versions", {
+      expectedProjectId: firstProjectId,
+      name: "Must stay in the first project",
+      baseRevision: secondRevision.revision,
+      requestId: "50000000-0000-4000-8000-000000000005",
+    });
+    expect(staleCapture.response.status).toBe(409);
     expect((await request("/versions")).body.versions).toEqual([]);
   });
 

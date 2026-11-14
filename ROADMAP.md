@@ -249,6 +249,13 @@ and User Pins; infeasible plans fail without rewriting them. See the
 Further work should explain the evidence behind suggestions and continue
 professional editorial review without inferring identity or overriding choices.
 
+Creative Variants have structured differences; the current A/V bridge candidate
+adds a synchronized, local MP4 preview by reusing the Named Version snapshot and
+comparison renderer. The saved checkpoint remains in project history after the
+temporary render is cancelled. Exact-head checks and code review are still
+required before this candidate is part of main; human listening and device
+acceptance remain separate release evidence.
+
 ### Finish distribution and real-world verification
 
 Complete the native runtime, dependency and license review, then validate

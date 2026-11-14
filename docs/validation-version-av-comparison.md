@@ -3,8 +3,18 @@
 Date: 2026-11-13. Candidate base: `befe2e5b86db17c643cfc4d7bdc93bd40fee1f1a`
 (`main` at implementation start). This change adds an explicit, read-only
 picture-and-sound preview for two saved Named Versions. It does not restore,
-adopt, or edit the current Composition, and it does not replace Creative
-Variants' comparison workflow.
+adopt, or edit the current Composition.
+
+The follow-up candidate `creative-variant-av-preview` connects the existing
+Creative Variants comparison modal to this same preview service. It flushes
+pending editor changes, refreshes the selected A/B Composition IDs, saves one
+durable Named Version with an expected-project identity fence, and renders both
+Compositions from that immutable snapshot. Both outputs must belong to the same
+snapshot and retain their distinct Composition IDs. This does not create a
+second renderer, Job engine, timeline, or mixer. The named checkpoint remains
+in project history after the ephemeral rendered pair is cancelled or expires;
+the user can remove that checkpoint explicitly using the existing Versions
+workflow.
 
 ## Data flow and safety
 
@@ -96,8 +106,10 @@ exact-head CI run.
 - The known 1,152-sample / approximately 24 ms mixed-export audio-tail case and
   Export workspace warning remain a separate follow-up; see
   [real-media silence validation](validation-silence-real-media.md).
-- This covers Named Versions. It does not replace the Creative Variants modal
-  or migrate its existing placeholder A/V comparison.
+- The base implementation covers Named Versions; the candidate extension also
+  migrates the Creative Variants modal's placeholder A/V comparison to the
+  same service. A/B output remains a rendered review artifact, not an editable
+  timeline or an accepted/adopted variant.
 - Restart discards ephemeral preview outputs; durable Named Version snapshots
   remain intact and can be rendered again with a new request ID.
 - Windows/macOS installers, signing/notarization, clean-machine update/rollback,
@@ -122,3 +134,33 @@ exact-head CI run.
 | Exact-head `30b9bde5` Verify                                                   | fast-contract and 6/6 browser shards passed; docs-site failed on missing English screenshots; heavy-media was cancelled when superseded |
 | Exact-head `12a382a7` CI                                                       | Passed all checks: DCO, fast-contract, 6/6 E2E, heavy-media, native-shell, Windows recovery, 3-platform Render QA, docs-site, aggregate |
 | Exact-head CI for this documentation update                                    | Pending                                                                                                                                 |
+
+### Creative Variants bridge candidate
+
+The local candidate adds unit, application, HTTP integration and browser
+coverage for opening an A/B pair from Creative Variants, flushing and saving
+the exact project snapshot, preparing two distinct Composition renders,
+synchronized playback and seeking, single-side audio selection, cancel/reopen,
+and preserving the named snapshot. It also tests closing during playback,
+responsive widths, named audio controls, the shared audio-tail warning, failed
+cancel recovery, completed-render retry with a fresh Job ID, stale compare
+response fencing, UTF-16-safe generated snapshot names, project identity
+rejection and replay of a pre-fence durable create receipt.
+
+Local candidate results on the feature worktree, before rebase and PR creation:
+
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test:i18n` and
+  `pnpm build` passed. i18n validated 3,316 semantic keys. Build completed with
+  the existing large-chunk advisory.
+- Focused Unit: 4 tests across 2 files passed. Project-version owner fence and
+  legacy-receipt tests: 2 passed. Actual FFmpeg comparison regression: 1 passed.
+- Real HTTP integration: 2 passed. Playwright A/V review: 1 passed, with
+  screenshots attached at 1024×768 and 1920×1080; actual MP4 decode, playback,
+  audio-side switching, warning visibility, close-during-playback cleanup and
+  durable snapshot retention were checked.
+- `pnpm test:contracts` passed all 1,582 tests across 82 files in 20.20 s on
+  the final local rerun. One earlier run exceeded the unchanged 5 s glossary
+  benchmark at 6.50 s; the same test passed in isolation, then the full lane
+  passed on rerun. No threshold or assertion was changed.
+- Candidate exact commit, GitHub exact-head CI and post-merge main checks are
+  pending; these results are separate from the earlier `12a382a7` CI record.
