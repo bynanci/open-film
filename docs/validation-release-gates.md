@@ -89,9 +89,11 @@ were in progress at that update; Pages passed
   captures the exact Tauri Cargo invocation and build inputs for Issue #140.
   All 20 exact-head hosted checks passed. The partial local `pnpm test` run at
   main `86afec8` was interrupted after about 25 minutes during an environment
-  transition. Its preserved log shows one timeout in
+  transition. Its preserved log records one failed result in
   `tests/integration/native-runtime.test.ts`: the failed-close/fresh-start case
-  took 30.124 seconds against its unchanged 30-second budget. The 30-test
+  failed after 30.124 seconds against its unchanged 30-second budget. The log
+  has no timeout message, so the cause is unconfirmed; a timeout is plausible
+  but not established. The 30-test
   `native-benchmark-runner.test.ts` file passed. No final Vitest summary, exit
   code or failure stack was captured. One unmodified isolated rerun passed in
   21.682 seconds (28.241-second wrapper, no retry); this does not establish the

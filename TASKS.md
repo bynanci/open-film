@@ -37,9 +37,11 @@ are still running; Pages passed
 The partial local `pnpm test` run at
 [`86afec8`](https://github.com/bynanci/open-film/commit/86afec88978a385c690b547397259c8b077cd85a)
 was interrupted after about 25 minutes during an environment transition. Its
-preserved log shows one timeout in
+preserved log records one failed result in
 `tests/integration/native-runtime.test.ts`: the failed-close/fresh-start case
-took 30.124 seconds against its unchanged 30-second budget. The 30-test
+failed after 30.124 seconds against its unchanged 30-second budget. The log
+has no timeout message, so the cause is unconfirmed; a timeout is plausible
+but not established. The 30-test
 `native-benchmark-runner.test.ts` file passed. No final Vitest summary, exit
 code or failure stack was captured. One unmodified isolated rerun passed in
 21.682 seconds (28.241-second wrapper, no retry); this does not establish the
