@@ -73,6 +73,21 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     );
   return {
     ...actual,
+    appendFile: (...args: Parameters<typeof actual.appendFile>) => {
+      if (
+        typeof args[0] === "string" &&
+        basename(args[0]) === "memory.jsonl" &&
+        faults.writeNames.has("memory.jsonl")
+      ) {
+        faults.writeFailures.push("memory.jsonl");
+        return Promise.reject(
+          Object.assign(new Error("ENOSPC: cannot append memory.jsonl"), {
+            code: "ENOSPC",
+          }),
+        );
+      }
+      return actual.appendFile(...args);
+    },
     open: async (...args: Parameters<typeof actual.open>) => {
       const file = await actual.open(...args);
       if (
@@ -493,6 +508,102 @@ await writeFile(${JSON.stringify(audit)},JSON.stringify(result));`,
       await rm(root, { recursive: true, force: true });
     }
   });
+  it("records startup memory before the first UI-ready checkpoint", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-benchmark-startup-memory-"),
+    );
+    try {
+      const fixture = await createNativeBenchmarkFixture(
+        join(root, "fixture"),
+        { assets: 2, clips: 2, beats: 1 },
+      );
+      const service = join(root, "server.mjs");
+      const emitter = join(root, "emitter.mjs");
+      await writeFile(
+        service,
+        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close(()=>{if(process.connected)process.disconnect();}));${serviceShutdownProtocol()}`,
+      );
+      await writeFile(
+        emitter,
+        `import { appendFileSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+const eventPath = process.env.OPENFILM_NATIVE_BENCHMARK_EVENTS;
+const reportPath = join(dirname(eventPath), 'report.json');
+const emit = (kind, ms) => appendFileSync(eventPath, JSON.stringify({
+  runId: process.env.OPENFILM_NATIVE_BENCHMARK_RUN_ID,
+  pid: process.pid,
+  kind,
+  nativeElapsedMs: ms,
+  unixMs: Date.now(),
+  clientElapsedMs: ms,
+  clientTimeOriginMs: 1000,
+}) + '\\n');
+const guard = setTimeout(() => process.exit(3), 12000);
+const startupPoll = setInterval(() => {
+  try {
+    const rows = readFileSync(join(dirname(eventPath), 'memory.jsonl'), 'utf8')
+      .trim().split('\\n').filter(Boolean).map(line => JSON.parse(line));
+    if (!rows.some(sample => sample.phase === 'startup')) return;
+    clearInterval(startupPoll);
+    emit('welcome-ready', 10);
+    const finishPoll = setInterval(() => {
+      try {
+        const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+        if (!['completed', 'scenario-incomplete', 'failed', 'interrupted', 'app-exited'].includes(report.status)) return;
+        clearInterval(finishPoll);
+        clearTimeout(guard);
+        setTimeout(() => process.exit(0), 50);
+      } catch {}
+    }, 10);
+  } catch {}
+}, 10);`,
+      );
+      const outputDirectory = join(root, "evidence");
+      const result = await runNativeBenchmark({
+        ...config,
+        executable: process.execPath,
+        arguments: [emitter],
+        serverScript: service,
+        fixtureManifest: fixture.manifestPath,
+        outputDirectory,
+        durationSeconds: 0.1,
+        intervalSeconds: 0.1,
+        startupTimeoutSeconds: 4,
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.schemaVersion).toBe("1.1.0");
+      expect(result.memoryByPhase.startup.samples).toBeGreaterThan(0);
+      expect(result.memoryByPhase.postReady.samples).toBeGreaterThan(0);
+      const samples = (
+        await readFile(join(outputDirectory, "memory.jsonl"), "utf8")
+      )
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { phase: "startup" | "post-ready" });
+      expect(result.samples).toBe(samples.length);
+      expect(result.memoryByPhase.startup.samples).toBe(
+        samples.filter((sample) => sample.phase === "startup").length,
+      );
+      expect(result.memoryByPhase.postReady.samples).toBe(
+        samples.filter((sample) => sample.phase === "post-ready").length,
+      );
+      for (const summary of [
+        result.memory.rssBytes,
+        result.memory.privateBytes,
+        result.memory.pssBytes,
+      ])
+        expect(summary.completeSamples + summary.incompleteSamples).toBe(
+          samples.length,
+        );
+      expect(samples[0]?.phase).toBe("startup");
+      expect(samples.some((sample) => sample.phase === "post-ready")).toBe(
+        true,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it("cleans the owned service if a regular but non-executable native file cannot spawn", async () => {
     if (process.platform === "win32") return;
     const root = await mkdtemp(join(tmpdir(), "openfilm-benchmark-eacces-"));
@@ -687,6 +798,7 @@ describe("native benchmark asynchronous failure paths", () => {
       deferredEdit?: boolean;
       serviceCloseDelayMs?: number;
       externallySupervisedChildren?: boolean;
+      durationSeconds?: number;
     } = {},
   ) {
     const root = await mkdtemp(join(tmpdir(), "openfilm-benchmark-processes-"));
@@ -753,7 +865,7 @@ describe("native benchmark asynchronous failure paths", () => {
           project: fixture.projectPath,
           fixtureManifest: fixture.manifestPath,
           outputDirectory,
-          durationSeconds: 0.1,
+          durationSeconds: options.durationSeconds ?? 0.1,
           intervalSeconds: 0.1,
           startupTimeoutSeconds: 3,
           cacheCondition: "synthetic test; no performance conclusion",
@@ -1984,6 +2096,24 @@ describe("native benchmark asynchronous failure paths", () => {
         let published = false;
         faults.afterSample = async (snapshot) => {
           if (!published && snapshot.rootPid === (await owners()).nativePid) {
+            let priorReport: {
+              memoryByPhase?: { postReady?: { samples?: number } };
+            };
+            try {
+              priorReport = JSON.parse(
+                await readFile(
+                  join(config.outputDirectory, "report.json"),
+                  "utf8",
+                ),
+              ) as typeof priorReport;
+            } catch {
+              return;
+            }
+            // Startup snapshots are now sampled before UI readiness. Wait
+            // until a post-ready sample has been committed so this event is
+            // still published during the final awaited post-ready sample.
+            if ((priorReport.memoryByPhase?.postReady?.samples ?? 0) < 1)
+              return;
             published = true;
             await publishDeferredEdit();
             // The deadline is crossed after new native evidence is already on
@@ -2008,7 +2138,7 @@ describe("native benchmark asynchronous failure paths", () => {
         expect(alive((await owners()).serverPid)).toBe(false);
         listenersRestored();
       },
-      { deferredEdit: true },
+      { deferredEdit: true, durationSeconds: 0.4 },
     );
   });
 
@@ -2158,4 +2288,31 @@ describe("native benchmark asynchronous failure paths", () => {
       );
     },
   );
+
+  it("does not count an unpersisted memory sample when JSONL append fails", async () => {
+    await scenario(async ({ config, signal, listenersRestored }) => {
+      faults.writeNames.add("memory.jsonl");
+      const result = await runNativeBenchmark(config, { signal });
+      expect(result.status).toBe("failed");
+      expect(result.failure).toMatch(/ENOSPC.*memory\.jsonl/iu);
+      expect(result.samples).toBe(0);
+      expect(result.memoryByPhase.startup.samples).toBe(0);
+      expect(faults.writeFailures).toContain("memory.jsonl");
+      let rows = "";
+      try {
+        rows = await readFile(
+          join(config.outputDirectory, "memory.jsonl"),
+          "utf8",
+        );
+      } catch (error) {
+        expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+      }
+      expect(rows).toBe("");
+      const persisted = JSON.parse(
+        await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+      ) as { samples: number };
+      expect(persisted.samples).toBe(0);
+      listenersRestored();
+    });
+  });
 });
