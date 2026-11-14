@@ -1,0 +1,16 @@
+// Tauri invokes its runner as `node build ...` from this directory. The
+// subcommand token is Node's script path, so restore it before entering Cargo.
+import { resolve } from "node:path";
+
+const cargoArguments = process.argv.slice(2);
+const captureEntrypoint = resolve(
+  process.cwd(),
+  "../../../scripts/native/capture-cargo-build.mjs",
+);
+process.argv = [
+  process.execPath,
+  captureEntrypoint,
+  "build",
+  ...cargoArguments,
+];
+await import(captureEntrypoint);

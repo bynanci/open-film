@@ -30,6 +30,7 @@ export interface CandidateIdentity {
   runtimeManifest: FilePin;
   shell: FilePin;
   installers: FilePin[];
+  buildEvidence?: FilePin;
   automaticUpdates: false;
 }
 export interface FinalBytes {
@@ -235,7 +236,7 @@ export function validateTarget(
 export function validateIdentity(
   value: unknown,
 ): asserts value is CandidateIdentity {
-  exactKeys(value, [
+  const identityKeys = [
     "schemaVersion",
     "kind",
     "disposition",
@@ -247,7 +248,13 @@ export function validateIdentity(
     "shell",
     "installers",
     "automaticUpdates",
-  ]);
+  ];
+  const hasBuildEvidence =
+    value !== null &&
+    typeof value === "object" &&
+    Object.hasOwn(value, "buildEvidence");
+  if (hasBuildEvidence) identityKeys.push("buildEvidence");
+  exactKeys(value, identityKeys);
   requireEvidence(
     value.schemaVersion === 1 &&
       value.kind === "native-candidate-identity" &&
@@ -271,10 +278,12 @@ export function validateIdentity(
   );
   validateArtifacts(value.shell, value.installers);
   const identity = value as unknown as CandidateIdentity;
+  if (hasBuildEvidence) validatePin(identity.buildEvidence);
   const paths = [
     identity.runtimeManifest,
     identity.shell,
     ...identity.installers,
+    ...(hasBuildEvidence ? [identity.buildEvidence!] : []),
   ].map((p) => p.path);
   requireEvidence(
     new Set(paths).size === paths.length &&

@@ -65,34 +65,74 @@ jobs:
         env:
           EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
         run: pnpm exec tsx scripts/native/verify.ts apps/desktop/src-tauri/resources/runtime "$EXPECTED_MANIFEST_SHA256"
+      - name: Resolve exact native target paths
+        id: native-target
+        shell: bash
+        run: node scripts/native/capture-cargo-build.mjs target >> "$GITHUB_OUTPUT"
       - run: pnpm test:native
       - name: Build Windows current-user candidate
         if: runner.os == 'Windows'
-        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles nsis
+        shell: bash
+        env:
+          NATIVE_TARGET: ${{ steps.native-target.outputs.triple }}
+        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles nsis --target "$NATIVE_TARGET" -- --locked --message-format=json
       - name: Build macOS candidate
         if: runner.os == 'macOS'
-        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles app,dmg
+        shell: bash
+        env:
+          NATIVE_TARGET: ${{ steps.native-target.outputs.triple }}
+        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles app,dmg --target "$NATIVE_TARGET" -- --locked --message-format=json
       - name: Build Linux candidate
         if: runner.os == 'Linux'
-        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles deb,appimage
+        shell: bash
+        env:
+          NATIVE_TARGET: ${{ steps.native-target.outputs.triple }}
+        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles deb,appimage --target "$NATIVE_TARGET" -- --locked --message-format=json
+      - name: Retain raw Cargo build capture, including failed invocations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-cargo-build-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          path: |
+            dist/native-evidence/cargo-build/
+            apps/desktop/src-tauri/Cargo.lock
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Validate target-specific bundle and prepare receipt identity inputs
+        env:
+          NATIVE_TARGET: ${{ steps.native-target.outputs.triple }}
+        run: node scripts/native/capture-cargo-build.mjs finalize
+      - name: Stage target-specific shell without changing its bytes
+        shell: bash
+        env:
+          NATIVE_TARGET: ${{ steps.native-target.outputs.triple }}
+        run: pnpm exec tsx scripts/native/receipt.ts prepare-shell . "$NATIVE_TARGET"
       - name: Record incomplete pre-trust candidate identity
-        run: pnpm exec tsx scripts/native/receipt.ts
+        shell: bash
+        env:
+          BUNDLE_DIRECTORY: ${{ steps.native-target.outputs.bundleDirectory }}
+        run: pnpm exec tsx scripts/native/receipt.ts identity . dist/native-evidence/identity-inputs.json "$BUNDLE_DIRECTORY/candidate.json"
       - name: Snapshot current final bytes (trust and lifecycle remain incomplete)
-        run: pnpm exec tsx scripts/native/receipt.ts seal . apps/desktop/src-tauri/target/release/bundle/candidate.json apps/desktop/src-tauri/target/release/bundle/final-bytes.json
+        shell: bash
+        env:
+          BUNDLE_DIRECTORY: ${{ steps.native-target.outputs.bundleDirectory }}
+        run: pnpm exec tsx scripts/native/receipt.ts seal . "$BUNDLE_DIRECTORY/candidate.json" "$BUNDLE_DIRECTORY/final-bytes.json"
       - name: Archive installer outputs with executable modes
         shell: bash
-        run: python scripts/native/archive-candidate.py apps/desktop/src-tauri/target/release/bundle native-candidate/installers.tar
+        env:
+          BUNDLE_DIRECTORY: ${{ steps.native-target.outputs.bundleDirectory }}
+        run: python scripts/native/archive-candidate.py "$BUNDLE_DIRECTORY" native-candidate/installers.tar
       - uses: actions/upload-artifact@v4
         with:
           name: native-candidate-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           path: |
             native-candidate/installers.tar
             native-candidate/installers.tar.sha256
-            apps/desktop/src-tauri/target/release/bundle/candidate.json
-            apps/desktop/src-tauri/target/release/bundle/final-bytes.json
+            ${{ steps.native-target.outputs.bundleDirectory }}/candidate.json
+            ${{ steps.native-target.outputs.bundleDirectory }}/final-bytes.json
+            dist/native-evidence/identity-inputs.json
             dist/build-contributions.json
-            apps/desktop/src-tauri/target/release/openfilm-desktop
-            apps/desktop/src-tauri/target/release/openfilm-desktop.exe
+            ${{ steps.native-target.outputs.shellPath }}
             apps/desktop/src-tauri/Cargo.lock
             apps/desktop/src-tauri/resources/runtime/runtime-manifest.json
             apps/desktop/src-tauri/resources/runtime/sbom.spdx.json
