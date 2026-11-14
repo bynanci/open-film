@@ -241,6 +241,279 @@ test("renders saved snapshots and synchronizes video, seeking, and one audio sid
   ).toContainText("B · 880 Hz");
 });
 
+test("creative variant review snapshots both cuts and plays the rendered A/V pair", async ({
+  page,
+  request,
+}, testInfo) => {
+  const fixture = await createDesktopFixture(0);
+  cleanups.push(fixture.cleanup);
+  const app = await OpenFilmApplication.create(
+    fixture.project,
+    "Synthetic creative variant review",
+  );
+  const imagePath = join(fixture.media, "01-photo.png"),
+    image: MediaAsset = {
+      id: "variant-preview-image",
+      name: "Variant preview image",
+      uri: pathToFileURL(imagePath).href,
+      mediaType: "image",
+      tags: [],
+      state: {},
+      metadata: {},
+      contentHash: await hashFile(imagePath),
+    },
+    sound = await toneSource(fixture.root, "variant-preview-tone", 440, 1);
+  app.catalog.upsertAsset(image);
+  app.catalog.upsertAsset(sound);
+  app.project.stories = [
+    { id: "variant-story", title: "Variant story", beats: [] },
+  ];
+  app.project.settings = {
+    ...app.project.settings,
+    width: 160,
+    height: 90,
+    frameRate: 10,
+    timebase: {
+      version: 1,
+      rateNumerator: 10,
+      rateDenominator: 1,
+      dropFrame: false,
+    },
+  };
+  app.project.timelines = [
+    {
+      id: "variant-cut",
+      storyId: "variant-story",
+      duration: 1,
+      tracks: [
+        {
+          id: "variant-picture",
+          type: "video",
+          clips: [
+            {
+              id: "variant-picture-clip",
+              assetId: image.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+            },
+          ],
+        },
+        {
+          id: "variant-sound",
+          type: "audio",
+          clips: [
+            {
+              id: "variant-sound-clip",
+              assetId: sound.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+              sourceIn: 0,
+              sourceOut: 1,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  const variantA = await app.creativeVariants.createVariant({
+    name: "Base cut",
+    intent: "Keep the complete moment",
+    scope: { type: "film" },
+    baselineStoryId: "variant-story",
+    baselineCompositionId: "variant-cut",
+    modifications: {},
+  });
+  const variantB = await app.creativeVariants.createVariant({
+    name: "Short cut",
+    intent: "Tighten the moment",
+    scope: { type: "film" },
+    baselineStoryId: "variant-story",
+    baselineCompositionId: "variant-cut",
+    modifications: { durationMultiplier: 0.5 },
+  });
+  await app.save();
+  app.close();
+
+  const opened = await request.post(`${api}/project/open`, {
+    data: { path: fixture.project },
+  });
+  expect(opened.ok(), await opened.text()).toBe(true);
+  await initialLocale(page, "en-US");
+  await page.goto("/");
+  await navigate(page, "story", "en-US");
+  const modal = page.getByTestId("creative-variant-modal");
+  await page.getByTestId("creative-variants-btn").click();
+  await expect(modal.locator(".variant-card")).toHaveCount(2);
+  await modal.getByTestId(`variant-compare-${variantB.id}`).click();
+  await expect(modal.locator(".compare-content")).toBeVisible();
+
+  const snapshotCountBefore = (
+    await (await request.get(`${api}/versions`)).json()
+  ).versions.length;
+  const snapshotResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/versions",
+  );
+  await modal.getByTestId("variant-av-preview").click();
+  const createdSnapshot = await snapshotResponse;
+  expect(createdSnapshot.ok(), await createdSnapshot.text()).toBe(true);
+  const snapshot = (await createdSnapshot.json()).version as {
+    id: string;
+    name: string;
+    projectId: string;
+  };
+  expect(snapshot.projectId).toBe(
+    (await (await request.get(`${api}/project`)).json()).project.id,
+  );
+
+  const prepareResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/version-comparisons/prepare",
+  );
+  const videos = modal.locator(".player-view video");
+  await expect(videos).toHaveCount(2, { timeout: 120_000 });
+  const prepared = await prepareResponse;
+  expect(prepared.ok(), await prepared.text()).toBe(true);
+  const descriptor = (await prepared.json()) as {
+    id: string;
+    projectId: string;
+    a: { versionId: string; compositionId: string; hasAudio: boolean };
+    b: { versionId: string; compositionId: string; hasAudio: boolean };
+  };
+  expect(descriptor.a.versionId).toBe(snapshot.id);
+  expect(descriptor.b.versionId).toBe(snapshot.id);
+  expect(descriptor.a.compositionId).toBe(variantA.derivedCompositionId);
+  expect(descriptor.b.compositionId).toBe(variantB.derivedCompositionId);
+  expect(descriptor.a.compositionId).not.toBe(descriptor.b.compositionId);
+  expect(descriptor.a.hasAudio && descriptor.b.hasAudio).toBe(true);
+
+  const [videoA, videoB] = [videos.nth(0), videos.nth(1)];
+  await expect
+    .poll(
+      () => videoA.evaluate((video: HTMLVideoElement) => video.readyState),
+      {
+        timeout: 90_000,
+      },
+    )
+    .toBeGreaterThanOrEqual(2);
+  await expect
+    .poll(
+      () => videoB.evaluate((video: HTMLVideoElement) => video.readyState),
+      {
+        timeout: 90_000,
+      },
+    )
+    .toBeGreaterThanOrEqual(2);
+  expect(
+    await videoA.evaluate((video: HTMLVideoElement) => video.videoWidth),
+  ).toBeGreaterThan(0);
+  expect(
+    await videoB.evaluate((video: HTMLVideoElement) => video.videoWidth),
+  ).toBeGreaterThan(0);
+  expect(await videoA.evaluate((video: HTMLVideoElement) => video.muted)).toBe(
+    false,
+  );
+  expect(await videoB.evaluate((video: HTMLVideoElement) => video.muted)).toBe(
+    true,
+  );
+  for (const viewport of [
+    { width: 1024, height: 768 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(viewport.width);
+    await testInfo.attach(
+      `creative-variant-av-${viewport.width}x${viewport.height}`,
+      {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: "image/png",
+      },
+    );
+  }
+
+  await modal.getByTestId("variant-av-play").click();
+  await expect
+    .poll(() => videoA.evaluate((video: HTMLVideoElement) => !video.paused))
+    .toBe(true);
+  await modal
+    .locator(".player-card")
+    .nth(1)
+    .locator(".audio-toggle-btn")
+    .click();
+  await expect(
+    modal.locator(".player-card").nth(0).locator(".audio-toggle-btn"),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    modal.locator(".player-card").nth(1).locator(".audio-toggle-btn"),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(await videoA.evaluate((video: HTMLVideoElement) => video.muted)).toBe(
+    true,
+  );
+  expect(await videoB.evaluate((video: HTMLVideoElement) => video.muted)).toBe(
+    false,
+  );
+  await expect(modal.getByRole("note")).toContainText(
+    "Frame-aligned audio can omit a very short final audio tail",
+  );
+  await expect(
+    modal.locator(".player-card").nth(1).locator(".audio-toggle-btn"),
+  ).toHaveAttribute("aria-label", "Mute Short cut (side B) audio");
+  await expect
+    .poll(() => videoB.evaluate((video: HTMLVideoElement) => !video.paused))
+    .toBe(true);
+  await page.evaluate(() => {
+    const target = window as Window & {
+      __openfilmVariantReviewPlayers?: HTMLVideoElement[];
+    };
+    target.__openfilmVariantReviewPlayers = Array.from(
+      document.querySelectorAll<HTMLVideoElement>(
+        '[data-testid="creative-variant-modal"] .player-view video',
+      ),
+    );
+  });
+
+  const cancelResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/version-comparisons/cancel",
+  );
+  await modal.locator(".close-btn").click();
+  await expect(modal).toHaveCount(0);
+  expect((await cancelResponse).ok()).toBe(true);
+  expect(
+    await page.evaluate(() => {
+      const target = window as Window & {
+        __openfilmVariantReviewPlayers?: HTMLVideoElement[];
+      };
+      return target.__openfilmVariantReviewPlayers?.map((video) => ({
+        paused: video.paused,
+        muted: video.muted,
+        source: video.getAttribute("src"),
+      }));
+    }),
+  ).toEqual([
+    { paused: true, muted: true, source: null },
+    { paused: true, muted: true, source: null },
+  ]);
+  const versionsAfterPreview = (
+    await (await request.get(`${api}/versions`)).json()
+  ).versions;
+  expect(versionsAfterPreview).toHaveLength(snapshotCountBefore + 1);
+  expect(
+    versionsAfterPreview.some(
+      (version: { id: string }) => version.id === snapshot.id,
+    ),
+  ).toBe(true);
+  const revoked = await request.get(
+    `${api}/version-comparisons/${descriptor.id}?projectId=${encodeURIComponent(descriptor.projectId)}`,
+  );
+  expect(revoked.ok()).toBe(false);
+});
+
 test("creates, compares, renames, and explicitly restores a saved version", async ({
   page,
   request,

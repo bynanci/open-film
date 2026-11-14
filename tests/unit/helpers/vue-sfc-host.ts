@@ -23,6 +23,7 @@ export interface HostNode {
   muted: boolean;
   pause: () => void;
   play: () => Promise<void>;
+  focus: () => void;
   load: () => void;
   removeAttribute: (name: string) => void;
   addEventListener: () => void;
@@ -52,6 +53,7 @@ function node(tag: string): HostNode {
     async play() {
       this.paused = false;
     },
+    focus() {},
     load() {
       this.currentTime = 0;
       this.paused = true;

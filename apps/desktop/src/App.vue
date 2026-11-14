@@ -882,6 +882,9 @@ const renderedPlayer = ref<HTMLVideoElement | null>(null);
 const projectVersionsPanel = ref<{
   stopPreview: () => Promise<boolean>;
 } | null>(null);
+const creativeVariantComparisonModal = ref<{
+  stopPreview: () => Promise<boolean>;
+} | null>(null);
 const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
 const editorMountRequested = ref(false);
 const editorFlushReady = ref(false);
@@ -906,14 +909,13 @@ watch(projectGeneration, resetEditorReady, { flush: "sync" });
 function pauseRenderedPlayer() {
   renderedPlayer.value?.pause();
 }
-async function stopVersionComparison(): Promise<boolean> {
-  const stopped = await projectVersionsPanel.value?.stopPreview();
-  return stopped !== false;
+async function stopComparisonPreviews(): Promise<boolean> {
+  if ((await projectVersionsPanel.value?.stopPreview()) === false) return false;
+  return (await creativeVariantComparisonModal.value?.stopPreview()) !== false;
 }
 async function setWorkspace(workspace: Tab): Promise<boolean> {
-  if (workspace !== tab.value && tab.value === "versions") {
-    if (!(await stopVersionComparison())) return false;
-  }
+  if (workspace !== tab.value && !(await stopComparisonPreviews()))
+    return false;
   if (workspace === "versions") pauseRenderedPlayer();
   tab.value = workspace;
   if (workspace === "edit") editorMountRequested.value = true;
@@ -1054,7 +1056,7 @@ async function changeComposition(event: globalThis.Event) {
   const next = select.value;
   select.value = activeComposition.value?.id ?? "";
   if (busy.value || relinkBusy.value) return;
-  if (tab.value === "versions" && !(await stopVersionComparison())) return;
+  if (tab.value === "versions" && !(await stopComparisonPreviews())) return;
   if (!(await flushEditor())) return;
   activeCompositionId.value = next;
   if (tab.value === "edit") editorMountRequested.value = true;
@@ -1657,15 +1659,22 @@ async function flushPending(preparingScriptReview = false) {
   if (!(await flushEditor())) return false;
   return beatDirty.value ? saveBeat() : true;
 }
-async function flushProjectPending() {
+async function flushProjectPending(preserveVariantPreview = false) {
   pauseRenderedPlayer();
-  if (tab.value === "versions" && !(await stopVersionComparison()))
+  if (
+    !preserveVariantPreview &&
+    (projectVersionsPanel.value || creativeVariantComparisonModal.value) &&
+    !(await stopComparisonPreviews())
+  )
     return false;
   if (scenePlanDraftPresent.value) {
     error.value = { uiKey: "scenePlan.draftPending" };
     return false;
   }
   return flushPending();
+}
+function flushProjectPendingForVariantPreview() {
+  return flushProjectPending(true);
 }
 async function acceptScenePlan(plan: ScenePlan) {
   const accepted = await api.acceptScenePlan(plan);
@@ -5667,12 +5676,16 @@ onUnmounted(() => {
     />
     <CreativeVariantComparisonModal
       v-if="project && variantsModalOpen"
+      ref="creativeVariantComparisonModal"
       :open="variantsModalOpen"
       :project="project"
       :active-story="activeStory"
       :active-composition-id="activeCompositionId"
+      :disabled="!!busy || relinkBusy || activeJobs.length > 0"
+      :flush-project-pending="flushProjectPendingForVariantPreview"
       @close="variantsModalOpen = false"
       @adopted="handleVariantAdopted"
+      @playback-start="pauseRenderedPlayer"
     />
     <div v-if="busy" class="busy-indicator" role="status">
       <span class="spinner" />{{ t(`app.activity.tasks.${busy}`) }}…

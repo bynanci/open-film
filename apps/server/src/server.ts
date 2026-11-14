@@ -2802,13 +2802,27 @@ export async function startServer(options: ServerOptions = {}) {
               "Wait for project jobs to finish before capturing a version.",
             );
           const data = await body(request);
-          keys(data, ["name", "description", "baseRevision", "requestId"]);
+          keys(data, [
+            "expectedProjectId",
+            "name",
+            "description",
+            "baseRevision",
+            "requestId",
+          ]);
           if (
             data.description !== undefined &&
             typeof data.description !== "string"
           )
             throw new HttpError(400, "description must be text.");
+          if (
+            data.expectedProjectId !== undefined &&
+            typeof data.expectedProjectId !== "string"
+          )
+            throw new HttpError(400, "expectedProjectId must be text.");
           const version = await application.versions.create({
+            ...(typeof data.expectedProjectId === "string"
+              ? { expectedProjectId: data.expectedProjectId }
+              : {}),
             name: text(data, "name"),
             ...(typeof data.description === "string"
               ? { description: data.description }

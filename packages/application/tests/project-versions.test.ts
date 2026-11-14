@@ -105,6 +105,68 @@ async function installAuthenticV5Project(root: string): Promise<{
 }
 
 describe("named project versions", () => {
+  it("rejects a version capture whose expected project no longer owns the request", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-version-owner-fence-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const app = await OpenFilmApplication.create(
+      join(root, "film.openfilm"),
+      "Expected project fence",
+    );
+    cleanup.push(() => app.close());
+
+    await expect(
+      app.versions.create({
+        expectedProjectId: "a-different-project",
+        name: "Must not capture another project",
+        baseRevision: app.versions.currentRevision(),
+        requestId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "story.planConflict" });
+    expect(app.versions.list()).toEqual([]);
+  });
+
+  it("replays durable create receipts written before the project identity fence", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-legacy-create-receipt-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(directory, "Legacy receipt");
+    cleanup.push(() => app.close());
+    const input = {
+      name: "Comparison checkpoint",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "51000000-0000-4000-8000-000000000001",
+    };
+    const created = await app.versions.create(input);
+    const indexPath = join(directory, "versions", "index.json");
+    const index = JSON.parse(await readFile(indexPath, "utf8")) as {
+      receipts: Array<{ requestId: string; fingerprint: string }>;
+    };
+    const receipt = index.receipts.find(
+      (item) => item.requestId === input.requestId,
+    );
+    expect(receipt).toBeDefined();
+    // This was the durable fingerprint before expectedProjectId was added to
+    // the HTTP input. Project-owned indexes already scope this identity.
+    receipt!.fingerprint = sha256(
+      JSON.stringify({
+        kind: "create",
+        name: input.name,
+        description: undefined,
+        baseRevision: input.baseRevision,
+      }),
+    );
+    await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+
+    const replay = await app.versions.create({
+      ...input,
+      expectedProjectId: app.project.id,
+    });
+    expect(replay.id).toBe(created.id);
+    expect(app.versions.list()).toHaveLength(1);
+  });
+
   it("restores a v5 named version without rewriting its immutable payload", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-version-v5-"));
     cleanup.push(() => rm(root, { recursive: true, force: true }));

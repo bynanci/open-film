@@ -22,12 +22,19 @@ and Render QA
 ([43615235307](https://github.com/bynanci/open-film/actions/runs/43615235307))
 were still running; Pages passed
 ([43615235320](https://github.com/bynanci/open-film/actions/runs/43615235320)).
-The monolithic local `pnpm test` was stopped after 25 minutes without a final
-summary; it reported one native benchmark runner failure, while the isolated
-30-test file and three repetitions of that test passed. The cause is unresolved,
-so the full suite is not recorded as passed. The native-installer workflow has
-not run and has not produced a candidate receipt. Do not create a separate
-Cargo build and attribute its outputs to the installer.
+The partial local `pnpm test` run at main `86afec8` was interrupted after about
+25 minutes during an environment transition. Its preserved log records one
+failed result in `tests/integration/native-runtime.test.ts`: the failed-close/
+fresh-start case failed after 30.124 seconds against its unchanged 30-second
+budget. The log has no timeout message, so the cause is unconfirmed; a timeout
+is plausible but not established. The
+30-test `native-benchmark-runner.test.ts` file passed. No final Vitest summary,
+exit code or failure stack was captured. One unmodified isolated rerun passed
+in 21.682 seconds (28.241-second wrapper, no retry); this does not establish
+the cause or a full-suite pass. Later main `8604af87` Verify passed
+(https://github.com/bynanci/open-film/actions/runs/43619739468). The
+native-installer workflow has not run and has not produced a candidate receipt.
+Do not create a separate Cargo build and attribute its outputs to the installer.
 Issue #141 still needs
 reviewed Windows/macOS runtime binaries, complete redistribution/license/SBOM
 closure and target artifacts. This headless cloud session has no connected

@@ -229,14 +229,10 @@ test("variant review surfaces keep readable contrast in both themes", async ({
   await assertTouchTargets(".audio-toggle-btn");
   const audioA = modal.locator(".audio-toggle-btn").first();
   const audioB = modal.locator(".audio-toggle-btn").last();
-  const audioBounds = await audioA.boundingBox();
-  await touchTap(audioBounds!);
-  await expect(audioA).toHaveAttribute("aria-pressed", "true");
-  await expect(audioB).toHaveAttribute("aria-pressed", "false");
-  const audioBBounds = await audioB.boundingBox();
-  await touchTap(audioBBounds!);
+  await expect(audioA).toBeDisabled();
+  await expect(audioB).toBeDisabled();
   await expect(audioA).toHaveAttribute("aria-pressed", "false");
-  await expect(audioB).toHaveAttribute("aria-pressed", "true");
+  await expect(audioB).toHaveAttribute("aria-pressed", "false");
   await expect(modal.locator(".tab-btn").nth(2)).toHaveAttribute(
     "aria-pressed",
     "true",

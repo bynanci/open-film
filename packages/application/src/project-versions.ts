@@ -202,6 +202,8 @@ function sameDirectoryIdentity(info: Stats, identity: FileIdentity): boolean {
 }
 
 export interface ProjectVersionCreateInput {
+  /** Optional API fence for a UI request that must not follow a project switch. */
+  expectedProjectId?: string;
   name: string;
   description?: string;
   baseRevision: string;
@@ -1079,10 +1081,22 @@ export class ProjectVersionService {
     if (
       Object.keys(data).some(
         (key) =>
-          !["name", "description", "baseRevision", "requestId"].includes(key),
+          ![
+            "expectedProjectId",
+            "name",
+            "description",
+            "baseRevision",
+            "requestId",
+          ].includes(key),
       )
     )
       fail("request.invalid", "Unsupported create-version field.");
+    if (
+      data.expectedProjectId !== undefined &&
+      text(data.expectedProjectId, "expectedProjectId", 256) !==
+        this.app.project.id
+    )
+      fail("story.planConflict", "The active project changed.", 409);
     const name = text(
       data.name,
       "Version name",
@@ -1099,7 +1113,12 @@ export class ProjectVersionService {
     const baseRevision = revision(data.baseRevision, "baseRevision");
     const requestId = uuid(data.requestId, "requestId");
     const fingerprint = digest(
-      JSON.stringify({ kind: "create", name, description, baseRevision }),
+      JSON.stringify({
+        kind: "create",
+        name,
+        description,
+        baseRevision,
+      }),
     );
     const before = this.readIndex();
     const prior = this.assertReceipt(

@@ -1407,6 +1407,10 @@ export default {
         adoptB: "案 B を採用（メインに設定）",
         createConfirm: "案を作成",
         refreshDiff: "比較を更新",
+        previewAv: "名前付き保存して A/V プレビューを作成",
+        cancelPreview: "作成をキャンセル",
+        retryPreview: "プレビューを再試行",
+        stopPreview: "プレビューを停止",
         close: "閉じる",
         delete: "削除",
         cancel: "キャンセル",
@@ -1431,9 +1435,34 @@ export default {
       },
       previewA: "プレビューの仮表示 · ベースライン (A)",
       previewB: "プレビューの仮表示 · 比較案 (B)",
+      previewSnapshotName: "A/B 比較: {a} と {b}",
+      previewSnapshotDescription:
+        "{a} (A) と {b} (B) の比較用スナップショットです。一時プレビューを削除しても、この名前付きバージョンは「バージョン」に残ります。",
+      previewSnapshotSaving:
+        "両方のカットを名前付き保存中です。ウィンドウを閉じても「バージョン」に残ります。",
+      previewRendering: "保存した両方のカットを同期比較用に作成中…",
+      previewOther:
+        "比較リクエストがまだ実行中です。完了後に再接続または再試行してください。",
+      previewReconnect:
+        "レンダージョブを確認できませんでした。再接続して再試行してください。",
+      previewSnapshotSaved: "保存済みバージョン: {name}",
+      previewSaveFailed:
+        "プレビューの前にタイムラインの編集を保存してください。",
+      previewProjectChanged:
+        "アクティブなプロジェクトが変更されました。比較を開き直して再試行してください。",
+      previewChanged:
+        "保存中に選択した案が変更されました。比較を更新して再試行してください。",
+      previewPlaybackFailed:
+        "比較プレビューを再生できませんでした。再作成してください。",
+      previewExpired:
+        "このローカル比較プレビューは期限切れです。保存したスナップショットから再作成してください。",
+      previewPlayerA: "{name}、比較 A",
+      previewPlayerB: "{name}、比較 B",
       audio: {
         active: "再生中",
         play: "音声を再生",
+        playSide: "{name}（{side}）の音声を再生",
+        muteSide: "{name}（{side}）の音声をミュート",
         rule: "単一音声ルール：同時に再生される音声チャンネルは1つのみです。",
       },
       table: {

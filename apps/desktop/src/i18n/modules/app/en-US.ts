@@ -1411,6 +1411,10 @@ export default {
         adoptB: "Adopt Variant B (Make Active)",
         createConfirm: "Create Variant",
         refreshDiff: "Refresh Comparison",
+        previewAv: "Save snapshot & render A/V preview",
+        cancelPreview: "Cancel render",
+        retryPreview: "Retry preview",
+        stopPreview: "Stop preview",
         close: "Close",
         delete: "Delete",
         cancel: "Cancel",
@@ -1435,9 +1439,32 @@ export default {
       },
       previewA: "Preview placeholder · Baseline (A)",
       previewB: "Preview placeholder · Variant (B)",
+      previewSnapshotName: "A/B review: {a} vs {b}",
+      previewSnapshotDescription:
+        "Saved comparison snapshot for {a} (A) and {b} (B). This named version remains in Versions after the temporary preview is removed.",
+      previewSnapshotSaving:
+        "Saving a named snapshot of both cuts. This version remains in Versions even if the window closes.",
+      previewRendering: "Rendering both saved cuts for synchronized review…",
+      previewOther:
+        "A comparison request is still active. Reconnect or retry after it finishes.",
+      previewReconnect: "Could not check the render job. Reconnect and retry.",
+      previewSnapshotSaved: "Saved named version: {name}",
+      previewSaveFailed: "Save the current timeline edits before previewing.",
+      previewProjectChanged:
+        "The active project changed. Reopen comparison and try again.",
+      previewChanged:
+        "The selected variants changed while saving. Refresh the comparison and retry.",
+      previewPlaybackFailed:
+        "The comparison preview could not play. Retry to render it again.",
+      previewExpired:
+        "This local comparison preview expired. Render it again from the saved snapshot.",
+      previewPlayerA: "{name}, comparison A",
+      previewPlayerB: "{name}, comparison B",
       audio: {
         active: "Playing",
         play: "Play Audio",
+        playSide: "Play {name} (side {side}) audio",
+        muteSide: "Mute {name} (side {side}) audio",
         rule: "Single-audio rule: only one variant audio channel plays at any time.",
       },
       table: {

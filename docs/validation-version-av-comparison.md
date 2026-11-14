@@ -3,8 +3,18 @@
 Date: 2026-11-13. Candidate base: `befe2e5b86db17c643cfc4d7bdc93bd40fee1f1a`
 (`main` at implementation start). This change adds an explicit, read-only
 picture-and-sound preview for two saved Named Versions. It does not restore,
-adopt, or edit the current Composition, and it does not replace Creative
-Variants' comparison workflow.
+adopt, or edit the current Composition.
+
+The follow-up candidate `creative-variant-av-preview` connects the existing
+Creative Variants comparison modal to this same preview service. It flushes
+pending editor changes, refreshes the selected A/B Composition IDs, saves one
+durable Named Version with an expected-project identity fence, and renders both
+Compositions from that immutable snapshot. Both outputs must belong to the same
+snapshot and retain their distinct Composition IDs. This does not create a
+second renderer, Job engine, timeline, or mixer. The named checkpoint remains
+in project history after the ephemeral rendered pair is cancelled or expires;
+the user can remove that checkpoint explicitly using the existing Versions
+workflow.
 
 ## Data flow and safety
 
@@ -84,8 +94,8 @@ are now mirrored under `docs/en/images`, and the VitePress build passed locally.
 Exact head `12a382a7f44b2e233491ca693d4d506691cf8167` passed every GitHub check:
 DCO, fast-contract, all six browser shards, heavy-media, native-shell, Windows
 recovery, Linux/Windows/macOS Render QA, docs-site and the Verify aggregate.
-The documentation-only update that records these results requires its own
-exact-head CI run.
+PR #165 later extends the comparison to Creative Variants; its exact source-head
+results are recorded below.
 
 ## Limits and separate gates
 
@@ -96,8 +106,10 @@ exact-head CI run.
 - The known 1,152-sample / approximately 24 ms mixed-export audio-tail case and
   Export workspace warning remain a separate follow-up; see
   [real-media silence validation](validation-silence-real-media.md).
-- This covers Named Versions. It does not replace the Creative Variants modal
-  or migrate its existing placeholder A/V comparison.
+- The base implementation covers Named Versions; the candidate extension also
+  migrates the Creative Variants modal's placeholder A/V comparison to the
+  same service. A/B output remains a rendered review artifact, not an editable
+  timeline or an accepted/adopted variant.
 - Restart discards ephemeral preview outputs; durable Named Version snapshots
   remain intact and can be rendered again with a new request ID.
 - Windows/macOS installers, signing/notarization, clean-machine update/rollback,
@@ -121,4 +133,69 @@ exact-head CI run.
 | Browser shards                                                                 | 5/6 passed on `d17bbb6`; shard 1 duplicate-read regression fixed locally                                                                |
 | Exact-head `30b9bde5` Verify                                                   | fast-contract and 6/6 browser shards passed; docs-site failed on missing English screenshots; heavy-media was cancelled when superseded |
 | Exact-head `12a382a7` CI                                                       | Passed all checks: DCO, fast-contract, 6/6 E2E, heavy-media, native-shell, Windows recovery, 3-platform Render QA, docs-site, aggregate |
-| Exact-head CI for this documentation update                                    | Pending                                                                                                                                 |
+| PR #165 source-head Verify                                                     | Passed on `039d6c20`: fast-contract, 6/6 browser shards, heavy-media, native-shell, docs-site and aggregate                             |
+
+### Creative Variants bridge candidate
+
+The local candidate adds unit, application, HTTP integration and browser
+coverage for opening an A/B pair from Creative Variants, flushing and saving
+the exact project snapshot, preparing two distinct Composition renders,
+synchronized playback and seeking, single-side audio selection, cancel/reopen,
+and preserving the named snapshot. It also tests closing during playback,
+responsive widths, named audio controls, the shared audio-tail warning, failed
+cancel recovery, completed-render retry with a fresh Job ID, stale compare
+response fencing, UTF-16-safe generated snapshot names, project identity
+rejection and replay of a pre-fence durable create receipt.
+
+Local candidate results on the feature worktree, before rebase and PR creation:
+
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test:i18n` and
+  `pnpm build` passed. i18n validated 3,316 semantic keys. Build completed with
+  the existing large-chunk advisory.
+- Focused Unit: 4 tests across 2 files passed. Project-version owner fence and
+  legacy-receipt tests: 2 passed. Actual FFmpeg comparison regression: 1 passed.
+- Real HTTP integration: 2 passed. Playwright A/V review: 1 passed, with
+  screenshots attached at 1024×768 and 1920×1080; actual MP4 decode, playback,
+  audio-side switching, warning visibility, close-during-playback cleanup and
+  durable snapshot retention were checked.
+- `pnpm test:contracts` passed all 1,582 tests across 82 files in 20.20 s on
+  the final local rerun. One earlier run exceeded the unchanged 5 s glossary
+  benchmark at 6.50 s; the same test passed in isolation, then the full lane
+  passed on rerun. No threshold or assertion was changed.
+- The feature source candidate was rebased onto main `8604af87` and is PR #165.
+  Its exact-head CI and independent roundtable review are recorded below; no
+  post-merge main result is implied by the pre-merge checks above.
+
+### PR #165 exact-head verification
+
+Base: main `8604af87d81811f0394677d58f2fa9dd7382a90a`.
+Feature source head: `039d6c20f3e05aacb5f3c5da7a0dbb92072dedbb`.
+An independent roundtable code review of this exact source head found no code
+findings. Verify
+([43626767825](https://github.com/bynanci/open-film/actions/runs/43626767825))
+passed fast-contract, all six browser shards, heavy-media (398 files / 4,758
+tests), native-shell, docs-site and the aggregate. Three-platform Render QA
+([43626767826](https://github.com/bynanci/open-film/actions/runs/43626767826)),
+Windows media recovery
+([43626767796](https://github.com/bynanci/open-film/actions/runs/43626767796))
+and DCO ([43626766089](https://github.com/bynanci/open-film/actions/runs/43626766089))
+also passed.
+
+On the same feature source tree, local `pnpm format:check`, `pnpm test:i18n`
+(3,316 keys), `pnpm test:docs-i18n` (195 English mirrors), `pnpm lint`,
+`pnpm typecheck`, `pnpm test:contracts` (82 files / 1,582 tests) and `pnpm
+build` passed. Focused App navigation tests passed 40/40. The build retains the
+existing large-chunk advisory. Full Verify also exercises the browser A/V flow;
+the synthetic render test decodes both actual MP4s and checks synchronized
+transport, selected audio, source/version hashes, cache behavior and lifecycle
+cleanup. UI screenshots at 1024×768 and 1920×1080 are attached above.
+
+During earlier exact-head attempts, fast-contract formatting and English mirror
+drift were corrected; the browser regression now asserts audio controls remain
+disabled before a rendered preview exists; and the stale App-navigation test
+harness was updated to exercise preview draining on project close. The final
+head passed without weakening the assertions or adding retries.
+
+These checks do not replace human listening, physical-device A/V review,
+Windows/macOS installer and signing acceptance, Resolve interchange, GPU/4K,
+or release-owner approval. Those remain separate release gates.
