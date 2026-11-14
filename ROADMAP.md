@@ -53,7 +53,7 @@ open until a reviewed runtime is staged and a real native candidate receipt is
 produced. No installer, tag or release was created. PR #164 subsequently merged
 the documentation reconciliation at main `8604af87`.
 
-Post-audit update, 2026-11-14 18:28 UTC: PR #165 adds synchronized A/V preview
+Post-audit update: PR #165 adds synchronized A/V preview
 to Creative Variants using the existing Named Version snapshot and comparison
 renderer. Feature source head `039d6c20` is based on `8604af87`; an independent
 roundtable review found no code findings. Exact-head Verify, all six browser

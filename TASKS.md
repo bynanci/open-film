@@ -41,7 +41,7 @@ The native installer workflow has not run, so Issue #140 stays open. PR
 [#164](https://github.com/bynanci/open-film/pull/164) merged this documentation
 follow-up at main `8604af87`.
 
-Post-audit update, 2026-11-14 18:28 UTC: PR
+Post-audit update: PR
 [#165](https://github.com/bynanci/open-film/pull/165) adds synchronized local
 A/V review to Creative Variants. Its feature source head
 [`039d6c20`](https://github.com/bynanci/open-film/commit/039d6c20f3e05aacb5f3c5da7a0dbb92072dedbb)
