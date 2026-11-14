@@ -51,6 +51,19 @@ export default {
     audioHeading: "Audio delivery",
     audioDescription:
       "WAV mix and role stems follow the current clips, fades, gain, mute, and ducking. Files share the Composition time range.",
+    audioTailHeading: "Audio ending review",
+    audioTailWarning:
+      "The MP4 ends at {frameAlignedDuration} s of the saved {compositionDuration} s Composition. Its frame-aligned audio omits the final {lostTailSamples} of {fullMixSampleCount} samples ({lostTailMilliseconds} ms). The saved edit is unchanged, and a WAV keeps the complete duration.",
+    audioTailListenHint:
+      "Export the full mix WAV below, then play its final 1.5 seconds before delivery. This timing warning still needs a listening review.",
+    audioPreviewLabel: "Full mix WAV preview",
+    playAudioTail: "Play final 1.5 seconds",
+    audioPreviewError:
+      "The WAV audition could not be loaded or played. Retry the full-mix export or use its download.",
+    audioTailReport:
+      "The MP4 frame policy ends at {frameAlignedDuration} s of the {compositionDuration} s Composition; {lostTailSamples} samples ({lostTailMilliseconds} ms) are outside the encoded audio duration.",
+    audioTailManualReview:
+      "Manual listening is required. This frame-policy measurement does not assess clicks, speech retention, or whether the music ending is acceptable.",
     saveMix: "Save full mix WAV",
     saveStems: "Save role stems",
     exportingAudio: "Exporting audio…",

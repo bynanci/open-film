@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { join } from "node:path";
 import { OpenFilmApplication } from "@openfilm/application";
+import { runProcess } from "@openfilm/media";
 import { createDesktopFixture } from "./helpers.js";
 import { navigate } from "./ui-helpers.js";
 
@@ -12,9 +14,30 @@ test.afterAll(async ({ request }) => {
   await Promise.all(cleanup.map((action) => action()));
 });
 
-async function createFilm(request: APIRequestContext) {
+async function createFilm(
+  request: APIRequestContext,
+  options: { duration?: number; withAudio?: boolean } = {},
+) {
   const fixture = await createDesktopFixture(0);
   cleanup.push(fixture.cleanup);
+  const duration = options.duration ?? 2;
+  if (options.withAudio)
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=880:sample_rate=48000:duration=${duration}`,
+      "-ac",
+      "2",
+      "-c:a",
+      "pcm_s16le",
+      "-threads",
+      "1",
+      "-y",
+      join(fixture.media, "synthetic-tail-tone.wav"),
+    ]);
   const app = await OpenFilmApplication.create(
     fixture.project,
     "Export profile fixture",
@@ -34,7 +57,7 @@ async function createFilm(request: APIRequestContext) {
     app.project.timelines.push({
       id: "profile-film",
       storyId: "profile-story",
-      duration: 2,
+      duration,
       tracks: [
         {
           id: "visuals",
@@ -44,12 +67,32 @@ async function createFilm(request: APIRequestContext) {
               id: "photo-clip",
               assetId: photo.id,
               timelineStart: 0,
-              timelineDuration: 2,
+              timelineDuration: duration,
             },
           ],
         },
       ],
     });
+    const audio = app.catalog
+      .listAssets({ limit: 100 })
+      .find((asset) => asset.name === "synthetic-tail-tone.wav");
+    if (options.withAudio && !audio)
+      throw new Error("Synthetic tail audio fixture was not imported.");
+    if (audio)
+      app.project.timelines[0]!.tracks.push({
+        id: "narration",
+        type: "audio",
+        timing: "overlay",
+        clips: [
+          {
+            id: "tail-tone",
+            assetId: audio.id,
+            timelineStart: 0,
+            timelineDuration: duration,
+            audioAutomation: { version: 1, role: "narration" },
+          },
+        ],
+      });
     await app.save();
   } finally {
     app.close();
@@ -59,6 +102,83 @@ async function createFilm(request: APIRequestContext) {
   });
   expect(opened.ok()).toBe(true);
 }
+
+test("warns about the frame-aligned MP4 tail and lets the full-mix WAV ending be auditioned", async ({
+  page,
+  request,
+}) => {
+  await createFilm(request, { duration: 2.02, withAudio: true });
+  await page.addInitScript(() =>
+    localStorage.setItem("openfilm.uiLocale", "en-US"),
+  );
+  await page.goto("/");
+  await navigate(page, "export", "en-US");
+
+  await expect(page.getByTestId("export-audio-tail-warning")).toContainText(
+    "960 samples",
+  );
+  await expect(page.getByTestId("export-audio-tail-warning")).toContainText(
+    "20 ms",
+  );
+
+  const exportResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/export") &&
+      response.request().method() === "POST",
+  );
+  await page.getByTestId("export-profile-mp4").click();
+  const exportResponse = await exportResponsePromise;
+  expect(exportResponse.ok(), await exportResponse.text()).toBe(true);
+  const exported = await exportResponse.json();
+  expect(exported.report.audioTail).toMatchObject({
+    code: "qa.frameAlignedAudioTail",
+    severity: "manual-review-required",
+    lostTailSamples: 960,
+    lostTailMilliseconds: 20,
+  });
+  await expect(page.locator(".export-report-audio-tail")).toContainText(
+    "Manual listening is required",
+  );
+
+  const audioResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/export/audio") &&
+      response.request().method() === "POST",
+  );
+  await page.getByTestId("export-audio-mix").click();
+  const audioResponse = await audioResponsePromise;
+  expect(audioResponse.ok(), await audioResponse.text()).toBe(true);
+
+  const player = page.getByTestId("export-audio-preview");
+  await expect(player).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(() =>
+      player.evaluate((audio) => (audio as HTMLAudioElement).readyState),
+    )
+    .toBeGreaterThan(0);
+  expect(
+    await player.evaluate((audio) => (audio as HTMLAudioElement).duration),
+  ).toBeCloseTo(2.02, 2);
+  const src = await player.getAttribute("src");
+  expect(src).toContain("inline=audio");
+  expect(
+    (
+      await request.get(new URL(src!, "http://127.0.0.1:4310").href, {
+        headers: { range: "bytes=0-63" },
+      })
+    ).status(),
+  ).toBe(206);
+
+  await page.getByTestId("export-audio-tail-preview").click();
+  await expect
+    .poll(() =>
+      player.evaluate((audio) => (audio as HTMLAudioElement).currentTime),
+    )
+    .toBeGreaterThan(0.45);
+  expect(
+    await player.evaluate((audio) => (audio as HTMLAudioElement).paused),
+  ).toBe(false);
+});
 
 test("Export previews a Traditional Chinese reviewed crop and writes PNG/MP4 without saving new geometry", async ({
   page,

@@ -423,6 +423,72 @@ function manualCaptions(cueCount: number): CaptionTrack {
 }
 
 describe("professional profile exports", () => {
+  it("reports the actual frame-policy tail and keeps the full-mix WAV duration", async () => {
+    const { app, composition } = await fixture(2.02);
+    const profile = createExportProfile({
+      ratio: "16:9",
+      width: 160,
+      height: 90,
+      frameRate: 12,
+      format: "mp4",
+    });
+
+    const mp4 = await app.exportMp4(composition.id, { exportProfile: profile });
+
+    expect(mp4.report.audioTail).toEqual({
+      code: "qa.frameAlignedAudioTail",
+      severity: "manual-review-required",
+      measurement: "render-frame-policy",
+      compositionDurationSeconds: 2.02,
+      frameAlignedDurationSeconds: 2,
+      exportFrameRate: 12,
+      fullMixSampleCount: 96_960,
+      frameAlignedSampleCount: 96_000,
+      lostTailSamples: 960,
+      lostTailMilliseconds: 20,
+    });
+    expect(mp4.report.warnings).not.toContain("qa.frameAlignedAudioTail");
+
+    const stream = JSON.parse(
+      (
+        await runProcess("ffprobe", [
+          "-v",
+          "error",
+          "-select_streams",
+          "a:0",
+          "-show_entries",
+          "stream=duration_ts,time_base,sample_rate,codec_name",
+          "-of",
+          "json",
+          mp4.path,
+        ])
+      ).stdout.toString("utf8"),
+    ).streams[0] as {
+      duration_ts: string;
+      time_base: string;
+      sample_rate: string;
+      codec_name: string;
+    };
+    const [timeBaseNumerator, timeBaseDenominator] = stream.time_base
+      .split("/")
+      .map(Number);
+    expect(stream).toMatchObject({ codec_name: "aac", sample_rate: "48000" });
+    expect(
+      Number(stream.duration_ts) * (timeBaseNumerator! / timeBaseDenominator!),
+    ).toBeCloseTo(2, 6);
+
+    const fullMix = await app.exportProfileAudio({
+      compositionId: composition.id,
+      profile: createExportProfile({
+        ratio: "16:9",
+        frameRate: 12,
+        format: "wav",
+      }),
+      requestId: "tail-review-full-mix-001",
+    });
+    expect(fullMix.files[0]?.sampleCount).toBe(96_960);
+  }, 120_000);
+
   it.each(["wav", "audio-stems"] as const)(
     "excludes an offline muted source from %s render, receipts and restart retries",
     async (format) => {
@@ -3179,13 +3245,23 @@ describe("professional profile exports", () => {
       files: Array<{ filename: string; sampleCount: number }>;
     };
     expect(mix.files[0]?.sampleCount).toBe(48_000);
+    const mixDownloadUrl = `${base}/api/export/file?${new URLSearchParams({ name: mix.files[0]!.filename })}`;
+    expect((await fetch(mixDownloadUrl)).status).toBe(200);
+    const mixPreview = await fetch(
+      `${base}/api/export/file?${new URLSearchParams({ name: mix.files[0]!.filename, inline: "audio" })}`,
+      { headers: { Range: "bytes=0-63" } },
+    );
+    expect(mixPreview.status).toBe(206);
+    expect(mixPreview.headers.get("content-type")).toBe("audio/wav");
+    expect(mixPreview.headers.get("content-disposition")).toMatch(/^inline;/u);
+    expect((await mixPreview.arrayBuffer()).byteLength).toBe(64);
     expect(
       (
         await fetch(
-          `${base}/api/export/file?${new URLSearchParams({ name: mix.files[0]!.filename })}`,
+          `${base}/api/export/file?${new URLSearchParams({ name: still.filename, inline: "audio" })}`,
         )
       ).status,
-    ).toBe(200);
+    ).toBe(400);
 
     const stemsResponse = await postJson(base, "/api/export/audio", {
       compositionId: composition.id,

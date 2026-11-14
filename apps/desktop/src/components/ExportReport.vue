@@ -12,6 +12,18 @@ const props = defineProps<{
   report?: {
     format: string;
     warnings: string[];
+    audioTail?: {
+      code: "qa.frameAlignedAudioTail";
+      severity: "manual-review-required";
+      measurement: "render-frame-policy";
+      compositionDurationSeconds: number;
+      exportFrameRate: number;
+      frameAlignedDurationSeconds: number;
+      fullMixSampleCount: number;
+      frameAlignedSampleCount: number;
+      lostTailSamples: number;
+      lostTailMilliseconds: number;
+    };
     realNleVerified?: false;
     advancedEdits?: "metadata-only";
     metadataOnlyEdits?: { clipId: string; features: string[] }[];
@@ -36,6 +48,11 @@ function warningSummary(warning: string): string | undefined {
 }
 const warningItems = computed(() =>
   warnings.value.map((warning) => {
+    if (warning === "qa.frameAlignedAudioTail")
+      return {
+        summary: t("exportProfiles.audioTailManualReview"),
+        technical: warning,
+      };
     if (warning === "collect.offline-quality")
       return { summary: t("collectDelivery.offlineOutput") };
     const summary = warningSummary(warning);
@@ -83,7 +100,7 @@ const requiresVerification = resolveCompatibility.features.some(
 
 <template>
   <section
-    v-if="isOtio || metadataOnly || warnings.length"
+    v-if="isOtio || metadataOnly || warnings.length || props.report?.audioTail"
     class="export-report"
     :aria-label="t('media.report.region')"
   >
@@ -97,6 +114,38 @@ const requiresVerification = resolveCompatibility.features.some(
     >
       <p class="export-report-status">{{ t("media.report.unverified") }}</p>
       <p>{{ t("media.report.checkHelp") }}</p>
+    </div>
+    <div
+      v-if="props.report?.audioTail"
+      class="export-report-audio-tail"
+      data-testid="export-report-audio-tail"
+      role="note"
+    >
+      <strong>{{ t("exportProfiles.audioTailHeading") }}</strong>
+      <p>
+        {{
+          t("exportProfiles.audioTailReport", {
+            compositionDuration: formatNumber(
+              props.report.audioTail.compositionDurationSeconds,
+              { maximumFractionDigits: 3 },
+            ),
+            frameAlignedDuration: formatNumber(
+              props.report.audioTail.frameAlignedDurationSeconds,
+              { maximumFractionDigits: 3 },
+            ),
+            fullMixSampleCount: formatNumber(
+              props.report.audioTail.fullMixSampleCount,
+            ),
+            lostTailSamples: formatNumber(
+              props.report.audioTail.lostTailSamples,
+            ),
+            lostTailMilliseconds: formatNumber(
+              props.report.audioTail.lostTailMilliseconds,
+            ),
+          })
+        }}
+      </p>
+      <p>{{ t("exportProfiles.audioTailManualReview") }}</p>
     </div>
     <div v-if="metadataOnly" class="export-report-advanced">
       <h4>{{ t("media.report.manualTitle") }}</h4>

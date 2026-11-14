@@ -556,3 +556,65 @@ Root causes identified and repaired:
 3. In `ExportProfileService.extractFrame`, `-threads 1` was positioned after `-i videoPath`, leaving input H.264 decoding multithreaded. Moved `-threads 1` prior to `-i videoPath` so decoder threading is bounded to a single thread.
 4. In `packages/render/src/titles.ts` (`loadFont`), font cache invalidation previously relied exclusively on `mtimeMs` and `size`. Rapid file overwrite (such as swapping fonts across identical-length font candidates or on NTFS filesystems with timestamp granularity issues) led to stale font cache reuse. Added SHA-256 buffer hash validation to `loadFont` cache lookup and exported `clearFontCache()`.
 5. Full strict decoded-RGB byte-for-byte equality assertions (`decodedRgb` and `decodedRgbFrame`) are preserved without relaxing any tolerance or applying workarounds.
+
+## 2026-11-13 — Review the frame-aligned MP4 audio tail in Export
+
+The export review surface now reports the exact audio interval after the last
+complete MP4 frame and offers an audition of the ending from the existing
+full-mix WAV export. It does not trim, pad, or otherwise change the established
+MP4 frame-alignment policy. `ExportReport.warnings` remains consistent with
+the renderer manifest; the application-level manual-review measurement has its
+own typed `audioTail` field.
+
+```mermaid
+flowchart LR
+  C[Saved Composition] --> P[MP4 preflight at selected frame rate]
+  P --> M[Typed measured tail and manual review]
+  C --> W[Existing full-mix WAV export]
+  W --> A[Audition final 1.5 seconds]
+  M --> D[Creator reviews before delivery]
+  A --> D
+```
+
+The shared 48 kHz calculation uses the saved Composition duration and selected
+frame rate for the preflight; after rendering, the application report derives
+the measurement from the actual render manifest. For a synthetic 2.02-second
+Composition at 12 fps, the last complete video frame is at 2.00 seconds: the
+full mix contains 96,960 samples, the frame-aligned interval contains 96,000,
+and the measured tail is 960 samples / 20 ms. A synthetic MP4 was rendered and
+probed with FFprobe: its AAC stream is 48 kHz and 2.00 seconds, while the
+existing WAV full-mix export preserves all 96,960 samples. The browser workflow
+renders MP4 and WAV, loads the WAV metadata, confirms HTTP range playback, and
+seeks/plays from 0.52 seconds (the final 1.5 seconds of the 2.02-second WAV).
+
+The preflight and report are advisory and require human review. The separately
+recorded real-media example still has a 1,152-sample / 24 ms tail; this feature
+does not determine whether that ending is audible or acceptable. Issue #144
+remains open for real dialogue/music listening, captured A/V synchronization,
+more than two channels, and Windows/macOS device and workstation checks.
+
+Local focused evidence on Linux:
+
+- The FFmpeg application integration rendered and probed the 2.02-second MP4
+  and verified the full-mix WAV sample count.
+- The HTTP integration verified WAV-only inline playback, byte-range response
+  `206`, and rejection of inline PNG requests (`400`). Existing safe export
+  filename validation remains in place.
+- The Playwright export workflow passed the synthetic MP4 → tail report → WAV
+  render → final-section audition path.
+- `pnpm test` passed all 473 files / 6,251 tests in 1,525.13 seconds with the
+  workflow-pinned OTIO 0.18.1 available in a temporary Python environment.
+  The first run exposed and reproduced a Collect Media warning/receipt mismatch;
+  the report now keeps renderer warnings identical to the receipt and exposes
+  the separate typed measurement. The native close test passed in isolation
+  and in the final suite; the first run had exceeded its 30-second limit under
+  aggregate load. NLE handoff passed all 65 tests after installing its pinned
+  OTIO prerequisite.
+- Final local gates passed: `pnpm format:check`, `pnpm test:i18n` (3,260
+  semantic keys), `pnpm lint`, `pnpm typecheck`, `pnpm test:contracts` (82 files
+  / 1,582 tests) and `pnpm build`. The focused unit tests passed 42/42, the
+  selected FFmpeg/HTTP integration tests passed 2/2, and the focused Playwright
+  test passed 1/1. Build reports the existing >500 kB chunk advisory.
+
+This is Linux local evidence only. Candidate GitHub checks must run against the
+exact PR head; Windows/macOS device checks and real human listening remain open.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frameAlignedDuration } from "../src/index.js";
+import { frameAlignedAudioTail, frameAlignedDuration } from "../src/index.js";
 
 describe("shared output frame duration", () => {
   it.each([
@@ -34,4 +34,19 @@ describe("shared output frame duration", () => {
       expect(() => frameAlignedDuration(1, frameRate)).toThrow("Frame rate");
     },
   );
+});
+
+describe("frame aligned audio tail", () => {
+  it("reports only the sample interval excluded by complete output frames", () => {
+    expect(frameAlignedAudioTail(2.02, 12)).toEqual({
+      compositionDurationSeconds: 2.02,
+      exportFrameRate: 12,
+      frameAlignedDurationSeconds: 2,
+      fullMixSampleCount: 96_960,
+      frameAlignedSampleCount: 96_000,
+      lostTailSamples: 960,
+      lostTailMilliseconds: 20,
+    });
+    expect(frameAlignedAudioTail(2, 12)).toBeNull();
+  });
 });

@@ -120,6 +120,14 @@ review/CI is evaluated independently. This completes one narrow #144 child,
 with human/native acceptance,
 the excluded tail, PR #129 ownership and administrator gates unchanged.
 
+**2026-11-13:** Export now surfaces the existing frame-aligned MP4 audio tail as
+a typed manual-review measurement and offers an ending audition through the
+existing full-mix WAV export. The renderer policy, Composition, and receipt
+warning list stay unchanged. Synthetic FFmpeg and browser evidence is recorded
+in [Export Profiles validation](docs/validation-export-profiles.md). This makes
+the known 1,152-sample / 24 ms case visible and reviewable; it does not accept
+the tail or close Issue #144's listening and workstation checks.
+
 The automation-clock implementation and hosted validation are complete. Next
 acceptance is real dialogue/music listening and candidate-bound workstation
 observations. Additional providers remain a separate admission scope whose
