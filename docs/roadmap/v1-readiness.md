@@ -1,33 +1,45 @@
 # OpenFilm stable-release readiness
 
 This page records the long-range v1.0 objective; it does not approve a tag.
-As of 2026-11-08, the latest public source release remains v0.4.0 while main's
+As of 2026-11-14, the latest public source release remains v0.4.0 while main's
 package metadata says 1.0.0. The staged sequence starts with source-only v0.5.0,
 continues through v0.8.0 and reserves v1.0.0 for native distribution readiness.
-Main at [`23ac0a2`](https://github.com/bynanci/open-film/commit/23ac0a22a500b4454449da56436305c5c41292cc)
-includes the independently reviewed GLib source fix from PR #128. Its final head
-`e11051f` passed all 19 checks, including optimized native source admission.
-Draft PR [#129](https://github.com/bynanci/open-film/pull/129) remains on its
-separate historical release track at `54534d8cf985203e8b5abbd09a771436f8fe09e5`.
-That exact candidate passes complete CI, three-platform Render QA, its own native
-controls/audits and independent technical adaptation review. The
-[prepared source/asset packet](../release-owner-review-v050.md) awaits the
-release-owner decision, including the maintenance-warning disposition. It does
-not provide installer or physical workstation acceptance. See the
+Main at [`9b8df866`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53)
+includes the independently reviewed GLib source fix from PR #128 and the merged
+A/V comparison/export warning in PRs #161/#162. Main Verify, Windows recovery
+and three-platform Render QA passed on that exact SHA. PR #129's candidate
+`54534d8cf985203e8b5abbd09a771436f8fe09e5` merged to the separate
+`release/v0.5.0` branch at `1b8d386e2a68b2448d20742138b4b100c799289b`.
+The owner disposition is limited to that source-only branch update and the
+disclosed maintenance warning; no tag, public asset, binary distribution or
+workstation claim is approved. The
+[owner review record](../release-owner-review-v050.md) documents the compressed
+archive digest discrepancy and source-tree verification. It does not provide
+installer or physical workstation acceptance. See the
 [current release gates](../validation-release-gates.md) and
 [release train](incremental-release-train.md). Main metadata is not a published
 version; Storytelling maintains a separate repository and release track.
+
+## Post-audit update — 2026-11-14
+
+PR #163 subsequently merged to main at `a335b09`, adding same-build Cargo
+evidence capture to the native receipt workflow. All 20 PR-head hosted checks
+passed. The corresponding post-merge Verify, Windows recovery and Render QA
+were in progress at 16:22 UTC; Pages passed. This source tooling does not close
+Issue #140: no reviewed runtime input set, native installer candidate, signed
+artifact or candidate-bound receipt has been produced. Issue #141 and the
+Windows/macOS workstation gates remain open.
 
 For a shorter overview, see the [roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)
 and [current tasks](https://github.com/bynanci/open-film/blob/main/TASKS.md).
 Status was reconciled against the exact main SHA above; dated validation records
 retain the results of their original runs. The latest GitHub release is still
-v0.4.0; PR #129 is a draft and creates no tag or publication.
+v0.4.0; the PR #129 branch merge created no tag or publication.
 
 ## Release & Version Status
 
 - **Package metadata**: root, Desktop, Tauri and Cargo currently declare 1.0.0; this is build metadata, not a selected release tag.
-- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0. Draft PR #129 prepares the source-only candidate at `54534d8cf985203e8b5abbd09a771436f8fe09e5`; complete CI, native source admission, Render QA and independent technical source review passed. Release-owner approval of the exact archive and maintenance-warning disposition remains pending; no tag is approved. Storytelling maintains a separate release track.
+- **Latest GitHub release**: v0.4.0, published 2026-10-20. The proposed next OpenFilm train is v0.5.0, followed by v0.6.0–v0.8.0. PR #129 used base SHA `d5a286ed9250872e8eb9b1c3e40adb926f913d34` and candidate PR head `54534d8cf985203e8b5abbd09a771436f8fe09e5`; GitHub merged it as `1b8d386e2a68b2448d20742138b4b100c799289b`, the current `release/v0.5.0` branch head. The candidate's exact CI, native source admission, Render QA and independent technical source review passed. The branch merge does not approve a public tag, source archive asset or binary distribution. Storytelling maintains a separate release track.
 - **Selected merged feature baseline (through PR #99, with recent changes noted below)**:
   - PR #64: D6A managed proxy queue, eviction, rebuild, and health UI.
   - PR #69: Windows workflow recovery for issues #66–#68 (FFmpeg frame sync, atomic sync, benchmark quiescence).

@@ -8,6 +8,39 @@ readiness page remains a long-range scope record. Read [CONTRIBUTING.md](CONTRIB
 before starting a substantial change, and check existing issues or pull requests
 to avoid duplicate work.
 
+Status baseline was checked against [main `9b8df866`](https://github.com/bynanci/open-film/commit/9b8df866134e12e864d642005c46231b41d9da53)
+on 2026-11-14. PR #161 and #162 are merged to main; exact-head Verify, Windows
+Recovery, three-platform Render QA and Pages passed (Verify run
+[43577698735](https://github.com/bynanci/open-film/actions/runs/43577698735),
+Windows [43577698778](https://github.com/bynanci/open-film/actions/runs/43577698778),
+Render QA [43577698703](https://github.com/bynanci/open-film/actions/runs/43577698703)).
+PR #129 merged only to `release/v0.5.0` at
+`1b8d386e2a68b2448d20742138b4b100c799289b`; it is a source-candidate branch
+update, not a tag or published release. The latest public release remains
+**v0.4.0**. At audit start, GitHub had zero pre-existing open PRs and eight
+open Issues: #146, #145, #144,
+#143, #142, #141, #140 and #7. These remaining items require authorized
+repository administration, candidate-bound runtime/installer evidence, or
+human/workstation acceptance; hosted CI does not close them. See the
+[current release-gate audit](docs/validation-release-gates.md).
+
+Post-audit update, 2026-11-14 16:22 UTC: PR #163 merged to main as
+[`a335b09`](https://github.com/bynanci/open-film/commit/a335b09cd766c3b53926360c713e0b24ce6294ce).
+Its PR head `23f9642` passed all 20 exact-head hosted checks. Post-merge Verify
+([43615235479](https://github.com/bynanci/open-film/actions/runs/43615235479)),
+Windows recovery
+([43615235406](https://github.com/bynanci/open-film/actions/runs/43615235406))
+and Render QA
+([43615235307](https://github.com/bynanci/open-film/actions/runs/43615235307))
+are still running; Pages passed
+([43615235320](https://github.com/bynanci/open-film/actions/runs/43615235320)).
+The local monolithic `pnpm test` stopped after 25 minutes without a full summary;
+it reported one native benchmark runner failure. The 30-test file and three
+isolated repetitions of that test passed, but the cause remains unresolved.
+The native installer workflow has not run, so Issue #140 stays open. Draft PR
+[#164](https://github.com/bynanci/open-film/pull/164) contains this documentation
+follow-up and remains unmerged.
+
 Historical baseline reviewed against [main `08e38b6`](https://github.com/bynanci/open-film/commit/08e38b6a63a0b0fbcfd3a073c8bfa5dcc8c08224)
 on 2026-11-11. Planning PR #147, CI/profiling PR #148 and SDK PR #149 are merged;
 [the issue execution record](docs/validation/issue-execution-2026-11-11.md) separates
@@ -17,12 +50,14 @@ PRs #128, #130–#137 are merged. PR #137 final-head and post-merge
 checks passed, including 1,548 contracts, 4,429 media tests and 363 browser cases;
 workstation schema 1.1 does not certify physical observations. PR #128's head `e11051f`
 passed all 19 checks, including actual native source admission and independent
-technical source review. The v0.5.0 source-only candidate in Draft PR #129 is
-`54534d8cf985203e8b5abbd09a771436f8fe09e5`; its own full CI, three-platform
-Render QA, optimized native controls and independent adapted-source review pass.
-Release-owner approval of the exact source archive and retained maintenance
-warning remains pending. Native installer/workstation gates remain open. The
-latest published source release remains **v0.4.0**.
+technical source review. The v0.5.0 source-only candidate head was
+`54534d8cf985203e8b5abbd09a771436f8fe09e5`; the owner accepted PR #129 for a
+source-only merge to its dedicated release branch and accepted the disclosed
+`proc-macro-error` maintenance warning only for that branch update. The archive
+byte digest discrepancy remains documented; Git-tree contents were verified.
+No tag, Release, installer or distribution approval was created. Native
+installer/workstation gates remain open; the latest published source release
+remains **v0.4.0**.
 
 - An unchecked item is unfinished work or missing verification.
 - A checked item identifies an implemented scope, not a blanket release or
@@ -32,12 +67,16 @@ latest published source release remains **v0.4.0**.
 
 ## Next execution queue
 
-The [2026-11-11 issue plan](docs/roadmap/next-issues-2026-11-11.md) maps the
-28 unchecked baseline entries to code, evidence, owner and deferred work.
-Its first independent code packages are a read-only Storytelling compatibility
-capsule, measured CI profiling, and final native evidence binding. Runtime
-provisioning and target QA proceed through separate dependencies. Existing
-Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
+The [2026-11-11 issue plan](docs/roadmap/next-issues-2026-11-11.md) is a dated
+historical queue, not the current open-PR list. Its code and source-replay work
+has progressed; the remaining live Issues are tracked above and in the
+[release-gate audit](docs/validation-release-gates.md). Draft PR
+PR [#163](https://github.com/bynanci/open-film/pull/163) integrated capture of
+the exact Tauri Cargo invocation and packaged shell. Its code is on main, but
+the native installer workflow/build has not run and no candidate receipt exists.
+Issue #141 still blocks that workflow until reviewed target runtime inputs and
+rights/SBOM evidence are supplied. Do not create a separate Cargo build and
+attribute its outputs to the installer.
 
 - [x] Complete the bounded [#139 media cost profile](docs/validation/media-test-profile.md)
       using two fixed-source repetitions and 56 real tool calls. Render work
@@ -75,9 +114,39 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
       audio, reconnect/expiry status and cleanup on workspace/project changes.
       Verify real synthetic MP4 decode, source/version hashes and responsive UI.
       See [validation](docs/validation-version-av-comparison.md).
-- [ ] Close exact-head GitHub checks and review for this Draft PR. Human
-      listening/device QA, the Export audio-tail warning, Creative Variants A/V
-      migration, native installer/workstation and release gates remain separate.
+- [x] Merge the exact-head audiovisual comparison in [PR #161](https://github.com/bynanci/open-film/pull/161)
+      to main as `9b8df866134e12e864d642005c46231b41d9da53`; merge its frame-aligned
+      Export audio-tail review in [PR #162](https://github.com/bynanci/open-film/pull/162)
+      as `384738545289107afa46a209bd5991c1166220c0`. Main Verify 43577698735,
+      Windows Recovery 43577698778 and three-platform Render QA 43577698703 passed.
+- [ ] Complete actual listening/device QA, Creative Variants A/V migration, and
+      native installer/workstation acceptance. The merged comparison and Export
+      warning do not close Issue #144 or the distribution gates.
+
+## Open GitHub issues checked 2026-11-14
+
+At the start of this audit, GitHub had zero pre-existing open PRs. These eight
+issues remain open because they require
+candidate-bound native inputs, a privileged repository action, or external
+human/workstation evidence; keep each gate open until its evidence is recorded.
+
+| Issue                                                   | Implemented baseline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Remaining work / stop condition                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [#146](https://github.com/bynanci/open-film/issues/146) | Fixed ruleset proposal approved; exact proposal SHA is documented in docs/governance/merge-controls-operator-handoff.md.                                                                                                                                                                                                                                                                                                                                                                             | An authorized administrator must recheck and apply that exact payload, capture rule ID/effective rules and safe-control evidence, and name recovery/alerting/release roles. Prior apply returned 403; do not bypass.                                                                                                                                                                                                                                            |
+| [#145](https://github.com/bynanci/open-film/issues/145) | Benchmark runner and synthetic fixture preparation exist; the 2,000-asset fixture links to one synthetic three-second source ([preparation](docs/validation/native-benchmark-preparation-145.md)).                                                                                                                                                                                                                                                                                                   | Measure checkout-built warm trials, one-hour memory/action soak, and actual decode/encode/seek/interaction cost on native workstations. Separately measure signed-installed cold start with an external tracer after #142/#143. Exercise long-form import/proxy/edit/seek/render/cancel/retry, external storage, input/display and multichannel workflows. The fixture does not prove real large-library, long-form, 4K, codec/HDR, GPU or storage performance. |
+| [#144](https://github.com/bynanci/open-film/issues/144) | Main `9b8df866` has candidate-bound Linux real-media evidence with status `objective-contract-pass; manual-review-required` ([packet summary](docs/evidence/silence-real-media/2026-11-14-main.json)); it is headless and reports no output device. The older recorded-browser evidence remains bound to `5e9c06d91cb01ff44acae2eb5214e6829b60113a` ([receipt](docs/evidence/silence-real-browser/2026-11-12.json)). PR #162 adds a tail warning/review flow; it does not decide tail acceptability. | On Windows/macOS, record human decisions on false removals/retentions, consonant/word tails, breaths, room/clothing noise, seam clicks, music continuity and actual A/V sync. Record physical device, routing, sample rates and output channels (>stereo where applicable). Exercise lock/User Pin protection, J/L rejection, cancellation/project switch, Accept→Undo→Redo→Save→Reopen. Disposition of the known 1,152-sample/24 ms tail remains open.         |
+| [#143](https://github.com/bynanci/open-film/issues/143) | macOS operator kit and schema 1.1 evidence tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                            | Reviewed runtime rights/SBOM, signed and notarized candidate, Gatekeeper/notary/staple receipts, and clean-workstation install/update-failure/rollback/uninstall evidence.                                                                                                                                                                                                                                                                                      |
+| [#142](https://github.com/bynanci/open-film/issues/142) | Windows operator kit and schema 1.1 evidence tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                          | Reviewed runtime rights/SBOM, signed candidate, clean-machine trust/install/first launch/update-failure/rollback/project-preserving uninstall evidence.                                                                                                                                                                                                                                                                                                         |
+| [#141](https://github.com/bynanci/open-film/issues/141) | Intake, staging, provenance and source/license review tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                 | Actual per-target runtime binaries and reviewed manifest/run IDs with complete license, source-offer/relink and SPDX closure; then owned target launch/close.                                                                                                                                                                                                                                                                                                   |
+| [#140](https://github.com/bynanci/open-film/issues/140) | Versioned pre-trust/final-byte receipt contracts and source replay exist. PR [#163](https://github.com/bynanci/open-film/pull/163) integrated exact Tauri-build Cargo capture in main `a335b09`; its 20 exact-head hosted checks passed.                                                                                                                                                                                                                                                             | After Issue #141 supplies reviewed runtime inputs, run the native workflow on a reviewed target and collect same-candidate final shell/installer/runtime/contribution/security/trust/lifecycle receipts and independent acceptance. The workflow has not run.                                                                                                                                                                                                   |
+| [#7](https://github.com/bynanci/open-film/issues/7)     | Hosted CI and synthetic regression suites cover the software contracts.                                                                                                                                                                                                                                                                                                                                                                                                                              | Resolve round trip, ASR/LLM reference quality, real camera/HDR/Motion Photo, external media, GPU/4K, long-form performance, listening, platform installers, and candidate-bound Windows/macOS owner-recovery observations for live/dead/reused-PID/foreign/unknown owners.                                                                                                                                                                                      |
+
+Roundtable follow-up is sequenced by dependency: close #141 runtime provenance
+and rights; then use #140's integrated exact-build capture to produce and review
+a candidate before observing #142/#143. In parallel, use the existing
+workstation protocols for #144/#145. #146 remains an authorized-admin action.
+Hosted CI is evidence for source behavior only and does not substitute for any
+physical observation.
 
 ## Editing and story workflow
 
@@ -340,7 +409,7 @@ and in the long-range v1.0 readiness record.
 - [x] Define separate, cumulative OpenFilm source releases (`v0.5.0` through
       `v0.8.0`) and reserve `v1.0.0` for native distribution closure; keep
       Storytelling independently versioned ([release plan](docs/roadmap/incremental-release-train.md)).
-- [x] Prepare and verify the first `v0.5.0` source-only candidate in Draft PR
+- [x] Prepare and verify the first `v0.5.0` source-only candidate in PR
       [#129](https://github.com/bynanci/open-film/pull/129), head
       `54534d8cf985203e8b5abbd09a771436f8fe09e5`, on dedicated
       `release/v0.5.0` base `d5a286ed9250872e8eb9b1c3e40adb926f913d34`.
@@ -352,8 +421,12 @@ and in the long-range v1.0 readiness record.
       certification. Prior `04035f3` results remain historical.
 - [x] Obtain independent technical GLib dispositions for main repair PR #128
       and the adapted release source; retain source/lock/control/audit proof.
-- [ ] Obtain release-owner approval of the exact source/asset scope and explicit
-      proc-macro-error maintenance-warning decision; no tag/publication is approved.
+- [x] Obtain the release owner's scoped approval to merge PR #129 into the
+      dedicated `release/v0.5.0` branch and to accept the disclosed
+      `proc-macro-error` maintenance warning only for that source-only branch
+      update. The merge is `1b8d386e2a68b2448d20742138b4b100c799289b`; the
+      recorded archive byte hashes differ, while all 1,417 source file contents
+      matched. No tag/publication or binary distribution is approved.
 
 - [x] Storytelling M0 PR #1 and migration-map PR #2 are merged. The finite,
       read-only M1-01 importer PR #7 is also merged; its checks and exact SHAs
@@ -364,8 +437,7 @@ and in the long-range v1.0 readiness record.
       fields. Local verification passes 94 exporter/unit tests and 11 actual-SDK
       application/CLI tests, including unchanged project, Catalog and source bytes;
       see the [scope and evidence](docs/validation/storytelling-compatibility-138.md).
-      The [PR #149 gate record](https://github.com/bynanci/open-film/pull/149)
-      tracks final-head verification. This is not production adapter or
+      PR #149 is merged and Issue #138 is closed. This is not a production adapter or
       FilmCraft acceptance: production approval/execution/quiescence/retry remain
       open. Do not enable an M4 writer/authority switch or reimplement completed
       M1-02/M1-03 from bounded proofs. Keep versions independent.
