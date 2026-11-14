@@ -31,6 +31,7 @@ import {
   artifactDigest,
   exactKeys,
   MAX_ARTIFACT_BYTES,
+  MAX_EVIDENCE_BYTES,
   pinFile,
   readEvidence,
   requireEvidence,
@@ -51,17 +52,11 @@ import {
   type ObservationKind,
 } from "./receipt-contract.js";
 /** Detach only Cargo's default build subject; all caller-selected inputs stay strict. */
-export async function prepareDefaultBuildShell(
+async function prepareBuildShellAtPath(
   root: string,
-  platform: CandidateTarget["platform"],
+  path: string,
+  subject: "Default shell" | "Target shell",
 ): Promise<string> {
-  requireEvidence(
-    ["linux", "darwin", "win32"].includes(platform),
-    "Unknown default shell platform",
-  );
-  const path =
-    "apps/desktop/src-tauri/target/release/openfilm-desktop" +
-    (platform === "win32" ? ".exe" : "");
   const source = runtimePath(root, path);
   // The sole hardlink exception is a read-only source for this bounded copy.
   await assertRegularInput(source, false);
@@ -82,12 +77,12 @@ export async function prepareDefaultBuildShell(
         before.nlink >= 1 &&
         before.size <= MAX_ARTIFACT_BYTES &&
         (before.mode & 0o7000) === 0,
-      "Default shell must be a bounded ordinary build file",
+      `${subject} must be a bounded ordinary build file`,
     );
     await assertRegularInput(source, false);
     requireEvidence(
       same(before, await lstat(source)),
-      "Default shell changed before staging",
+      `${subject} changed before staging`,
     );
     if (before.nlink === 1) {
       await pinFile(root, path, MAX_ARTIFACT_BYTES);
@@ -105,7 +100,7 @@ export async function prepareDefaultBuildShell(
       size += bytes.length;
       requireEvidence(
         size <= MAX_ARTIFACT_BYTES && size <= before.size,
-        "Default shell grew during staging",
+        `${subject} grew during staging`,
       );
       hash.update(bytes);
       await output.writeFile(bytes);
@@ -120,12 +115,12 @@ export async function prepareDefaultBuildShell(
       size === before.size &&
         staged.size === size &&
         staged.sha256 === expectedHash,
-      "Default shell staging byte mismatch",
+      `${subject} staging byte mismatch`,
     );
     await assertRegularInput(source, false);
     requireEvidence(
       same(before, await input.stat()) && same(before, await lstat(source)),
-      "Default shell changed during staging",
+      `${subject} changed during staging`,
     );
     // Same-path atomic replacement keeps the compiler ID, signing subject and
     // workflow upload path fixed. Never unlink first or fall back on Windows.
@@ -137,14 +132,14 @@ export async function prepareDefaultBuildShell(
         original.mode === before.mode &&
         original.mtimeMs === before.mtimeMs &&
         original.nlink === before.nlink - 1,
-      "Default shell source changed during promotion",
+      `${subject} source changed during promotion`,
     );
     const pinned = await pinFile(root, path, MAX_ARTIFACT_BYTES);
     requireEvidence(
       pinned.sha256 === expectedHash &&
         pinned.size === size &&
         ((await lstat(source)).mode & 0o777) === (before.mode & 0o777),
-      "Default shell promotion mismatch",
+      `${subject} promotion mismatch`,
     );
     return path;
   } finally {
@@ -162,12 +157,41 @@ export async function prepareDefaultBuildShell(
     }
   }
 }
+export async function prepareDefaultBuildShell(
+  root: string,
+  platform: CandidateTarget["platform"],
+): Promise<string> {
+  requireEvidence(
+    ["linux", "darwin", "win32"].includes(platform),
+    "Unknown default shell platform",
+  );
+  const path =
+    "apps/desktop/src-tauri/target/release/openfilm-desktop" +
+    (platform === "win32" ? ".exe" : "");
+  return prepareBuildShellAtPath(root, path, "Default shell");
+}
+export async function prepareTargetBuildShell(
+  root: string,
+  target: string,
+): Promise<string> {
+  requireEvidence(
+    /^(?:x86_64|aarch64)-(?:unknown-linux-gnu|apple-darwin|pc-windows-msvc)$/u.test(
+      target,
+    ),
+    "Unsupported native target",
+  );
+  const path =
+    `apps/desktop/src-tauri/target/${target}/release/openfilm-desktop` +
+    (target.endsWith("windows-msvc") ? ".exe" : "");
+  return prepareBuildShellAtPath(root, path, "Target shell");
+}
 export interface IdentityOptions {
   candidateSha: string;
   target: CandidateTarget;
   runtimeRoot: string;
   shellPath: string;
   installerPaths: string[];
+  buildEvidencePath?: string;
 }
 export interface FinalizationInputs {
   schemaVersion: 1;
@@ -183,11 +207,201 @@ export interface FinalizationInputs {
 }
 async function runtime(root: string, identity: CandidateIdentity) {
   await verifyPin(root, identity.runtimeManifest);
+  await verifyBuildEvidence(root, identity);
   return verifyRuntimeBundle(runtimePath(root, identity.runtimeRoot), {
     manifestSha256: identity.runtimeManifest.sha256,
     platform: identity.target.platform,
     architecture: identity.target.architecture,
   });
+}
+
+async function verifyBuildEvidence(
+  root: string,
+  identity: CandidateIdentity,
+): Promise<void> {
+  if (!identity.buildEvidence) return;
+  const capture = await readEvidence<{
+    schemaVersion: number;
+    kind: string;
+    candidateSha: string;
+    target: string;
+    rustcVersion: string;
+    cargoVersion: string;
+    invocation: { path: string; sha256: string };
+    metadata: {
+      path: string;
+      sha256: string;
+      targetDirectory: string;
+      recordedTargetDirectory: string;
+      recordedWorkspaceRoot: string;
+      targetInputsDirectory: string;
+    };
+    metadataInvocation: { path: string; sha256: string };
+    metadataStderr: { path: string; sha256: string };
+    compilerMessages: { path: string; sha256: string };
+    compilerStderr: { path: string; sha256: string };
+    toolchain: { path: string; sha256: string };
+    lock: { path: string; sha256: string };
+    shell: { path: string; sha256: string; size: number };
+    targetInputs: {
+      path: string;
+      capturePath: string;
+      sha256: string;
+      size: number;
+    }[];
+  }>(root, identity.buildEvidence);
+  requireEvidence(
+    capture.schemaVersion === 1 &&
+      capture.kind === "native-cargo-build-capture" &&
+      capture.candidateSha === identity.candidateSha &&
+      capture.target === identity.target.triple &&
+      typeof capture.rustcVersion === "string" &&
+      capture.rustcVersion.startsWith("rustc 1.99.0") &&
+      typeof capture.cargoVersion === "string" &&
+      capture.cargoVersion.startsWith("cargo 1.99.0") &&
+      capture.metadata?.path === "metadata.json" &&
+      /^[a-f0-9]{64}$/u.test(capture.metadata.sha256) &&
+      capture.metadata.targetDirectory === "apps/desktop/src-tauri/target" &&
+      capture.metadata.targetInputsDirectory === "target-files" &&
+      typeof capture.metadata.recordedTargetDirectory === "string" &&
+      capture.metadata.recordedTargetDirectory.length > 0 &&
+      typeof capture.metadata.recordedWorkspaceRoot === "string" &&
+      capture.metadata.recordedWorkspaceRoot.length > 0 &&
+      capture.shell.path === identity.shell.path &&
+      capture.shell.sha256 === identity.shell.sha256 &&
+      capture.shell.size === identity.shell.size,
+    "Captured Cargo evidence does not match candidate identity",
+  );
+  const roles = [
+    [capture.invocation, "invocation.json"],
+    [capture.metadata, "metadata.json"],
+    [capture.metadataInvocation, "metadata-invocation.json"],
+    [capture.metadataStderr, "metadata-stderr.log"],
+    [capture.compilerMessages, "compiler-messages.jsonl"],
+    [capture.compilerStderr, "compiler-stderr.log"],
+    [capture.toolchain, "toolchain.json"],
+    [capture.lock, "Cargo.lock"],
+  ] as const;
+  requireEvidence(
+    roles.every(
+      ([role, path]) =>
+        role.path === path && /^[a-f0-9]{64}$/u.test(role.sha256),
+    ),
+    "Captured Cargo evidence is missing a required raw input",
+  );
+  const captureDirectory = dirname(identity.buildEvidence.path);
+  const rawPins = new Map<string, FilePin>();
+  for (const [role] of roles) {
+    const maximum =
+      role.path === "metadata.json" ||
+      role.path === "metadata-stderr.log" ||
+      role.path === "compiler-messages.jsonl" ||
+      role.path === "compiler-stderr.log" ||
+      role.path === "Cargo.lock"
+        ? 32 * 1024 ** 2
+        : MAX_EVIDENCE_BYTES;
+    const pin = await pinFile(
+      root,
+      `${captureDirectory}/${role.path}`,
+      maximum,
+    );
+    requireEvidence(
+      pin.sha256 === role.sha256,
+      "Captured Cargo raw input differs from its manifest",
+    );
+    rawPins.set(role.path, pin);
+  }
+  const metadata = await readEvidence<{
+    target_directory: string;
+    workspace_root: string;
+  }>(root, rawPins.get("metadata.json")!);
+  const invocation = await readEvidence<{
+    arguments: string[];
+    cwd: string;
+    exitCode: number;
+    rustcVersion: string;
+    cargoVersion: string;
+    outputLimitExceeded: boolean;
+  }>(root, rawPins.get("invocation.json")!);
+  const metadataInvocation = await readEvidence<{
+    arguments: string[];
+    cwd: string;
+    exitCode: number;
+    cargoVersion: string;
+    outputLimitExceeded: boolean;
+  }>(root, rawPins.get("metadata-invocation.json")!);
+  const targetIndex = invocation.arguments.indexOf("--target");
+  requireEvidence(
+    metadata.target_directory === capture.metadata.recordedTargetDirectory &&
+      metadata.workspace_root === capture.metadata.recordedWorkspaceRoot &&
+      invocation.cwd === metadata.workspace_root &&
+      metadataInvocation.cwd === metadata.workspace_root &&
+      invocation.exitCode === 0 &&
+      metadataInvocation.exitCode === 0 &&
+      !invocation.outputLimitExceeded &&
+      !metadataInvocation.outputLimitExceeded &&
+      invocation.arguments[0] === "build" &&
+      invocation.arguments.includes("--locked") &&
+      invocation.arguments.includes("--release") &&
+      invocation.arguments.includes("--message-format=json") &&
+      targetIndex >= 0 &&
+      invocation.arguments[targetIndex + 1] === identity.target.triple &&
+      invocation.rustcVersion === capture.rustcVersion &&
+      invocation.cargoVersion === capture.cargoVersion &&
+      metadataInvocation.cargoVersion === capture.cargoVersion,
+    "Captured Cargo invocation/metadata identity mismatch",
+  );
+  requireEvidence(
+    Array.isArray(capture.targetInputs) &&
+      capture.targetInputs.length > 0 &&
+      capture.targetInputs.length <= 20_000,
+    "Captured Cargo target input inventory is incomplete or excessive",
+  );
+  let targetInputBytes = 0;
+  const capturePaths = new Set<string>();
+  for (const input of capture.targetInputs) {
+    requireEvidence(
+      typeof input.path === "string" &&
+        input.path.startsWith("target/") &&
+        input.capturePath ===
+          `target-files/${input.path.slice("target/".length)}` &&
+        /^[a-f0-9]{64}$/u.test(input.sha256) &&
+        Number.isSafeInteger(input.size) &&
+        input.size >= 0 &&
+        input.size <= MAX_ARTIFACT_BYTES &&
+        !capturePaths.has(input.capturePath),
+      "Invalid Cargo target input pin",
+    );
+    capturePaths.add(input.capturePath);
+    targetInputBytes += input.size;
+    requireEvidence(
+      targetInputBytes <= 8 * 1024 ** 3,
+      "Cargo target input byte limit",
+    );
+    const pin = await pinFile(
+      root,
+      `${captureDirectory}/${input.capturePath}`,
+      MAX_ARTIFACT_BYTES,
+    );
+    requireEvidence(
+      pin.sha256 === input.sha256 && pin.size === input.size,
+      "Captured Cargo target input differs from its manifest",
+    );
+  }
+  const targetShellPath = identity.shell.path.replace(
+    "apps/desktop/src-tauri/",
+    "",
+  );
+  requireEvidence(
+    Array.isArray(capture.targetInputs) &&
+      capture.targetInputs.some(
+        (input) =>
+          input.path === targetShellPath &&
+          input.sha256 === identity.shell.sha256 &&
+          input.size === identity.shell.size,
+      ),
+    "Captured Cargo inputs do not include the identity shell",
+  );
 }
 export async function createCandidateIdentity(
   root: string,
@@ -209,6 +423,9 @@ export async function createCandidateIdentity(
     shell: await pinFile(root, options.shellPath, MAX_ARTIFACT_BYTES),
     installers: [],
     automaticUpdates: false,
+    ...(options.buildEvidencePath
+      ? { buildEvidence: await pinFile(root, options.buildEvidencePath) }
+      : {}),
   };
   requireEvidence(
     Array.isArray(options.installerPaths) &&
@@ -453,6 +670,10 @@ export async function finalizeCandidate(
     "Duplicate/cyclic evidence subjects",
   );
   for (const pin of subjects) await verifyPin(root, pin);
+  requireEvidence(
+    identity.buildEvidence,
+    "Same-build Cargo capture required for finalization",
+  );
   const retained: FilePin[] = [];
   const observations = [];
   for (const kind of ["security", "trust", "lifecycle"] as ObservationKind[]) {
@@ -612,6 +833,17 @@ async function installers(root: string, directory: string): Promise<string[]> {
 }
 async function main() {
   const [command, ...args] = process.argv.slice(2);
+  if (command === "prepare-shell") {
+    const [rootInput, target] = args;
+    requireEvidence(
+      rootInput && target && args.length === 2,
+      "Usage: receipt.ts prepare-shell <root> <native-target-triple>",
+    );
+    const root = await realpath(rootInput);
+    const shellPath = await prepareTargetBuildShell(root, target);
+    console.log(JSON.stringify({ stage: command, shellPath }));
+    return;
+  }
   if (command === "seal" || command === "finalize" || command === "identity") {
     const [rootInput, inputPath, output] = args;
     requireEvidence(

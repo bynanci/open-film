@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified by OpenFilm contributors on 2026-11-11. See LICENSE and NOTICE.
 import { lstat, readdir } from "node:fs/promises";
-import { isAbsolute, relative } from "node:path";
+import { dirname, isAbsolute, relative } from "node:path";
 import { runtimePath } from "../../apps/server/src/runtime-manifest.js";
 import type { CargoEvidence } from "./attribution.js";
 import { collectCargoEvidence } from "./cargo-attribution.js";
@@ -18,6 +18,7 @@ import {
   readPinnedBytes,
   requireEvidence,
   verifyPin,
+  type CandidateIdentity,
   type FilePin,
 } from "./receipt-contract.js";
 export interface CargoReplayInputs {
@@ -31,6 +32,102 @@ export interface CargoReplayInputs {
   shell: FilePin;
   pathMapping?: CargoPathMapping;
 }
+
+/** Bind replay roles to the same-build raw inputs named by candidate identity. */
+export async function verifyCargoReplayAgainstCapture(
+  root: string,
+  inputPin: FilePin,
+  identity: CandidateIdentity,
+): Promise<void> {
+  requireEvidence(
+    identity.buildEvidence,
+    "Same-build Cargo capture required for finalization",
+  );
+  const inputs = await readEvidence<CargoReplayInputs>(root, inputPin);
+  const capture = await readEvidence<{
+    candidateSha: string;
+    target: string;
+    metadata: {
+      path: string;
+      sha256: string;
+      targetDirectory: string;
+      recordedTargetDirectory: string;
+      targetInputsDirectory: string;
+    };
+    invocation: { path: string; sha256: string };
+    compilerMessages: { path: string; sha256: string };
+    lock: { path: string; sha256: string };
+    shell: { path: string; sha256: string; size: number };
+    targetInputs: {
+      path: string;
+      capturePath: string;
+      sha256: string;
+      size: number;
+    }[];
+  }>(root, identity.buildEvidence);
+  requireEvidence(
+    capture.candidateSha === identity.candidateSha &&
+      capture.target === identity.target.triple &&
+      inputs.target === capture.target,
+    "Cargo replay candidate/target differs from same-build capture",
+  );
+  const captureDirectory = dirname(identity.buildEvidence.path);
+  for (const [role, captured] of [
+    ["metadata", capture.metadata],
+    ["messages", capture.compilerMessages],
+    ["lock", capture.lock],
+    ["invocation", capture.invocation],
+  ] as const) {
+    const replay = inputs[role];
+    requireEvidence(
+      replay.path === `${captureDirectory}/${captured.path}` &&
+        replay.sha256 === captured.sha256,
+      `Cargo replay ${role} pin differs from same-build capture`,
+    );
+  }
+  requireEvidence(
+    capture.metadata.targetDirectory === "apps/desktop/src-tauri/target" &&
+      typeof capture.metadata.recordedTargetDirectory === "string" &&
+      capture.metadata.targetInputsDirectory === "target-files",
+    "Invalid same-build Cargo target directory identity",
+  );
+  if (inputs.pathMapping) {
+    requireEvidence(
+      inputs.targetDirectory ===
+        `${captureDirectory}/${capture.metadata.targetInputsDirectory}` &&
+        inputs.pathMapping.targetDirectory ===
+          capture.metadata.recordedTargetDirectory,
+      "Cargo replay path mapping differs from same-build target directory",
+    );
+  } else {
+    requireEvidence(
+      inputs.targetDirectory === capture.metadata.targetDirectory,
+      "Cargo replay target directory differs from same-build capture",
+    );
+  }
+  const targetShellPath = identity.shell.path.replace(
+    "apps/desktop/src-tauri/",
+    "",
+  );
+  const capturedShell = capture.targetInputs.find(
+    (input) =>
+      input.path === targetShellPath &&
+      input.sha256 === identity.shell.sha256 &&
+      input.size === identity.shell.size,
+  );
+  requireEvidence(
+    capture.shell.path === identity.shell.path &&
+      capture.shell.sha256 === identity.shell.sha256 &&
+      inputs.shell.sha256 === identity.shell.sha256 &&
+      (inputs.pathMapping
+        ? inputs.shell.path ===
+          `${captureDirectory}/${capturedShell?.capturePath}`
+        : inputs.shell.path === identity.shell.path) &&
+      capturedShell,
+    "Cargo replay shell differs from same-build capture",
+  );
+}
+
 /** A derived inventory is accepted only if the original collector reproduces it. */
 export async function verifyCandidateCargo(
   root: string,

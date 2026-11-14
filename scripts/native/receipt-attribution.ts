@@ -18,7 +18,10 @@ import {
   type NativeRuntimeInput,
 } from "./attribution.js";
 import { canonicalJson, type LinkageEvidence } from "./linkage.js";
-import { verifyCandidateCargo } from "./receipt-cargo.js";
+import {
+  verifyCandidateCargo,
+  verifyCargoReplayAgainstCapture,
+} from "./receipt-cargo.js";
 import {
   exactKeys,
   MAX_ARTIFACT_BYTES,
@@ -173,6 +176,7 @@ export async function verifyCandidateAttribution(
     inputs.nativeLinkage,
   ];
   for (const pin of pins) await verifyPin(root, pin);
+  await verifyCargoReplayAgainstCapture(root, inputs.cargoInputs, identity);
   const build = await readEvidence<BuildContributions>(
     root,
     inputs.buildContributions,

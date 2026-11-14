@@ -21,6 +21,7 @@ import {
   captureFinalBytes,
   createCandidateIdentity,
   finalizeCandidate,
+  prepareTargetBuildShell,
   writeReceipt,
 } from "../../scripts/native/receipt.js";
 import {
@@ -170,6 +171,200 @@ it("rejects target disagreement and duplicate installer paths", async () => {
     }),
   ).rejects.toThrow();
 });
+it("binds a same-build Cargo capture to candidate identity and rejects capture changes at seal", async () => {
+  const f = await fixture();
+  const shellPath = `apps/desktop/src-tauri/target/${f.options.target.triple}/release/openfilm-desktop`;
+  await mkdir(
+    join(
+      f.root,
+      "apps/desktop/src-tauri/target",
+      f.options.target.triple,
+      "release",
+    ),
+    { recursive: true },
+  );
+  await writeFile(
+    join(f.root, shellPath),
+    await readFile(join(f.root, f.options.shellPath)),
+  );
+  const shell = await pinFile(f.root, shellPath);
+  const captureDirectory = join(f.root, "cargo-capture");
+  await mkdir(captureDirectory);
+  const record = async (path: string, value: string) => {
+    await writeFile(join(captureDirectory, path), value);
+    const pin = await pinFile(f.root, `cargo-capture/${path}`);
+    return { path, sha256: pin.sha256 };
+  };
+  const targetDirectory = join(f.root, "apps/desktop/src-tauri/target");
+  const workspaceRoot = join(f.root, "apps/desktop/src-tauri");
+  const metadata = {
+    target_directory: targetDirectory,
+    workspace_root: workspaceRoot,
+  };
+  const invocation = await record(
+    "invocation.json",
+    JSON.stringify({
+      command: "cargo",
+      arguments: [
+        "build",
+        "--locked",
+        "--release",
+        "--target",
+        f.options.target.triple,
+        "--message-format=json",
+      ],
+      cwd: workspaceRoot,
+      exitCode: 0,
+      rustcVersion: "rustc 1.99.0 fixture",
+      cargoVersion: "cargo 1.99.0 fixture",
+      outputLimitExceeded: false,
+    }),
+  );
+  const metadataRecord = await record(
+    "metadata.json",
+    JSON.stringify(metadata),
+  );
+  const metadataInvocation = await record(
+    "metadata-invocation.json",
+    JSON.stringify({
+      command: "cargo",
+      arguments: [
+        "metadata",
+        "--locked",
+        "--format-version",
+        "1",
+        "--filter-platform",
+        f.options.target.triple,
+      ],
+      cwd: workspaceRoot,
+      exitCode: 0,
+      cargoVersion: "cargo 1.99.0 fixture",
+    }),
+  );
+  const metadataStderr = await record("metadata-stderr.log", "");
+  const compilerMessagesText =
+    [
+      {
+        reason: "compiler-artifact",
+        package_id: "fixture-package",
+        target: { name: "openfilm-desktop", kind: ["bin"] },
+        filenames: [join(f.root, shellPath)],
+        executable: join(f.root, shellPath),
+      },
+      { reason: "build-finished", success: true },
+    ]
+      .map((value) => JSON.stringify(value))
+      .join("\n") + "\n";
+  const compilerMessages = await record(
+    "compiler-messages.jsonl",
+    compilerMessagesText,
+  );
+  const compilerStderr = await record("compiler-stderr.log", "");
+  const toolchain = await record(
+    "toolchain.json",
+    JSON.stringify({
+      rustc: "rustc 1.99.0 fixture",
+      cargo: "cargo 1.99.0 fixture",
+    }),
+  );
+  const lock = await record("Cargo.lock", "version = 4\n");
+  const shellInputPath = `target-files/${f.options.target.triple}/release/openfilm-desktop`;
+  await mkdir(
+    join(captureDirectory, "target-files", f.options.target.triple, "release"),
+    { recursive: true },
+  );
+  await writeFile(
+    join(captureDirectory, shellInputPath),
+    await readFile(join(f.root, shellPath)),
+  );
+  const shellInput = await pinFile(f.root, `cargo-capture/${shellInputPath}`);
+  const capture = {
+    schemaVersion: 1,
+    kind: "native-cargo-build-capture",
+    candidateSha: f.options.candidateSha,
+    target: f.options.target.triple,
+    rustcVersion: "rustc 1.99.0 fixture",
+    cargoVersion: "cargo 1.99.0 fixture",
+    invocation,
+    metadata: {
+      ...metadataRecord,
+      targetDirectory: "apps/desktop/src-tauri/target",
+      recordedTargetDirectory: targetDirectory,
+      recordedWorkspaceRoot: workspaceRoot,
+      targetInputsDirectory: "target-files",
+    },
+    metadataInvocation,
+    metadataStderr,
+    compilerMessages,
+    compilerStderr,
+    toolchain,
+    lock,
+    shell,
+    targetInputs: [
+      {
+        path: `target/${f.options.target.triple}/release/openfilm-desktop`,
+        capturePath: shellInputPath,
+        sha256: shellInput.sha256,
+        size: shellInput.size,
+      },
+    ],
+  };
+  const captureBytes = JSON.stringify(capture);
+  await writeFile(join(f.root, "cargo-capture/capture.json"), captureBytes);
+  const identity = await createCandidateIdentity(f.root, {
+    ...f.options,
+    shellPath,
+    buildEvidencePath: "cargo-capture/capture.json",
+  });
+  expect(identity.buildEvidence).toEqual(
+    await pinFile(f.root, "cargo-capture/capture.json"),
+  );
+  await writeReceipt(f.root, "candidate-with-cargo.json", identity, "runtime");
+  const identityPin = await pinFile(f.root, "candidate-with-cargo.json");
+  await writeFile(
+    join(captureDirectory, "compiler-messages.jsonl"),
+    "changed bytes\n",
+  );
+  await expect(captureFinalBytes(f.root, identityPin)).rejects.toThrow(
+    "Captured Cargo raw input differs from its manifest",
+  );
+  await writeFile(
+    join(captureDirectory, "compiler-messages.jsonl"),
+    compilerMessagesText,
+  );
+  await writeFile(
+    join(f.root, "cargo-capture/capture.json"),
+    JSON.stringify({
+      ...capture,
+      compilerMessages: { ...compilerMessages, sha256: "c".repeat(64) },
+    }),
+  );
+  await expect(captureFinalBytes(f.root, identityPin)).rejects.toThrow(
+    "Pinned evidence hash/size mismatch",
+  );
+});
+it("stages a linked target-specific shell with identical bytes and leaves its Cargo alias unchanged", async () => {
+  const root = await mkdtemp(join(tmpdir(), "target-shell-staging-"));
+  roots.push(root);
+  const triple = "x86_64-unknown-linux-gnu";
+  const shellPath = `apps/desktop/src-tauri/target/${triple}/release/openfilm-desktop`;
+  const aliasPath = `apps/desktop/src-tauri/target/${triple}/release/deps/openfilm-desktop-buildhash`;
+  await mkdir(
+    join(root, "apps/desktop/src-tauri/target", triple, "release/deps"),
+    { recursive: true },
+  );
+  const original = Buffer.from("captured native target shell bytes");
+  await writeFile(join(root, shellPath), original);
+  await link(join(root, shellPath), join(root, aliasPath));
+  const originalHash = await runtimeHash(join(root, shellPath));
+  expect((await lstat(join(root, shellPath))).nlink).toBe(2);
+  expect(await prepareTargetBuildShell(root, triple)).toBe(shellPath);
+  expect(await runtimeHash(join(root, shellPath))).toBe(originalHash);
+  expect(await readFile(join(root, shellPath))).toEqual(original);
+  expect(await readFile(join(root, aliasPath))).toEqual(original);
+  expect((await lstat(join(root, shellPath))).nlink).toBe(1);
+  expect((await lstat(join(root, aliasPath))).nlink).toBe(1);
+});
 it("rejects a structurally valid synthetic runtime before final closure", async () => {
   const f = await fixture();
   const final = await captureFinalBytes(f.root, f.identityPin);
@@ -193,6 +388,41 @@ it("rejects a structurally valid synthetic runtime before final closure", async 
       finalLinkage: absent,
     }),
   ).rejects.toThrow("test-only");
+});
+it("keeps legacy identities sealable but requires same-build Cargo evidence for finalization", async () => {
+  const f = await fixture(true);
+  const final = await captureFinalBytes(f.root, f.identityPin);
+  await writeReceipt(f.root, "legacy-final-bytes.json", final, "runtime");
+  const pins = {} as Record<
+    | "attribution"
+    | "security"
+    | "trust"
+    | "lifecycle"
+    | "review"
+    | "finalLinkagePolicy"
+    | "finalLinkage",
+    FilePin
+  >;
+  for (const key of [
+    "attribution",
+    "security",
+    "trust",
+    "lifecycle",
+    "review",
+    "finalLinkagePolicy",
+    "finalLinkage",
+  ] as const) {
+    await writeFile(join(f.root, `${key}.json`), "{}");
+    pins[key] = await pinFile(f.root, `${key}.json`);
+  }
+  await expect(
+    finalizeCandidate(f.root, {
+      schemaVersion: 1,
+      candidate: f.identityPin,
+      finalBytes: await pinFile(f.root, "legacy-final-bytes.json"),
+      ...pins,
+    }),
+  ).rejects.toThrow("Same-build Cargo capture required for finalization");
 });
 
 it.each(["shell", "installer.deb", "runtime/service"])(

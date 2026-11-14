@@ -1,4 +1,9 @@
 {
+  "build": {
+    "runner": {
+      "cmd": "node"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
