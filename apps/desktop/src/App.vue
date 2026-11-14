@@ -1661,7 +1661,11 @@ async function flushPending(preparingScriptReview = false) {
 }
 async function flushProjectPending(preserveVariantPreview = false) {
   pauseRenderedPlayer();
-  if (!preserveVariantPreview && !(await stopComparisonPreviews()))
+  if (
+    !preserveVariantPreview &&
+    (projectVersionsPanel.value || creativeVariantComparisonModal.value) &&
+    !(await stopComparisonPreviews())
+  )
     return false;
   if (scenePlanDraftPresent.value) {
     error.value = { uiKey: "scenePlan.draftPending" };

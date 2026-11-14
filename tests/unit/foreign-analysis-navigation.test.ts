@@ -22,6 +22,7 @@ if (activeStart < 0 || activeEnd < 0)
 const functions = [
   "run",
   "jobBlocksProjectSwitch",
+  "stopComparisonPreviews",
   "flushEditor",
   "flushPending",
   "flushProjectPending",
@@ -60,6 +61,7 @@ type TemplateNode = {
   }[];
   children?: TemplateNode[];
 };
+type PreviewStopOwner = { stopPreview: () => Promise<boolean> };
 const { parse: parseComponent } = requireDesktop("vue/compiler-sfc") as {
   parse(source: string): { descriptor: { template: { ast: TemplateNode } } };
 };
@@ -135,6 +137,8 @@ function host(
   );
   const flush = vi.fn(async () => true);
   const jobs = vue.ref(initialJobs);
+  const versionPreviewStop = vi.fn(async () => true);
+  const variantPreviewStop = vi.fn(async () => true);
   const analysisRecovery = vue.ref<Record<string, AnalysisJobRecoveryState>>(
     recovery ? { [recovery.jobId]: recovery } : {},
   );
@@ -195,7 +199,8 @@ function host(
     },
     tab: vue.ref("library"),
     pauseRenderedPlayer: vi.fn(),
-    stopVersionComparison: vi.fn(async () => true),
+    projectVersionsPanel: vue.ref<PreviewStopOwner | null>(null),
+    creativeVariantComparisonModal: vue.ref<PreviewStopOwner | null>(null),
   };
   const app = new Function(
     "dependencies",
@@ -217,7 +222,15 @@ function host(
       `const {${Object.keys(values).join(",")}}=values;return !!(${disabledExpression});`,
     )(values) as boolean;
   };
-  return { ...dependencies, ...app, flush, originalProject, buttonDisabled };
+  return {
+    ...dependencies,
+    ...app,
+    flush,
+    originalProject,
+    buttonDisabled,
+    versionPreviewStop,
+    variantPreviewStop,
+  };
 }
 
 describe("project navigation during analysis owned by another process", () => {
@@ -306,9 +319,10 @@ describe("project navigation during analysis owned by another process", () => {
   it("waits for the saved-version preview to stop before closing its project", async () => {
     const h = host();
     h.tab.value = "versions";
+    h.projectVersionsPanel.value = { stopPreview: h.versionPreviewStop };
     await h.changeWorkspace();
     expect(h.pauseRenderedPlayer).toHaveBeenCalledOnce();
-    expect(h.stopVersionComparison).toHaveBeenCalledOnce();
+    expect(h.versionPreviewStop).toHaveBeenCalledOnce();
     expect(h.post).toHaveBeenCalledExactlyOnceWith("/project/close");
     expect(h.project.value).toBeNull();
   });
@@ -316,10 +330,39 @@ describe("project navigation during analysis owned by another process", () => {
   it("keeps the project open when the saved-version preview cannot drain", async () => {
     const h = host();
     h.tab.value = "versions";
-    h.stopVersionComparison.mockResolvedValue(false);
+    h.projectVersionsPanel.value = { stopPreview: h.versionPreviewStop };
+    h.versionPreviewStop.mockResolvedValue(false);
     await h.changeWorkspace();
     expect(h.pauseRenderedPlayer).toHaveBeenCalledOnce();
-    expect(h.stopVersionComparison).toHaveBeenCalledOnce();
+    expect(h.versionPreviewStop).toHaveBeenCalledOnce();
+    expect(h.api.jobs).not.toHaveBeenCalled();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.project.value).toMatchObject(h.originalProject);
+  });
+
+  it("also drains an open Creative Variants preview before closing its project", async () => {
+    const h = host();
+    h.tab.value = "story";
+    h.creativeVariantComparisonModal.value = {
+      stopPreview: h.variantPreviewStop,
+    };
+    await h.changeWorkspace();
+    expect(h.versionPreviewStop).not.toHaveBeenCalled();
+    expect(h.variantPreviewStop).toHaveBeenCalledOnce();
+    expect(h.post).toHaveBeenCalledExactlyOnceWith("/project/close");
+    expect(h.project.value).toBeNull();
+  });
+
+  it("keeps its project open when an open Creative Variants preview cannot drain", async () => {
+    const h = host();
+    h.tab.value = "story";
+    h.creativeVariantComparisonModal.value = {
+      stopPreview: h.variantPreviewStop,
+    };
+    h.variantPreviewStop.mockResolvedValue(false);
+    await h.changeWorkspace();
+    expect(h.versionPreviewStop).not.toHaveBeenCalled();
+    expect(h.variantPreviewStop).toHaveBeenCalledOnce();
     expect(h.api.jobs).not.toHaveBeenCalled();
     expect(h.post).not.toHaveBeenCalled();
     expect(h.project.value).toMatchObject(h.originalProject);
