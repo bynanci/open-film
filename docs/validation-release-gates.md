@@ -75,9 +75,12 @@ have distinct gates under the [release train](roadmap/incremental-release-train.
 - **Open native receipt follow-up.** Draft PR
   [#163](https://github.com/bynanci/open-film/pull/163), head
   `23f9642ea542dbc515e4244c8f331ffa0652492c`, proposes capturing the exact
-  Tauri Cargo invocation and build inputs for Issue #140. It is not merged and
-  its exact-head checks are still running. No native installer workflow run or
-  candidate-bound receipt exists.
+  Tauri Cargo invocation and build inputs for Issue #140. It is not merged; all
+  exact-head hosted checks passed. The local monolithic `pnpm test` was stopped
+  after 25 minutes without a final summary and reported one native benchmark
+  runner failure. Its isolated 30-test file passed and the reported test passed
+  three isolated repetitions, but the cause remains unresolved. No native
+  installer workflow run or candidate-bound receipt exists.
 
 ## Gate state and limits
 

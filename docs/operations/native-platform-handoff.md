@@ -12,9 +12,15 @@ Issue #140's receipt/finalization tooling and source replay are implemented and
 verified. Draft PR [#163](https://github.com/bynanci/open-film/pull/163), head
 `23f9642ea542dbc515e4244c8f331ffa0652492c`, adds capture of the exact Cargo
 invocation, compiler inputs and shell used by Tauri's target-specific bundle
-build. It is not merged; exact-head checks are still running. The native-installer
-workflow has not been run and has not produced a candidate receipt. Do not
-create a separate Cargo build and attribute its outputs to the installer.
+build. It is not merged. All exact-head hosted checks passed, including Verify,
+six browser shards, heavy-media QA, three-platform Render QA, Windows recovery,
+native-shell, native source admission, dependency security, DCO and docs-site.
+The monolithic local `pnpm test` was stopped after 25 minutes without a final
+summary; it reported one native benchmark runner failure, while the isolated
+30-test file and three repetitions of that test passed. The cause is unresolved,
+so the full suite is not recorded as passed. The native-installer workflow has
+not run and has not produced a candidate receipt. Do not create a separate
+Cargo build and attribute its outputs to the installer.
 Issue #141 still needs
 reviewed Windows/macOS runtime binaries, complete redistribution/license/SBOM
 closure and target artifacts. This headless cloud session has no connected
