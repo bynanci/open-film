@@ -32,6 +32,23 @@
   max-width: 760px;
 }
 
+.export-report .export-report-audio-tail {
+  display: grid;
+  gap: var(--of-space-1);
+  max-width: 760px;
+  margin-block: var(--of-space-3);
+  padding: var(--of-space-3);
+  border-left: 2px solid var(--of-warning);
+  border-radius: 0 var(--of-radius-sm) var(--of-radius-sm) 0;
+  background: var(--of-warning-soft);
+}
+
+.export-report .export-report-audio-tail strong {
+  color: var(--of-warning);
+  font-size: var(--of-font-caption);
+  font-weight: 600;
+}
+
 .export-report p {
   margin: 0;
   color: var(--faded-ink);

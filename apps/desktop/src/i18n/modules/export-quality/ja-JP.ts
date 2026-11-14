@@ -52,6 +52,19 @@ export default {
     audioHeading: "音声出力",
     audioDescription:
       "WAV ミックスと役割別ステムは、現在のクリップ、フェード、ゲイン、ミュート、ダッキングを使います。すべて Composition と同じ時間範囲です。",
+    audioTailHeading: "音声の終端を確認",
+    audioTailWarning:
+      "MP4 は {frameAlignedDuration} 秒で終了します。保存済み Composition は {compositionDuration} 秒です。フレーム境界に合わせるため、音声の最後の {lostTailSamples} サンプル（全 {fullMixSampleCount} サンプルのうち {lostTailMilliseconds} ms）が出力されません。編集内容は変更されず、WAV には全時間が含まれます。",
+    audioTailListenHint:
+      "下の全体ミックス WAV を書き出し、納品前に最後の 1.5 秒を試聴してください。この時間警告には試聴による確認が必要です。",
+    audioPreviewLabel: "全体ミックス WAV のプレビュー",
+    playAudioTail: "最後の 1.5 秒を再生",
+    audioPreviewError:
+      "WAV を読み込めないか再生できませんでした。全体ミックスを再書き出すか、ダウンロードしたファイルを使ってください。",
+    audioTailReport:
+      "MP4 のフレーム境界では {frameAlignedDuration} 秒で終了します（Composition は {compositionDuration} 秒）。最後の {lostTailSamples} サンプル（{lostTailMilliseconds} ms）はエンコード音声に含まれません。",
+    audioTailManualReview:
+      "手動で試聴してください。このフレーム時間の測定は、クリック音、音声の保持、音楽の終わりの適切さを評価しません。",
     saveMix: "全体ミックス WAV を保存",
     saveStems: "役割別ステムを保存",
     exportingAudio: "音声を書き出し中…",

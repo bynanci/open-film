@@ -7169,10 +7169,19 @@ export async function startServer(options: ServerOptions = {}) {
           const name = url.searchParams.get("name") ?? "";
           if (!safeExportName(name))
             throw new HttpError(400, "Choose an exported file name.");
+          const inlineMode = url.searchParams.get("inline");
+          if (
+            inlineMode !== null &&
+            (inlineMode !== "audio" || extname(name).toLowerCase() !== ".wav")
+          )
+            throw new HttpError(
+              400,
+              "Inline playback is available for exported WAV files only.",
+            );
           const root = join(application.directory, "exports");
           response.setHeader(
             "Content-Disposition",
-            `attachment; filename*=UTF-8''${encodeURIComponent(basename(name))}`,
+            `${inlineMode === "audio" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(basename(name))}`,
           );
           await streamFile(
             request,

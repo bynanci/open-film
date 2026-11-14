@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createExportProfile,
+  frameAlignedAudioTail,
   type Composition,
   type FilmLook,
   type ProjectSettings,
@@ -55,7 +56,7 @@ async function fixture(
     "apps/desktop/src/components/ExportWorkspace.vue",
     {
       "vue-i18n": { useI18n: () => ({ t, locale: vue.ref(locale) }) },
-      "@openfilm/core": { createExportProfile },
+      "@openfilm/core": { createExportProfile, frameAlignedAudioTail },
       "@openfilm/exporters": { resolveCompatibility },
       "../i18n/format": {
         formatDuration: (value: number) => {
@@ -65,6 +66,7 @@ async function fixture(
       },
       "../api": {
         exportDownloadUrl: (name: string) => `/export/${name}`,
+        exportAudioPreviewUrl: (name: string) => `/export/audio/${name}`,
         ...api,
       },
       "./CaptionExport.vue": stub,
@@ -148,6 +150,59 @@ async function fixture(
 }
 
 describe("MP4 output quality controls", () => {
+  it("shows the exact frame-aligned audio tail and offers an ending audition", async () => {
+    const panel = await fixture("en-US", {}, { frameRate: 12 });
+    panel.props.composition.duration = 2.02;
+    await vue.nextTick();
+
+    const node = (testId: string) =>
+      panel.nodes().find((item) => item.props["data-testid"] === testId);
+
+    expect(node("export-audio-tail-warning")).toBeDefined();
+    expect(text(node("export-audio-tail-warning")!)).toContain("960 samples");
+    expect(text(node("export-audio-tail-warning")!)).toContain("20 ms");
+    expect(node("export-audio-tail-preview")).toBeUndefined();
+  });
+
+  it("seeks the exported full mix to its ending and stops it when the project changes", async () => {
+    const panel = await fixture("en-US", {
+      exportProfileAudio: async (input: { profile: { format: string } }) => ({
+        requestId: "reviewed-audio",
+        profile: input.profile,
+        files: [
+          {
+            role: "mix",
+            path: "/private/mix.wav",
+            filename: "mix.wav",
+            sha256: "a".repeat(64),
+            sampleRate: 48_000,
+            channels: 2,
+            sampleCount: 96_960,
+            duration: 2.02,
+          },
+        ],
+        warnings: [],
+      }),
+    });
+    const node = (testId: string) =>
+      panel.nodes().find((item) => item.props["data-testid"] === testId);
+
+    await (node("export-audio-mix")!.props.onClick as () => Promise<void>)();
+    await vue.nextTick();
+    const player = node("export-audio-preview")!;
+    expect(player.props.src).toBe("/export/audio/mix.wav");
+    player.duration = 2.02;
+    const play = vi.spyOn(player, "play");
+    (node("export-audio-tail-preview")!.props.onClick as () => void)();
+    expect(player.currentTime).toBeCloseTo(0.52, 3);
+    expect(play).toHaveBeenCalledOnce();
+
+    panel.props.projectId = "next-project";
+    await vue.nextTick();
+    expect(node("export-audio-preview")).toBeUndefined();
+    expect(player.paused).toBe(true);
+  });
+
   it.each([
     { saved: 120, delivery: 60 },
     { saved: 0.5, delivery: 1 },

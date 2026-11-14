@@ -40,7 +40,7 @@ function node(tag: string): HostNode {
     parent: null,
     text: "",
     currentTime: 0,
-    duration: 0,
+    duration: Number.NaN,
     playbackRate: 1,
     volume: 1,
     paused: true,

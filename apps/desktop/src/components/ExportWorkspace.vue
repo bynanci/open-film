@@ -5,6 +5,7 @@
 import { computed, onUnmounted, ref, useId, watch } from "vue";
 import {
   createExportProfile,
+  frameAlignedAudioTail as calculateFrameAlignedAudioTail,
   type Composition,
   type ExportFraming,
   type ExportProfile,
@@ -20,6 +21,7 @@ import { formatDuration } from "../i18n/format";
 import { resolveCompatibility } from "@openfilm/exporters";
 import {
   exportDownloadUrl,
+  exportAudioPreviewUrl,
   exportFramePreviewUrl,
   exportProfileAudio,
   exportStill,
@@ -142,6 +144,21 @@ const mp4Profile = computed(() =>
     quality: props.quality ?? "standard",
   }),
 );
+const audioTailReview = computed(() =>
+  goal.value === "watch"
+    ? calculateFrameAlignedAudioTail(
+        props.composition.duration,
+        mp4Profile.value.frameRate,
+      )
+    : null,
+);
+const audioTailPlayer = ref<HTMLAudioElement | null>(null);
+const pendingTailPlayback = ref(false);
+function displaySeconds(value: number) {
+  return new Intl.NumberFormat(locale.value, {
+    maximumFractionDigits: 3,
+  }).format(value);
+}
 const outputAspectRatio = computed(() => {
   if (goal.value === "watch") return ratio.value;
   let width = Math.round(props.projectSettings.width);
@@ -240,6 +257,7 @@ watch(
     profileBusy.value = null;
     profileError.value = "";
     clearPreview();
+    stopAudioPreview();
     stillResult.value = null;
     audioResult.value = null;
   },
@@ -397,6 +415,36 @@ function audioDownloadName(file: AudioProfileExport["files"][number]) {
     : file.filename;
 }
 
+function seekAndPlayAudioTail(player: HTMLAudioElement) {
+  if (!Number.isFinite(player.duration) || player.duration <= 0) return false;
+  player.currentTime = Math.max(0, player.duration - 1.5);
+  void player.play().catch(() => {
+    profileError.value = t("exportProfiles.audioPreviewError");
+  });
+  return true;
+}
+
+function playAudioTail() {
+  const player = audioTailPlayer.value;
+  if (!player) return;
+  if (seekAndPlayAudioTail(player)) return;
+  pendingTailPlayback.value = true;
+  player.load();
+}
+
+function playPendingAudioTail() {
+  if (!pendingTailPlayback.value) return;
+  pendingTailPlayback.value = false;
+  if (audioTailPlayer.value) seekAndPlayAudioTail(audioTailPlayer.value);
+}
+
+function stopAudioPreview() {
+  pendingTailPlayback.value = false;
+  if (!audioTailPlayer.value) return;
+  audioTailPlayer.value.pause();
+  audioTailPlayer.value.currentTime = 0;
+}
+
 function exportWarningLabel(warning: string) {
   if (warning.includes("letterboxes the saved Composition frame"))
     return t("exportProfiles.letterboxWarning");
@@ -416,6 +464,7 @@ function exportWarningLabel(warning: string) {
 onUnmounted(() => {
   operationGeneration++;
   activeController?.abort();
+  stopAudioPreview();
   if (activeController) emit("profileBusy", false);
   clearPreview();
 });
@@ -526,6 +575,30 @@ onUnmounted(() => {
         class="export-quality-options"
         :aria-label="t('exportQuality.heading')"
       >
+        <div
+          v-if="audioTailReview"
+          class="export-audio-tail-warning"
+          data-testid="export-audio-tail-warning"
+          role="status"
+        >
+          <strong>{{ t("exportProfiles.audioTailHeading") }}</strong>
+          <p>
+            {{
+              t("exportProfiles.audioTailWarning", {
+                compositionDuration: displaySeconds(
+                  audioTailReview.compositionDurationSeconds,
+                ),
+                frameAlignedDuration: displaySeconds(
+                  audioTailReview.frameAlignedDurationSeconds,
+                ),
+                fullMixSampleCount: audioTailReview.fullMixSampleCount,
+                lostTailSamples: audioTailReview.lostTailSamples,
+                lostTailMilliseconds: audioTailReview.lostTailMilliseconds,
+              })
+            }}
+          </p>
+          <p>{{ t("exportProfiles.audioTailListenHint") }}</p>
+        </div>
         <dl class="export-picture-summary">
           <div>
             <dt>{{ t("exportQuality.savedFrame") }}</dt>
@@ -880,6 +953,29 @@ onUnmounted(() => {
             :owner="projectId"
             >{{ t("exportProfiles.downloadReceipt") }}</LocalDownload
           >
+          <template
+            v-if="audioResult.profile.format === 'wav' && audioResult.files[0]"
+          >
+            <audio
+              ref="audioTailPlayer"
+              :src="exportAudioPreviewUrl(audioResult.files[0].filename)"
+              controls
+              preload="metadata"
+              data-testid="export-audio-preview"
+              :aria-label="t('exportProfiles.audioPreviewLabel')"
+              @loadedmetadata="playPendingAudioTail"
+              @error="profileError = t('exportProfiles.audioPreviewError')"
+            />
+            <button
+              class="secondary"
+              data-testid="export-audio-tail-preview"
+              :disabled="isProfileBusy"
+              @click="playAudioTail"
+            >
+              <Icon name="play" :size="18" />
+              {{ t("exportProfiles.playAudioTail") }}
+            </button>
+          </template>
         </div>
       </section>
     </section>
@@ -1097,6 +1193,30 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--of-space-2);
+}
+.export-audio-tail-warning {
+  display: grid;
+  gap: var(--of-space-1);
+  max-width: 48rem;
+  padding: var(--of-space-3);
+  border-left: 2px solid var(--of-warning);
+  border-radius: 0 var(--of-radius-sm) var(--of-radius-sm) 0;
+  background: var(--of-warning-soft);
+}
+.export-audio-tail-warning strong {
+  color: var(--of-warning);
+  font-size: var(--of-font-caption);
+  font-weight: 600;
+}
+.export-audio-tail-warning p {
+  margin: 0;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.export-profile-result audio {
+  width: min(100%, 32rem);
 }
 .export-crop-confirm {
   display: flex;
