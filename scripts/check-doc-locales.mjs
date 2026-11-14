@@ -30,11 +30,24 @@ function readFileSyncSafe(file) {
   }
 }
 
+const machineReadmeRoots = [
+  "vendor/glib-0.18.5",
+  "third-party/glib-0.18.5",
+  "scripts/security/fixtures",
+].map((relative) => `${path.resolve(root, relative)}${path.sep}`);
+
 for (const file of collect(
   root,
   new Set([".git", "node_modules", "dist", "target", "coverage", ".vitepress"]),
 )) {
-  if (path.basename(file) === "README.md") readmes.push(file);
+  if (
+    path.basename(file) === "README.md" &&
+    !machineReadmeRoots.some((directory) =>
+      path.resolve(file).startsWith(directory),
+    )
+  ) {
+    readmes.push(file);
+  }
 }
 
 for (const readme of readmes) {

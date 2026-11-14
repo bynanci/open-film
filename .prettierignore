@@ -6,3 +6,7 @@ dist
 node_modules
 **/target
 apps/desktop/src-tauri/gen
+# Preserve upstream source bytes and exact scanner stdout used as fixtures.
+vendor/glib-0.18.5/**
+third-party/glib-0.18.5/**
+scripts/security/fixtures/*.stdout

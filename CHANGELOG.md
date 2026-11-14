@@ -2,7 +2,7 @@
 
 Changes use release versions; the project schema has its own version.
 
-## Unreleased — main after v0.4.0
+## Unpublished v0.5.0 candidate — scope after PR #75
 
 - Catalog v6 and the multi-source M0/M1 foundation add bounded source drafts,
   browser/native selection evidence and safe historical v5 snapshot compatibility.
@@ -10,8 +10,21 @@ Changes use release versions; the project schema has its own version.
   extend reviewable story-to-cut work without creating another timeline.
 - Professional Cut Desk adds shared Source/Record ownership and direct General
   monitor manipulation; later slices remain explicitly incomplete.
-- The next stable version remains TBD. Native installer signing/update/rollback,
-  GLib advisory closure and physical workstation gates are still open.
+- This source-only candidate is not published. Exact-head candidate validation,
+  the GLib advisory disposition, and release-owner review are still open.
+- A separate three-platform Render QA workflow now uses the historical
+  candidate tool pins; exact-head hosted results remain pending.
+
+## 0.5.0 — Story workflow and cinematic finishing
+
+- Adds Story Graph, guided Pipeline, Creative Variants, Quiet Studio and the
+  first Professional Cut Desk workflow while keeping one Composition and one
+  timeline.
+- Adds focal-point photo presentation, easing and ambient fill, plus bilingual
+  title finishing for story-led edits.
+- Preserves the existing project schema and non-destructive source workflow.
+- This milestone is source-only. It does not certify native installers,
+  Windows/macOS workstation behavior, Resolve handoff or hardware performance.
 
 ## 0.4.0 — Creative-scene integration and reviewed recovery
 

@@ -62,7 +62,7 @@ async function fixture() {
   };
   const source = await image(
     "portrait",
-    "color=c=0x305090:s=100x200,drawbox=x=20:y=70:w=20:h=50:c=white:t=fill,drawbox=x=60:y=0:w=40:h=200:c=red:t=fill",
+    "color=c=0x305090:s=100x200,format=rgb24,drawbox=x=20:y=70:w=20:h=50:c=white:t=fill,drawbox=x=60:y=0:w=40:h=200:c=red:t=fill",
   );
   const work = join(root, "work");
   await mkdir(work);
@@ -98,6 +98,9 @@ const digest = (value: Uint8Array) =>
 
 it("prepares raw centered cells once from verified bytes without baking the clip look", async () => {
   const { work, source, clip } = await fixture();
+  expect([...(await pixels(localPath(source.uri))).subarray(0, 3)]).toEqual([
+    48, 80, 144,
+  ]);
   const other = {
     ...clip,
     id: "other",

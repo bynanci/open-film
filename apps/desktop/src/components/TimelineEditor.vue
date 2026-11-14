@@ -603,6 +603,7 @@ const pendingSourceSeek = ref<number>();
 const sourceError = ref("");
 const titlePreviewFailed = ref(false);
 const titlePreviewRetry = ref(0);
+const titlePreviewAutoRetryRevision = ref<string | null>(null);
 const unsupportedSpeedMessage = "speed";
 const playing = ref(false);
 const graphicSceneSelection = ref({ sceneId: "", nodeId: "" });
@@ -857,6 +858,32 @@ const selectedCaptionTrack = computed(() =>
     (track) => track.id === selectedCaptionTrackId.value,
   ),
 );
+const captionSafeArea = ref<
+  Record<"left" | "right" | "top" | "bottom", number>
+>({
+  left: 8,
+  right: 8,
+  top: 8,
+  bottom: 12,
+});
+watch(
+  [
+    () => selectedCaptionTrack.value?.id,
+    () => selectedCaptionTrack.value?.style.safeArea?.left,
+    () => selectedCaptionTrack.value?.style.safeArea?.right,
+    () => selectedCaptionTrack.value?.style.safeArea?.top,
+    () => selectedCaptionTrack.value?.style.safeArea?.bottom,
+  ],
+  ([, left, right, top, bottom]) => {
+    captionSafeArea.value = {
+      left: Math.round((left ?? 0.08) * 100),
+      right: Math.round((right ?? 0.08) * 100),
+      top: Math.round((top ?? 0.08) * 100),
+      bottom: Math.round((bottom ?? 0.12) * 100),
+    };
+  },
+  { immediate: true },
+);
 const selectedCaptionCue = computed(() =>
   selectedCaptionTrack.value?.cues.find(
     (cue) => cue.id === selectedCaptionCueId.value,
@@ -1001,10 +1028,17 @@ const sourcePlaybackKey = computed(
     `${playbackAsset.value?.id}:${playbackAsset.value?.uri}:${props.sourceVersion ?? 0}`,
 );
 watch(
-  [selectedClipId, () => state.value?.revision, () => props.sourceVersion],
+  [
+    () => props.projectId,
+    () => props.compositionId,
+    selectedClipId,
+    () => state.value?.revision,
+    () => props.sourceVersion,
+  ],
   () => {
     directionPreview.value = null;
     titlePreviewFailed.value = false;
+    titlePreviewAutoRetryRevision.value = null;
   },
 );
 const selectedBeat = computed(() =>
@@ -1429,17 +1463,20 @@ function updateCaptionStyle(key: "fontFamily" | "fontSize", event: Event) {
 }
 function updateCaptionSafeArea(
   side: "left" | "right" | "top" | "bottom",
-  event: Event,
+  event?: Event,
 ) {
   const track = selectedCaptionTrack.value;
   if (!track) return;
-  const target = event.target as HTMLInputElement;
+  const target = event?.target as HTMLInputElement | undefined;
+  const raw = target?.value ?? captionSafeArea.value[side];
+  const parsed = Math.max(0, Math.min(30, Number(raw) || 0));
+  captionSafeArea.value[side] = parsed;
   const safeArea = {
-    left: track.style.safeArea?.left ?? 0.08,
-    right: track.style.safeArea?.right ?? 0.08,
-    top: track.style.safeArea?.top ?? 0.08,
-    bottom: track.style.safeArea?.bottom ?? 0.12,
-    [side]: Number(target.value) / 100,
+    left: captionSafeArea.value.left / 100,
+    right: captionSafeArea.value.right / 100,
+    top: captionSafeArea.value.top / 100,
+    bottom: captionSafeArea.value.bottom / 100,
+    [side]: parsed / 100,
   };
   command({
     type: "caption.track.style",
@@ -2266,6 +2303,49 @@ const playbackClip = computed(() => {
     selectedClip.value
   );
 });
+function titlePreviewLoaded() {
+  titlePreviewFailed.value = false;
+}
+function titlePreviewErrored(event: Event) {
+  const image = event.currentTarget;
+  const current = state.value;
+  const clip = playbackClip.value;
+  if (
+    !(image instanceof HTMLImageElement) ||
+    !image.isConnected ||
+    !current?.revision ||
+    !clip?.title
+  )
+    return;
+
+  const failedUrl = new URL(
+    image.currentSrc || image.src,
+    window.location.href,
+  );
+  const currentUrl = new URL(
+    titlePreviewUrl(
+      props.compositionId,
+      clip.id,
+      current.revision,
+      props.projectId,
+    ),
+    window.location.href,
+  );
+  if (failedUrl.href !== currentUrl.href) return;
+
+  const retryContext = JSON.stringify([
+    props.projectId,
+    props.compositionId,
+    current.revision,
+  ]);
+  if (titlePreviewAutoRetryRevision.value !== retryContext) {
+    titlePreviewAutoRetryRevision.value = retryContext;
+    titlePreviewFailed.value = false;
+    titlePreviewRetry.value++;
+    return;
+  }
+  titlePreviewFailed.value = true;
+}
 const focalSessionKey = computed(() =>
   JSON.stringify([
     props.projectId,
@@ -3554,8 +3634,8 @@ onBeforeUnmount(() => {
                     "
                     :clip="playbackClip"
                     :source-time="sourceTime"
-                    @load="titlePreviewFailed = false"
-                    @error="titlePreviewFailed = true"
+                    @load="titlePreviewLoaded"
+                    @error="titlePreviewErrored"
                   />
                   <NativeCaptionPreview
                     v-if="
@@ -3679,8 +3759,8 @@ onBeforeUnmount(() => {
                     :clip="playbackClip"
                     :source-time="sourceTime"
                     :player="sourcePlayer"
-                    @load="titlePreviewFailed = false"
-                    @error="titlePreviewFailed = true"
+                    @load="titlePreviewLoaded"
+                    @error="titlePreviewErrored"
                   />
                   <NativeCaptionPreview
                     v-if="
@@ -5054,12 +5134,7 @@ onBeforeUnmount(() => {
                   >
                     {{ t(`editor.captions.${side}`) }}
                     <input
-                      :value="
-                        Math.round(
-                          (selectedCaptionTrack.style.safeArea?.[side] ??
-                            (side === 'bottom' ? 0.12 : 0.08)) * 100,
-                        )
-                      "
+                      v-model.number="captionSafeArea[side]"
                       type="number"
                       min="0"
                       max="30"

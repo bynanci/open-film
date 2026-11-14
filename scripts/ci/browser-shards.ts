@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export const browserShardCount = 4;
+export const browserShardCount = 6;
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -64,7 +64,7 @@ export function validateBrowserPartition(
   shards: readonly (readonly string[])[],
 ): { total: number; shards: number[] } {
   if (shards.length !== browserShardCount)
-    throw new Error("Exactly four browser shards are required.");
+    throw new Error("Exactly six browser shards are required.");
   for (const inventory of [all, ...shards]) {
     if (
       !inventory.length ||

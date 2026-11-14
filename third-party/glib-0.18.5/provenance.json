@@ -1,0 +1,65 @@
+{
+  "retrievedAt": "2026-10-30T15:07:17.334976+00:00",
+  "baseCommit": "04035f3266e191478296787982a46293177d61b2",
+  "originalLockBlob": "5074c730c731d3fccfc03fe8147d83ea7d81d439",
+  "originalLockSHA256": "a808e238a30ca3088c0358728169d20c8cf9c5af4fbc417756227b9f602e23f4",
+  "archiveMembers": 121,
+  "archiveExpandedBytes": 1717584,
+  "changedFiles": [
+    "src/variant_iter.rs"
+  ],
+  "hashes": {
+    "glib-0.18.5.crate": "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5",
+    "upstream-05dff0ee.patch": "a742bf59f1b00af0f434623b34e2fd969dc8697d37c796efdf909dd9eb19b854",
+    "variant_iter.parent.rs": "1fd02859333761c45321b32f28b24233446b97d0022a90d3a937ed162585b90e",
+    "variant_iter.fixed.rs": "a0f5ee8acb8faa089bcdfbc9a57372609fce7654026ccef7d9a224d05a654ccc",
+    "pristine-inventory.canonical.json": "2a95cf8a0a2cc534f828c9b6bf78fb9b5ffb41f356608e902144a8da3eb1fc0f",
+    "patched-inventory.canonical.json": "9e187d4f6bca0afa6c96a9db1dc76e379a2dd26bf3122d82fb928504e3943882",
+    "RUSTSEC-2024-0429.md": "0c1ab1d4a0ebe5948e362728b31613ab588b84a0284dadbc119f7424fdd9c6d0"
+  },
+  "nativeExecution": "Not attested by this provenance record; requires current-candidate native admission.",
+  "cargoAudit": "Not attested by this provenance record; requires three fresh candidate-bound audit graphs.",
+  "license": {
+    "declared": "MIT",
+    "files": {
+      "LICENSE": "8cf56d10131ce201cf69ab74b111d3ebac1acca3833d7efb39ae357224b70edb",
+      "COPYRIGHT": "dae402989de65164815b7e2b6bc2b9576285434c3785934c8b6ece0fa055960d"
+    },
+    "upstreamFixLicenseMatchesArchive": true
+  },
+  "upstream": {
+    "merge": "05dff0ee696f9bcd8617cd48c4b812d046d440cb",
+    "firstParent": "e24f5fcf05b4d78afca97a2b325f3e70cf7cac72",
+    "patchHead": "b5a4071e439bef2b5eea76c3aa25e5ae84839e34",
+    "fixedGitBlob": "e0997f651b103f7b198e528ee41137ad374e19b8",
+    "archiveSourceCommit": "42b9caf98e03ded086362d9653ca58fe94dc8658"
+  },
+  "advisoryDbPlanningHead": "2295466c4e9df26647fd67d8fa1c705ac2fc7f81",
+  "originalLockComputedGitBlob": "5074c730c731d3fccfc03fe8147d83ea7d81d439",
+  "claim": "Derived v0.5.0 source-provenance record. Original public archive/patch acquisitions are retained; the original registry lock is the exact pre-backport 0.5.0 candidate blob. Does not establish independent approval, native execution or admission.",
+  "canonicalEncoding": "UTF-8 JSON array; byte-sorted paths; sorted keys; compact separators; no ASCII escaping; one final LF; path/type/mode/size/sha256 only",
+  "sources": {
+    "archive": "https://static.crates.io/crates/glib/glib-0.18.5.crate",
+    "patch": "https://github.com/gtk-rs/gtk-rs-core/commit/05dff0ee696f9bcd8617cd48c4b812d046d440cb.patch"
+  },
+  "reacquisition": [
+    {
+      "file": "glib-0.18.5.crate",
+      "url": "https://static.crates.io/crates/glib/glib-0.18.5.crate",
+      "sha256": "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5",
+      "retrievedAt": "2026-10-30T15:49:42.146535+00:00"
+    },
+    {
+      "file": "upstream-05dff0ee.patch",
+      "url": "https://github.com/gtk-rs/gtk-rs-core/commit/05dff0ee696f9bcd8617cd48c4b812d046d440cb.patch",
+      "sha256": "a742bf59f1b00af0f434623b34e2fd969dc8697d37c796efdf909dd9eb19b854",
+      "retrievedAt": "2026-10-30T15:49:43.229436+00:00"
+    }
+  ],
+  "baselineReviewedAt": "2026-11-08T15:02:42.039252+00:00",
+  "historicalMainProvenance": {
+    "reviewedHead": "3b05ba781b62494143e2d73ba6126a9e1f24d43e",
+    "sourceRecordSHA256": "6701fdbdde8d2ecac25a4ded0898200a0c8e85269a8bc47999ffd97cdcd67cb0",
+    "sourceAcquisitionAuditReportSHA256": "439c1f5c591fb5d0d1a3e17c3c2b5b45a6cb3c6f28543cadd22cef9734f4efdd"
+  }
+}
