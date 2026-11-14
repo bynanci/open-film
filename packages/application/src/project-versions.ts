@@ -12,6 +12,7 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  type Stats,
 } from "node:fs";
 import { lstat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
@@ -25,6 +26,7 @@ import {
   migrateProject,
   validateProject,
   validateProjectVersionRecord,
+  type Composition,
   type MediaAsset,
   type OpenFilmProject,
   type ProjectVersionDiff,
@@ -37,7 +39,7 @@ import {
   inspectCatalogSnapshot,
   upgradeCatalogSnapshot,
 } from "@openfilm/catalog";
-import { hashFile, localPath, referenceFor } from "@openfilm/media";
+import { checkAbort, hashFile, localPath, referenceFor } from "@openfilm/media";
 import { managedSourceUri } from "./path-safety.js";
 import { portableCacheUri } from "./portable-cache.js";
 import { savedScriptProjectIdentity } from "./scene-script-review.js";
@@ -151,6 +153,52 @@ interface LoadedVersion {
   catalog: Buffer;
   project: OpenFilmProject;
   directory: string;
+  state: {
+    directory: FileIdentity;
+    files: Record<string, FileIdentity>;
+    index: FileIdentity;
+  };
+}
+
+interface FileIdentity {
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+}
+
+function fileIdentity(info: Stats): FileIdentity {
+  return {
+    dev: info.dev,
+    ino: info.ino,
+    size: info.size,
+    mtimeMs: info.mtimeMs,
+    ctimeMs: info.ctimeMs,
+  };
+}
+
+function sameFileIdentity(info: Stats, identity: FileIdentity): boolean {
+  return (
+    info.isFile() &&
+    !info.isSymbolicLink() &&
+    info.dev === identity.dev &&
+    info.ino === identity.ino &&
+    info.size === identity.size &&
+    info.mtimeMs === identity.mtimeMs &&
+    info.ctimeMs === identity.ctimeMs
+  );
+}
+
+function sameDirectoryIdentity(info: Stats, identity: FileIdentity): boolean {
+  return (
+    info.isDirectory() &&
+    !info.isSymbolicLink() &&
+    info.dev === identity.dev &&
+    info.ino === identity.ino &&
+    info.mtimeMs === identity.mtimeMs &&
+    info.ctimeMs === identity.ctimeMs
+  );
 }
 
 export interface ProjectVersionCreateInput {
@@ -169,6 +217,88 @@ export interface ProjectVersionRestoreInput {
 export interface ProjectVersionRestoreResult {
   restoredVersionId: string;
   checkpointVersionId: string;
+}
+
+/** Trusted internal render inputs; never serialize a snapshot to an HTTP client. */
+export interface ProjectVersionPreviewSnapshot {
+  project: OpenFilmProject;
+  composition: Composition;
+  assets: MediaAsset[];
+  sourceReferences: ProjectVersionSourceReference[];
+  record: ProjectVersionRecord;
+  readonly projectId: string;
+  readonly versionId: string;
+  readonly identity: string;
+  readonly compositionSha256: string;
+  readonly settingsSha256: string;
+  readonly assetsSha256: string;
+  assertCurrent(): void;
+}
+
+export interface ProjectVersionPreviewTargets {
+  projectId: string;
+  versionId: string;
+  name: string;
+  projectHash: string;
+  catalogHash: string;
+  identity: string;
+  compositions: Array<{
+    id: string;
+    storyId: string;
+    title: string;
+    duration: number;
+    frameRate: number;
+  }>;
+}
+
+function payloadIdentity(version: LoadedVersion): string {
+  return digest(
+    JSON.stringify({
+      projectId: version.record.projectId,
+      versionId: version.record.id,
+      projectHash: version.record.projectHash,
+      catalogHash: version.record.catalogHash,
+      recordHash: version.entry.recordHash,
+    }),
+  );
+}
+
+/** Capture before hashing, then compare again at every synchronous publication guard. */
+function previewSourceState(projectDirectory: string, asset: MediaAsset) {
+  const managedUri = managedSourceUri(projectDirectory, asset);
+  const managed = asset.metadata["openfilm.managedSource"] as
+    { uri?: unknown } | undefined;
+  if (managed?.uri === asset.uri && !managedUri)
+    fail(
+      "media.missing",
+      `Saved source ${asset.id} has an unsafe managed path.`,
+      409,
+    );
+  try {
+    const path = localPath(managedUri ?? asset.uri);
+    const info = lstatSync(path);
+    if (!info.isFile() || info.isSymbolicLink())
+      fail(
+        "media.missing",
+        `Saved source ${asset.id} is not a regular local file.`,
+        409,
+      );
+    return JSON.stringify({
+      path,
+      dev: info.dev,
+      ino: info.ino,
+      size: info.size,
+      mtimeMs: info.mtimeMs,
+      ctimeMs: info.ctimeMs,
+    });
+  } catch (error) {
+    if (error instanceof ProjectVersionError) throw error;
+    fail(
+      "media.missing",
+      `Saved source ${asset.id} is missing. Relink the original media.`,
+      409,
+    );
+  }
 }
 
 function defaultIndex(projectId: string): VersionIndex {
@@ -393,7 +523,9 @@ function managedSource(projectDirectory: string, asset: MediaAsset): boolean {
 async function sourceReference(
   projectDirectory: string,
   asset: MediaAsset,
+  signal?: AbortSignal,
 ): Promise<ProjectVersionSourceReference> {
+  checkAbort(signal);
   let path: string;
   const managed = asset.metadata["openfilm.managedSource"] as
     { relativePath?: unknown; uri?: unknown } | undefined;
@@ -416,7 +548,10 @@ async function sourceReference(
   let info;
   try {
     info = await lstat(path);
-  } catch {
+    checkAbort(signal);
+  } catch (error) {
+    checkAbort(signal);
+    if (error instanceof Error && error.name === "AbortError") throw error;
     fail(
       "media.missing",
       `Source ${asset.id} is missing. Relink it before creating or restoring a version.`,
@@ -431,8 +566,10 @@ async function sourceReference(
     );
   let sha256: string;
   try {
-    sha256 = await hashFile(path);
-  } catch {
+    sha256 = await hashFile(path, signal);
+  } catch (error) {
+    checkAbort(signal);
+    if (error instanceof Error && error.name === "AbortError") throw error;
     fail(
       "media.missing",
       `Source ${asset.id} could not be verified. Relink it and retry.`,
@@ -440,11 +577,15 @@ async function sourceReference(
     );
   }
   const after = await lstat(path);
+  checkAbort(signal);
   if (
     !after.isFile() ||
     after.isSymbolicLink() ||
     after.size !== info.size ||
-    after.mtimeMs !== info.mtimeMs
+    after.mtimeMs !== info.mtimeMs ||
+    after.ctimeMs !== info.ctimeMs ||
+    after.dev !== info.dev ||
+    after.ino !== info.ino
   )
     fail(
       "story.planConflict",
@@ -546,6 +687,72 @@ export class ProjectVersionService {
       fail("request.invalid", "The project version index is corrupt.");
     }
     return validateIndex(parsed, this.app.project.id);
+  }
+
+  private readIndexSnapshot(): {
+    index: VersionIndex;
+    identity: FileIdentity;
+  } {
+    const before = lstatSync(this.indexPath);
+    if (before.isSymbolicLink() || !before.isFile())
+      fail("request.invalid", "The project version index is unsafe.");
+    const index = this.readIndex(),
+      after = lstatSync(this.indexPath);
+    if (!sameFileIdentity(after, fileIdentity(before)))
+      fail(
+        "story.planConflict",
+        "The saved version index changed during preview capture.",
+        409,
+      );
+    return { index, identity: fileIdentity(after) };
+  }
+
+  /** Recheck small filesystem identities without re-reading and hashing the full catalog snapshot. */
+  private assertLoadedVersionCurrent(loaded: LoadedVersion): void {
+    try {
+      const directory = lstatSync(loaded.directory);
+      if (!sameDirectoryIdentity(directory, loaded.state.directory))
+        fail(
+          "story.planConflict",
+          "The named version folder changed after preview capture.",
+          409,
+        );
+      for (const [name, identity] of Object.entries(loaded.state.files)) {
+        if (
+          !sameFileIdentity(lstatSync(join(loaded.directory, name)), identity)
+        )
+          fail(
+            "story.planConflict",
+            "The named version payload changed after preview capture.",
+            409,
+          );
+      }
+      const indexInfo = lstatSync(this.indexPath);
+      if (!sameFileIdentity(indexInfo, loaded.state.index)) {
+        const current = this.readIndexSnapshot(),
+          entry = current.index.entries.find(
+            (item) => item.id === loaded.entry.id,
+          );
+        if (
+          !entry ||
+          entry.recordHash !== loaded.entry.recordHash ||
+          entry.payloadBytes !== loaded.entry.payloadBytes
+        )
+          fail(
+            "story.planConflict",
+            "The named version is no longer available for preview.",
+            409,
+          );
+        loaded.state.index = current.identity;
+      }
+    } catch (error) {
+      if (error instanceof ProjectVersionError) throw error;
+      fail(
+        "story.planConflict",
+        "The named version is no longer available for preview.",
+        409,
+      );
+    }
   }
 
   private capture(): Snapshot {
@@ -688,12 +895,22 @@ export class ProjectVersionService {
     const dirInfo = lstatSync(directory);
     if (dirInfo.isSymbolicLink() || !dirInfo.isDirectory())
       fail("request.invalid", "The named version folder is unsafe.");
+    const fileIdentities: Record<string, FileIdentity> = {};
     const file = (name: string, maximum: number) => {
       const path = join(directory, name);
-      const info = lstatSync(path);
-      if (info.isSymbolicLink() || !info.isFile() || info.size > maximum)
+      const before = lstatSync(path);
+      if (before.isSymbolicLink() || !before.isFile() || before.size > maximum)
         fail("request.invalid", `The saved version ${name} file is invalid.`);
-      return readFileSync(path);
+      const bytes = readFileSync(path),
+        after = lstatSync(path);
+      if (!sameFileIdentity(after, fileIdentity(before)))
+        fail(
+          "story.planConflict",
+          "The named version payload changed during preview capture.",
+          409,
+        );
+      fileIdentities[name] = fileIdentity(after);
+      return bytes;
     };
     const manifest = file("project.json", MAX_PROJECT_BYTES);
     const catalog = file("database.sqlite", CATALOG_SNAPSHOT_MAX_BYTES);
@@ -735,6 +952,22 @@ export class ProjectVersionService {
     }
     if (project.id !== this.app.project.id)
       fail("request.invalid", "The named version belongs to another project.");
+    const finalIndex = this.readIndexSnapshot(),
+      finalEntry = finalIndex.index.entries.find(
+        (item) => item.id === entry.id,
+      ),
+      finalDirectory = lstatSync(directory);
+    if (
+      !finalEntry ||
+      finalEntry.recordHash !== entry.recordHash ||
+      finalEntry.payloadBytes !== entry.payloadBytes ||
+      !sameDirectoryIdentity(finalDirectory, fileIdentity(dirInfo))
+    )
+      fail(
+        "story.planConflict",
+        "The named version changed during preview capture.",
+        409,
+      );
     return {
       entry,
       record: this.metadataRecord(entry, decoded),
@@ -742,6 +975,11 @@ export class ProjectVersionService {
       catalog,
       project,
       directory,
+      state: {
+        directory: fileIdentity(finalDirectory),
+        files: fileIdentities,
+        index: finalIndex.identity,
+      },
     };
   }
 
@@ -1125,6 +1363,136 @@ export class ProjectVersionService {
     };
   }
 
+  /** Validated saved-target metadata without reading or hashing source media. */
+  previewTargets(versionId: string): ProjectVersionPreviewTargets {
+    const loaded = this.load(uuid(versionId, "version ID"));
+    return {
+      projectId: loaded.record.projectId,
+      versionId: loaded.record.id,
+      name: loaded.record.name,
+      projectHash: loaded.record.projectHash,
+      catalogHash: loaded.record.catalogHash,
+      identity: payloadIdentity(loaded),
+      compositions: loaded.project.timelines.map((composition) => ({
+        id: composition.id,
+        storyId: composition.storyId,
+        title:
+          loaded.project.stories.find(
+            (story) => story.id === composition.storyId,
+          )?.title ?? composition.storyId,
+        duration: composition.duration,
+        frameRate: loaded.project.settings.frameRate,
+      })),
+    };
+  }
+
+  /** Own historical inputs without restoring, saving or consulting the active Catalog. */
+  async snapshotForPreview(
+    versionId: string,
+    compositionId?: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<ProjectVersionPreviewSnapshot> {
+    const signal = options?.signal;
+    checkAbort(signal);
+    const loaded = this.load(uuid(versionId, "version ID"));
+    const target = this.rebaseTarget(loaded);
+    const composition =
+      compositionId === undefined
+        ? target.project.timelines[0]
+        : target.project.timelines.find((item) => item.id === compositionId);
+    if (!composition)
+      fail(
+        "request.notFound",
+        "The saved Composition was not found in this named version.",
+        404,
+      );
+    const projectId = loaded.record.projectId;
+    const payload = payloadIdentity(loaded);
+    const assets = [...target.assets.values()];
+    const sourceReferences = structuredClone(loaded.record.sourceReferences);
+    const record = structuredClone(loaded.record);
+    const jsonDigest = (value: unknown) => digest(JSON.stringify(value));
+    const compositionSha256 = jsonDigest(composition);
+    const settingsSha256 = jsonDigest(target.project.settings);
+    const assetsSha256 = jsonDigest(assets);
+    const projectSha256 = jsonDigest(target.project),
+      referencesSha256 = jsonDigest(sourceReferences),
+      recordSha256 = jsonDigest(record);
+    const identity = jsonDigest({
+      payload,
+      compositionSha256,
+      settingsSha256,
+      assetsSha256,
+    });
+    const sourceStates = sourceReferences.map((source) => {
+      const asset = target.assets.get(source.assetId);
+      if (!asset)
+        fail(
+          "media.missing",
+          `Saved source ${source.assetId} is missing from the version Catalog.`,
+          409,
+        );
+      return { asset, state: previewSourceState(this.app.directory, asset) };
+    });
+    await this.verifySources(loaded, target.assets, signal);
+    const snapshot: ProjectVersionPreviewSnapshot = {
+      project: target.project,
+      composition,
+      assets,
+      sourceReferences,
+      record,
+      projectId,
+      versionId: loaded.record.id,
+      identity,
+      compositionSha256,
+      settingsSha256,
+      assetsSha256,
+      assertCurrent: () => {
+        checkAbort(signal);
+        if (
+          this.app.project.id !== projectId ||
+          snapshot.projectId !== projectId ||
+          snapshot.versionId !== loaded.record.id ||
+          snapshot.identity !== identity ||
+          snapshot.compositionSha256 !== compositionSha256 ||
+          snapshot.settingsSha256 !== settingsSha256 ||
+          snapshot.assetsSha256 !== assetsSha256
+        )
+          fail(
+            "story.planConflict",
+            "The named version payload changed. Prepare its preview again.",
+            409,
+          );
+        if (
+          jsonDigest(snapshot.project) !== projectSha256 ||
+          jsonDigest(snapshot.composition) !== compositionSha256 ||
+          jsonDigest(snapshot.project.settings) !== settingsSha256 ||
+          jsonDigest(snapshot.assets) !== assetsSha256 ||
+          jsonDigest(snapshot.sourceReferences) !== referencesSha256 ||
+          jsonDigest(snapshot.record) !== recordSha256
+        )
+          fail(
+            "story.planConflict",
+            "The historical render inputs changed after capture. Prepare their preview again.",
+            409,
+          );
+        this.assertLoadedVersionCurrent(loaded);
+        for (const source of sourceStates)
+          if (
+            previewSourceState(this.app.directory, source.asset) !==
+            source.state
+          )
+            fail(
+              "media.missing",
+              `Saved source ${source.asset.id} changed after preview capture. Relink the original media.`,
+              409,
+            );
+      },
+    };
+    snapshot.assertCurrent();
+    return snapshot;
+  }
+
   diff(beforeId: string, afterId: string): ProjectVersionDiff {
     const before = this.load(beforeId);
     const after = this.load(afterId);
@@ -1239,8 +1607,11 @@ export class ProjectVersionService {
   private async verifySources(
     version: LoadedVersion,
     assets: Map<string, MediaAsset>,
+    signal?: AbortSignal,
   ): Promise<void> {
+    checkAbort(signal);
     for (const source of version.record.sourceReferences) {
+      checkAbort(signal);
       const asset = assets.get(source.assetId);
       if (!asset || asset.mediaType !== source.mediaType)
         fail(
@@ -1248,7 +1619,7 @@ export class ProjectVersionService {
           `Source ${source.assetId} is missing from the saved version catalog. Relink media before restoring.`,
           409,
         );
-      const actual = await sourceReference(this.app.directory, asset);
+      const actual = await sourceReference(this.app.directory, asset, signal);
       if (
         actual.sha256 !== source.sha256 ||
         actual.sizeBytes !== source.sizeBytes

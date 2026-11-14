@@ -37,6 +37,14 @@ story/beat, track/clip, cue, scene/node and template ordering. The first version
 does not produce pixel-level image differences. Source paths are omitted from
 diff/API diagnostics.
 
+Named Versions also provides an explicit local A/V comparison preview for two
+saved version/Composition targets. It renders immutable saved inputs through the
+existing FFmpeg Renderer and plays two verified temporary MP4s under one shared
+time control and mutually exclusive audio selection. It does not modify the
+current edit. See the [A/V comparison validation record](validation-version-av-comparison.md)
+for decoded synthetic evidence and limits; this is separate from Creative
+Variants review and Export-tail acceptance.
+
 Restore requires the current project revision, an explicit confirmation, and a
 fresh checkpoint of the current project. It revalidates the selected version,
 catalog schema/hash and current source bytes before publishing, including a

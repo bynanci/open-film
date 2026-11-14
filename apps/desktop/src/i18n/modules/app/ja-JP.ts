@@ -230,6 +230,52 @@ export default {
       listTitle: "保存済みバージョン",
       compareTitle: "バージョンを比較",
       compareWith: "比較対象",
+      previewEyebrow: "映像と音声を比較",
+      previewTitle: "保存済みバージョンの A/B プレビュー",
+      previewDescription:
+        "保存済みスナップショットをローカルで動画にし、同じタイムコードで映像と音声を比較します。現在の編集内容は変更されません。",
+      preparePreview: "比較を準備",
+      cancelPreview: "キャンセルしてプレビューを閉じる",
+      cancellingPreview: "プレビューを停止中…",
+      retryPreview: "比較を再試行",
+      reconnectPreview: "プレビューに再接続",
+      previewChooseDifferent: "異なる保存済み編集を 2 つ選んでください。",
+      previewSideA: "バージョン A",
+      previewCompositionA: "編集 A",
+      previewSideB: "バージョン B",
+      previewCompositionB: "編集 B",
+      previewStatus: {
+        running: "保存済みの 2 つの編集をレンダリング中…",
+        other:
+          "別のプロセスがこの比較を実行中です。完了後に更新または再試行してください。",
+        loading: "保存済みの編集を読み込み中…",
+        failed: "比較を準備できませんでした。",
+        cancelled: "比較をキャンセルしました。もう一度準備できます。",
+        stale:
+          "保存済み素材またはスナップショットが変更されました。比較を準備し直してください。",
+        expired:
+          "この非公開プレビューは期限切れ、またはファイルが変更されています。再接続するか、再準備してください。",
+      },
+      previewPlayerA: "保存済みバージョン A：{name}",
+      previewPlayerB: "保存済みバージョン B：{name}",
+      previewStarting: "再生開始中…",
+      previewPlay: "2 つを同期再生",
+      previewPause: "一時停止",
+      previewSeek: "共通比較時間",
+      previewEnded: "この編集は終了しました",
+      previewAudio: "音声を試聴",
+      previewAudioA: "A を聴く",
+      previewAudioB: "B を聴く",
+      previewMute: "ミュート",
+      previewUnmute: "ミュート解除",
+      previewPlaybackFailed:
+        "再生を開始できませんでした。両方のプレビューを一時停止してミュートしました。もう一度お試しください。",
+      previewExpired:
+        "プレビューを利用できません。再接続するか、もう一度レンダリングしてください。",
+      previewTailWarning:
+        "フレームに合わせた音声では、ごく短い末尾が含まれない場合があります。このプレビューは比較用であり、聴感品質の認定ではありません。",
+      previewLimit:
+        "保存済みスナップショットの一時的なローカル出力です。書き出し品質を保証するものではなく、実際に使用する機器での試聴に代わるものではありません。",
       diffCaption: "「{before}」から「{after}」への変更",
       noChanges: "比較対象のプロジェクトデータに差分はありません。",
       before: "変更前 · ",

@@ -232,6 +232,51 @@ export default {
       listTitle: "Saved versions",
       compareTitle: "Compare versions",
       compareWith: "Compare with",
+      previewEyebrow: "LISTEN AND WATCH",
+      previewTitle: "Saved-version A/B preview",
+      previewDescription:
+        "Render two saved snapshots locally, then compare their picture and sound at the same timecode. The current edit is not changed.",
+      preparePreview: "Prepare comparison",
+      cancelPreview: "Cancel and close preview",
+      cancellingPreview: "Stopping preview…",
+      retryPreview: "Retry comparison",
+      reconnectPreview: "Reconnect preview",
+      previewChooseDifferent: "Choose two different saved edits to compare.",
+      previewSideA: "Version A",
+      previewCompositionA: "Edit A",
+      previewSideB: "Version B",
+      previewCompositionB: "Edit B",
+      previewStatus: {
+        running: "Rendering both saved edits…",
+        other:
+          "Another process owns this comparison. Refresh or retry after it finishes.",
+        loading: "Loading saved edits…",
+        failed: "The comparison could not be prepared.",
+        cancelled: "Comparison cancelled. You can prepare it again.",
+        stale: "A saved source or snapshot changed. Prepare a new comparison.",
+        expired:
+          "This private preview expired or its files changed. Reconnect or prepare again.",
+      },
+      previewPlayerA: "Saved version A: {name}",
+      previewPlayerB: "Saved version B: {name}",
+      previewStarting: "Starting…",
+      previewPlay: "Play both",
+      previewPause: "Pause",
+      previewSeek: "Shared comparison time",
+      previewEnded: "This edit has ended",
+      previewAudio: "Audition audio",
+      previewAudioA: "Listen to A",
+      previewAudioB: "Listen to B",
+      previewMute: "Mute",
+      previewUnmute: "Unmute",
+      previewPlaybackFailed:
+        "Playback could not start. Both previews were paused and muted; try again.",
+      previewExpired:
+        "Preview media is unavailable. Reconnect or render it again.",
+      previewTailWarning:
+        "Frame-aligned audio can omit a very short final audio tail. Use this preview for comparison, not as a listening-quality certification.",
+      previewLimit:
+        "This is a temporary local render of saved snapshots. It does not certify export quality or replace listening on your target device.",
       diffCaption: "Changes from {before} to {after}",
       noChanges:
         "These saved versions have no differences in the compared project data.",

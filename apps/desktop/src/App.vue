@@ -295,18 +295,18 @@ async function handleVariantAdopted(payload: {
       payload?.compositionId ?? payload?.project?.timelines?.[0]?.id;
     if (compId) {
       activeCompositionId.value = compId;
-      setWorkspace("edit");
+      await setWorkspace("edit");
     }
   } catch (cause) {
     error.value = cause;
   }
 }
 
-function handleNavigateStoryFromPipeline(
+async function handleNavigateStoryFromPipeline(
   perspective: "outline" | "graph" | "storyboard",
   beatId?: string,
 ) {
-  setWorkspace("story");
+  if (!(await setWorkspace("story"))) return;
   storyPerspective.value = perspective;
   if (beatId && activeStory.value) {
     const idx = activeStory.value.beats.findIndex((b) => b.id === beatId);
@@ -316,8 +316,11 @@ function handleNavigateStoryFromPipeline(
   }
 }
 
-function handleNavigateTimelineFromPipeline(_clipId?: string, _time?: number) {
-  setWorkspace("edit");
+async function handleNavigateTimelineFromPipeline(
+  _clipId?: string,
+  _time?: number,
+) {
+  await setWorkspace("edit");
 }
 const workspaceInfo = ref<Awaited<ReturnType<typeof api.workspace>> | null>(
   null,
@@ -876,6 +879,9 @@ const previewVersion = ref(0);
 const previewStale = ref(false);
 const showRenderedPreview = ref(false);
 const renderedPlayer = ref<HTMLVideoElement | null>(null);
+const projectVersionsPanel = ref<{
+  stopPreview: () => Promise<boolean>;
+} | null>(null);
 const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
 const editorMountRequested = ref(false);
 const editorFlushReady = ref(false);
@@ -897,15 +903,28 @@ function markEditorReady() {
 }
 watch(editorMountRequested, resetEditorReady, { flush: "sync" });
 watch(projectGeneration, resetEditorReady, { flush: "sync" });
-function setWorkspace(workspace: Tab) {
+function pauseRenderedPlayer() {
+  renderedPlayer.value?.pause();
+}
+async function stopVersionComparison(): Promise<boolean> {
+  const stopped = await projectVersionsPanel.value?.stopPreview();
+  return stopped !== false;
+}
+async function setWorkspace(workspace: Tab): Promise<boolean> {
+  if (workspace !== tab.value && tab.value === "versions") {
+    if (!(await stopVersionComparison())) return false;
+  }
+  if (workspace === "versions") pauseRenderedPlayer();
   tab.value = workspace;
   if (workspace === "edit") editorMountRequested.value = true;
   if (project.value) setLastWorkspaceForProject(project.value.id, workspace);
+  return true;
 }
 function restoreWorkspace(projectId?: string) {
   tab.value = projectId
     ? (getLastWorkspaceForProject(projectId) ?? "library")
     : "library";
+  if (tab.value === "versions") pauseRenderedPlayer();
   if (tab.value === "edit") editorMountRequested.value = true;
 }
 const editorStorageKey = computed(() =>
@@ -1003,9 +1022,19 @@ async function changeTab(next: Tab) {
       activeComposition.value
     )
       nativeBenchmark.record("edit-enter", { clipCount: clipCount.value });
+    // A lazy first mount reads the editor snapshot itself. Capture an already
+    // mounted instance before awaiting the workspace transition so we only
+    // reload an editor that existed beforehand; otherwise Vue can mount during
+    // the await and the follow-up reload duplicates the initial GET.
+    const mountedEditor = timelineEditor.value;
     editorMountRequested.value = true;
-    setWorkspace(next);
-    if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
+    if (!(await setWorkspace(next))) return;
+    if (
+      mountedEditor &&
+      mountedEditor === timelineEditor.value &&
+      !mountedEditor.hasPending
+    )
+      await mountedEditor.reload();
     return;
   }
   if (!(await flushEditor())) return;
@@ -1016,7 +1045,7 @@ async function changeTab(next: Tab) {
   )
     nativeBenchmark.record("edit-leave", { clipCount: clipCount.value });
   if (next !== "library") importCompletion.value = null;
-  setWorkspace(next);
+  if (!(await setWorkspace(next))) return;
   if (next === "story" && !beatDirty.value) hydrateBeat();
   if (next === "library") await checkMediaStatus();
 }
@@ -1025,6 +1054,7 @@ async function changeComposition(event: globalThis.Event) {
   const next = select.value;
   select.value = activeComposition.value?.id ?? "";
   if (busy.value || relinkBusy.value) return;
+  if (tab.value === "versions" && !(await stopVersionComparison())) return;
   if (!(await flushEditor())) return;
   activeCompositionId.value = next;
   if (tab.value === "edit") editorMountRequested.value = true;
@@ -1064,17 +1094,31 @@ async function projectVersionRestored(restored: OpenFilmProject) {
     }
   }
   editorMountRequested.value = true;
-  setWorkspace("versions");
+  await setWorkspace("versions");
   await refreshInitialMedia();
 }
 function toggleRenderedPlayback() {
   const player = renderedPlayer.value;
   if (!player) return;
+  if (
+    tab.value !== "export" &&
+    !(tab.value === "edit" && showRenderedPreview.value)
+  ) {
+    player.pause();
+    return;
+  }
   if (player.paused)
     void player.play().catch(() => {
       error.value = message("feedback.playbackFailed");
     });
   else player.pause();
+}
+function guardRenderedPlayback() {
+  if (
+    tab.value !== "export" &&
+    !(tab.value === "edit" && showRenderedPreview.value)
+  )
+    pauseRenderedPlayer();
 }
 const exportPath = ref("");
 const exportFormat = ref("");
@@ -1179,7 +1223,7 @@ async function openRelink(assetId?: string, libraryId?: string) {
   relinkLibraryId.value = libraryId;
   relinkOpen.value = true;
   importOpen.value = false;
-  setWorkspace("library");
+  if (!(await setWorkspace("library"))) return;
   await checkMediaStatus();
 }
 async function beforeRelink() {
@@ -1237,7 +1281,7 @@ async function presetApplied(result: PresetAcceptance) {
     await timelineEditor.value?.reload();
     if (owned() && result.receipt.kind === "story") {
       settingsOpen.value = false;
-      setWorkspace("edit");
+      await setWorkspace("edit");
     }
   } catch (cause) {
     if (owned()) error.value = cause;
@@ -1370,7 +1414,7 @@ async function boot() {
       maxDuration.value = project.value.filmSettings?.maxDuration ?? 180;
       rememberProject();
       await refreshInitialMedia();
-      restoreScriptReviewTarget();
+      await restoreScriptReviewTarget();
     }
   });
   loading.value = false;
@@ -1530,7 +1574,7 @@ async function resetProjectView() {
   maxDuration.value = project.value?.filmSettings?.maxDuration ?? 180;
   await refreshInitialMedia();
   restoreWorkspace(project.value?.id);
-  restoreScriptReviewTarget();
+  await restoreScriptReviewTarget();
   rememberProject();
   await restoreNativeDrafts();
 }
@@ -1614,6 +1658,9 @@ async function flushPending(preparingScriptReview = false) {
   return beatDirty.value ? saveBeat() : true;
 }
 async function flushProjectPending() {
+  pauseRenderedPlayer();
+  if (tab.value === "versions" && !(await stopVersionComparison()))
+    return false;
   if (scenePlanDraftPresent.value) {
     error.value = { uiKey: "scenePlan.draftPending" };
     return false;
@@ -1660,7 +1707,7 @@ async function handleRoughCutAdopted(compositionId: string) {
     await refreshProject();
     if (compositionId) {
       activeCompositionId.value = compositionId;
-      setWorkspace("edit");
+      await setWorkspace("edit");
     }
   } catch (cause) {
     error.value = cause;
@@ -2192,7 +2239,7 @@ async function createStory() {
     storyPerspective.value = "graph";
     storyCreateOpen.value = false;
     storyCreateAttempted.value = false;
-    setWorkspace("story");
+    await setWorkspace("story");
     await nextTick();
     document.getElementById("story-tab-graph")?.focus();
   });
@@ -2271,7 +2318,7 @@ function hydrateBeat() {
   beatDirty.value = false;
   candidateOffset.value = 0;
 }
-function restoreScriptReviewTarget() {
+async function restoreScriptReviewTarget() {
   if (!project.value) return;
   try {
     const raw = localStorage.getItem(
@@ -2287,7 +2334,7 @@ function restoreScriptReviewTarget() {
     if (!story || beatIndex < 0) return;
     activeStoryId.value = story.id;
     activeBeatIndex.value = beatIndex;
-    setWorkspace("story");
+    await setWorkspace("story");
   } catch {
     /* Invalid browser recovery data never changes saved Story text. */
   }
@@ -3141,7 +3188,7 @@ async function restoreNativeDrafts() {
         continue;
       beatDraft.value = JSON.parse(JSON.stringify(entry.value));
       beatDirty.value = true;
-      setWorkspace("story");
+      await setWorkspace("story");
       // Consume in the same turn as applying, before another entry can await.
       emit("nativeDraftsRestored", [entry.id]);
     } else if (entry.kind === "category" && !categoryDirty.value) {
@@ -3174,7 +3221,7 @@ async function restoreNativeDrafts() {
       plannerBaseline() === entry.baseline
     ) {
       scenePlannerOpen.value = true;
-      setWorkspace("story");
+      await setWorkspace("story");
       if (!(await waitForScenePlannerMount())) continue;
       const planner = scenePlanner.value;
       if (
@@ -3561,9 +3608,12 @@ onUnmounted(() => {
       <ProjectVersionsPanel
         v-if="tab === 'versions'"
         :key="`${project.id}:${projectGeneration}`"
+        ref="projectVersionsPanel"
         :project-id="project.id"
         :disabled="!!busy || relinkBusy || activeJobs.length > 0"
         @restored="projectVersionRestored"
+        @activity="refreshJobs(false)"
+        @playback-start="pauseRenderedPlayer"
       />
 
       <ScenePlanner
@@ -5477,6 +5527,7 @@ onUnmounted(() => {
                   controls
                   preload="metadata"
                   :aria-label="t('app.composition.preview')"
+                  @play="guardRenderedPlayback"
                   @error="error = message('feedback.playbackFailed')"
                 /><span class="preview-caption"
                   >{{ t("app.composition.yourFilm") }} ·

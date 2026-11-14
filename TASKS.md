@@ -64,6 +64,21 @@ Issue #7 and PR #129 remain the hardware umbrella and source-owner gate.
       approval remains valid, and an existing Rulesets administrator must apply
       the fixed JSON. Native signing, lifecycle and performance remain separate.
 
+### Named-version audiovisual comparison (2026-11-13)
+
+- [x] Add explicit A/V preview for two saved Named Version/Composition targets,
+      using verified historical snapshots, the existing FFmpeg Renderer and
+      render Job ownership. Keep the current Composition and Undo history
+      unchanged; retain private cache bounds, exact request validation and
+      cancel/drain behavior.
+- [x] Add one synchronized native-video transport with mutually exclusive A/B
+      audio, reconnect/expiry status and cleanup on workspace/project changes.
+      Verify real synthetic MP4 decode, source/version hashes and responsive UI.
+      See [validation](docs/validation-version-av-comparison.md).
+- [ ] Close exact-head GitHub checks and review for this Draft PR. Human
+      listening/device QA, the Export audio-tail warning, Creative Variants A/V
+      migration, native installer/workstation and release gates remain separate.
+
 ## Editing and story workflow
 
 ### Tobi-ishi workspace and control panels (merged in PR #119)
