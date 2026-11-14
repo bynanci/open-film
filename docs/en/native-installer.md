@@ -95,6 +95,29 @@ runs native checks and builds using `tauri.bundle.conf.json`. It produces instal
 hash receipts and `candidate.json`, with Windows/macOS workstation status
 `not-run`. It does not publish a release or claim the candidate is signed.
 
+Each target run resolves the reviewed runtime's exact platform/architecture
+triple and uses the Tauri runner in `tauri.bundle.conf.json` to execute the
+Cargo build once through the extensionless Node entrypoint in `src-tauri/build`.
+That shim restores the `build` token Tauri uses as Node's script name. The
+runner records Cargo's argv, raw compiler JSON stream,
+stderr and exit status, locked Cargo metadata, the lockfile, the target shell,
+and the compiler artifacts and generated `OUT_DIR` files named by that same
+stream. It rejects a different candidate HEAD, target directory, metadata
+identity, or shell artifact. Hardlinked compiler outputs are copied into the
+capture without mutating Cargo's output. After bundling, the workflow verifies
+the target shell bytes and uses the receipt tool's atomic, byte-preserving
+staging step to detach a linked shell before identity and seal. The incomplete
+candidate identity pins the capture manifest, and seal rechecks its raw files
+and target-input hashes. The raw Cargo capture is retained in a separate
+`native-cargo-build-*` artifact, including when the build fails; the candidate
+artifact carries the identity pin. Download both artifacts from the same run
+and extract them into the candidate checkout root while preserving their
+repository-relative paths. The raw capture artifact includes
+`apps/desktop/src-tauri/Cargo.lock` as a repository-root anchor, keeping
+`dist/native-evidence/cargo-build/capture.json` at the path pinned by candidate
+identity. This is source/build evidence; it does not grant runtime rights, OS
+trust, signing status, or distribution approval.
+
 The default shell configuration keeps bundling disabled so a developer build
 without runtime resources cannot accidentally be advertised as self-contained.
 Windows candidates use NSIS current-user installation and require an installed
