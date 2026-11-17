@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "1.0.0",
+  "capturedAt": "2026-11-17T07:54:26Z",
+  "result": "not-applied",
+  "ownerApprovedPayloadSha256": "207bc7fed2804ad79d69e0c98ecf68f9ce4ba21c5d0e7fde8e68d4c158e3ce2e",
+  "rollbackPayloadSha256": "3da51856576fdbc9990e6ece40bd8b0cc553f194b1f451005809f4f20d0a08fc",
+  "candidate": {
+    "pullRequest": 166,
+    "headSha": "d1a2f330b5640abcc08a0db9db566681ff7b4ab1",
+    "baseSha": "f662e4c5f7fce5b8367188a674637116dea445f2",
+    "mergeSha": "92b37b90152538f838ebec3532118339098daefc"
+  },
+  "observedRequiredContexts": [
+    {
+      "context": "typescript-and-media",
+      "appId": 15368,
+      "conclusion": "success",
+      "run": "https://github.com/bynanci/open-film/actions/runs/44039556931"
+    },
+    {
+      "context": "docs-site",
+      "appId": 15368,
+      "conclusion": "success",
+      "run": "https://github.com/bynanci/open-film/actions/runs/44039556931"
+    },
+    {
+      "context": "native-shell",
+      "appId": 15368,
+      "conclusion": "success",
+      "run": "https://github.com/bynanci/open-film/actions/runs/44039556931"
+    },
+    {
+      "context": "render-qa-complete",
+      "appId": 15368,
+      "conclusion": "success",
+      "run": "https://github.com/bynanci/open-film/actions/runs/44039557061"
+    },
+    {
+      "context": "windows-ffmpeg9",
+      "appId": 15368,
+      "conclusion": "success",
+      "run": "https://github.com/bynanci/open-film/actions/runs/44039556968"
+    },
+    {
+      "context": "DCO sign-off",
+      "appId": 15368,
+      "conclusion": "success",
+      "run": "https://github.com/bynanci/open-film/actions/runs/44041467447"
+    }
+  ],
+  "beforeWrite": {
+    "mainSha": "f662e4c5f7fce5b8367188a674637116dea445f2",
+    "mainProtected": false,
+    "repositoryRulesetCount": 0,
+    "effectiveMainRuleCount": 0
+  },
+  "writeAttempt": {
+    "order": "After exact-head checks passed and before PR #166 merged; exact POST timestamp was not captured",
+    "method": "POST",
+    "endpoint": "repos/bynanci/open-film/rulesets",
+    "httpStatus": 403,
+    "message": "Resource not accessible by integration",
+    "createdRuleId": null,
+    "retried": false,
+    "bypassAttempted": false
+  },
+  "currentReadback": {
+    "observedAt": "2026-11-17T07:50:43Z",
+    "mainSha": "92b37b90152538f838ebec3532118339098daefc",
+    "mainProtected": false,
+    "repositoryRulesetCount": 0,
+    "effectiveMainRuleCount": 0
+  },
+  "notObserved": [
+    "safe-control PR after ruleset activation",
+    "accepted/rejected push, force-push or deletion control cases",
+    "administrator recovery attestation",
+    "alerting and release/signing-role attestations"
+  ],
+  "issue146RemainsOpen": true
+}
