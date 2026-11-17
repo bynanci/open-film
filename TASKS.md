@@ -105,6 +105,13 @@ Issue #141 still blocks that workflow until reviewed target runtime inputs and
 rights/SBOM evidence are supplied. Do not create a separate Cargo build and
 attribute its outputs to the installer.
 
+- [x] Replace the retired native macOS runner with explicit `macos-15-intel`,
+      preserving the existing x64 lane, and reject mismatched dispatch/host
+      identities before intake or build work. See the bounded
+      [source-readiness validation](docs/validation/native-runner-compat-2026-11-17.md).
+- [ ] Supply reviewed target runtime inputs and rights/SBOM evidence for #141,
+      then obtain actual native staging/build/receipt evidence for #140. The
+      runner compatibility fix supplies no installer or workstation acceptance.
 - [x] Complete the bounded [#139 media cost profile](docs/validation/media-test-profile.md)
       using two fixed-source repetitions and 56 real tool calls. Render work
       dominated the selected cases; no production speedup, fixture reuse or

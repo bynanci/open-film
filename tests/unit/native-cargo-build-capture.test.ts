@@ -9,9 +9,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Writable } from "node:stream";
 import {
+  assertNativeDispatchRunner,
   captureCargoBuild,
   metadataArgsForCargo,
   resolveNativeTarget,
@@ -208,6 +210,150 @@ it("maps a verified runner/runtime identity to the exact Tauri target shell and 
       "/candidate",
     ).target,
   ).toBe("aarch64-apple-darwin");
+  expect(
+    resolveNativeTarget(
+      { platform: "darwin", architecture: "x64" },
+      { platform: "darwin", architecture: "x64" },
+      "/candidate",
+    ),
+  ).toEqual({
+    target: "x86_64-apple-darwin",
+    targetDirectory: "apps/desktop/src-tauri/target",
+    shellPath:
+      "apps/desktop/src-tauri/target/x86_64-apple-darwin/release/openfilm-desktop",
+    bundleDirectory:
+      "apps/desktop/src-tauri/target/x86_64-apple-darwin/release/bundle",
+  });
+  expect(() =>
+    resolveNativeTarget(
+      { platform: "darwin", architecture: "arm64" },
+      { platform: "darwin", architecture: "x64" },
+      "/candidate",
+    ),
+  ).toThrow("Runner/runtime target mismatch");
+});
+
+it.each([
+  ["runtime-stage", "windows-2022", "win32", "Windows"],
+  ["runtime-stage", "macos-15-intel", "darwin", "macOS"],
+  ["installer", "ubuntu-24.04", "linux", "Linux"],
+  ["installer", "windows-2022", "win32", "Windows"],
+  ["installer", "macos-15-intel", "darwin", "macOS"],
+] as const)(
+  "admits only the existing x64 lane for %s/%s",
+  (workflow, label, platform, os) => {
+    expect(() =>
+      assertNativeDispatchRunner(
+        workflow,
+        label,
+        { platform, architecture: "x64" },
+        { os, architecture: "X64" },
+      ),
+    ).not.toThrow();
+  },
+);
+
+it.each([
+  ["runtime-stage", "ubuntu-24.04"],
+  ["installer", "macos-14"],
+  ["runtime-stage", "macos-15"],
+  ["installer", "macos-latest"],
+  ["installer", "macos-15-intel "],
+  ["installer", "__proto__"],
+  ["installer", "toString"],
+  ["installer", ""],
+  ["", "macos-15-intel"],
+  ["toString", "macos-15-intel"],
+])("rejects unsupported native dispatch %s/%s", (workflow, label) => {
+  expect(() =>
+    assertNativeDispatchRunner(
+      workflow,
+      label,
+      { platform: "darwin", architecture: "x64" },
+      { os: "macOS", architecture: "X64" },
+    ),
+  ).toThrow("Unsupported native workflow/runner selection");
+});
+
+it.each([
+  ["darwin", "arm64", "macOS", "ARM64"],
+  ["win32", "x64", "macOS", "X64"],
+  ["darwin", "x64", "macOS", "ARM64"],
+  ["darwin", "x64", "Linux", "X64"],
+  ["darwin", "x64", undefined, "X64"],
+  ["darwin", "x64", "macOS", undefined],
+])(
+  "rejects a selected Intel macOS lane with host/context %s/%s/%s/%s",
+  (platform, architecture, os, githubArchitecture) => {
+    expect(() =>
+      assertNativeDispatchRunner(
+        "installer",
+        "macos-15-intel",
+        { platform, architecture },
+        { os, architecture: githubArchitecture },
+      ),
+    ).toThrow("Native dispatch runner platform/architecture mismatch");
+  },
+);
+
+it("checks the selected native runner before looking for reviewed runtime files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "native-runner-preflight-"));
+  roots.push(root);
+  const platform = process.platform;
+  if (platform !== "linux" && platform !== "darwin" && platform !== "win32")
+    throw new Error("Native runner test requires a supported OS");
+  const label = {
+    linux: "ubuntu-24.04",
+    darwin: "macos-15-intel",
+    win32: "windows-2022",
+  }[platform];
+  const runnerOs = {
+    linux: "Linux",
+    darwin: "macOS",
+    win32: "Windows",
+  }[platform];
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), "scripts/native/capture-cargo-build.mjs"),
+      "runner",
+      "installer",
+      label,
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, RUNNER_OS: runnerOs, RUNNER_ARCH: "X64" },
+    },
+  );
+  expect(result.stdout).toBe("");
+  if (process.arch === "x64") {
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toBe("");
+  } else {
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Native dispatch runner platform/architecture mismatch",
+    );
+  }
+});
+
+it.each([
+  ["runner"],
+  ["runner", "installer"],
+  ["runner", "installer", "macos-14"],
+  ["runner", "installer", "macos-15-intel", "extra"],
+])("refuses malformed runner commands before runtime intake: %j", (...args) => {
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/native/capture-cargo-build.mjs", ...args],
+    { encoding: "utf8" },
+  );
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(
+    /Expected runner <runtime-stage\|installer> <runner-label>|Unsupported native workflow\/runner selection/u,
+  );
+  expect(result.stderr).not.toContain("runtime-manifest.json");
 });
 
 it("captures the exact Tauri Cargo invocation, raw streams, metadata, lock and target shell", async () => {

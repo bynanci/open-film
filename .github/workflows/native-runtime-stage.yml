@@ -1,11 +1,11 @@
-# Modified by OpenFilm contributors on 2026-11-11. See LICENSE and NOTICE.
+# Modified by OpenFilm contributors on 2026-11-17. See LICENSE and NOTICE.
 name: Native runtime review candidate
 on:
   workflow_dispatch:
     inputs:
       platform:
         type: choice
-        options: [windows-2022, macos-14]
+        options: [windows-2022, macos-15-intel]
         required: true
       source_run_id:
         description: Successful same-repository, same-commit run holding reviewed inputs
@@ -37,6 +37,11 @@ jobs:
       INPUT_JSON_SHA256: ${{ inputs.input_json_sha256 }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify selected native runner identity
+        shell: bash
+        env:
+          NATIVE_RUNNER_LABEL: ${{ inputs.platform }}
+        run: node scripts/native/capture-cargo-build.mjs runner runtime-stage "$NATIVE_RUNNER_LABEL"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0

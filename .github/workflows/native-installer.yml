@@ -4,7 +4,7 @@ on:
     inputs:
       platform:
         type: choice
-        options: [ubuntu-24.04, windows-2022, macos-14]
+        options: [ubuntu-24.04, windows-2022, macos-15-intel]
         required: true
       runtime_run_id:
         description: Source workflow run containing the reviewed runtime artifact
@@ -31,6 +31,11 @@ jobs:
       RUSTUP_TOOLCHAIN: 1.99.0
     steps:
       - uses: actions/checkout@v4
+      - name: Verify selected native runner identity
+        shell: bash
+        env:
+          NATIVE_RUNNER_LABEL: ${{ inputs.platform }}
+        run: node scripts/native/capture-cargo-build.mjs runner installer "$NATIVE_RUNNER_LABEL"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0

@@ -293,6 +293,14 @@ behavior and supported NLE handoffs on actual workstations.
   trust/lifecycle evidence. Synthetic checks and source intake hashes do not
   approve redistribution or replace those observations.
 
+The native manual workflows now select `macos-15-intel` to preserve their
+existing x64 lane after GitHub retired macOS 14. An early dispatch guard checks
+the selected lane against Node and GitHub runner identity; the later reviewed
+runtime/target equality checks still apply. The
+[compatibility validation](docs/validation/native-runner-compat-2026-11-17.md)
+records source readiness only. Reviewed target inputs, actual native execution,
+rights/SBOM, signing/trust and physical workstation gates remain open.
+
 The [retained input provenance matrix](docs/validation/runtime-provenance-141.md)
 and [source-bound synthetic benchmark preparation](docs/validation/native-benchmark-preparation-145.md)
 close bounded offline engineering tasks. Actual runtime/source/rights closure and
