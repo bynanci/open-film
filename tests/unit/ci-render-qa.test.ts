@@ -118,6 +118,7 @@ it("keeps the full Verify/browser/native commands and adds an always-evaluated t
     "render-qa-complete:",
     "needs: [render-qa]",
     "MATRIX_RESULT: ${{ needs.render-qa.result }}",
+    "HOMEBREW_CACHE: ${{ runner.temp }}/openfilm-render-qa-homebrew",
     "scripts/ci/setup-render-qa.ts hosted-tools",
     "pnpm test:render-qa",
     "scripts/ci/check-render-qa-results.ts",
@@ -140,6 +141,23 @@ it("keeps the full Verify/browser/native commands and adds an always-evaluated t
     "npm run build",
   ])
     expect(verify).toContain(token);
+});
+
+it("scopes the private Homebrew cache to admission where runner context is valid", () => {
+  const workflow = readFileSync(".github/workflows/render-qa.yml", "utf8");
+  const jobEnvironment = workflow
+    .split("    env:\n")[1]!
+    .split("    steps:\n")[0]!;
+  expect(jobEnvironment).not.toContain("runner.");
+  const admission = workflow
+    .split(
+      "      - name: Admit fixed platform tools and licensed font bytes\n",
+    )[1]!
+    .split("      - name:")[0]!;
+  expect(admission).toContain(
+    "        env:\n          HOMEBREW_CACHE: ${{ runner.temp }}/openfilm-render-qa-homebrew",
+  );
+  expect(admission).toContain("scripts/ci/setup-render-qa.ts hosted-tools");
 });
 
 it("runs all pull requests and main pushes without duplicate feature-branch push matrices", () => {

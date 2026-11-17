@@ -418,6 +418,80 @@ it("rejects the historical Homebrew revision even when all its old identities ag
   expect(() => admitBrewFormula(historical, true)).toThrow(/Homebrew/u);
 });
 
+it("reports rejected Homebrew fields with bounded safe identity diagnostics", () => {
+  const data = formula();
+  data.formulae[0]!.revision = 2;
+  try {
+    admitBrewFormula(data, false);
+    expect.unreachable("unreviewed revision must fail admission");
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toMatch(
+      /^Homebrew formula, bottle or installed identity is unreviewed; /u,
+    );
+    const diagnostic = JSON.parse(message.slice(message.indexOf("; ") + 2));
+    expect(diagnostic.rejected).toEqual(["revision"]);
+    expect(diagnostic.expected).toEqual({
+      stable: "9.0.2",
+      revision: 3,
+      bottle:
+        "64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5",
+    });
+    expect(diagnostic.observed).toEqual({
+      ...diagnostic.expected,
+      revision: 2,
+    });
+  }
+});
+
+it("keeps malformed, oversized and control-bearing Homebrew diagnostics bounded and private", () => {
+  const hostile =
+    "\u001b[31m\n::error::/private/media/secret\r" + "x".repeat(50_000);
+  for (const input of [
+    null,
+    {},
+    { formulae: [] },
+    {
+      formulae: [
+        {
+          name: hostile,
+          tap: hostile,
+          license: hostile,
+          versions: { stable: hostile },
+          revision: { privatePath: hostile },
+          bottle: { stable: { files: { arm64_sequoia: { sha256: hostile } } } },
+          installed: [{ version: hostile, poured_from_bottle: false }],
+        },
+      ],
+    },
+  ]) {
+    try {
+      admitBrewFormula(input, true);
+      expect.unreachable("malformed identity must fail admission");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message.length).toBeLessThan(1_200);
+      expect(
+        [...message].every((character) => {
+          const code = character.charCodeAt(0);
+          return code >= 32 && code !== 127;
+        }),
+      ).toBe(true);
+      expect(message).not.toContain("/private");
+      expect(message).not.toContain("::error::");
+      const diagnostic = JSON.parse(message.slice(message.indexOf("; ") + 2));
+      expect(diagnostic.rejected.length).toBeGreaterThan(0);
+      expect(diagnostic.observed).toEqual({
+        stable: "invalid",
+        revision: "invalid",
+        bottle: "invalid",
+      });
+    }
+  }
+});
+
 it("binds the admitted macOS tool pin to its reviewed static provenance", () => {
   const pin = JSON.parse(
     readFileSync("fixtures/render-qa/toolchain.json", "utf8"),

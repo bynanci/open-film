@@ -123,7 +123,7 @@ Ubuntu, Windows and macOS; there is no AAC or pixel allowance on these PCM
 checks. The shared aggregate rejects an otherwise internally consistent old
 five-file report and any failed limiter assertion. Local selection/accounting
 controls passed 4 files / 88 tests. The combined acquisition/accounting/limiter
-selection subsequently passed 9 files / 172 tests. Actual local Render QA passed
+selection subsequently passed 9 files / 175 tests. Actual local Render QA passed
 1/1 and the full six-file finishing selection passed 21/21 with fixed font
 hashes and FFmpeg 7.1.5. Their receipts explicitly record a dirty local checkout
 and `workstationVerified: false`; hosted results belong to the final PR head.

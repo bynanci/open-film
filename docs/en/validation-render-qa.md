@@ -437,9 +437,10 @@ intact; the old Windows font observation is not called a causal fix.
 PR #168 head `ef46b08086fb080a1b8f11ca4a52d302a297aefe`, Render QA run
 `44073895574`, stopped at macOS tool admission before any output or finishing
 checks ran. The retained `ffmpeg-full` pin was `9.0.2_1`, while the official
-Homebrew metadata had advanced to `9.0.2_3`. The exact identity check correctly
-refused the changed formula and bottle. Missing-artifact upload errors were
-secondary; this run provides no macOS rendering result.
+public Homebrew metadata had advanced to `9.0.2_3`. The exact identity check
+refused the runner input. Its raw metadata was not retained, so the particular
+rejected field is unknown. Missing-artifact upload errors were secondary; this
+run provides no macOS rendering result.
 
 The CI-only refresh retains FFmpeg **9.0.2**, its source URL and SHA-256, the
 ARM64 Sequoia platform, exact admission, maximum download size, license checks
@@ -475,3 +476,44 @@ and finishing remain required on the new exact candidate SHA. No macOS binary
 was executed during the Linux inspection; this review provides no runtime
 redistribution, workstation, Resolve, signing or release approval. Future live
 Homebrew drift must continue to fail admission until separately reviewed.
+
+### Job-private Homebrew metadata cache and bounded diagnostics
+
+The next candidate, `4ce58612bb9a568a3311d66da4faa0132eeb4719`, failed the first
+formula admission again in run `44075686105`, before bottle fetch, installation
+or rendering. A fresh independent public API read still matched the reviewed
+`9.0.2_3` revision, formula and bottle hashes. Neither failed runner retained its
+`brew info` JSON, so no specific observed stale revision is claimed.
+
+[Homebrew 7.0.13's `fetch_api_files!`](https://github.com/Homebrew/brew/blob/7.0.13/Library/Homebrew/api.rb#L232)
+sets the metadata
+staleness interval to `nil` when `HOMEBREW_NO_AUTO_UPDATE` is enabled;
+`skip_download?` reuses an existing nonempty cache when that interval is `nil`.
+An inherited runner-image API cache is therefore a strong explanation to test,
+not an established observation of this runner's rejected fields.
+
+The Render QA admission step now sets `HOMEBREW_CACHE` to a job-private directory under
+`${{ runner.temp }}/openfilm-render-qa-homebrew`. Missing metadata is acquired
+there, with `HOMEBREW_NO_AUTO_UPDATE` and every exact version, formula, bottle,
+license, installed-identity and filter check preserved. No global cache is
+deleted, no `brew update` runs, and no alternate-version fallback is allowed.
+Admission failures identify rejected field names and only bounded, canonical
+expected/observed stable version, revision and bottle digest. Malformed values
+become `invalid`; raw JSON, local paths, oversized strings and control sequences
+never enter the diagnostic. The `runner.temp` expression is scoped to that step's
+environment, where GitHub permits the runner context; it is not in job-level
+`env`. A regression rejects that invalid job-level placement.
+
+Focused regressions first failed with the old workflow and diagnostic. They
+cover the isolated cache setting, changed revision diagnostics, null/malformed
+metadata and 50,000-character values containing ANSI, newline and log-command
+payloads. Actual acquisition and rendering on the new exact hosted macOS head
+remain the acceptance gate; the cache hypothesis must be revised if its bounded
+observations show another cause. Linux inspection is not macOS or Resolve
+execution.
+
+The final local acquisition/accounting/limiter control selection passed **9 files
+/ 175 tests**. Workflow syntax and context validation also passed with the
+official actionlint 1.7.7 Linux artifact, checked against its published checksum
+`023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757`; this
+was a local workflow check, not a hosted macOS execution.

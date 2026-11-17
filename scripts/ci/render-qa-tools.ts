@@ -239,23 +239,60 @@ export function admitBrewFormula(input: unknown, installed: boolean): void {
     }>;
   };
   const f = data?.formulae?.[0];
-  if (
-    data?.formulae?.length !== 1 ||
-    !f ||
-    f.name !== p.formula ||
-    f.tap !== "homebrew/core" ||
-    f.versions?.stable !== p.version ||
-    f.revision !== p.revision ||
-    f.license !== "GPL-3.0-or-later" ||
-    f.bottle?.stable?.files?.[p.bottleTag]?.sha256 !== p.sha256 ||
-    (installed &&
-      (f.installed?.length !== 1 ||
-        f.installed[0]?.version !== p.packageVersion ||
-        f.installed[0]?.poured_from_bottle !== true))
-  )
+  const rejected = [
+    ["formulae.length", data?.formulae?.length !== 1],
+    ["formula", !f],
+    ["name", f?.name !== p.formula],
+    ["tap", f?.tap !== "homebrew/core"],
+    ["stable", f?.versions?.stable !== p.version],
+    ["revision", f?.revision !== p.revision],
+    ["license", f?.license !== "GPL-3.0-or-later"],
+    ["bottle", f?.bottle?.stable?.files?.[p.bottleTag]?.sha256 !== p.sha256],
+    ["installed.length", installed && f?.installed?.length !== 1],
+    [
+      "installed.version",
+      installed && f?.installed?.[0]?.version !== p.packageVersion,
+    ],
+    [
+      "installed.poured_from_bottle",
+      installed && f?.installed?.[0]?.poured_from_bottle !== true,
+    ],
+  ] as const;
+  const fields = rejected.filter(([, failed]) => failed).map(([name]) => name);
+  if (fields.length) {
+    // Never serialize raw formula JSON: it can contain local paths or unbounded
+    // values. Only small canonical version/digest identities may enter CI logs.
+    const stable = f?.versions?.stable;
+    const revision = f?.revision;
+    const bottle = f?.bottle?.stable?.files?.[p.bottleTag]?.sha256;
+    const diagnostic = {
+      rejected: fields,
+      expected: { stable: p.version, revision: p.revision, bottle: p.sha256 },
+      observed: {
+        stable:
+          typeof stable === "string" &&
+          stable.length <= 32 &&
+          /^\d+\.\d+\.\d+$/u.test(stable)
+            ? stable
+            : "invalid",
+        revision:
+          typeof revision === "number" &&
+          Number.isSafeInteger(revision) &&
+          revision >= 0 &&
+          revision <= 1_000_000
+            ? revision
+            : "invalid",
+        bottle:
+          typeof bottle === "string" && /^[a-f0-9]{64}$/u.test(bottle)
+            ? bottle
+            : "invalid",
+      },
+    };
     throw new Error(
-      "Homebrew formula, bottle or installed identity is unreviewed",
+      "Homebrew formula, bottle or installed identity is unreviewed; " +
+        JSON.stringify(diagnostic),
     );
+  }
 }
 
 export function admitRequiredQaFilters(stdout: string) {
