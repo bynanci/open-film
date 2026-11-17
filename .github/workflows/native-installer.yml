@@ -4,7 +4,7 @@ on:
     inputs:
       platform:
         type: choice
-        options: [ubuntu-24.04, windows-2022, macos-14]
+        options: [ubuntu-24.04, windows-2022, macos-15-intel]
         required: true
       runtime_run_id:
         description: Source workflow run containing the reviewed runtime artifact
@@ -31,6 +31,11 @@ jobs:
       RUSTUP_TOOLCHAIN: 1.99.0
     steps:
       - uses: actions/checkout@v4
+      - name: Verify selected native runner identity
+        shell: bash
+        env:
+          NATIVE_RUNNER_LABEL: ${{ inputs.platform }}
+        run: node scripts/native/capture-cargo-build.mjs runner installer "$NATIVE_RUNNER_LABEL"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -40,9 +45,10 @@ jobs:
           cache: pnpm
       - name: Linux native prerequisites
         if: runner.os == 'Linux'
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          bash scripts/ci/ubuntu-apt.sh update
+          bash scripts/ci/ubuntu-apt.sh install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - run: pnpm install --frozen-lockfile
       - run: pnpm build

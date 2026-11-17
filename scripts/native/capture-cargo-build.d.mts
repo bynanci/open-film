@@ -80,6 +80,13 @@ export function resolveNativeTarget(
   root: string,
 ): NativeTargetPaths;
 
+export function assertNativeDispatchRunner(
+  workflow: string,
+  label: string,
+  runner: { platform: string; architecture: string },
+  githubRunner: { os?: string; architecture?: string },
+): void;
+
 export function metadataArgsForCargo(
   args: string[],
   cwd: string,

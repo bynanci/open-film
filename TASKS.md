@@ -105,6 +105,21 @@ Issue #141 still blocks that workflow until reviewed target runtime inputs and
 rights/SBOM evidence are supplied. Do not create a separate Cargo build and
 attribute its outputs to the installer.
 
+- [x] Replace the retired native macOS runner with explicit `macos-15-intel`,
+      preserving the existing x64 lane, and reject mismatched dispatch/host
+      identities before intake or build work. See the bounded
+      [source-readiness validation](docs/validation/native-runner-compat-2026-11-17.md).
+- [x] Share the existing bounded Ubuntu APT mirror/transport policy across
+      media, Render QA and native prerequisites after PR #169's first native
+      source check exhausted its 30-minute job in index acquisition. Require
+      offline fail-stop controls in the Ubuntu fast lane and cap native
+      prerequisite steps at eight minutes; retain existing job/test budgets.
+      At this dated snapshot, fresh complete exact-head source CI remains
+      mandatory; record its actual result in the PR receipt rather than copying
+      earlier-head results or offline observations.
+- [ ] Supply reviewed target runtime inputs and rights/SBOM evidence for #141,
+      then obtain actual native staging/build/receipt evidence for #140. The
+      runner compatibility fix supplies no installer or workstation acceptance.
 - [x] Complete the bounded [#139 media cost profile](docs/validation/media-test-profile.md)
       using two fixed-source repetitions and 56 real tool calls. Render work
       dominated the selected cases; no production speedup, fixture reuse or

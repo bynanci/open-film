@@ -25,10 +25,15 @@ A source snapshot or package license field does not approve a binary's complete
 redistribution obligations. FFmpeg 7.1.1 is a source candidate, not a promised
 shipping version or security endorsement. No all-Cargo-lock attribution was used.
 
-The current installer workflow selects `windows-2022` or `macos-14`; runner labels
-alone are not architecture evidence. The new producer observes the actual host
-with Node and requires the corresponding input artifact name. The collected
-macOS arm64 inputs do not establish a macOS x64 runtime.
+The installer workflow selects `ubuntu-24.04`, `windows-2022` or
+`macos-15-intel`; the runtime producer selects the latter two. The explicit Intel
+label preserves the existing macOS x64 lane after GitHub retired macOS 14 on
+2026-11-02. Both workflows check the selected lane against Node's host identity
+and GitHub's runner OS/architecture before intake or build work. The producer
+still requires the corresponding input artifact name and the later runtime
+checks still require exact host/target equality. The collected macOS arm64 inputs
+do not establish a macOS x64 runtime. See the
+[source-readiness validation](validation/native-runner-compat-2026-11-17.md).
 
 ## Read-only intake preflight
 

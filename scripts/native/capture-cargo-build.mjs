@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Modified by OpenFilm contributors on 2026-11-14. See LICENSE and NOTICE.
+// Modified by OpenFilm contributors on 2026-11-17. See LICENSE and NOTICE.
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { Transform, Writable } from "node:stream";
@@ -108,6 +108,36 @@ function tripleFor(platform, architecture) {
           : undefined;
   if (!os) fail("Unsupported native platform");
   return `${arch}-${os}`;
+}
+
+/** Keep manual native workflows on their existing explicit x64 host lanes. */
+export function assertNativeDispatchRunner(
+  workflow,
+  label,
+  runner,
+  githubRunner,
+) {
+  const labels =
+    workflow === "runtime-stage"
+      ? ["windows-2022", "macos-15-intel"]
+      : workflow === "installer"
+        ? ["ubuntu-24.04", "windows-2022", "macos-15-intel"]
+        : [];
+  if (!labels.includes(label))
+    fail("Unsupported native workflow/runner selection");
+  const [platform, os] =
+    label === "ubuntu-24.04"
+      ? ["linux", "Linux"]
+      : label === "windows-2022"
+        ? ["win32", "Windows"]
+        : ["darwin", "macOS"];
+  if (
+    runner?.platform !== platform ||
+    runner?.architecture !== "x64" ||
+    githubRunner?.os !== os ||
+    githubRunner?.architecture !== "X64"
+  )
+    fail("Native dispatch runner platform/architecture mismatch");
 }
 
 /** Resolve only a native target that exactly matches the executing runner. */
@@ -953,6 +983,16 @@ async function verifyAndWriteIdentity() {
 
 async function main() {
   const first = process.argv[2];
+  if (first === "runner") {
+    if (process.argv.length !== 5)
+      fail("Expected runner <runtime-stage|installer> <runner-label>");
+    return assertNativeDispatchRunner(
+      process.argv[3],
+      process.argv[4],
+      hostIdentity(),
+      { os: process.env.RUNNER_OS, architecture: process.env.RUNNER_ARCH },
+    );
+  }
   if (first === "target") return emitTarget();
   if (first === "finalize") return verifyAndWriteIdentity();
   const cwd = await realpath(process.cwd());

@@ -233,8 +233,9 @@ export async function setupRenderQa(options: {
             "amd64"
         )
           throw new Error("Unreviewed Ubuntu tool package");
-        await run("sudo", ["-n", "apt-get", "update"]);
-        await run("sudo", ["-n", "apt-get", "install", "-y", archive]);
+        const ubuntuApt = join(repository, "scripts/ci/ubuntu-apt.sh");
+        await run("bash", [ubuntuApt, "update"]);
+        await run("bash", [ubuntuApt, "install", "-y", archive]);
         if (
           (await run("dpkg-query", ["-W", "-f=${Version}", "ffmpeg"])) !==
           pin.packageVersion
