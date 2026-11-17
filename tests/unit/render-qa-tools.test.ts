@@ -671,6 +671,169 @@ it("retains the complete observed Homebrew dependency graph and its license decl
     "BSD-3-Clause",
   );
 });
+
+it("diagnoses rejected installed dependency identities without accepting absent, aliased or multiple kegs", async () => {
+  const hostile =
+    "\u001b[31m\n::error::/private/media/secret\r" + "x".repeat(50_000);
+  const valid = {
+    name: "libvpx",
+    tap: "homebrew/core",
+    installed: [{ version: "1.15.2" }],
+    dependencies: [],
+    license: "BSD-3-Clause",
+  };
+  for (const scenario of [
+    {
+      data: null,
+      rejected: "formulae.length",
+      count: "invalid",
+      versions: [],
+      canonical: "invalid",
+      truncated: false,
+      linked: null,
+    },
+    {
+      data: { formulae: [{ ...valid, installed: [] }] },
+      rejected: "installed.length",
+      count: 0,
+      versions: [],
+      canonical: "libvpx",
+      truncated: false,
+      linked: null,
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            installed: [{ version: "1.15.1" }, { version: "1.15.2" }],
+            linked_keg: "1.15.2",
+          },
+        ],
+      },
+      rejected: "installed.length",
+      count: 2,
+      versions: ["1.15.1", "1.15.2"],
+      canonical: "libvpx",
+      truncated: false,
+      linked: "1.15.2",
+    },
+    {
+      data: { formulae: [{ ...valid, name: "vpx" }] },
+      rejected: "name",
+      count: 1,
+      versions: ["1.15.2"],
+      canonical: "vpx",
+      truncated: false,
+      linked: null,
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            name: hostile,
+            installed: [{ version: hostile }],
+            linked_keg: hostile,
+          },
+        ],
+      },
+      rejected: "name",
+      count: 1,
+      versions: ["invalid"],
+      canonical: "invalid",
+      truncated: false,
+      linked: "invalid",
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            installed: Array.from({ length: 129 }, () => ({
+              version: "1.15.2",
+            })),
+          },
+        ],
+      },
+      rejected: "installed.length",
+      count: 129,
+      versions: Array(4).fill("1.15.2"),
+      canonical: "libvpx",
+      truncated: true,
+      linked: null,
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            name: "a".repeat(100),
+            installed: Array.from({ length: 129 }, () => ({
+              version: "A".repeat(100),
+            })),
+            linked_keg: "A".repeat(100),
+          },
+        ],
+      },
+      rejected: "name",
+      count: 129,
+      versions: Array(4).fill("A".repeat(100)),
+      canonical: "a".repeat(100),
+      truncated: true,
+      linked: "A".repeat(100),
+    },
+  ]) {
+    const fixture = macObservationFixture();
+    const commands: string[] = [];
+    try {
+      await observeMacQaDependencies(
+        fixture.metadata,
+        "/opt/homebrew/opt/ffmpeg-full/bin",
+        async (command, args) => {
+          commands.push(command);
+          if (command === "brew" && args[2] === "libvpx")
+            return JSON.stringify(scenario.data);
+          return fixture.run(command, args);
+        },
+      );
+      expect.unreachable("rejected dependency must fail admission");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message).toMatch(
+        /^Missing or invalid installed Homebrew dependency identity; /u,
+      );
+      expect(message.length).toBeLessThan(1_500);
+      expect(
+        [...message].every(
+          (character) =>
+            character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+        ),
+      ).toBe(true);
+      expect(message).not.toContain("/private");
+      expect(message).not.toContain("::error::");
+      const diagnostic = JSON.parse(message.slice(message.indexOf("; ") + 2));
+      expect(diagnostic).toMatchObject({
+        requested: "libvpx",
+        canonicalName: scenario.canonical,
+        installedCount: scenario.count,
+        versions: scenario.versions,
+        versionsTruncated: scenario.truncated,
+        linkedKeg: scenario.linked,
+        observationSha256: createHash("sha256")
+          .update(JSON.stringify(scenario.data))
+          .digest("hex"),
+        observationBytes: Buffer.byteLength(
+          JSON.stringify(scenario.data),
+          "utf8",
+        ),
+      });
+      expect(diagnostic.rejected).toContain(scenario.rejected);
+      expect(commands).not.toContain("otool");
+    }
+  }
+});
 it.each([
   "missing dependencies",
   "empty dependencies",

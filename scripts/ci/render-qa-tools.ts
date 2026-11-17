@@ -375,6 +375,7 @@ export async function observeMacQaDependencies(
           name?: string;
           tap?: string;
           installed?: Array<{ version?: string }>;
+          linked_keg?: unknown;
           dependencies?: unknown;
           license?: unknown;
         }>;
@@ -385,20 +386,69 @@ export async function observeMacQaDependencies(
     }
     const formula = data?.formulae?.[0];
     const version = formula?.installed?.[0]?.version;
-    if (
-      data?.formulae?.length !== 1 ||
-      (data.casks !== undefined &&
-        (!Array.isArray(data.casks) || data.casks.length !== 0)) ||
-      !formula ||
-      formula.name !== name ||
-      formula.tap !== "homebrew/core" ||
-      formula.installed?.length !== 1 ||
-      typeof version !== "string" ||
-      !/^[A-Za-z0-9][A-Za-z0-9.+_:-]{0,99}$/u.test(version)
-    )
+    const rejected = [
+      ["formulae.length", data?.formulae?.length !== 1],
+      [
+        "casks",
+        data?.casks !== undefined &&
+          (!Array.isArray(data.casks) || data.casks.length !== 0),
+      ],
+      ["formula", !formula],
+      ["name", formula?.name !== name],
+      ["tap", formula?.tap !== "homebrew/core"],
+      ["installed.length", formula?.installed?.length !== 1],
+      [
+        "version",
+        typeof version !== "string" ||
+          !/^[A-Za-z0-9][A-Za-z0-9.+_:-]{0,99}$/u.test(version),
+      ],
+    ] as const;
+    const fields = rejected
+      .filter(([, failed]) => failed)
+      .map(([field]) => field);
+    if (!formula || fields.length) {
+      const safeCount = (count: unknown) =>
+        typeof count === "number" &&
+        Number.isSafeInteger(count) &&
+        count >= 0 &&
+        count <= 1_000_000
+          ? count
+          : "invalid";
+      const safeVersion = (value: unknown) =>
+        typeof value === "string" &&
+        value.length <= 100 &&
+        /^[A-Za-z0-9][A-Za-z0-9.+_:-]{0,99}$/u.test(value)
+          ? value
+          : "invalid";
+      const canonicalName = formula?.name;
+      const installed = formula?.installed;
+      const diagnostic = {
+        requested: name,
+        rejected: fields,
+        canonicalName:
+          typeof canonicalName === "string" &&
+          canonicalName.length <= 100 &&
+          /^[a-z0-9][a-z0-9+@._-]{0,99}$/u.test(canonicalName)
+            ? canonicalName
+            : "invalid",
+        formulaCount: safeCount(data?.formulae?.length),
+        installedCount: safeCount(installed?.length),
+        versions: Array.isArray(installed)
+          ? installed.slice(0, 4).map((item) => safeVersion(item?.version))
+          : [],
+        versionsTruncated: Array.isArray(installed) && installed.length > 4,
+        linkedKeg:
+          formula?.linked_keg === undefined || formula.linked_keg === null
+            ? null
+            : safeVersion(formula.linked_keg),
+        observationSha256: observed.sha256,
+        observationBytes: Buffer.byteLength(observed.stdout, "utf8"),
+      };
       throw new Error(
-        "Missing or invalid installed Homebrew dependency identity",
+        "Missing or invalid installed Homebrew dependency identity; " +
+          JSON.stringify(diagnostic),
       );
+    }
     if (
       !Array.isArray(formula.dependencies) ||
       formula.dependencies.length > 64 ||
