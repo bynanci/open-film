@@ -259,10 +259,21 @@ attributing every service to the runner's Node version.
 ## Memory interpretation and evidence
 
 `memory.jsonl` preserves each sampled process PID, parent PID, creation identity,
-metrics, missing-data reasons, collection time and native/service roots. Metrics
-are bytes. The two owned trees are deduplicated; totals with unknown membership
-or missing metrics have no value. Check coverage before interpreting a peak.
-Sampling begins after UI readiness, so **startup peak memory is not measured**.
+phase, metrics, missing-data reasons, collection time and native/service roots.
+Metrics are bytes. The two owned trees are deduplicated; totals with unknown
+membership or missing metrics have no value. Check coverage before interpreting
+a peak. Report schema `1.1.0` keeps the combined `memory` summary and adds
+`memoryByPhase.startup` and `memoryByPhase.postReady`, each with its sample count
+and metric summaries. The runner updates these summaries incrementally, keeping
+aggregate memory use independent of the number of samples; the append-only JSONL
+retains each raw sample for review.
+
+Sampling starts after native process spawn at the configured cadence. Samples
+whose collection starts before the first UI-ready checkpoint are labeled
+`startup`; later samples are `post-ready`. A very short startup peak between
+samples can be missed, and an app that reaches UI readiness before its first
+sample may have zero startup samples. The service is prestarted, so packaged
+startup and cold OS startup are not measured.
 Linux collection brackets its memory reads with two process enumerations.
 Rooted membership, PID creation identity or parent changes make aggregates
 partial/unavailable with no value. New unrelated processes do not invalidate a
@@ -291,8 +302,8 @@ Preserve `manifest.json`, `report.json`, `native-events.jsonl`,
 `operator-markers.jsonl`, `memory.jsonl`, `native.log`, `service.log` and
 `lifecycle.json`.
 The report distinguishes completion, missing Edit scenario, interruption, app
-exit and failure; none
-is a workstation QA `passed` certificate. Keep evidence immutable once cited.
+exit and failure; none is a workstation QA `passed` certificate. Keep evidence
+immutable once cited.
 The strict [workstation QA 1.0.0 contract](workstation-qa.md) remains unchanged.
 
 ## Current validation state

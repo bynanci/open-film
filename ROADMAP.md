@@ -218,7 +218,8 @@ installer or workstation acceptance.
 Professional Cut Desk Phases 1A–1C, Phase 2 editing operations and Phase 3 track
 controls have merged implementations. Phase 4A scopes/comparison and Phase 4C
 shortcut profiles have also merged. Remaining Phase 4 work is split into
-deterministic animation (4B), long-form workstation evidence (4D), contract-led
+deterministic animation (4B), long-form workstation evidence (4D, with bounded-memory
+startup/post-ready telemetry implemented), contract-led
 compound editing (4E) and evidence-led multicamera (4F). Preserve one saved
 Composition across General and Expert modes, predictable selection, user pins,
 history and recovery.

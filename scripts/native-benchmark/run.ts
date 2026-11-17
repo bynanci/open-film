@@ -256,32 +256,58 @@ async function startOwnedService(
   return { service, control };
 }
 interface MemorySample {
+  phase: "startup" | "post-ready";
   elapsedMs: number;
   collectionMs: number;
   roots: ProcessMemorySnapshot[];
   combined: ReturnType<typeof mergeMemorySnapshots>;
 }
+type MemoryMetric = "rssBytes" | "privateBytes" | "pssBytes";
+interface MemoryMetricSummary {
+  completeSamples: number;
+  incompleteSamples: number;
+  first?: number;
+  last?: number;
+  peak?: number;
+}
+type MemorySummary = Record<MemoryMetric, MemoryMetricSummary>;
+interface MemorySummaryAccumulator {
+  samples: number;
+  metrics: MemorySummary;
+}
+function createMemorySummaryAccumulator(): MemorySummaryAccumulator {
+  return {
+    samples: 0,
+    metrics: {
+      rssBytes: { completeSamples: 0, incompleteSamples: 0 },
+      privateBytes: { completeSamples: 0, incompleteSamples: 0 },
+      pssBytes: { completeSamples: 0, incompleteSamples: 0 },
+    },
+  };
+}
+function addMemorySample(
+  accumulator: MemorySummaryAccumulator,
+  sample: MemorySample,
+) {
+  accumulator.samples++;
+  for (const metric of ["rssBytes", "privateBytes", "pssBytes"] as const) {
+    const summary = accumulator.metrics[metric];
+    const value = sample.combined.totals[metric].value;
+    if (value === undefined) {
+      summary.incompleteSamples++;
+      continue;
+    }
+    summary.completeSamples++;
+    summary.first ??= value;
+    summary.last = value;
+    summary.peak = Math.max(summary.peak ?? value, value);
+  }
+}
 /** Statistics describe complete rooted-tree samples only, never leak freedom. */
 export function summarizeMemory(samples: MemorySample[]) {
-  return Object.fromEntries(
-    (["rssBytes", "privateBytes", "pssBytes"] as const).map((metric) => {
-      const values = samples
-        .map((sample) => sample.combined.totals[metric].value)
-        .filter((value): value is number => value !== undefined);
-      return [
-        metric,
-        {
-          completeSamples: values.length,
-          incompleteSamples: samples.length - values.length,
-          first: values.at(0),
-          last: values.at(-1),
-          peak: values.length
-            ? values.reduce((peak, value) => Math.max(peak, value), 0)
-            : undefined,
-        },
-      ];
-    }),
-  );
+  const accumulator = createMemorySummaryAccumulator();
+  for (const sample of samples) addMemorySample(accumulator, sample);
+  return accumulator.metrics;
 }
 export async function runNativeBenchmark(
   config: BenchmarkConfig,
@@ -372,7 +398,9 @@ export async function runNativeBenchmark(
   let nativeSpawnMs: number | undefined;
   let firstCheckpointObservedMs: number | undefined;
   let events: NativeEvent[] = [];
-  const samples: MemorySample[] = [];
+  const memory = createMemorySummaryAccumulator();
+  const startupMemory = createMemorySummaryAccumulator();
+  const postReadyMemory = createMemorySummaryAccumulator();
   const expectedIdentities = new Map<number, string>();
   const interrupt = () => {
     stopped = true;
@@ -382,7 +410,7 @@ export async function runNativeBenchmark(
   options.signal?.addEventListener("abort", interrupt, { once: true });
   const outputControl = observeBenchmarkOutput();
   const report = () => ({
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     verification: "measurement-only",
     runId,
     candidateSha: config.candidateSha,
@@ -406,8 +434,18 @@ export async function runNativeBenchmark(
       ).length,
       projectEditRequired: !!config.project,
     },
-    memory: summarizeMemory(samples),
-    samples: samples.length,
+    memory: memory.metrics,
+    memoryByPhase: {
+      startup: {
+        samples: startupMemory.samples,
+        metrics: startupMemory.metrics,
+      },
+      postReady: {
+        samples: postReadyMemory.samples,
+        metrics: postReadyMemory.metrics,
+      },
+    },
+    samples: memory.samples,
     nativeExit: native
       ? { code: native.exitCode, signal: native.signalCode }
       : undefined,
@@ -416,7 +454,7 @@ export async function runNativeBenchmark(
       "Native elapsed time begins at Rust run entry, not OS process creation. Checkpoints are IPC receipts after two animation-frame opportunities, not verified screen presentation or media decode.",
       "Spawn-to-observed readiness includes file polling; it is an upper bound, not a renderer latency measure.",
       "Service readiness precedes shell launch. This measures checkout-built native runtime with an owned prestarted service, not installer or single-click packaged startup.",
-      "Memory sampling starts after UI readiness, so startup peak memory is not measured.",
+      "Memory sampling begins after native process spawn and records startup and post-ready samples at the configured cadence. Short-lived peaks between samples can be missed; service startup is prestarted and packaged/cold-OS startup is not measured.",
       "Memory totals cover currently rooted native/service descendants; detached/reparented/shared helpers may be outside coverage. RSS may count shared pages repeatedly.",
       "No forced GC is requested. Peak, growth and partial samples do not certify retained memory or leak freedom.",
       "A completed collection is not a passed hardware QA gate; real workstation evidence still requires review.",
@@ -531,8 +569,10 @@ export async function runNativeBenchmark(
           "Native UI readiness checkpoint missing. Check native.log, configured display and benchmark-enabled binary.",
         );
       const elapsed = performance.now() - start;
-      if (firstCheckpointObservedMs !== undefined && elapsed >= nextSampleMs) {
+      if (elapsed >= nextSampleMs) {
         const sampleStart = performance.now();
+        const phase =
+          firstCheckpointObservedMs === undefined ? "startup" : "post-ready";
         const roots = await Promise.all(
           [native.pid, owned.service.pid!].map((pid) =>
             sampleProcessMemory(pid, {
@@ -556,15 +596,20 @@ export async function runNativeBenchmark(
             expectedIdentities.set(root.rootPid, root.rootIdentity);
         }
         const sample: MemorySample = {
+          phase,
           elapsedMs: sampleStart - start,
           collectionMs: performance.now() - sampleStart,
           roots,
           combined: mergeMemorySnapshots(roots),
         };
-        samples.push(sample);
         await appendFile(
           join(directory, "memory.jsonl"),
           JSON.stringify(sample) + "\n",
+        );
+        addMemorySample(memory, sample);
+        addMemorySample(
+          phase === "startup" ? startupMemory : postReadyMemory,
+          sample,
         );
         await writeFile(
           join(directory, "report.json"),
