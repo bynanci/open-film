@@ -109,6 +109,13 @@ attribute its outputs to the installer.
       using two fixed-source repetitions and 56 real tool calls. Render work
       dominated the selected cases; no production speedup, fixture reuse or
       weaker suite assertion is claimed.
+- [x] Reproduce and compensate output-limiter lookahead so the first, interior
+      and final canonical PCM samples retain their absolute positions. Extend
+      the existing Silence/interchange fixtures with seeded acoustic boundaries,
+      decaying music and 30 / 30000/1001 decoded MP4/WAV sync references. See
+      [Cloud validation and decoded frames](docs/validation/acoustic-sync-boundaries-2026-11-17.md).
+      This completes bounded source regression coverage, not Issue #144
+      listening or Issue #7 Resolve/device acceptance.
 - [x] Cancel and drain the acceptance fixture's owned Pipeline actions before
       closing Catalog or removing temporary media. Preserve all four journeys,
       original assertions, 10s 1080p30 output and 120s budgets. See
@@ -133,6 +140,9 @@ attribute its outputs to the installer.
       and [operator handoff](docs/governance/merge-controls-operator-handoff.md).
       An authorized Rulesets administrator and role attestations are still
       required. Native signing, lifecycle and performance remain separate.
+      The [2026-11-17 live permission follow-up](https://github.com/bynanci/open-film/issues/146#issuecomment-6946187290)
+      confirms the Connector installation omits `Administration: write`; it
+      also records PR #167's successful documentation-only required checks.
 
 ### Named-version audiovisual comparison (2026-11-13)
 

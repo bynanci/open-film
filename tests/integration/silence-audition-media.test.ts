@@ -248,6 +248,15 @@ it.each([
     ]);
     const before = await pcm(f.app, audition.before);
     const after = await pcm(f.app, audition.after);
+    // Original right-only activity at 3.6–3.7s must survive both cuts at
+    // 2.6–2.7s. The overlay is silent here, so it cannot mask lost dialogue.
+    // This is an energy/location assertion, not exact legacy DSP phase.
+    const retainedEvent = {
+      leftPeak: channelPeak(samples(after), 2.6, 2.7, 0),
+      rightPeak: channelPeak(samples(after), 2.6, 2.7, 1),
+    };
+    expect(retainedEvent.leftPeak).toBeLessThan(0.01);
+    expect(retainedEvent.rightPeak).toBeGreaterThan(0.03);
     expect(await f.app.silenceJobs.audition(r.jobId, input)).toEqual(audition);
     expect(await readFile(join(f.app.directory, "project.json"))).toEqual(
       projectBefore,
@@ -292,6 +301,33 @@ it.each([
     expect(accepted.job.status).toBe("completed");
     expect(accepted.edit.composition).toEqual(expected);
     expect(accepted.edit.composition.duration).toBe(4);
+    const dialogueClips = accepted.edit.composition.tracks.find(
+      (track) => track.id === "dialogue",
+    )!.clips;
+    const retainedRanges = [
+      { sourceIn: 0, sourceOut: 0.6, timelineStart: 0, timelineDuration: 0.6 },
+      {
+        sourceIn: 1.2,
+        sourceOut: 3.1,
+        timelineStart: 0.6,
+        timelineDuration: 1.9,
+      },
+      {
+        sourceIn: 3.5,
+        sourceOut: 5,
+        timelineStart: 2.5,
+        timelineDuration: 1.5,
+      },
+    ];
+    expect(dialogueClips).toHaveLength(3);
+    for (const [index, range] of retainedRanges.entries()) {
+      const actual = dialogueClips[index]!;
+      expect(actual.assetId).toBe("voice");
+      expect(actual.sourceIn).toBeCloseTo(range.sourceIn, 12);
+      expect(actual.sourceOut).toBeCloseTo(range.sourceOut, 12);
+      expect(actual.timelineStart).toBeCloseTo(range.timelineStart, 12);
+      expect(actual.timelineDuration).toBeCloseTo(range.timelineDuration, 12);
+    }
     const musicClips = accepted.edit.composition.tracks.find(
       (track) => track.id === "music",
     )!.clips;
@@ -368,6 +404,7 @@ it.each([
       beforePcmErrorLsb,
       afterPcmErrorLsb,
       overlayTailAmplitude: { before: beforeTail, after: afterTail },
+      retainedStereoEvent: { windowSeconds: [2.6, 2.7], ...retainedEvent },
       perceptualReview:
         "manual-required; synthetic transients, breath envelopes and music tails do not establish speech retention or listening quality",
     });

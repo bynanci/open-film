@@ -194,7 +194,19 @@ def probe_media(path):
 def decode_video(path, reference):
     stream = next(stream for stream in probe_media(path)["streams"] if stream["codec_type"] == "video")
     assert (stream["width"], stream["height"]) == (160, 90), (path, "unexpected video dimensions")
-    assert Fraction(stream["avg_frame_rate"]) == Fraction(reference["rateNumerator"], reference["rateDenominator"]), (path, "unexpected rational video rate")
+    rate = Fraction(reference["rateNumerator"], reference["rateDenominator"])
+    assert Fraction(stream["avg_frame_rate"]) == rate, (path, "unexpected rational video rate")
+    time_base = Fraction(stream["time_base"])
+    start_pts, duration_ts = int(stream["start_pts"]), int(stream["duration_ts"])
+    assert start_pts == 0, (path, "video stream must start at PTS zero", start_pts)
+    assert duration_ts * time_base == Fraction(120, 1) / rate, (path, "exact video stream duration", duration_ts, str(time_base))
+    # Inspect each presented frame's integer timestamp, rather than inferring
+    # presentation timing from an average rate and decoded ordinal alone.
+    frames = json.loads(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#121", "-show_frames", "-show_entries", "frame=best_effort_timestamp", "-of", "json", str(path)], check=True, capture_output=True, text=True, encoding="utf-8").stdout)["frames"]
+    assert len(frames) == 120, (path, "presentation timestamp count", len(frames))
+    presentation_timestamps = [int(frame["best_effort_timestamp"]) for frame in frames]
+    for index, timestamp in enumerate(presentation_timestamps):
+        assert timestamp * time_base == Fraction(index, 1) / rate, (path, "exact frame presentation time", index, timestamp, str(time_base))
     # Bound the complete decode to one more than the largest allowed source.
     # An overlong file fails the exact frame count without unbounded allocation.
     decoded = subprocess.run(["ffmpeg", "-v", "error", "-threads", "1", "-i", str(path), "-map", "0:v:0", "-frames:v", "121", "-fps_mode", "passthrough", "-pix_fmt", "gray", "-f", "rawvideo", "-"], check=True, capture_output=True).stdout
@@ -202,7 +214,15 @@ def decode_video(path, reference):
     assert len(decoded) == 120 * frame_bytes, (path, "decoded frame count", len(decoded) / frame_bytes)
     means = [sum(decoded[start:start + frame_bytes]) / frame_bytes for start in range(0, len(decoded), frame_bytes)]
     assert all(mean < 8 or mean > 240 for mean in means), (path, "unexpected intermediate frame content")
-    return {"decodedFrames": len(means), "flashFrames": [frame for frame, mean in enumerate(means) if mean > 240]}
+    return {
+        "decodedFrames": len(means),
+        "flashFrames": [frame for frame, mean in enumerate(means) if mean > 240],
+        "presentationTiming": {
+            "timeBase": str(time_base), "startPts": start_pts,
+            "durationTs": duration_ts, "durationSeconds": str(duration_ts * time_base),
+            "frameBestEffortTimestamps": presentation_timestamps,
+        },
+    }
 
 
 def decode_audio(path, codec):
@@ -219,6 +239,19 @@ def decode_audio(path, codec):
         samples.byteswap()
     assert all(math.isfinite(value) for value in samples), (path, "nonfinite decoded PCM")
     return samples
+
+
+def check_aac_stream_timing(path, expected_samples):
+    stream = next(stream for stream in probe_media(path)["streams"] if stream["codec_type"] == "audio")
+    time_base = Fraction(stream["time_base"])
+    start_pts, duration_ts = int(stream["start_pts"]), int(stream["duration_ts"])
+    assert time_base == Fraction(1, 48000), (path, "AAC stream sample timebase", str(time_base))
+    assert start_pts == 0, (path, "AAC stream must start at PTS zero", start_pts)
+    assert duration_ts == expected_samples, (path, "exact AAC presentation sample count", duration_ts, expected_samples)
+    return {
+        "timeBase": str(time_base), "startPts": start_pts,
+        "durationTs": duration_ts, "durationSeconds": str(duration_ts * time_base),
+    }
 
 
 def audio_observation(samples, threshold):
@@ -252,7 +285,10 @@ for name, reference in SYNC_CASES.items():
         "renderedVideo": decode_video(root / reference["renderedVideo"], reference),
         "sourcePcm": audio_observation(source_pcm, 1e-6),
         "fullMixPcm": audio_observation(mix_pcm, 1e-6),
-        "mp4Aac": audio_observation(aac_pcm, 0.01),
+        "mp4Aac": {
+            **audio_observation(aac_pcm, 0.01),
+            "presentationTiming": check_aac_stream_timing(root / reference["renderedVideo"], 192000 if name == "sync-30" else 192192),
+        },
         "expectedSourceMarkerFrame": reference["sourceMarkerFrame"],
         "expectedRecordMarkerFrame": reference["recordMarkerFrame"],
         "expectedSourceMarkerSample": reference["sourceMarkerSample"],
@@ -293,4 +329,4 @@ for clip, original_clip in zip(xml_clips, expected):
     close(float(Fraction(clip.attrib["duration"][:-1])), original_clip["timelineDuration"], "FCPXML duration")
     close(float(Fraction(clip.attrib["offset"][:-1])), original_clip["timelineStart"], "FCPXML offset")
 
-print(json.dumps({"officialParser": f"OpenTimelineIO {otio.__version__}", "readWriteRead": "passed", "realSourceFiles": len(assets), "sourceHashesAndBounds": "passed", "cutStillAudioGapMultiTrack": "passed", "decodedAudioVideoSync": {"cases": 2, "videoFrameUncertainty": 0, "pcmSampleUncertainty": 0, "aacSampleUncertainty": 1024, "evidence": "sync-evidence.json"}, "advancedEdits": "metadata-only; manual recreation required", "realResolveImport": "not verified"}))
+print(json.dumps({"officialParser": f"OpenTimelineIO {otio.__version__}", "readWriteRead": "passed", "realSourceFiles": len(assets), "sourceHashesAndBounds": "passed", "cutStillAudioGapMultiTrack": "passed", "decodedAudioVideoSync": {"cases": 2, "videoFrameUncertainty": 0, "pcmSampleUncertainty": 0, "aacSampleUncertainty": 1024, "videoPresentationTimestamps": "exact", "aacStreamTiming": "exact", "evidence": "sync-evidence.json"}, "advancedEdits": "metadata-only; manual recreation required", "realResolveImport": "not verified"}))

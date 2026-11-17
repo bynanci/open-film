@@ -33,12 +33,18 @@ sample timing, and FFmpegRenderer produce the trimmed and placed results.
 The Python oracle declares these expectations independently of generated metadata
 and verifies both official OTIO reads, every decoded source/output video frame,
 the complete stereo PCM mix, exact marker onset/end, and full PCM sample count.
+For all 120 source/output video frames, a bounded FFprobe read checks integer
+presentation timestamps against exact rational frame times, with stream start
+PTS zero and exact duration. AAC stream metadata separately requires start PTS
+zero, a 1/48000 timebase, and exactly 192000 or 192192 presentation samples;
+decoded AAC padding is measured separately from this exact stream duration.
 Fractional-rate endpoints use absolute rational positions, with integral sample
 endpoints; rounding each 1601.6-sample frame would drift. `sync-evidence.json`
-records actual observations. PCM and visual assertions have zero sample/frame
+records actual timestamps, stream clocks, and decoded observations. PCM and visual assertions have zero sample/frame
 uncertainty. MP4 AAC is observed separately with a declared ±1024-sample onset/end
 allowance: one AAC LC transform frame permits lossy pre-echo/ringing around the
-0.01-amplitude detection threshold. This codec allowance never applies to PCM.
+0.01-amplitude detection threshold. This codec allowance never applies to PCM,
+video presentation timestamps, or AAC stream timing metadata.
 
 See [NLE compatibility and manual QA](../../../docs/nle-compatibility.md) before
 using these files as a Resolve import checklist. Passing this script establishes

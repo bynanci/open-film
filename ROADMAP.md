@@ -161,6 +161,16 @@ candidate evidence, #142/#143 installer lifecycle, #145 native performance,
 The [release-gate audit](docs/validation-release-gates.md) records exact heads
 and runs.
 
+**2026-11-17:** Cloud acoustic/sync regression work reproduces and compensates
+the common limiter's 239-sample lookahead at 48 kHz, including first/final-sample
+retention. Existing Silence Review and interchange workflows now have seeded
+transient/breath/room-floor and decaying-music cases plus exact 30 fps and
+30000/1001 source/record marker checks in actual decoded MP4/full-mix WAV.
+See the [validation and decoded frame sheet](docs/validation/acoustic-sync-boundaries-2026-11-17.md).
+Resolve is absent and the Cloud host has no GPU/OpenCL platform; actual Resolve,
+subjective listening and native workstation gates remain open. Published
+versions and the deferred NLE/SDK roadmap scope are unchanged.
+
 The automation-clock implementation and hosted validation are complete. Next
 acceptance is real dialogue/music listening and candidate-bound workstation
 observations. Additional providers remain a separate admission scope whose
