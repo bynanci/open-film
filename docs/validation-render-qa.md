@@ -431,3 +431,128 @@ Post-merge main6cdaa4f gates are separate and running. No formal stable release,
 installer/source-admission, physical workstation, hardware/Resolve/4K or listening
 verification is implied. Historical failure/diagnostic records above remain
 intact; the old Windows font observation is not called a causal fix.
+
+## macOS CI tool admission refresh — 2026-11-17
+
+PR #168 head `ef46b08086fb080a1b8f11ca4a52d302a297aefe`, Render QA run
+`44073895574`, stopped at macOS tool admission before any output or finishing
+checks ran. The retained `ffmpeg-full` pin was `9.0.2_1`, while the official
+public Homebrew metadata had advanced to `9.0.2_3`. The exact identity check
+refused the runner input. Its raw metadata was not retained, so the particular
+rejected field is unknown. Missing-artifact upload errors were secondary; this
+run provides no macOS rendering result.
+
+The CI-only refresh retains FFmpeg **9.0.2**, its source URL and SHA-256, the
+ARM64 Sequoia platform, exact admission, maximum download size, license checks
+and required `zscale` / `tonemap` filters. Homebrew revisions 2 and 3 rebuild
+against JPEG XL 0.13.0 and ggml 1.0.0. The reviewed formula differs from revision 1
+only in the revision and bottle digests, plus `deny_network_access!`; its FFmpeg
+configure flags remain unchanged.
+
+The new official formula commit is
+`129d0424414469583477054264c980ed7131c9e7`, with SHA-256
+`8d8bf3817e76df43e02c1028666c87bf71220edc19357e88645fab47fab52894`.
+The downloaded ARM64 Sequoia bottle is 24,272,752 bytes and hashes to
+`64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5`.
+Its exact OCI manifest is 111,868 bytes, SHA-256
+`9e342a981161284a92efd02c4d7dc7bfa9947091718bbc1a13e157032bfe0b86`.
+
+Static inspection on Linux independently hashed the complete bottle and selected
+Mach-O files. Both the reviewed formula and manifest build recipe match the
+embedded recipe after removing generated bottle blocks. Selected binaries remain
+ARM64 with macOS 15.0 minimum and SDK 15.4; `libavfilter` contains the exact
+`zscale` and `tonemap` names. All five retained license-text hashes are unchanged,
+including GPL v3; all 102 build dependencies (47 direct) retain their exact
+versions, bottle digests and upstream SBOM license conclusions in
+`fixtures/render-qa/darwin-ffmpeg-full-review.json`. The replaced revision and
+original replacement are recorded as historical identities rather than relabeled
+as new observations.
+
+A focused regression rejects the complete historical revision-1 identity, and a
+static consistency check binds the active pin to the reviewed formula, bottle,
+manifest and dependency inventory. The new tests failed before the pin refresh.
+Actual macOS execution, dependency relocation, filter admission, decoded output
+and finishing remain required on the new exact candidate SHA. No macOS binary
+was executed during the Linux inspection; this review provides no runtime
+redistribution, workstation, Resolve, signing or release approval. Future live
+Homebrew drift must continue to fail admission until separately reviewed.
+
+### Job-private Homebrew metadata cache and bounded diagnostics
+
+The next candidate, `4ce58612bb9a568a3311d66da4faa0132eeb4719`, failed the first
+formula admission again in run `44075686105`, before bottle fetch, installation
+or rendering. A fresh independent public API read still matched the reviewed
+`9.0.2_3` revision, formula and bottle hashes. Neither failed runner retained its
+`brew info` JSON, so no specific observed stale revision is claimed.
+
+[Homebrew 7.0.13's `fetch_api_files!`](https://github.com/Homebrew/brew/blob/7.0.13/Library/Homebrew/api.rb#L232)
+sets the metadata
+staleness interval to `nil` when `HOMEBREW_NO_AUTO_UPDATE` is enabled;
+`skip_download?` reuses an existing nonempty cache when that interval is `nil`.
+An inherited runner-image API cache is therefore a strong explanation to test,
+not an established observation of this runner's rejected fields.
+
+The Render QA admission step now sets `HOMEBREW_CACHE` to a job-private directory under
+`${{ runner.temp }}/openfilm-render-qa-homebrew`. Missing metadata is acquired
+there, with `HOMEBREW_NO_AUTO_UPDATE` and every exact version, formula, bottle,
+license, installed-identity and filter check preserved. No global cache is
+deleted, no `brew update` runs, and no alternate-version fallback is allowed.
+Admission failures identify rejected field names and only bounded, canonical
+expected/observed stable version, revision and bottle digest. Malformed values
+become `invalid`; raw JSON, local paths, oversized strings and control sequences
+never enter the diagnostic. The `runner.temp` expression is scoped to that step's
+environment, where GitHub permits the runner context; it is not in job-level
+`env`. A regression rejects that invalid job-level placement.
+
+Focused regressions first failed with the old workflow and diagnostic. They
+cover the isolated cache setting, changed revision diagnostics, null/malformed
+metadata and 50,000-character values containing ANSI, newline and log-command
+payloads. Actual acquisition and rendering on the new exact hosted macOS head
+remain the acceptance gate; the cache hypothesis must be revised if its bounded
+observations show another cause. Linux inspection is not macOS or Resolve
+execution.
+
+The final local acquisition/accounting/limiter control selection passed **9 files
+/ 175 tests**. Workflow syntax and context validation also passed with the
+official actionlint 1.7.7 Linux artifact, checked against its published checksum
+`023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757`; this
+was a local workflow check, not a hosted macOS execution.
+
+### Observed coinstalled dependencies and active-keg identity
+
+The second diagnostic attempt at `08aa5bb9` reached a real macOS runner and
+reported `p11-kit`: installed `0.26.5` and `0.26.6`, linked keg `0.26.6`,
+observation SHA-256
+`ae3f277eaad4a2614a7810049247f54e18fe2c620fea300e31400e14f46f2718`
+(5,064 bytes). PR head `8398f301` independently reported `harfbuzz`: installed
+`15.0.0_1` and `15.1.0`, linked `15.1.0`, observation SHA-256
+`b5d3148d66fd5c30791e3b2f6d7735eaf7fd63ba77f023d29a72c38327d08c30`
+(15,989 bytes). Both failed only the former singleton-dependency assumption.
+Older kegs were retained under the existing no-cleanup policy.
+
+Dependency observation now allows 1–16 canonical, unique installed versions.
+A singleton retains its existing behavior. Multiple versions require
+`brew --cellar <name>` and `brew --prefix --installed <name>`, followed by real
+filesystem resolution. The selected opt target must be exactly one immediate
+version child of that canonical formula Cellar. List order does not select the
+version. A non-null linked keg must agree; missing or malformed linked metadata
+is rejected. An explicit null for a keg-only formula still needs the same opt
+proof. The root `ffmpeg-full` remains the exact reviewed singleton.
+
+Wrong formula roots, escaping or noncanonical paths, unavailable opt links,
+unknown or duplicate versions and linked-keg disagreement fail admission.
+Raw selection paths remain only in the private local observations. Published
+receipts retain the selected version and a bounded selection hash/count entry;
+all entries stay within the existing 300-character limit. Metadata/license,
+recursive inventory bounds, tool/font hashes, HDR filters and output checks
+remain required. This observes the active Homebrew keg, not a complete dyld
+loaded-library closure or runtime redistribution approval.
+
+New positive cases first failed against the singleton rule, then passed after
+the filesystem proof was implemented. Local acquisition/accounting/limiter
+controls passed 9 files / 201 tests, including both observed version orderings,
+revision suffixes, keg-only and malformed/path/error cases. A separate Linux
+real-symlink probe exercised the default resolver and rejected an escaping or
+missing opt target; it records `macOSExecuted: false`. TypeScript/Vue, scoped
+ESLint and formatting passed. The new exact PR head must still execute the
+complete macOS admission and render suites before integration.

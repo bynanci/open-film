@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Generated tones and colour frames only; no speech recordings or private media.
+// Generated signals and colour frames only; no speech recordings or private media.
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,13 +7,12 @@ import type { MediaAsset } from "@openfilm/core";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile, runProcess } from "@openfilm/media";
 
-async function stereoWave(
+async function generatedStereoWave(
   root: string,
   id: string,
   rate: number,
   duration: number,
-  silence: boolean,
-  rightActiveDuringSilence = false,
+  pcmValue: (frame: number, channel: number) => number,
 ): Promise<MediaAsset> {
   const frames = Math.round(rate * duration);
   const bytes = Buffer.alloc(44 + frames * 4);
@@ -30,20 +29,8 @@ async function stereoWave(
   bytes.write("data", 36);
   bytes.writeUInt32LE(frames * 4, 40);
   for (let i = 0; i < frames; i++) {
-    const t = i / rate;
-    for (let c = 0; c < 2; c++) {
-      const amplitude =
-        silence && t >= 1 && t < 2 && !(c === 1 && rightActiveDuringSilence)
-          ? 0
-          : silence
-            ? 0.2
-            : 0.025;
-      const frequency = silence ? (c === 0 ? 440 : 660) : c === 0 ? 220 : 330;
-      bytes.writeInt16LE(
-        Math.round(amplitude * 32767 * Math.sin(2 * Math.PI * frequency * t)),
-        44 + (i * 2 + c) * 2,
-      );
-    }
+    for (let c = 0; c < 2; c++)
+      bytes.writeInt16LE(Math.round(pcmValue(i, c)), 44 + (i * 2 + c) * 2);
   }
   const path = join(root, `${id}.wav`);
   await writeFile(path, bytes);
@@ -58,6 +45,33 @@ async function stereoWave(
     state: {},
     metadata: {},
   };
+}
+
+function stereoWave(
+  root: string,
+  id: string,
+  rate: number,
+  duration: number,
+  silence: boolean,
+  rightActiveDuringSilence = false,
+) {
+  return generatedStereoWave(root, id, rate, duration, (frame, channel) => {
+    const t = frame / rate;
+    const amplitude =
+      silence && t >= 1 && t < 2 && !(channel === 1 && rightActiveDuringSilence)
+        ? 0
+        : silence
+          ? 0.2
+          : 0.025;
+    const frequency = silence
+      ? channel === 0
+        ? 440
+        : 660
+      : channel === 0
+        ? 220
+        : 330;
+    return amplitude * 32767 * Math.sin(2 * Math.PI * frequency * t);
+  });
 }
 
 export async function silenceAuditionFixture(
@@ -174,4 +188,137 @@ export async function silenceAuditionFixture(
   for (const asset of [voice, music, broll]) app.catalog.upsertAsset(asset);
   await app.save();
   return { app, assets: [voice, music, broll], voice, music, broll, duration };
+}
+
+/**
+ * A bounded low-energy case, not a speech/VAD or perceptual-quality fixture.
+ * Each active 20ms window contains a damped transient, with a quiet guard at
+ * its edges so resampling does not move activity into an adjacent quiet window.
+ * Nonzero seeded room floor and breath envelopes stay well below -40 dBFS.
+ */
+export async function transientSilenceAuditionFixture(
+  root: string,
+  rate: 44100 | 48000,
+) {
+  const duration = 5;
+  const seed = 0x5eeda11;
+  let noiseState = seed;
+  const noise = () => {
+    noiseState ^= noiseState << 13;
+    noiseState ^= noiseState >>> 17;
+    noiseState ^= noiseState << 5;
+    return ((noiseState >>> 0) / 0x100000000) * 2 - 1;
+  };
+  const quietSpans: readonly (readonly [number, number])[] = [
+    [0.5, 1.3],
+    [2, 2.4],
+    [3, 4],
+  ];
+  const voice = await generatedStereoWave(
+    root,
+    "voice",
+    rate,
+    duration,
+    (frame, channel) => {
+      const t = frame / rate;
+      const quietSpan = quietSpans.find(
+        ([start, end]) =>
+          frame >= Math.round(start * rate) && frame < Math.round(end * rate),
+      );
+      const random = noise();
+      const room = 0.0012 * random + 0.0004 * Math.sin(2 * Math.PI * 75 * t);
+      const breathPhase = quietSpan ? (t - quietSpan[0] - 0.1) / 0.3 : -1;
+      const breath =
+        breathPhase >= 0 && breathPhase < 1
+          ? 0.003 * random * Math.sin(Math.PI * breathPhase) ** 2
+          : 0;
+      const rightOnly =
+        channel === 1 &&
+        frame >= Math.round(3.6 * rate) &&
+        frame < Math.round(3.7 * rate);
+      if (quietSpan && !rightOnly) return (room + breath) * 32767;
+      const phase = (frame % (rate / 50)) / rate - 0.003;
+      const transient =
+        phase >= 0 && phase < 0.012
+          ? 0.18 *
+            Math.exp(-phase * 220) *
+            Math.sin(2 * Math.PI * (channel === 0 ? 730 : 1090) * phase)
+          : 0;
+      return (room + transient) * 32767;
+    },
+  );
+  const musicRate = rate === 44100 ? 48000 : 44100;
+  const music = await generatedStereoWave(
+    root,
+    "music",
+    musicRate,
+    duration,
+    (frame, channel) => {
+      const t = frame / musicRate;
+      let value = 0;
+      for (const start of [0.35, 2.85]) {
+        const elapsed = t - start;
+        if (elapsed < 0 || elapsed >= 1.4) continue;
+        const attack = Math.min(1, elapsed / 0.01);
+        const release = Math.min(1, (1.4 - elapsed) / 0.04);
+        const envelope = 0.09 * attack * release * Math.exp(-2 * elapsed);
+        const frequency = channel === 0 ? 220 : 330;
+        value +=
+          envelope *
+          (Math.sin(2 * Math.PI * frequency * elapsed) +
+            0.2 * Math.sin(2 * Math.PI * 2 * frequency * elapsed));
+      }
+      return value * 32767;
+    },
+  );
+  const app = await OpenFilmApplication.create(
+    join(root, "film.openfilm"),
+    "Seeded transient silence audition",
+  );
+  // Every proposed padded boundary is exact at 30fps and at both source rates.
+  app.project.settings = { width: 160, height: 90, frameRate: 30 };
+  app.project.stories = [
+    { id: "story", title: "Synthetic low-energy review", beats: [] },
+  ];
+  app.project.timelines = [
+    {
+      id: "timeline",
+      storyId: "story",
+      duration,
+      tracks: [
+        {
+          id: "dialogue",
+          type: "audio",
+          clips: [
+            {
+              id: "voice-clip",
+              assetId: voice.id,
+              sourceIn: 0,
+              sourceOut: duration,
+              timelineStart: 0,
+              timelineDuration: duration,
+            },
+          ],
+        },
+        {
+          id: "music",
+          type: "music",
+          timing: "overlay",
+          clips: [
+            {
+              id: "music-clip",
+              assetId: music.id,
+              sourceIn: 0,
+              sourceOut: duration,
+              timelineStart: 0,
+              timelineDuration: duration,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  for (const asset of [voice, music]) app.catalog.upsertAsset(asset);
+  await app.save();
+  return { app, assets: [voice, music], voice, music, duration, seed };
 }

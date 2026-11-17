@@ -3,32 +3,42 @@
   "scope": "Static inspection of official macOS ARM64 tool bytes on Linux; actual macOS runtime admission is separate.",
   "purpose": "CI test-tool admission; no runtime redistribution approval.",
   "replaces": {
-    "formula": "ffmpeg",
+    "formula": "ffmpeg-full",
     "packageVersion": "9.0.2_1",
-    "formulaSha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
-    "bottleSha256": "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
-    "observedRunId": "41098660221"
+    "formulaSha256": "2cc3ffea0ad8bc1c135e3506717207d82f07fe242672dd4403ce41081ba55a8a",
+    "bottleSha256": "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
+    "manifestSha256": "889312d5673d64fd1e560c221cc98566aaed92f786c14d022c60632c32cdecf2",
+    "previousReplacement": {
+      "formula": "ffmpeg",
+      "packageVersion": "9.0.2_1",
+      "formulaSha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
+      "bottleSha256": "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+      "observedRunId": "41098660221"
+    },
+    "observedRunId": "44073895574",
+    "observedFailure": "Exact formula/bottle admission rejected live Homebrew metadata before rendering; old runtime results remain historical."
   },
   "formula": {
     "name": "ffmpeg-full",
-    "packageVersion": "9.0.2_1",
-    "revision": 1,
-    "reviewCommit": "ecffce861d0041acf03d80c0544c4acead05b052",
-    "reviewSha256": "2cc3ffea0ad8bc1c135e3506717207d82f07fe242672dd4403ce41081ba55a8a",
-    "buildCommit": "c0cb290ef76ab7944d94a53ef6567d5a95362c9b",
-    "buildSha256": "1ca4a91c8c47b5c54c0e21489fc803a7094cf410144aa167a1904bfa170e9452",
-    "embeddedRecipeSha256": "8dfb709048cdf82fb3f932848a3a3c41c1fa95a4cc05102f098b74d7407b4129",
+    "packageVersion": "9.0.2_3",
+    "revision": 3,
+    "reviewCommit": "129d0424414469583477054264c980ed7131c9e7",
+    "reviewSha256": "8d8bf3817e76df43e02c1028666c87bf71220edc19357e88645fab47fab52894",
+    "buildCommit": "c2288d72234fda4a55c1a5ad26ee8ab43fa08117",
+    "buildSha256": "50c2107157673bd582668e5e7541cea143aaf9ff329579ad4a1ad49e8022edce",
+    "embeddedRecipeSha256": "fa826d5410ca7882cfdd35755fc240da085aabe45ebcf37ebf5f2bc00200f5db",
     "sourceUrl": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
     "sourceSha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
     "license": "GPL-3.0-or-later",
-    "recipeComparison": "Both reviewed and manifest-source formulae match the embedded recipe exactly after removal of generated bottle blocks."
+    "recipeComparison": "Both reviewed and manifest-source formulae match the embedded recipe exactly after removal of generated bottle blocks.",
+    "revisionChanges": "FFmpeg source and configure flags unchanged from 9.0.2_1; formula revisions rebuild against jpeg-xl 0.13.0 and ggml 1.0.0. Formula additionally denies network access during build."
   },
   "bottle": {
     "tag": "arm64_sequoia",
-    "bytes": 24272713,
-    "sha256": "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
-    "manifestSha256": "889312d5673d64fd1e560c221cc98566aaed92f786c14d022c60632c32cdecf2",
-    "manifestBytes": 111444,
+    "bytes": 24272752,
+    "sha256": "64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5",
+    "manifestSha256": "9e342a981161284a92efd02c4d7dc7bfa9947091718bbc1a13e157032bfe0b86",
+    "manifestBytes": 111868,
     "upstreamLicense": "GPL-3.0-or-later",
     "licenseTextSha256": {
       "COPYING.GPLv2": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
@@ -51,19 +61,19 @@
   "selectedMachO": [
     {
       "name": "ffmpeg",
-      "unrelocatedSha256": "d83db24a7f2e67b6ee42bc9c6804f1e91b5c88ad84475b8a6d6d61169ba90a18",
+      "unrelocatedSha256": "5ae79f0fb11684a2da5d51ee49ca33d95bc11dbce6f4f8ca74439fa5a9b4b0d1",
       "bytes": 492544,
       "architecture": "arm64",
       "minimumMacOS": "15.0.0",
       "sdk": "15.4.0",
       "loadLocations": [
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavdevice.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavfilter.12.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavformat.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavcodec.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswresample.7.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswscale.10.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavutil.61.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavdevice.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavfilter.12.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavformat.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavcodec.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libswresample.7.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libswscale.10.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavutil.61.dylib",
         "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
         "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
         "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
@@ -81,8 +91,8 @@
         "@@HOMEBREW_PREFIX@@/opt/rubberband/lib/librubberband.3.dylib",
         "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
         "@@HOMEBREW_PREFIX@@/opt/libsamplerate/lib/libsamplerate.0.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.0.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/whisper.cpp/lib/libwhisper.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/harfbuzz/lib/libharfbuzz.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/libplacebo/lib/libplacebo.387.dylib",
@@ -119,8 +129,8 @@
         "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrwb.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/snappy/lib/libsnappy.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/aom/lib/libaom.3.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.12.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.13.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.13.dylib",
         "@@HOMEBREW_PREFIX@@/opt/lame/lib/libmp3lame.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrnb.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/openjpeg/lib/libopenjp2.7.dylib",
@@ -142,26 +152,26 @@
         "/usr/lib/libc++.1.dylib"
       ],
       "configuration": [
-        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_3 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
       ],
       "zscaleNamePresent": false,
       "tonemapNamePresent": false
     },
     {
       "name": "ffprobe",
-      "unrelocatedSha256": "29c24ac9326faaf1118572ab84a769e4b1c1adfe4cdb6788c00318f90cbea557",
+      "unrelocatedSha256": "8d7af4dbcf786bf5e3cb4e7802a6e3faae1b0b695f6a10e8bfc9b0e44ee15ee8",
       "bytes": 303008,
       "architecture": "arm64",
       "minimumMacOS": "15.0.0",
       "sdk": "15.4.0",
       "loadLocations": [
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavdevice.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavfilter.12.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavformat.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavcodec.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswresample.7.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswscale.10.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavutil.61.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavdevice.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavfilter.12.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavformat.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavcodec.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libswresample.7.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libswscale.10.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavutil.61.dylib",
         "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
         "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
         "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
@@ -179,8 +189,8 @@
         "@@HOMEBREW_PREFIX@@/opt/rubberband/lib/librubberband.3.dylib",
         "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
         "@@HOMEBREW_PREFIX@@/opt/libsamplerate/lib/libsamplerate.0.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.0.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/whisper.cpp/lib/libwhisper.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/harfbuzz/lib/libharfbuzz.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/libplacebo/lib/libplacebo.387.dylib",
@@ -217,8 +227,8 @@
         "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrwb.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/snappy/lib/libsnappy.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/aom/lib/libaom.3.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.12.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.13.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.13.dylib",
         "@@HOMEBREW_PREFIX@@/opt/lame/lib/libmp3lame.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrnb.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/openjpeg/lib/libopenjp2.7.dylib",
@@ -240,33 +250,32 @@
         "/usr/lib/libc++.1.dylib"
       ],
       "configuration": [
-        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_3 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
       ],
       "zscaleNamePresent": false,
       "tonemapNamePresent": false
     },
     {
       "name": "libavfilter.12.1.102.dylib",
-      "unrelocatedSha256": "246cd7da38f2a32f4dd7e6493f0950a67d6e85d9e5faa045dfd8269c40fc7d12",
+      "unrelocatedSha256": "80d649ffa55f46755b705aadca66e0a9400162a9a0992725563e4d8ad7fbdd5f",
       "bytes": 3414096,
       "architecture": "arm64",
       "minimumMacOS": "15.0.0",
       "sdk": "15.4.0",
       "loadLocations": [
-        "@@HOMEBREW_PREFIX@@/opt/ffmpeg-full/lib/libavfilter.12.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswscale.10.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavformat.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavcodec.63.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libswresample.7.dylib",
-        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_1/lib/libavutil.61.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libswscale.10.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavformat.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavcodec.63.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libswresample.7.dylib",
+        "@@HOMEBREW_CELLAR@@/ffmpeg-full/9.0.2_3/lib/libavutil.61.dylib",
         "/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL",
         "/usr/lib/libSystem.B.dylib",
         "/usr/lib/libz.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/rubberband/lib/librubberband.3.dylib",
         "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
         "@@HOMEBREW_PREFIX@@/opt/libsamplerate/lib/libsamplerate.0.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.0.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.0.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml.1.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/ggml/lib/libggml-base.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/whisper.cpp/lib/libwhisper.1.dylib",
         "@@HOMEBREW_PREFIX@@/opt/harfbuzz/lib/libharfbuzz.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/libplacebo/lib/libplacebo.387.dylib",
@@ -306,8 +315,8 @@
         "@@HOMEBREW_PREFIX@@/opt/snappy/lib/libsnappy.1.dylib",
         "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
         "@@HOMEBREW_PREFIX@@/opt/aom/lib/libaom.3.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.12.dylib",
-        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.12.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl.0.13.dylib",
+        "@@HOMEBREW_PREFIX@@/opt/jpeg-xl/lib/libjxl_threads.0.13.dylib",
         "@@HOMEBREW_PREFIX@@/opt/lame/lib/libmp3lame.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/opencore-amr/lib/libopencore-amrnb.0.dylib",
         "@@HOMEBREW_PREFIX@@/opt/openjpeg/lib/libopenjp2.7.dylib",
@@ -332,7 +341,7 @@
         "/usr/lib/libobjc.A.dylib"
       ],
       "configuration": [
-        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
+        "--prefix=/opt/homebrew/Cellar/ffmpeg-full/9.0.2_3 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-libqrencode --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --enable-whisper --disable-libjack --disable-indev=jack --enable-videotoolbox --enable-audiotoolbox --enable-neon"
       ],
       "zscaleNamePresent": true,
       "tonemapNamePresent": true
@@ -342,9 +351,9 @@
   "runtimeDependencies": [
     {
       "name": "aom",
-      "buildPackageVersion": "3.15.2",
+      "buildPackageVersion": "3.15.3",
       "declaredDirectly": true,
-      "buildBottleSha256": "d8b133d6a8e7b2193f34f2f3cbc2cb327e8898331432daf2cc4cb84164871b35",
+      "buildBottleSha256": "39acbc6e2fc0c0e02623a314fc1247153288cd4c30d8945e45e4629da963f784",
       "upstreamSbomLicenseConcluded": "BSD-2-Clause"
     },
     {
@@ -363,9 +372,9 @@
     },
     {
       "name": "ca-certificates",
-      "buildPackageVersion": "2026-10-20",
+      "buildPackageVersion": "2026-11-05",
       "declaredDirectly": false,
-      "buildBottleSha256": "8589f4e61b3afcc5ea375aab11af1c891ec4c94421c699c2a5a4765078de4443",
+      "buildBottleSha256": "8a5a35e1a3223e6bc6ca7c853e0ac3d2568de2cc329b61688682bdf57165dab9",
       "upstreamSbomLicenseConcluded": "MPL-2.0"
     },
     {
@@ -407,21 +416,21 @@
       "name": "freetype",
       "buildPackageVersion": "2.15.0",
       "declaredDirectly": true,
-      "buildBottleSha256": "7e7a7bb07a484cf6fccb168587d697ed24b98cce52e6ac735debb22adb422237",
+      "buildBottleSha256": "74ee3577ff475f019e379070f89dca205e9d90742fe18623722ea455482a4d05",
       "upstreamSbomLicenseConcluded": "FTL"
     },
     {
       "name": "frei0r",
-      "buildPackageVersion": "3.6.0",
+      "buildPackageVersion": "3.7.1",
       "declaredDirectly": true,
-      "buildBottleSha256": "9282c476ed3636265f089a368f854b12ebb8a61a19d8a5c018454b6798ed89e0",
+      "buildBottleSha256": "a52ae8e900b7ad897f674979afbd097894820d669ab27df5c3db7a179bc20561",
       "upstreamSbomLicenseConcluded": "GPL-2.0-or-later"
     },
     {
       "name": "fribidi",
-      "buildPackageVersion": "1.0.17",
+      "buildPackageVersion": "1.0.18",
       "declaredDirectly": false,
-      "buildBottleSha256": "c1e62df532f06bf13ebb31df04d7e78645271a00e4261b17594248d16cf7e5b8",
+      "buildBottleSha256": "a6b2601a1cfa7c14ecc0b98a2018a5ec1b11a8ca939918442b770964abf601ca",
       "upstreamSbomLicenseConcluded": "GPL-2.0-or-later AND LGPL-2.1-or-later"
     },
     {
@@ -433,9 +442,9 @@
     },
     {
       "name": "ggml",
-      "buildPackageVersion": "0.27.0",
+      "buildPackageVersion": "1.0.0",
       "declaredDirectly": true,
-      "buildBottleSha256": "c654a80c06b0b01fd96794d61f3fce58a05fc2208386c441330d03b55d97c6c5",
+      "buildBottleSha256": "d554c59c2a99d5b50010f7b4ba34dd0934b229768f24011975e8dff9bca7af3b",
       "upstreamSbomLicenseConcluded": "MIT"
     },
     {
@@ -475,9 +484,9 @@
     },
     {
       "name": "harfbuzz",
-      "buildPackageVersion": "15.0.0_1",
+      "buildPackageVersion": "15.1.0",
       "declaredDirectly": true,
-      "buildBottleSha256": "a6286d242e42731cef8f3e4ad20bff6e45146c4235693cbfc0db73242ca9cc7e",
+      "buildBottleSha256": "91c3542c8e6b0e7b1b35af3d24118a0c3f2fd29cef8013e279861ae8f108547d",
       "upstreamSbomLicenseConcluded": "MIT"
     },
     {
@@ -503,16 +512,16 @@
     },
     {
       "name": "jpeg-turbo",
-      "buildPackageVersion": "3.2.0",
+      "buildPackageVersion": "3.2.1",
       "declaredDirectly": false,
-      "buildBottleSha256": "6dc55edcd33c693e474299ed2bba3c472ac1331cbe300066ec8ef99b88fab17c",
+      "buildBottleSha256": "802413c7772789ae8c9d0444042e9a766bcff1beae3919ea5716022aa9dafce7",
       "upstreamSbomLicenseConcluded": "IJG AND Zlib AND BSD-3-Clause"
     },
     {
       "name": "jpeg-xl",
-      "buildPackageVersion": "0.12.0_1",
+      "buildPackageVersion": "0.13.0",
       "declaredDirectly": true,
-      "buildBottleSha256": "3c193d49dacde5e78331ff37462b5ef7f09d44279801ad2df911a7a5d618c109",
+      "buildBottleSha256": "e11d2fe169633d3d6a5efeb8fc3ceb253eb310c48af5c1dad619556ad5f400d8",
       "upstreamSbomLicenseConcluded": "BSD-3-Clause"
     },
     {
@@ -538,9 +547,9 @@
     },
     {
       "name": "libarchive",
-      "buildPackageVersion": "3.8.10",
+      "buildPackageVersion": "3.8.11",
       "declaredDirectly": true,
-      "buildBottleSha256": "171706f55d0de1d512524bf20a62b1053b42603436a86fe4631043b7ac7be842",
+      "buildBottleSha256": "93fd0ff4cb92c465817383520120baae8d404fb1c97e7bd1c48ed2d23687ab4e",
       "upstreamSbomLicenseConcluded": "BSD-2-Clause"
     },
     {
@@ -601,9 +610,9 @@
     },
     {
       "name": "libomp",
-      "buildPackageVersion": "23.1.4",
+      "buildPackageVersion": "23.1.5",
       "declaredDirectly": false,
-      "buildBottleSha256": "af8425bbe39630ec9b2022b67449ac737e0ed6d48e98a6309f841295d3c6f0f2",
+      "buildBottleSha256": "2d0ef3890bcb061641c46bc3e52addc7d85627977a4dcd94938ccbd29774b9f0",
       "upstreamSbomLicenseConcluded": "MIT"
     },
     {
@@ -776,23 +785,23 @@
     },
     {
       "name": "little-cms2",
-      "buildPackageVersion": "2.19.1",
+      "buildPackageVersion": "2.20",
       "declaredDirectly": false,
-      "buildBottleSha256": "f68c3c93b9ee63891388f6485b27c5bc2605638df36b4806bdc52f0636e8254b",
+      "buildBottleSha256": "e04ebf2fc43c8ea39680a2255da8b6a7060ee38e5e1f159c8182c6344dd4c679",
       "upstreamSbomLicenseConcluded": "MIT"
     },
     {
       "name": "llama.cpp",
-      "buildPackageVersion": "0.7.0",
+      "buildPackageVersion": "0.9.0_1",
       "declaredDirectly": false,
-      "buildBottleSha256": "feb0baf9bf9266e4cbdd5757ab811ca2ce06dc8b398a9f80c1f9822a798398bd",
+      "buildBottleSha256": "8f3a536136dbc5080749aa9cffa1a64e0d83160dadd89ef3f5d67ca06adc8d72",
       "upstreamSbomLicenseConcluded": "MIT"
     },
     {
       "name": "lz4",
-      "buildPackageVersion": "1.10.0",
+      "buildPackageVersion": "1.11.1",
       "declaredDirectly": false,
-      "buildBottleSha256": "91674f1c7407b1f7b73d5bd1d85ed1abaaca93be3b68607af4ef3df632540ac0",
+      "buildBottleSha256": "69c0c38e660f81b36bbd165a77d7619d2b8b6b175bf670a4840aaaaddd86a520",
       "upstreamSbomLicenseConcluded": "BSD-2-Clause"
     },
     {
@@ -825,9 +834,9 @@
     },
     {
       "name": "openexr",
-      "buildPackageVersion": "3.5.2",
+      "buildPackageVersion": "3.5.4",
       "declaredDirectly": false,
-      "buildBottleSha256": "20e7c998ed534e281f8606b1567b047ceedb0e19272bf0545ae2128d8c589488",
+      "buildBottleSha256": "5b674285b4bc5afe8d2f8904fd600970ae461fd544f7819aaebf836f4b63ff34",
       "upstreamSbomLicenseConcluded": "BSD-3-Clause"
     },
     {
@@ -839,9 +848,9 @@
     },
     {
       "name": "openjph",
-      "buildPackageVersion": "0.32.0",
+      "buildPackageVersion": "0.33.0",
       "declaredDirectly": false,
-      "buildBottleSha256": "a543eb8908cdb84823c5798f0c7b6355af68338f133806a41746d5c22250e01f",
+      "buildBottleSha256": "10894d7efd2668cb91f649ec1146b87a323eb79b05c355fe13e462b498ffec29",
       "upstreamSbomLicenseConcluded": "BSD-2-Clause"
     },
     {
@@ -860,9 +869,9 @@
     },
     {
       "name": "p11-kit",
-      "buildPackageVersion": "0.26.5",
+      "buildPackageVersion": "0.26.6",
       "declaredDirectly": false,
-      "buildBottleSha256": "6a61302c1be785c331903fe9252f87d0d4ca722fda0697c4e22f6063cd4f1be2",
+      "buildBottleSha256": "5d529f086a87a2d2e6dc22b48e43502943cbd900bc2e3350a32b1337078eabb2",
       "upstreamSbomLicenseConcluded": "BSD-3-Clause"
     },
     {
@@ -916,9 +925,9 @@
     },
     {
       "name": "sdl3",
-      "buildPackageVersion": "3.4.18",
+      "buildPackageVersion": "3.4.20",
       "declaredDirectly": false,
-      "buildBottleSha256": "fa5228c04ab1c49370bd54162a2896d0e7c4033b1cf958bb2e02cc503c85d47c",
+      "buildBottleSha256": "c1b7b92cbf6446d1f3a228accd9d158c12742b39fadc8431b3624233bcadd202",
       "upstreamSbomLicenseConcluded": "Zlib"
     },
     {
@@ -951,16 +960,16 @@
     },
     {
       "name": "svt-av1",
-      "buildPackageVersion": "4.2.0",
+      "buildPackageVersion": "4.3.0",
       "declaredDirectly": true,
-      "buildBottleSha256": "2e6f7cbf3ff42f59ca251f3c84d4ad5a3ecfd518340237a6f70a54a428de1676",
+      "buildBottleSha256": "99c39895e407e8a344ceb3d4139b102cab2c35e1b380051b19b3896ad82975bc",
       "upstreamSbomLicenseConcluded": "BSD-3-Clause"
     },
     {
       "name": "tesseract",
-      "buildPackageVersion": "5.5.3_1",
+      "buildPackageVersion": "5.5.4",
       "declaredDirectly": true,
-      "buildBottleSha256": "d4356db8fc84e1ebf65c4b5e9d80857f8e346db44c7d5d566dd858450a7ede5d",
+      "buildBottleSha256": "162eaadab1881452c05f8241590594f16f8b79276625d3058eb80f24cd6baad4",
       "upstreamSbomLicenseConcluded": "Apache-2.0"
     },
     {
@@ -974,7 +983,7 @@
       "name": "vulkan-headers",
       "buildPackageVersion": "1.4.363.0",
       "declaredDirectly": false,
-      "buildBottleSha256": "e29460a3bc874e18e407211f3e550cf60177c6f7614c04d3081beb94d8ad4ab2",
+      "buildBottleSha256": "64cb4ed61848cac6cbe070562d383f6d50a402524dee42f2a19ec0546736fe10",
       "upstreamSbomLicenseConcluded": "Apache-2.0"
     },
     {
@@ -993,9 +1002,9 @@
     },
     {
       "name": "whisper.cpp",
-      "buildPackageVersion": "1.9.5",
+      "buildPackageVersion": "1.9.5_1",
       "declaredDirectly": true,
-      "buildBottleSha256": "a6691f811f613d79d1e508a89c7523e69f5b13a58c10e26083e77f8909b6db1e",
+      "buildBottleSha256": "6928249d28f1855323280f9a8fe3963a9703814878a7f7345d6e4e2ca7394f59",
       "upstreamSbomLicenseConcluded": "MIT"
     },
     {

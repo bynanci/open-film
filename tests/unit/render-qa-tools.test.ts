@@ -15,6 +15,8 @@ import {
 } from "../../scripts/ci/render-qa-tools.js";
 import { setupRenderQa } from "../../scripts/ci/setup-render-qa.js";
 import { ffmpegExpressionValues } from "../helpers/ffmpeg-expression-log.js";
+import { syntheticRenderQaEvidence } from "../fixtures/render-qa-evidence.js";
+import { validateRenderQaEvidence } from "../helpers/render-qa-evidence.js";
 
 afterEach(() => vi.unstubAllGlobals());
 it("reads complete expression samples from bare and evaluator-prefixed FFmpeg logs only", () => {
@@ -361,19 +363,19 @@ function formula() {
         name: "ffmpeg-full",
         tap: "homebrew/core",
         versions: { stable: "9.0.2" },
-        revision: 1,
+        revision: 3,
         license: "GPL-3.0-or-later",
         bottle: {
           stable: {
             files: {
               arm64_sequoia: {
                 sha256:
-                  "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
+                  "64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5",
               },
             },
           },
         },
-        installed: [{ version: "9.0.2_1", poured_from_bottle: true }],
+        installed: [{ version: "9.0.2_3", poured_from_bottle: true }],
       },
     ],
   };
@@ -406,6 +408,134 @@ it("admits the exact Homebrew formula/bottle and installed identity", () => {
     change(data);
     expect(() => admitBrewFormula(data, true)).toThrow(/Homebrew/u);
   }
+});
+
+it("rejects the historical Homebrew revision even when all its old identities agree", () => {
+  const historical = formula();
+  historical.formulae[0]!.revision = 1;
+  historical.formulae[0]!.installed[0]!.version = "9.0.2_1";
+  historical.formulae[0]!.bottle.stable.files.arm64_sequoia.sha256 =
+    "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c";
+  expect(() => admitBrewFormula(historical, false)).toThrow(/Homebrew/u);
+  expect(() => admitBrewFormula(historical, true)).toThrow(/Homebrew/u);
+});
+
+it("reports rejected Homebrew fields with bounded safe identity diagnostics", () => {
+  const data = formula();
+  data.formulae[0]!.revision = 2;
+  try {
+    admitBrewFormula(data, false);
+    expect.unreachable("unreviewed revision must fail admission");
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toMatch(
+      /^Homebrew formula, bottle or installed identity is unreviewed; /u,
+    );
+    const diagnostic = JSON.parse(message.slice(message.indexOf("; ") + 2));
+    expect(diagnostic.rejected).toEqual(["revision"]);
+    expect(diagnostic.expected).toEqual({
+      stable: "9.0.2",
+      revision: 3,
+      bottle:
+        "64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5",
+    });
+    expect(diagnostic.observed).toEqual({
+      ...diagnostic.expected,
+      revision: 2,
+    });
+  }
+});
+
+it("keeps malformed, oversized and control-bearing Homebrew diagnostics bounded and private", () => {
+  const hostile =
+    "\u001b[31m\n::error::/private/media/secret\r" + "x".repeat(50_000);
+  for (const input of [
+    null,
+    {},
+    { formulae: [] },
+    {
+      formulae: [
+        {
+          name: hostile,
+          tap: hostile,
+          license: hostile,
+          versions: { stable: hostile },
+          revision: { privatePath: hostile },
+          bottle: { stable: { files: { arm64_sequoia: { sha256: hostile } } } },
+          installed: [{ version: hostile, poured_from_bottle: false }],
+        },
+      ],
+    },
+  ]) {
+    try {
+      admitBrewFormula(input, true);
+      expect.unreachable("malformed identity must fail admission");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message.length).toBeLessThan(1_200);
+      expect(
+        [...message].every((character) => {
+          const code = character.charCodeAt(0);
+          return code >= 32 && code !== 127;
+        }),
+      ).toBe(true);
+      expect(message).not.toContain("/private");
+      expect(message).not.toContain("::error::");
+      const diagnostic = JSON.parse(message.slice(message.indexOf("; ") + 2));
+      expect(diagnostic.rejected.length).toBeGreaterThan(0);
+      expect(diagnostic.observed).toEqual({
+        stable: "invalid",
+        revision: "invalid",
+        bottle: "invalid",
+      });
+    }
+  }
+});
+
+it("binds the admitted macOS tool pin to its reviewed static provenance", () => {
+  const pin = JSON.parse(
+    readFileSync("fixtures/render-qa/toolchain.json", "utf8"),
+  ).tools["darwin-arm64"];
+  const review = JSON.parse(
+    readFileSync("fixtures/render-qa/darwin-ffmpeg-full-review.json", "utf8"),
+  );
+  expect(pin.version).toBe("9.0.2");
+  expect(pin.revision).toBe(3);
+  expect(review.formula).toMatchObject({
+    name: pin.formula,
+    packageVersion: pin.packageVersion,
+    revision: pin.revision,
+    reviewCommit: pin.formulaCommit,
+    reviewSha256: pin.formulaSha256,
+    license: "GPL-3.0-or-later",
+  });
+  expect(review.bottle).toMatchObject({
+    tag: pin.bottleTag,
+    sha256: pin.sha256,
+    manifestSha256:
+      "9e342a981161284a92efd02c4d7dc7bfa9947091718bbc1a13e157032bfe0b86",
+  });
+  expect(review.bottle.bytes).toBeLessThanOrEqual(pin.maxBytes);
+  expect(review.runtimeDependencies).toHaveLength(102);
+  expect(
+    review.runtimeDependencies.filter(
+      (dependency: { declaredDirectly: boolean }) =>
+        dependency.declaredDirectly,
+    ),
+  ).toHaveLength(47);
+  expect(review.selectedMachO).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: "libavfilter.12.1.102.dylib",
+        architecture: "arm64",
+        minimumMacOS: "15.0.0",
+        zscaleNamePresent: true,
+        tonemapNamePresent: true,
+      }),
+    ]),
+  );
 });
 
 it("installs the admitted Homebrew formula rather than treating its cache path as a formula", () => {
@@ -542,6 +672,444 @@ it("retains the complete observed Homebrew dependency graph and its license decl
   expect(JSON.parse(result.local.metadata[1]!.stdout).formulae[0].license).toBe(
     "BSD-3-Clause",
   );
+});
+
+function activeKegFixture(name = "p11-kit") {
+  const fixture = macObservationFixture();
+  Object.assign(fixture.metadata.formulae[0]!, { dependencies: [name] });
+  const dependency = {
+    name,
+    tap: "homebrew/core",
+    installed: [{ version: "0.26.5" }, { version: "0.26.6" }],
+    linked_keg: "0.26.6" as string | null | undefined,
+    dependencies: [] as string[],
+    license: "BSD-3-Clause",
+  };
+  const paths = {
+    cellar: `/private/openfilm/Cellar/${name}`,
+    prefix: `/private/openfilm/opt/${name}`,
+    resolvedCellar: `/private/openfilm/Cellar/${name}`,
+    resolvedPrefix: `/private/openfilm/Cellar/${name}/0.26.6`,
+  };
+  const calls: Array<[string, string[]]> = [];
+  const resolutions: string[] = [];
+  return {
+    ...fixture,
+    dependency,
+    paths,
+    calls,
+    resolutions,
+    run: async (command: string, args: string[]) => {
+      calls.push([command, args]);
+      if (command === "brew" && args[0] === "--cellar") return paths.cellar;
+      if (command === "brew" && args[0] === "--prefix") return paths.prefix;
+      if (command === "brew" && args[2] === name)
+        return JSON.stringify({ formulae: [dependency], casks: [] });
+      return fixture.run(command, args);
+    },
+    resolvePath: async (path: string) => {
+      resolutions.push(path);
+      if (path === paths.cellar) return paths.resolvedCellar;
+      if (path === paths.prefix) return paths.resolvedPrefix;
+      throw new Error("Unexpected private resolution: " + path);
+    },
+  };
+}
+
+it.each([false, true])(
+  "proves the active dependency keg independently of installed-list order (reversed=%s)",
+  async (reversed) => {
+    const fixture = activeKegFixture();
+    if (reversed) fixture.dependency.installed.reverse();
+    const result = await observeMacQaDependencies(
+      fixture.metadata,
+      "/opt/homebrew/opt/ffmpeg-full/bin",
+      fixture.run,
+      fixture.resolvePath,
+    );
+    expect(result.summary).toContain("brew:p11-kit=0.26.6");
+    expect(result.summary).not.toContain("brew:p11-kit=0.26.5");
+    expect(fixture.calls).toContainEqual(["brew", ["--cellar", "p11-kit"]]);
+    expect(fixture.calls).toContainEqual([
+      "brew",
+      ["--prefix", "--installed", "p11-kit"],
+    ]);
+    expect(fixture.resolutions).toEqual([
+      fixture.paths.cellar,
+      fixture.paths.prefix,
+    ]);
+    expect(result.local.activeKegs).toHaveLength(1);
+    const selection = result.local.activeKegs[0]!;
+    expect(selection).toMatchObject({
+      name: "p11-kit",
+      version: "0.26.6",
+      installedCount: 2,
+      resolvedCellar: fixture.paths.resolvedCellar,
+      resolvedPrefix: fixture.paths.resolvedPrefix,
+    });
+    expect(result.summary).toContain(
+      `brew-active:p11-kit:count=2:sha256=${createHash("sha256").update(JSON.stringify(selection)).digest("hex")}`,
+    );
+    expect(JSON.stringify(result.summary)).not.toMatch(
+      /\/private|\/opt|\/Users|\.dylib/u,
+    );
+    expect(result.summary.every((entry) => entry.length <= 300)).toBe(true);
+    const metadata = result.local.metadata.find(
+      (entry) => entry.name === "p11-kit",
+    )!;
+    expect(JSON.parse(metadata.stdout).formulae[0].installed).toEqual(
+      fixture.dependency.installed,
+    );
+    expect(metadata.sha256).toBe(
+      createHash("sha256").update(metadata.stdout).digest("hex"),
+    );
+  },
+);
+
+it("proves a keg-only dependency's active opt target even when linked_keg is null", async () => {
+  const fixture = activeKegFixture();
+  fixture.dependency.linked_keg = null;
+  const result = await observeMacQaDependencies(
+    fixture.metadata,
+    "/opt/homebrew/opt/ffmpeg-full/bin",
+    fixture.run,
+    fixture.resolvePath,
+  );
+  expect(result.summary).toContain("brew:p11-kit=0.26.6");
+  expect(result.local.activeKegs[0]!.version).toBe("0.26.6");
+});
+
+it("keeps maximum-length active dependency identities within the complete public receipt contract", async () => {
+  const fixture = activeKegFixture("a".repeat(100));
+  const selected = "A".repeat(100);
+  fixture.dependency.installed = [
+    { version: "B".repeat(100) },
+    { version: selected },
+  ];
+  fixture.dependency.linked_keg = selected;
+  fixture.paths.resolvedPrefix = fixture.paths.resolvedCellar + "/" + selected;
+  const result = await observeMacQaDependencies(
+    fixture.metadata,
+    "/opt/homebrew/opt/ffmpeg-full/bin",
+    fixture.run,
+    fixture.resolvePath,
+  );
+  expect(result.summary).toContain(
+    `brew:${fixture.dependency.name}=${selected}`,
+  );
+  expect(result.summary.every((entry) => entry.length <= 300)).toBe(true);
+  const evidence = syntheticRenderQaEvidence("darwin-arm64");
+  evidence.admission.dependencies = result.summary;
+  expect(validateRenderQaEvidence(evidence)).toBe(evidence);
+});
+
+it.each([false, true])(
+  "selects revision-bearing dependency versions by the actual active target (reversed=%s)",
+  async (reversed) => {
+    const fixture = activeKegFixture("harfbuzz");
+    fixture.dependency.installed = [
+      { version: "15.0.0_1" },
+      { version: "15.1.0" },
+    ];
+    if (reversed) fixture.dependency.installed.reverse();
+    fixture.dependency.linked_keg = "15.1.0";
+    fixture.paths.resolvedPrefix = fixture.paths.resolvedCellar + "/15.1.0";
+    const result = await observeMacQaDependencies(
+      fixture.metadata,
+      "/opt/homebrew/opt/ffmpeg-full/bin",
+      fixture.run,
+      fixture.resolvePath,
+    );
+    expect(result.summary).toContain("brew:harfbuzz=15.1.0");
+    expect(result.local.activeKegs[0]!.version).toBe("15.1.0");
+  },
+);
+
+it("bounds installed dependency candidates at sixteen without relaxing root FFmpeg admission", async () => {
+  const fixture = activeKegFixture();
+  fixture.dependency.installed = Array.from({ length: 16 }, (_, i) => ({
+    version: `0.26.${i}`,
+  }));
+  const result = await observeMacQaDependencies(
+    fixture.metadata,
+    "/opt/homebrew/opt/ffmpeg-full/bin",
+    fixture.run,
+    fixture.resolvePath,
+  );
+  expect(result.local.activeKegs[0]!.installedCount).toBe(16);
+  const changedRoot = structuredClone(fixture.metadata);
+  changedRoot.formulae[0]!.installed.push({
+    version: "9.0.2_2",
+    poured_from_bottle: true,
+  });
+  const run = vi.fn(async () => JSON.stringify(changedRoot));
+  await expect(
+    observeMacQaDependencies(
+      fixture.metadata,
+      "/opt/homebrew/opt/ffmpeg-full/bin",
+      run,
+      fixture.resolvePath,
+    ),
+  ).rejects.toThrow(/installed\.length/u);
+  expect(run).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  "outside Cellar",
+  "wrong Cellar formula",
+  "wrong resolved Cellar formula",
+  "unknown version",
+  "linked mismatch",
+  "malformed linked version",
+  "missing linked identity",
+  "duplicate versions",
+  "zero versions",
+  "too many versions",
+  "invalid second version",
+  "missing prefix",
+  "resolver failure",
+  "dot path",
+  "relative prefix",
+  "multiline prefix",
+  "oversized prefix",
+  "noncanonical resolved prefix",
+])("rejects unverifiable active dependency selection: %s", async (mutation) => {
+  const fixture = activeKegFixture();
+  if (mutation === "outside Cellar")
+    fixture.paths.resolvedPrefix = "/private/outside/p11-kit/0.26.6";
+  if (mutation === "wrong Cellar formula")
+    fixture.paths.cellar = "/private/openfilm/Cellar/other";
+  if (mutation === "wrong resolved Cellar formula")
+    fixture.paths.resolvedCellar = "/private/openfilm/Cellar/other";
+  if (mutation === "unknown version")
+    fixture.paths.resolvedPrefix = fixture.paths.resolvedCellar + "/9.9.9";
+  if (mutation === "linked mismatch") fixture.dependency.linked_keg = "0.26.5";
+  if (mutation === "malformed linked version")
+    fixture.dependency.linked_keg = "\u001b[31m\n/private/secret";
+  if (mutation === "missing linked identity")
+    fixture.dependency.linked_keg = undefined;
+  if (mutation === "duplicate versions")
+    fixture.dependency.installed = [
+      { version: "0.26.6" },
+      { version: "0.26.6" },
+    ];
+  if (mutation === "zero versions") fixture.dependency.installed = [];
+  if (mutation === "too many versions")
+    fixture.dependency.installed = Array.from({ length: 17 }, (_, i) => ({
+      version: `0.26.${i}`,
+    }));
+  if (mutation === "invalid second version")
+    fixture.dependency.installed[1]!.version = "\u001b[31m\n/private/secret";
+  if (mutation === "dot path")
+    fixture.paths.cellar = "/private/openfilm/Cellar/../Cellar/p11-kit";
+  if (mutation === "relative prefix")
+    fixture.paths.prefix = "private/opt/p11-kit";
+  if (mutation === "multiline prefix")
+    fixture.paths.prefix += "\n::error::/private/secret";
+  if (mutation === "oversized prefix")
+    fixture.paths.prefix = "/" + "x".repeat(4_097);
+  if (mutation === "noncanonical resolved prefix")
+    fixture.paths.resolvedPrefix += "/../0.26.6";
+  try {
+    await observeMacQaDependencies(
+      fixture.metadata,
+      "/opt/homebrew/opt/ffmpeg-full/bin",
+      async (command, args) => {
+        if (
+          mutation === "missing prefix" &&
+          command === "brew" &&
+          args[0] === "--prefix"
+        )
+          throw new Error("ENOENT /private/secret");
+        return fixture.run(command, args);
+      },
+      async (path) => {
+        if (mutation === "resolver failure")
+          throw new Error("EACCES /private/secret");
+        return fixture.resolvePath(path);
+      },
+    );
+    expect.unreachable("unverifiable active keg must fail admission");
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toMatch(
+      /^Missing or invalid installed Homebrew dependency identity; /u,
+    );
+    expect(message.length).toBeLessThan(1_500);
+    expect(message).not.toContain("/private");
+    expect(message).not.toContain("::error::");
+    expect(
+      [...message].every(
+        (character) =>
+          character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+      ),
+    ).toBe(true);
+    expect(fixture.calls.some(([command]) => command === "otool")).toBe(false);
+  }
+});
+
+it("diagnoses rejected installed dependency identities without accepting absent, aliased or multiple kegs", async () => {
+  const hostile =
+    "\u001b[31m\n::error::/private/media/secret\r" + "x".repeat(50_000);
+  const valid = {
+    name: "libvpx",
+    tap: "homebrew/core",
+    installed: [{ version: "1.15.2" }],
+    dependencies: [],
+    license: "BSD-3-Clause",
+  };
+  for (const scenario of [
+    {
+      data: null,
+      rejected: "formulae.length",
+      count: "invalid",
+      versions: [],
+      canonical: "invalid",
+      truncated: false,
+      linked: null,
+    },
+    {
+      data: { formulae: [{ ...valid, installed: [] }] },
+      rejected: "installed.length",
+      count: 0,
+      versions: [],
+      canonical: "libvpx",
+      truncated: false,
+      linked: null,
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            installed: [{ version: "1.15.1" }, { version: "1.15.2" }],
+            linked_keg: "1.15.2",
+          },
+        ],
+      },
+      rejected: "activeKeg",
+      count: 2,
+      versions: ["1.15.1", "1.15.2"],
+      canonical: "libvpx",
+      truncated: false,
+      linked: "1.15.2",
+    },
+    {
+      data: { formulae: [{ ...valid, name: "vpx" }] },
+      rejected: "name",
+      count: 1,
+      versions: ["1.15.2"],
+      canonical: "vpx",
+      truncated: false,
+      linked: null,
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            name: hostile,
+            installed: [{ version: hostile }],
+            linked_keg: hostile,
+          },
+        ],
+      },
+      rejected: "name",
+      count: 1,
+      versions: ["invalid"],
+      canonical: "invalid",
+      truncated: false,
+      linked: "invalid",
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            installed: Array.from({ length: 129 }, () => ({
+              version: "1.15.2",
+            })),
+          },
+        ],
+      },
+      rejected: "installed.length",
+      count: 129,
+      versions: Array(4).fill("1.15.2"),
+      canonical: "libvpx",
+      truncated: true,
+      linked: null,
+    },
+    {
+      data: {
+        formulae: [
+          {
+            ...valid,
+            name: "a".repeat(100),
+            installed: Array.from({ length: 129 }, () => ({
+              version: "A".repeat(100),
+            })),
+            linked_keg: "A".repeat(100),
+          },
+        ],
+      },
+      rejected: "name",
+      count: 129,
+      versions: Array(4).fill("A".repeat(100)),
+      canonical: "a".repeat(100),
+      truncated: true,
+      linked: "A".repeat(100),
+    },
+  ]) {
+    const fixture = macObservationFixture();
+    const commands: string[] = [];
+    try {
+      await observeMacQaDependencies(
+        fixture.metadata,
+        "/opt/homebrew/opt/ffmpeg-full/bin",
+        async (command, args) => {
+          commands.push(command);
+          if (command === "brew" && args[2] === "libvpx")
+            return JSON.stringify(scenario.data);
+          return fixture.run(command, args);
+        },
+      );
+      expect.unreachable("rejected dependency must fail admission");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message).toMatch(
+        /^Missing or invalid installed Homebrew dependency identity; /u,
+      );
+      expect(message.length).toBeLessThan(1_500);
+      expect(
+        [...message].every(
+          (character) =>
+            character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+        ),
+      ).toBe(true);
+      expect(message).not.toContain("/private");
+      expect(message).not.toContain("::error::");
+      const diagnostic = JSON.parse(message.slice(message.indexOf("; ") + 2));
+      expect(diagnostic).toMatchObject({
+        requested: "libvpx",
+        canonicalName: scenario.canonical,
+        installedCount: scenario.count,
+        versions: scenario.versions,
+        versionsTruncated: scenario.truncated,
+        linkedKeg: scenario.linked,
+        observationSha256: createHash("sha256")
+          .update(JSON.stringify(scenario.data))
+          .digest("hex"),
+        observationBytes: Buffer.byteLength(
+          JSON.stringify(scenario.data),
+          "utf8",
+        ),
+      });
+      expect(diagnostic.rejected).toContain(scenario.rejected);
+      expect(commands).not.toContain("otool");
+    }
+  }
 });
 it.each([
   "missing dependencies",

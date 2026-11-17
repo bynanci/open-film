@@ -244,7 +244,7 @@ describe("shared audio graph", () => {
     expect(text).toContain("adelay=288000S:all=1");
     expect(graph.labels).toHaveLength(5);
   });
-  it("keeps the legacy graph output and manifests unchanged when fields are absent", async () => {
+  it("keeps unversioned processing and manifests with compensated mix lookahead", async () => {
     const dir = await root(),
       asset = await toneSource(dir, "legacy", 440, 3),
       composition = comp(clip("p", asset.id, 0.017, 2));
@@ -257,7 +257,7 @@ describe("shared audio graph", () => {
       "-i",
       fileURLToPath(asset.uri),
       "-af",
-      "atrim=start=0:end=2,asetpts=PTS-STARTPTS,atempo=1,volume=1,apad,atrim=duration=2,adelay=17:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=12",
+      "atrim=start=0:end=2,asetpts=PTS-STARTPTS,atempo=1,volume=1,apad,atrim=duration=2,adelay=17:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95:latency=1,apad,atrim=duration=12",
       "-c:a",
       "pcm_s24le",
       "-ar",
@@ -485,7 +485,7 @@ it.each([0.5, 1, 2])(
         "-map",
         "0:a:0",
         "-af",
-        `aresample=48000:async=1:min_hard_comp=0:first_pts=0,atrim=start_sample=4801:end_sample=100801,asetpts=PTS-STARTPTS,${speed === 1 ? "" : `atempo=${speed},`}apad,atrim=end_sample=${length},volume=1,adelay=817S:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=12`,
+        `aresample=48000:async=1:min_hard_comp=0:first_pts=0,atrim=start_sample=4801:end_sample=100801,asetpts=PTS-STARTPTS,${speed === 1 ? "" : `atempo=${speed},`}apad,atrim=end_sample=${length},volume=1,adelay=817S:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95:latency=1,apad,atrim=duration=12`,
         "-c:a",
         "pcm_s24le",
         "-ar",
@@ -1082,7 +1082,7 @@ it("preserves the existing limiter and above-unity gain against an independent i
     "-i",
     fileURLToPath(asset.uri),
     "-af",
-    "atrim=start=0:end=12,asetpts=PTS-STARTPTS,apad,atrim=duration=12,afade=t=in:st=0:d=0.2,volume=20,adelay=0:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=12",
+    "atrim=start=0:end=12,asetpts=PTS-STARTPTS,apad,atrim=duration=12,afade=t=in:st=0:d=0.2,volume=20,adelay=0:all=1,amix=inputs=1:duration=longest:normalize=0,alimiter=limit=0.95:latency=1,apad,atrim=duration=12",
     "-c:a",
     "pcm_s24le",
     "-ar",

@@ -13,12 +13,12 @@ const root = resolve("."),
 function report() {
   return {
     success: true,
-    numTotalTestSuites: 5,
-    numPassedTestSuites: 5,
+    numTotalTestSuites: 6,
+    numPassedTestSuites: 6,
     numFailedTestSuites: 0,
     numPendingTestSuites: 0,
-    numTotalTests: 5,
-    numPassedTests: 5,
+    numTotalTests: 6,
+    numPassedTests: 6,
     numFailedTests: 0,
     numPendingTests: 0,
     numTodoTests: 0,
@@ -39,13 +39,14 @@ function report() {
     })),
   };
 }
-it("selects the exact five finishing files without filters, retries or only-test acceptance", () => {
+it("selects the exact six finishing files without filters, retries or only-test acceptance", () => {
   expect(renderQaFinishingFiles).toEqual([
     "packages/render/tests/photo-easing.test.ts",
     "packages/render/tests/photo-ambient.test.ts",
     "packages/render/tests/bilingual-title-finishing.test.ts",
     "packages/render/tests/primary-color.test.ts",
     "packages/render/tests/photo-primary-local-look.test.ts",
+    "packages/render/tests/audio-limiter-timing.test.ts",
   ]);
   const output = resolve("report.json");
   expect(finishingVitestArgs(root, output)).toEqual([
@@ -63,7 +64,7 @@ it("publishes bounded numeric failure facts without raw messages, names or absol
   const value = report();
   value.success = false;
   value.numFailedTests = 1;
-  value.numPassedTests = 4;
+  value.numPassedTests = 5;
   const suite = value.testResults[0]!;
   suite.status = "failed";
   suite.assertionResults[0]!.status = "failed";
@@ -220,11 +221,31 @@ it("retains only numeric source coordinates from ANSI Windows assertion stacks",
 });
 it("accepts a complete current report and publishes only relative filenames and counts", () => {
   const actual = validateFinishingReport(report(), context);
-  expect(actual.fileCount).toBe(5);
-  expect(actual.passedTests).toBe(5);
-  expect(actual.files).toHaveLength(5);
+  expect(actual.fileCount).toBe(6);
+  expect(actual.passedTests).toBe(6);
+  expect(actual.files).toHaveLength(6);
   expect(JSON.stringify(actual)).not.toContain(root);
   expect(JSON.stringify(actual)).not.toContain("actual fixture");
+});
+it("rejects the old five-file report even when its counters are internally consistent", () => {
+  const value = report();
+  value.testResults = value.testResults.filter(
+    (suite) => !suite.name.endsWith("audio-limiter-timing.test.ts"),
+  );
+  value.numTotalTestSuites = value.testResults.length;
+  value.numPassedTestSuites = value.testResults.length;
+  value.numTotalTests = value.testResults.length;
+  value.numPassedTests = value.testResults.length;
+  expect(() => validateFinishingReport(value, context)).toThrow();
+});
+it("rejects a failed limiter assertion when aggregate counters still claim success", () => {
+  const value = report();
+  const limiter = value.testResults.find((suite) =>
+    suite.name.endsWith("audio-limiter-timing.test.ts"),
+  );
+  expect(limiter).toBeDefined();
+  limiter!.assertionResults[0]!.status = "failed";
+  expect(() => validateFinishingReport(value, context)).toThrow();
 });
 it.each(["missing", "duplicate", "foreign", "empty"] as const)(
   "rejects %s file selection",

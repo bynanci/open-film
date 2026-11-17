@@ -14,7 +14,16 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { hashFile, inspectMedia } from "@openfilm/media";
-import type { Composition, MediaAsset } from "@openfilm/core";
+import {
+  createExportProfile,
+  frameAlignedDuration,
+  resolveProjectTimebase,
+  sequenceTimeAt,
+  type Composition,
+  type MediaAsset,
+  type ProjectSettings,
+} from "@openfilm/core";
+import { FFmpegRenderer } from "@openfilm/render";
 import { generateSampleMedia } from "../fixtures/sample-media/generate.mjs";
 
 const execute = promisify(execFile);
@@ -41,6 +50,227 @@ const verifier = fileURLToPath(
 const workstationRunner = fileURLToPath(
   new URL("./resolve-qa/resolve_qa.py", import.meta.url),
 );
+
+// These clocks place one white frame and a 50 ms, 1 kHz cosine burst in a
+// synchronized video-only MP4 / lossless WAV pair. Keeping source audio in WAV
+// lets the PCM assertion distinguish renderer timing from AAC priming/ringing.
+const syncCases = {
+  "sync-30": {
+    rateNumerator: 30,
+    rateDenominator: 1,
+    sourceVideoAssetId: "sync-30-video",
+    sourceAudioAssetId: "sync-30-audio",
+    sourceMarkerFrame: 30,
+    sourceMarkerSample: 48000,
+    trimInFrame: 12,
+    placementFrame: 24,
+    recordMarkerFrame: 42,
+    recordMarkerSample: 67200,
+    sourceFrameCount: 120,
+    durationFrames: 120,
+    clipFrames: 90,
+    markerSamples: 2400,
+    sampleRate: 48000,
+    renderedVideo: "sync-30.mp4",
+    fullMix: "sync-30.wav",
+    aacUncertaintySamples: 1024,
+  },
+  "sync-fractional": {
+    rateNumerator: 30000,
+    rateDenominator: 1001,
+    sourceVideoAssetId: "sync-fractional-video",
+    sourceAudioAssetId: "sync-fractional-audio",
+    sourceMarkerFrame: 30,
+    sourceMarkerSample: 48048,
+    trimInFrame: 10,
+    placementFrame: 15,
+    recordMarkerFrame: 35,
+    recordMarkerSample: 56056,
+    sourceFrameCount: 120,
+    durationFrames: 120,
+    clipFrames: 90,
+    markerSamples: 2400,
+    sampleRate: 48000,
+    renderedVideo: "sync-fractional.mp4",
+    fullMix: "sync-fractional.wav",
+    aacUncertaintySamples: 1024,
+  },
+};
+
+async function syncFixture(
+  name: string,
+  reference: (typeof syncCases)[keyof typeof syncCases],
+  mediaDirectory: string,
+) {
+  const timebase = resolveProjectTimebase({
+    width: 160,
+    height: 90,
+    frameRate: reference.rateNumerator / reference.rateDenominator,
+  });
+  const settings: ProjectSettings = {
+    width: 160,
+    height: 90,
+    frameRate: reference.rateNumerator / reference.rateDenominator,
+    timebase,
+  };
+  const secondsAt = (frame: number) => sequenceTimeAt(frame, timebase);
+  // Convert absolute rational positions once. A 30000/1001 frame is 1601.6
+  // samples; rounding that per frame would drift. Chosen endpoints are integral.
+  const samplesAt = (frame: number) => {
+    const samples =
+      (frame * timebase.rateDenominator * reference.sampleRate) /
+      timebase.rateNumerator;
+    if (!Number.isSafeInteger(samples))
+      throw new Error(
+        `Sync fixture endpoint is not an integral sample: ${frame}`,
+      );
+    return samples;
+  };
+  const videoPath = join(mediaDirectory, `${name}-flash.mp4`);
+  const audioPath = join(mediaDirectory, `${name}-tone.wav`);
+  await execute("ffmpeg", [
+    "-v",
+    "error",
+    "-nostdin",
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=black:s=160x90:r=${reference.rateNumerator}/${reference.rateDenominator},drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='eq(n,${reference.sourceMarkerFrame})'`,
+    "-frames:v",
+    String(reference.sourceFrameCount),
+    "-an",
+    "-c:v",
+    "libx264",
+    "-threads",
+    "1",
+    "-pix_fmt",
+    "yuv420p",
+    "-y",
+    videoPath,
+  ]);
+  const sourceSamples = samplesAt(reference.sourceFrameCount);
+  const pcm = Buffer.alloc(sourceSamples * 2 * 3);
+  for (let sample = 0; sample < reference.markerSamples; sample++) {
+    const value = Math.round(
+      0.25 * 8388607 * Math.cos((2 * Math.PI * 1000 * sample) / 48000),
+    );
+    for (let channel = 0; channel < 2; channel++)
+      pcm.writeIntLE(
+        value,
+        ((samplesAt(reference.sourceMarkerFrame) + sample) * 2 + channel) * 3,
+        3,
+      );
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF");
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(2, 22);
+  header.writeUInt32LE(48000, 24);
+  header.writeUInt32LE(48000 * 2 * 3, 28);
+  header.writeUInt16LE(2 * 3, 32);
+  header.writeUInt16LE(24, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  await writeFile(audioPath, Buffer.concat([header, pcm]));
+  const assets: MediaAsset[] = [];
+  for (const [id, path] of [
+    [reference.sourceVideoAssetId, videoPath],
+    [reference.sourceAudioAssetId, audioPath],
+  ] as const)
+    assets.push({
+      ...(await inspectMedia({
+        path,
+        uri: pathToFileURL(path).href,
+        name: basename(path),
+      })),
+      id,
+      contentHash: await hashFile(path),
+    });
+  const clip = {
+    sourceIn: secondsAt(reference.trimInFrame),
+    sourceOut: secondsAt(reference.trimInFrame + reference.clipFrames),
+    timelineStart: secondsAt(reference.placementFrame),
+    timelineDuration: secondsAt(reference.clipFrames),
+  };
+  // The same integral sample endpoint is exactly 4.004 seconds at 30000/1001.
+  // Dividing frames by a floating rate yields 4.0040000000000004, which OTIO's
+  // serializer shortens. Canonicalize the input, preserving strict metadata
+  // equality, and verify it still uses the existing complete-frame contract.
+  const duration = samplesAt(reference.durationFrames) / reference.sampleRate;
+  if (
+    Math.abs(frameAlignedDuration(duration, settings.frameRate) - duration) >
+    1e-9
+  )
+    throw new Error(
+      "Sync fixture duration is not an exact output frame endpoint.",
+    );
+  const composition: Composition = {
+    id: `resolve-${name}-reference`,
+    storyId: "reference-story",
+    duration,
+    tracks: [
+      {
+        id: `${name}-picture`,
+        type: "video",
+        clips: [
+          {
+            ...clip,
+            id: `${name}-flash`,
+            assetId: reference.sourceVideoAssetId,
+          },
+        ],
+      },
+      {
+        id: `${name}-sound`,
+        type: "audio",
+        clips: [
+          {
+            ...clip,
+            id: `${name}-tone`,
+            assetId: reference.sourceAudioAssetId,
+            audioTiming: {
+              version: 1,
+              sampleRate: 48000,
+              timelineStartSample: samplesAt(reference.placementFrame),
+              sourceInSample: samplesAt(reference.trimInFrame),
+              sourceOutSample: samplesAt(
+                reference.trimInFrame + reference.clipFrames,
+              ),
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const renderer = new FFmpegRenderer();
+  await renderer.render(
+    composition,
+    assets,
+    join(directory, reference.renderedVideo),
+    settings,
+  );
+  await renderer.render(
+    composition,
+    assets,
+    join(directory, reference.fullMix),
+    settings,
+    {
+      audioOnly: true,
+      exportProfile: createExportProfile({
+        ratio: "16:9",
+        width: 160,
+        height: 90,
+        frameRate: settings.frameRate,
+        format: "wav",
+      }),
+    },
+  );
+  return { composition, assets, settings };
+}
+
 try {
   const { stdout: harnessTests, stderr: harnessSummary } = await execute(
     python,
@@ -206,7 +436,7 @@ try {
     points: [{ time: 0, gain: 0.8 }],
     ducking: [{ start: 0.25, end: 1.25, gain: 0.3, attack: 0.1, release: 0.1 }],
   };
-  const compositions = {
+  const compositions: Record<string, Composition> = {
     cuts,
     edited,
     fractional: {
@@ -214,12 +444,15 @@ try {
       id: "resolve-fractional-reference",
     },
   };
-  const settingsByComposition: Record<
-    string,
-    { width: number; height: number; frameRate: number }
-  > = {};
+  const settingsByComposition: Record<string, ProjectSettings> = {};
+  for (const [name, reference] of Object.entries(syncCases)) {
+    const fixture = await syncFixture(name, reference, mediaDirectory);
+    compositions[name] = fixture.composition;
+    settingsByComposition[name] = fixture.settings;
+    assets.push(...fixture.assets);
+  }
   for (const [name, composition] of Object.entries(compositions)) {
-    const settings = {
+    const settings = settingsByComposition[name] ?? {
       width: 320,
       height: 180,
       frameRate: name === "fractional" ? 30000 / 1001 : 24,
@@ -249,6 +482,7 @@ try {
         assets,
         compositions,
         settingsByComposition,
+        syncCases,
         realResolveVerified: false,
       },
       null,
@@ -284,7 +518,7 @@ try {
       throw new Error(`Original source changed: ${asset.name}`);
   await writeFile(
     join(directory, "README.md"),
-    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. DaVinci Resolve import has not been run.\n\nStart with [WORKSTATION.md](WORKSTATION.md): copy this complete folder, run `python3 resolve_qa.py prepare` at the new location, then import its relocated cuts.otio. Preparation needs only standard-library Python 3.9+. A manual UI route supports installations without external scripting.\n\nOriginal OTIO URLs and sources are retained unchanged; preparation creates separate copies and validates SHA-256 identities. bundle.json records exact source and CI provenance. edited.otio preserves advanced edits in metadata ONLY. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n",
+    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material. The copied QA scripts and documentation retain the repository LICENSE and NOTICE; the generated media remain CC0.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. sync-30 and sync-fractional also passed complete source/render video and full mix PCM decoding: source flash frame30 becomes record42/sample67200 at30fps and record35/sample56056 at30000/1001fps. sync-evidence.json records exact PCM/visual observations and separate AAC observations with a declared one-AAC-LC-frame (1024 sample) uncertainty. DaVinci Resolve import and playback have not been run.\n\nStart with [WORKSTATION.md](WORKSTATION.md): copy this complete folder, run `python3 resolve_qa.py prepare` at the new location, then import its relocated cuts.otio. Preparation needs only standard-library Python 3.9+. A manual UI route supports installations without external scripting.\n\nOriginal OTIO URLs and sources are retained unchanged; preparation creates separate copies and validates SHA-256 identities. bundle.json records exact source and CI provenance. edited.otio preserves advanced edits in metadata ONLY. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n",
   );
   await writeFile(
     join(directory, "nle-compatibility.md"),
@@ -303,6 +537,11 @@ try {
     join(directory, "WORKSTATION.md"),
     await readFile(new URL("./resolve-qa/WORKSTATION.md", import.meta.url)),
   );
+  for (const name of ["LICENSE", "NOTICE"])
+    await writeFile(
+      join(directory, name),
+      await readFile(new URL(`../${name}`, import.meta.url)),
+    );
   const [{ stdout: sha }, { stdout: dirtyFiles }] = await Promise.all([
     execute("git", ["rev-parse", "HEAD"]),
     execute("git", ["status", "--porcelain", "--untracked-files=all"]),

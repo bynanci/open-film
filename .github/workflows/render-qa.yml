@@ -53,6 +53,8 @@ jobs:
       - name: Exercise schema and acquisition failure controls
         run: pnpm exec vitest run tests/unit/render-qa-fonts.test.ts tests/unit/render-qa-tools.test.ts tests/unit/render-qa-archive.test.ts tests/unit/render-qa-bin.test.ts tests/unit/render-qa-policy.test.ts tests/unit/render-qa-evidence.test.ts tests/unit/ci-render-qa.test.ts --maxWorkers=1
       - name: Admit fixed platform tools and licensed font bytes
+        env:
+          HOMEBREW_CACHE: ${{ runner.temp }}/openfilm-render-qa-homebrew
         run: pnpm exec tsx scripts/ci/setup-render-qa.ts hosted-tools "$RUNNER_TEMP/openfilm-render-qa"
       - name: Run actual output and deliberate decoded failures
         env:

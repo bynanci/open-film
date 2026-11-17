@@ -21,7 +21,7 @@ def rational(seconds, rate=24):
     return {"value": seconds * rate, "rate": rate}
 
 
-def fixture(root):
+def fixture(root, name="cuts"):
     media = root / "media files" / "旅行  #1 & café.mp4"
     media.parent.mkdir(parents=True)
     media.write_bytes(b"unit-test bytes, not a decodable or Resolve-verified media fixture")
@@ -32,12 +32,12 @@ def fixture(root):
     timeline = {"global_start_time": rational(0), "tracks": {"children": [{"kind": "Video", "children": [
         {"OTIO_SCHEMA": "Gap.1", "source_range": {"duration": rational(2)}}, source,
         {"OTIO_SCHEMA": "Gap.1", "source_range": {"duration": rational(1)}}]}]}}
-    qa.write_json(root / "cuts.otio", timeline)
+    qa.write_json(root / (name + ".otio"), timeline)
     qa.write_json(root / "manifest.json", {"assets": [{"id": "video", "mediaType": "video", "frameRate": 24}]})
     bundle = {"schemaVersion": 1, "kind": "openfilm-resolve-qa", "openfilm": {"checkoutSha": "a" * 40, "candidateSha": "b" * 40, "dirtyFiles": []},
               "assets": [{"id": "video", "originalUri": original, "relativePath": media.relative_to(root).as_posix(), "sha256": qa.digest(media)}],
-              "fixtures": [{"name": "cuts", "path": "cuts.otio", "frameRate": 24}],
-              "files": [{"path": name, "sha256": qa.digest(root / name)} for name in ["cuts.otio", "manifest.json"]], "realResolveVerified": False}
+              "fixtures": [{"name": name, "path": name + ".otio", "frameRate": 24}],
+              "files": [{"path": path, "sha256": qa.digest(root / path)} for path in [name + ".otio", "manifest.json"]], "realResolveVerified": False}
     qa.write_json(root / "bundle.json", bundle)
     return bundle, media, timeline
 
@@ -150,6 +150,52 @@ class WorkstationTest(unittest.TestCase):
         self.assertEqual(evidence["evidenceType"], "manual-template-not-observed")
         self.assertFalse(evidence["realNleVerified"])
         self.assertEqual(evidence["openfilm"], self.bundle["openfilm"])
+
+    def test_cli_manual_selects_each_sync_fixture_from_hash_verified_bundle(self):
+        for name in ["sync-30", "sync-fractional"]:
+            with self.subTest(fixture=name):
+                root = self.root / name
+                root.mkdir()
+                bundle, _, _ = fixture(root, name)
+                prepared_result = subprocess.run([sys.executable, str(RUNNER), "prepare", "--bundle", str(root)], capture_output=True, text=True)
+                self.assertEqual(prepared_result.returncode, 0, prepared_result.stderr)
+                prepared = pathlib.Path(json.loads(prepared_result.stdout)["output"])
+                self.assertFalse(qa.read_json(prepared / "prepared.json")["realResolveVerified"])
+                result = subprocess.run([sys.executable, str(RUNNER), "manual", "--bundle", str(root), "--prepared", str(prepared), "--fixture", name], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                report = json.loads(result.stdout)
+                self.assertFalse(report["realNleVerified"])
+                evidence = qa.read_json(pathlib.Path(report["output"]) / "manual-evidence.json")
+                self.assertEqual(pathlib.Path(evidence["fixture"]), prepared / (name + ".otio"))
+                self.assertEqual(evidence["fixtureSha256"], qa.digest(prepared / (name + ".otio")))
+                self.assertEqual(evidence["bundleSha256"], qa.digest(root / "bundle.json"))
+                self.assertEqual(evidence["openfilm"], bundle["openfilm"])
+                self.assertEqual(evidence["expected"]["durationFrames"], 96)
+                self.assertEqual(evidence["status"], "not-run")
+                self.assertEqual(evidence["evidenceType"], "manual-template-not-observed")
+                self.assertFalse(evidence["realNleVerified"])
+
+    def test_cli_sync_selection_still_rejects_changed_source_before_manual_output(self):
+        for name in ["sync-30", "sync-fractional"]:
+            with self.subTest(fixture=name):
+                root = self.root / name
+                root.mkdir()
+                _, media, _ = fixture(root, name)
+                prepared = qa.prepare(root)
+                media.write_bytes(b"changed source")
+                result = subprocess.run([sys.executable, str(RUNNER), "manual", "--bundle", str(root), "--prepared", str(prepared), "--fixture", name], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                evidence = json.loads(result.stderr)
+                self.assertIn("hash mismatch", evidence["reason"])
+                self.assertFalse(evidence["realNleVerified"])
+                self.assertEqual(list(root.glob("manual-*")), [])
+
+    def test_cli_invalid_fixture_is_rejected_before_manual_output(self):
+        prepared = qa.prepare(self.root)
+        result = subprocess.run([sys.executable, str(RUNNER), "manual", "--bundle", str(self.root), "--prepared", str(prepared), "--fixture", "unknown-sync"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid choice", result.stderr)
+        self.assertEqual(list(self.root.glob("manual-*")), [])
 
     def test_missing_resolve_returns_blocked_nonzero_with_written_evidence(self):
         prepared = qa.prepare(self.root)

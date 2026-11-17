@@ -7,6 +7,7 @@ export const renderQaFinishingFiles = Object.freeze([
   "packages/render/tests/bilingual-title-finishing.test.ts",
   "packages/render/tests/primary-color.test.ts",
   "packages/render/tests/photo-primary-local-look.test.ts",
+  "packages/render/tests/audio-limiter-timing.test.ts",
 ]);
 export const MAX_FINISHING_REPORT_BYTES = 4 * 1024 ** 2;
 export function finishingVitestArgs(checkoutRoot: string, reportPath: string) {
@@ -28,7 +29,7 @@ export interface FinishingReportContext {
 }
 function invalid(): never {
   throw new Error(
-    "Finishing QA requires the exact current five-file all-passed report.",
+    "Finishing QA requires the exact current six-file all-passed report.",
   );
 }
 function record(value: unknown): Record<string, unknown> {
