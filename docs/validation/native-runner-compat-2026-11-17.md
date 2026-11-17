@@ -127,6 +127,32 @@ actual Ubuntu prerequisite setup. The prior candidate's other passing checks
 and these offline controls do not establish that result. This follow-up adds
 source-readiness controls and supplies no native installer or workstation proof.
 
+## Script-review acknowledgment follow-up
+
+Candidate `e1b007d6fe8d24783ec3e07b4404166219417b22` passed native-shell in
+[Verify run 44100206510](https://github.com/bynanci/open-film/actions/runs/44100206510),
+but browser shard 6 failed the existing authored-draft script-review case.
+The retained trace records the exact acceptance POST returning HTTP 200 after
+5,697.774 ms. The test started its five-second persistence poll while that
+request was still in flight; the first project GET also waited and returned
+the accepted narration after the poll deadline. Source revisions matched, and
+the trace does not establish a state overwrite or stale acceptance. The cause
+of the low-level delay remains unproven.
+
+The case now registers the exact suggestion's acceptance POST response before
+clicking, checks HTTP 200 and the acknowledged Story, beat and narration, then
+runs every existing persistence, UI, film, source and reopen assertion. The
+original polling, action and test budgets remain unchanged, with no retry or
+sleep added. Existing held-acknowledgment and lost-acknowledgment cases continue
+to exercise the real server boundary. Production publication and durability
+behavior are unchanged.
+
+Local validation passed all eight script-review browser cases in 59.7 seconds
+and three separate repetitions of the affected case in 32.2 seconds, each with
+zero retries and the original budgets. TypeScript, scoped ESLint/Prettier,
+documentation mirrors and diff checks passed. Complete checks for the resulting
+candidate remain required before integration.
+
 ## Remaining gates
 
 No native runtime producer or installer workflow was dispatched for this change.

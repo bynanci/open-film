@@ -314,7 +314,24 @@ test("flushes an authored draft, reviews a reasoned change, and persists only ac
   await assertFilmUnchanged(request, baseline, baselineAssets);
   await layout(page, "zh-TW-script-review-pending-1440x900");
 
+  const acceptance = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+        `/api/script-review/suggestions/${suggestion.id}/accept` &&
+      response.request().method() === "POST",
+  );
   await card.getByTestId("script-review-accept").click();
+  const acknowledgment = await acceptance;
+  expect(acknowledgment.status(), await acknowledgment.text()).toBe(200);
+  const { story: acknowledgedStory } = (await acknowledgment.json()) as {
+    story: Story;
+  };
+  expect(acknowledgedStory.id).toBe(storyId);
+  const acknowledgedBeat = acknowledgedStory.beats.find(
+    (beat) => beat.id === beatId,
+  );
+  expect(acknowledgedBeat?.id).toBe(beatId);
+  expect(acknowledgedBeat?.script?.narration).toBe(suggestion.after);
   await expect
     .poll(
       async () =>
