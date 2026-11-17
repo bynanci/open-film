@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, copyFile, lstat, mkdir, readFile, rm } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+} from "node:fs/promises";
 import { join, posix } from "node:path";
 import pins from "../../fixtures/render-qa/toolchain.json";
 
@@ -320,6 +328,7 @@ export async function observeMacQaDependencies(
   installedFormula: unknown,
   bin: string,
   run: (command: string, args: string[]) => Promise<string>,
+  resolvePath: (path: string) => Promise<string> = realpath,
 ) {
   admitBrewFormula(installedFormula, true);
   const dependencies = (
@@ -341,6 +350,15 @@ export async function observeMacQaDependencies(
   const local = {
     metadata: [] as Array<{ name: string; stdout: string; sha256: string }>,
     libraries: [] as Array<{ name: string; stdout: string; sha256: string }>,
+    activeKegs: [] as Array<{
+      name: string;
+      version: string;
+      installedCount: number;
+      cellar: { stdout: string; sha256: string };
+      prefix: { stdout: string; sha256: string };
+      resolvedCellar: string;
+      resolvedPrefix: string;
+    }>,
   };
   const summary: string[] = [];
   let totalBytes = 0;
@@ -368,24 +386,32 @@ export async function observeMacQaDependencies(
     if (seen.size > 128)
       throw new Error("Homebrew dependency closure exceeds its bound");
     const observed = await observation("brew", ["info", "--json=v2", name]);
-    let data;
+    let data: {
+      formulae?: Array<{
+        name?: string;
+        tap?: string;
+        installed?: Array<{ version?: string }>;
+        linked_keg?: unknown;
+        dependencies?: unknown;
+        license?: unknown;
+      }>;
+      casks?: unknown[];
+    };
     try {
-      data = JSON.parse(observed.stdout) as {
-        formulae?: Array<{
-          name?: string;
-          tap?: string;
-          installed?: Array<{ version?: string }>;
-          linked_keg?: unknown;
-          dependencies?: unknown;
-          license?: unknown;
-        }>;
-        casks?: unknown[];
-      };
+      data = JSON.parse(observed.stdout);
     } catch (error) {
       throw new Error("Invalid Homebrew dependency JSON", { cause: error });
     }
     const formula = data?.formulae?.[0];
-    const version = formula?.installed?.[0]?.version;
+    let version = formula?.installed?.[0]?.version;
+    const installedVersions =
+      Array.isArray(formula?.installed) && formula.installed.length <= 16
+        ? formula.installed.map((item) => item?.version)
+        : [];
+    const validVersion = (value: unknown): value is string =>
+      typeof value === "string" &&
+      value.length <= 100 &&
+      /^[A-Za-z0-9][A-Za-z0-9.+_:-]{0,99}$/u.test(value);
     const rejected = [
       ["formulae.length", data?.formulae?.length !== 1],
       [
@@ -396,17 +422,24 @@ export async function observeMacQaDependencies(
       ["formula", !formula],
       ["name", formula?.name !== name],
       ["tap", formula?.tap !== "homebrew/core"],
-      ["installed.length", formula?.installed?.length !== 1],
       [
-        "version",
-        typeof version !== "string" ||
-          !/^[A-Za-z0-9][A-Za-z0-9.+_:-]{0,99}$/u.test(version),
+        "installed.length",
+        !Array.isArray(formula?.installed) ||
+          formula.installed.length < 1 ||
+          formula.installed.length > 16 ||
+          (name === pins.tools["darwin-arm64"].formula &&
+            formula.installed.length !== 1),
+      ],
+      ["version", !installedVersions.every(validVersion)],
+      [
+        "installed.unique",
+        new Set(installedVersions).size !== installedVersions.length,
       ],
     ] as const;
-    const fields = rejected
+    const fields: string[] = rejected
       .filter(([, failed]) => failed)
       .map(([field]) => field);
-    if (!formula || fields.length) {
+    function rejectIdentity(): never {
       const safeCount = (count: unknown) =>
         typeof count === "number" &&
         Number.isSafeInteger(count) &&
@@ -449,6 +482,7 @@ export async function observeMacQaDependencies(
           JSON.stringify(diagnostic),
       );
     }
+    if (!formula || fields.length) rejectIdentity();
     if (
       !Array.isArray(formula.dependencies) ||
       formula.dependencies.length > 64 ||
@@ -480,6 +514,74 @@ export async function observeMacQaDependencies(
         throw new Error(
           "Homebrew dependency inventory changed during observation",
         );
+    }
+    if (installedVersions.length > 1) {
+      try {
+        const canonicalPath = (path: string) => {
+          if (
+            typeof path !== "string" ||
+            path.length > 4_096 ||
+            !posix.isAbsolute(path) ||
+            path === "/" ||
+            posix.normalize(path) !== path ||
+            path.includes("\\") ||
+            [...path].some((character) => {
+              const code = character.charCodeAt(0);
+              return code < 32 || (code >= 127 && code <= 159);
+            })
+          )
+            throw new Error("Invalid canonical Homebrew path");
+          return path;
+        };
+        const cellar = await observation("brew", ["--cellar", name]);
+        const prefix = await observation("brew", [
+          "--prefix",
+          "--installed",
+          name,
+        ]);
+        const cellarPath = canonicalPath(cellar.stdout);
+        const prefixPath = canonicalPath(prefix.stdout);
+        if (
+          posix.basename(cellarPath) !== name ||
+          posix.basename(prefixPath) !== name
+        )
+          throw new Error("Invalid Homebrew formula path");
+        const resolvedCellar = canonicalPath(await resolvePath(cellarPath));
+        const resolvedPrefix = canonicalPath(await resolvePath(prefixPath));
+        if (posix.basename(resolvedCellar) !== name)
+          throw new Error("Invalid resolved Homebrew formula");
+        const selected = installedVersions.find(
+          (candidate) =>
+            typeof candidate === "string" &&
+            resolvedPrefix === posix.join(resolvedCellar, candidate),
+        );
+        if (
+          !selected ||
+          (formula.linked_keg !== null &&
+            (!validVersion(formula.linked_keg) ||
+              formula.linked_keg !== selected))
+        )
+          throw new Error("Unproven active Homebrew keg");
+        version = selected;
+        const selection = {
+          name,
+          version: selected,
+          installedCount: installedVersions.length,
+          cellar,
+          prefix,
+          resolvedCellar,
+          resolvedPrefix,
+        };
+        local.activeKegs.push(selection);
+        summary.push(
+          `brew-active:${name}:count=${installedVersions.length}:sha256=${qaSha256(JSON.stringify(selection))}`,
+        );
+      } catch {
+        // Filesystem/command errors can include private paths; expose only the
+        // bounded identity diagnostic, without the raw error or its cause.
+        fields.push("activeKeg");
+        rejectIdentity();
+      }
     }
     pending.push(...formula.dependencies);
     local.metadata.push({ name, ...observed });

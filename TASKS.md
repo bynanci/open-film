@@ -116,7 +116,9 @@ attribute its outputs to the installer.
       [Cloud validation and decoded frames](docs/validation/acoustic-sync-boundaries-2026-11-17.md).
       Both limiter cases also run in the existing strict three-platform finishing
       selection. The macOS CI bottle revision was refreshed only after inspecting
-      official source, bytes and licensing; FFmpeg remains 9.0.2. This completes
+      official source, bytes and licensing; FFmpeg remains 9.0.2. Coinstalled
+      dependency kegs require an exact active opt/Cellar filesystem identity;
+      the final hosted matrix remains required. This completes
       bounded source regression coverage, not Issue #144 listening or Issue #7
       Resolve/device acceptance.
 - [x] Cancel and drain the acceptance fixture's owned Pipeline actions before

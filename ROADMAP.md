@@ -167,6 +167,8 @@ retention. Existing Silence Review and interchange workflows now have seeded
 transient/breath/room-floor and decaying-music cases plus exact 30 fps and
 30000/1001 source/record marker checks in actual decoded MP4/full-mix WAV.
 See the [validation and decoded frame sheet](docs/validation/acoustic-sync-boundaries-2026-11-17.md).
+CI tool admission also verifies the active opt/Cellar identity when Homebrew
+retains multiple dependency versions; actual candidate matrix gates remain.
 Resolve is absent and the Cloud host has no GPU/OpenCL platform; actual Resolve,
 subjective listening and native workstation gates remain open. Published
 versions and the deferred NLE/SDK roadmap scope are unchanged.

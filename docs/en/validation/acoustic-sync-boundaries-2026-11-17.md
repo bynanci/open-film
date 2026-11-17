@@ -123,7 +123,7 @@ Ubuntu, Windows and macOS; there is no AAC or pixel allowance on these PCM
 checks. The shared aggregate rejects an otherwise internally consistent old
 five-file report and any failed limiter assertion. Local selection/accounting
 controls passed 4 files / 88 tests. The combined acquisition/accounting/limiter
-selection subsequently passed 9 files / 176 tests. Actual local Render QA passed
+selection subsequently passed 9 files / 201 tests. Actual local Render QA passed
 1/1 and the full six-file finishing selection passed 21/21 with fixed font
 hashes and FFmpeg 7.1.5. Their receipts explicitly record a dirty local checkout
 and `workstationVerified: false`; hosted results belong to the final PR head.
@@ -222,3 +222,10 @@ passed Linux and Windows but GitHub abandoned the unassigned macOS job with
 and an ARM64 capacity notice. No macOS dependency cause was observed in that
 attempt. A complete second attempt uses the same diagnostic SHA; its result
 remains separate from a final candidate's required three-platform evidence.
+
+The macOS dependency diagnostics subsequently observed two coinstalled-keg
+failures (`p11-kit` and `harfbuzz`). The bounded active opt/Cellar filesystem
+proof and its positive/negative regressions are documented in the
+[Render QA admission record](../validation-render-qa.md). This correction
+retains strict source/tool/font/output gates; the eventual candidate needs its
+own complete hosted matrix.

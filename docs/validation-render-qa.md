@@ -517,3 +517,42 @@ The final local acquisition/accounting/limiter control selection passed **9 file
 official actionlint 1.7.7 Linux artifact, checked against its published checksum
 `023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757`; this
 was a local workflow check, not a hosted macOS execution.
+
+### Observed coinstalled dependencies and active-keg identity
+
+The second diagnostic attempt at `08aa5bb9` reached a real macOS runner and
+reported `p11-kit`: installed `0.26.5` and `0.26.6`, linked keg `0.26.6`,
+observation SHA-256
+`ae3f277eaad4a2614a7810049247f54e18fe2c620fea300e31400e14f46f2718`
+(5,064 bytes). PR head `8398f301` independently reported `harfbuzz`: installed
+`15.0.0_1` and `15.1.0`, linked `15.1.0`, observation SHA-256
+`b5d3148d66fd5c30791e3b2f6d7735eaf7fd63ba77f023d29a72c38327d08c30`
+(15,989 bytes). Both failed only the former singleton-dependency assumption.
+Older kegs were retained under the existing no-cleanup policy.
+
+Dependency observation now allows 1–16 canonical, unique installed versions.
+A singleton retains its existing behavior. Multiple versions require
+`brew --cellar <name>` and `brew --prefix --installed <name>`, followed by real
+filesystem resolution. The selected opt target must be exactly one immediate
+version child of that canonical formula Cellar. List order does not select the
+version. A non-null linked keg must agree; missing or malformed linked metadata
+is rejected. An explicit null for a keg-only formula still needs the same opt
+proof. The root `ffmpeg-full` remains the exact reviewed singleton.
+
+Wrong formula roots, escaping or noncanonical paths, unavailable opt links,
+unknown or duplicate versions and linked-keg disagreement fail admission.
+Raw selection paths remain only in the private local observations. Published
+receipts retain the selected version and a bounded selection hash/count entry;
+all entries stay within the existing 300-character limit. Metadata/license,
+recursive inventory bounds, tool/font hashes, HDR filters and output checks
+remain required. This observes the active Homebrew keg, not a complete dyld
+loaded-library closure or runtime redistribution approval.
+
+New positive cases first failed against the singleton rule, then passed after
+the filesystem proof was implemented. Local acquisition/accounting/limiter
+controls passed 9 files / 201 tests, including both observed version orderings,
+revision suffixes, keg-only and malformed/path/error cases. A separate Linux
+real-symlink probe exercised the default resolver and rejected an escaping or
+missing opt target; it records `macOSExecuted: false`. TypeScript/Vue, scoped
+ESLint and formatting passed. The new exact PR head must still execute the
+complete macOS admission and render suites before integration.
