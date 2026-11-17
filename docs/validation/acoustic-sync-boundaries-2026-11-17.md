@@ -123,7 +123,7 @@ Ubuntu, Windows and macOS; there is no AAC or pixel allowance on these PCM
 checks. The shared aggregate rejects an otherwise internally consistent old
 five-file report and any failed limiter assertion. Local selection/accounting
 controls passed 4 files / 88 tests. The combined acquisition/accounting/limiter
-selection subsequently passed 9 files / 175 tests. Actual local Render QA passed
+selection subsequently passed 9 files / 176 tests. Actual local Render QA passed
 1/1 and the full six-file finishing selection passed 21/21 with fixed font
 hashes and FFmpeg 7.1.5. Their receipts explicitly record a dirty local checkout
 and `workstationVerified: false`; hosted results belong to the final PR head.
@@ -194,3 +194,31 @@ count that result as a passed Resolve integration. Full-suite, browser and hoste
 check results belong to the corresponding implementation PR/source revision.
 Issues #7 and #140–#146 retain their independent runtime, native lifecycle,
 workstation, listening, performance and administrator gates.
+
+## Source CI and portable handoff follow-up
+
+Implementation head `5981a5c7a8cdc322f93a40d5992acf5f47472bf0` passed the
+complete [Verify run 44077512542](https://github.com/bynanci/open-film/actions/runs/44077512542):
+82 contract files / 1,582 tests, 399 media files / 4,771 tests, all 366 browser
+cases across six shards, build, interchange, native-shell and docs. This is
+exit-0 hosted evidence for that exact source, separate from the older local
+login-shell wrapper outcome. Windows recovery and Linux/Windows Render QA also
+passed; macOS stopped at installed dependency identity observation before its
+media suite. The final PR head still needs its own complete gates.
+
+The portable reference folder now retains exact repository `LICENSE` and
+`NOTICE` bytes for its copied QA scripts/documentation; both are included in
+the existing file-hash inventory. Generated media remain procedural CC0.
+The actual generator/official-parser/relocation gate passed after this addition,
+and independent comparison verified both texts and inventory hashes against
+the repository. This supplies no runtime binary redistribution approval.
+
+Diagnostic commit `08aa5bb9bb78f0c47f13b160b772889721f2aa4b` preserves the
+dependency admission guards and records only bounded rejected fields, names,
+installed counts/versions, linked-keg identity and observation hash/size. Its
+[first diagnostic dispatch](https://github.com/bynanci/open-film/actions/runs/44079308355)
+passed Linux and Windows but GitHub abandoned the unassigned macOS job with
+`The job was not acquired by Runner of type hosted even after multiple attempts`
+and an ARM64 capacity notice. No macOS dependency cause was observed in that
+attempt. A complete second attempt uses the same diagnostic SHA; its result
+remains separate from a final candidate's required three-platform evidence.

@@ -518,7 +518,7 @@ try {
       throw new Error(`Original source changed: ${asset.name}`);
   await writeFile(
     join(directory, "README.md"),
-    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. sync-30 and sync-fractional also passed complete source/render video and full mix PCM decoding: source flash frame30 becomes record42/sample67200 at30fps and record35/sample56056 at30000/1001fps. sync-evidence.json records exact PCM/visual observations and separate AAC observations with a declared one-AAC-LC-frame (1024 sample) uncertainty. DaVinci Resolve import and playback have not been run.\n\nStart with [WORKSTATION.md](WORKSTATION.md): copy this complete folder, run `python3 resolve_qa.py prepare` at the new location, then import its relocated cuts.otio. Preparation needs only standard-library Python 3.9+. A manual UI route supports installations without external scripting.\n\nOriginal OTIO URLs and sources are retained unchanged; preparation creates separate copies and validates SHA-256 identities. bundle.json records exact source and CI provenance. edited.otio preserves advanced edits in metadata ONLY. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n",
+    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material. The copied QA scripts and documentation retain the repository LICENSE and NOTICE; the generated media remain CC0.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. sync-30 and sync-fractional also passed complete source/render video and full mix PCM decoding: source flash frame30 becomes record42/sample67200 at30fps and record35/sample56056 at30000/1001fps. sync-evidence.json records exact PCM/visual observations and separate AAC observations with a declared one-AAC-LC-frame (1024 sample) uncertainty. DaVinci Resolve import and playback have not been run.\n\nStart with [WORKSTATION.md](WORKSTATION.md): copy this complete folder, run `python3 resolve_qa.py prepare` at the new location, then import its relocated cuts.otio. Preparation needs only standard-library Python 3.9+. A manual UI route supports installations without external scripting.\n\nOriginal OTIO URLs and sources are retained unchanged; preparation creates separate copies and validates SHA-256 identities. bundle.json records exact source and CI provenance. edited.otio preserves advanced edits in metadata ONLY. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n",
   );
   await writeFile(
     join(directory, "nle-compatibility.md"),
@@ -537,6 +537,11 @@ try {
     join(directory, "WORKSTATION.md"),
     await readFile(new URL("./resolve-qa/WORKSTATION.md", import.meta.url)),
   );
+  for (const name of ["LICENSE", "NOTICE"])
+    await writeFile(
+      join(directory, name),
+      await readFile(new URL(`../${name}`, import.meta.url)),
+    );
   const [{ stdout: sha }, { stdout: dirtyFiles }] = await Promise.all([
     execute("git", ["rev-parse", "HEAD"]),
     execute("git", ["status", "--porcelain", "--untracked-files=all"]),
