@@ -1,13 +1,16 @@
 # Main merge controls: owner review packet — issue 146
 
 Status: **fixed main policy approved; not applied**. The owner approved the
-reviewed payload after the original PR round. The sole recorded creation attempt
-returned HTTP 403; no rule or setting changed. Retain that approval rather than
-asking for the same decision again. Changed payloads or scope still require their
-own review and decision. This approval is distinct from source-code review,
-AI review, DCO, release authorization and native signing or notarization.
+reviewed payload after the original PR round. Two creation attempts returned
+HTTP 403; no rule or setting changed. The latest attempt, on 2026-11-17 after
+PR #166's exact-head checks passed, is recorded in the
+[dated activation evidence](main-ruleset-activation-attempt-2026-11-17.json).
+Retain the owner approval rather than asking for the same decision again.
+Changed payloads or scope still require their own review and decision. This
+approval is distinct from source-code review, AI review, DCO, release
+authorization and native signing or notarization.
 
-## Approved policy and unsuccessful activation — 2026-11-11
+## Approved policy and activation attempts — 2026-11-11 to 2026-11-17
 
 The owner's reply in this task was **「核准本輪 PR 驗證完成後套用」**,
 answering `request_user_input_async` call
@@ -32,12 +35,38 @@ a Release, native certificate, signing or notarization.
   unintended automatic issue closure. An issue's closed state is not enforcement
   evidence. The resumed read-only inventory still found no repository rulesets.
 
+### 2026-11-17 — post-validation attempt
+
+The current owner approval still matched the unchanged proposal and rollback
+hashes. PR #166 (`d1a2f330b5640abcc08a0db9db566681ff7b4ab1`, base
+`f662e4c5f7fce5b8367188a674637116dea445f2`) passed all six proposed required
+contexts and the full exact-head CI. GitHub Actions app ID `15368` produced
+successful `typescript-and-media`, `docs-site`, `native-shell`,
+`render-qa-complete`, `windows-ffmpeg9` and `DCO sign-off` checks. The PR was
+merged as `92b37b90152538f838ebec3532118339098daefc`.
+
+Immediately before the settings write, the main branch was still
+`f662e4c5f7fce5b8367188a674637116dea445f2`, `protected: false`, with zero
+repository rulesets and zero effective main rules. A single POST to
+`repos/bynanci/open-film/rulesets` with the approved payload returned **HTTP 403,
+Resource not accessible by integration**. The repository metadata endpoint
+reported the current identity's `admin: true`, but that did not grant this
+integration Rulesets write capability. Readback after the failed POST still
+returned zero rulesets and zero effective main rules; the main merge commit is
+now `92b37b90152538f838ebec3532118339098daefc` and remains unprotected. No rule
+ID exists. No further retry, credential change, bypass attempt or control test
+followed this 403.
+
+The durable summary includes exact candidate/check URLs, payload and rollback
+hashes, before/after states and the write failure. The attempt did not attest
+alerting, recovery or release/signing roles. The safe-control table below remains
+unexecuted and #146 remains open.
+
 An existing administrator session with Rulesets write access must recheck the
-live baseline before using the same approved JSON. Repository metadata saying
-`admin: true` did not establish this integration's write capability. Do not
-create a duplicate rule if another administrator has already applied it. Safe
-control cases, alerting and release/signing-role attestations remain unobserved;
-this record does not declare them approved or executed.
+live baseline before using the same approved JSON. Do not create a duplicate rule
+if another administrator has already applied it. Safe control cases, alerting
+and release/signing-role attestations remain unobserved; this record does not
+declare them approved or executed.
 
 ## Read-only inventory observed 2026-11-11
 
