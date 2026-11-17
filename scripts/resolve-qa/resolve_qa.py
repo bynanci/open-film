@@ -395,7 +395,7 @@ def main():
     parser.add_argument("command", choices=["prepare", "probe", "manual", "run"])
     parser.add_argument("--bundle", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parent)
     parser.add_argument("--prepared", type=pathlib.Path)
-    parser.add_argument("--fixture", choices=["cuts", "fractional", "edited"], default="cuts")
+    parser.add_argument("--fixture", choices=["cuts", "fractional", "edited", "sync-30", "sync-fractional"], default="cuts")
     parser.add_argument("--api", help="Installed Resolve Developer/Scripting folder; never download a replacement API module.")
     args = parser.parse_args()
     try:

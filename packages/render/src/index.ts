@@ -1562,7 +1562,9 @@ export class FFmpegRenderer {
       }
       if (!videoOnly && audioLabels.length)
         filters.push(
-          `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=${number(composition.duration)}[aout]`,
+          // Flush and compensate lookahead before the fixed-duration trim so
+          // source/record sample positions and the final samples are retained.
+          `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95:latency=1,apad,atrim=duration=${number(composition.duration)}[aout]`,
         );
       else if (!videoOnly)
         filters.push(
