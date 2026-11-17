@@ -114,6 +114,22 @@ OpenTimelineIO serialized the fractional fixture's floating duration
 integral 192,192-sample endpoint and checks shared frame-duration equivalence.
 The original metadata-equality assertion was preserved; no tolerance was added.
 
+## Three-platform limiter gate
+
+The existing finishing lane now selects six files, adding the absolute limiter
+regression to the five existing rendering files. Both full-mix and dialogue-stem
+cases must pass with exact first/interior/final stereo sample positions on
+Ubuntu, Windows and macOS; there is no AAC or pixel allowance on these PCM
+checks. The shared aggregate rejects an otherwise internally consistent old
+five-file report and any failed limiter assertion. Local selection/accounting
+controls passed 4 files / 88 tests. The combined acquisition/accounting/limiter
+selection subsequently passed 9 files / 172 tests. Actual local Render QA passed
+1/1 and the full six-file finishing selection passed 21/21 with fixed font
+hashes and FFmpeg 7.1.5. Their receipts explicitly record a dirty local checkout
+and `workstationVerified: false`; hosted results belong to the final PR head.
+The first font acquisition could not connect directly; the existing configured
+proxy admitted the unchanged pinned bytes with `NODE_USE_ENV_PROXY=1`.
+
 ## Cloud tools and Resolve boundary
 
 The verified toolchain is Node 24.19.0, pnpm 11.11.0, Python 3.12.14,

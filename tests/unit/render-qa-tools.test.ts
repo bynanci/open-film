@@ -361,19 +361,19 @@ function formula() {
         name: "ffmpeg-full",
         tap: "homebrew/core",
         versions: { stable: "9.0.2" },
-        revision: 1,
+        revision: 3,
         license: "GPL-3.0-or-later",
         bottle: {
           stable: {
             files: {
               arm64_sequoia: {
                 sha256:
-                  "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
+                  "64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5",
               },
             },
           },
         },
-        installed: [{ version: "9.0.2_1", poured_from_bottle: true }],
+        installed: [{ version: "9.0.2_3", poured_from_bottle: true }],
       },
     ],
   };
@@ -406,6 +406,60 @@ it("admits the exact Homebrew formula/bottle and installed identity", () => {
     change(data);
     expect(() => admitBrewFormula(data, true)).toThrow(/Homebrew/u);
   }
+});
+
+it("rejects the historical Homebrew revision even when all its old identities agree", () => {
+  const historical = formula();
+  historical.formulae[0]!.revision = 1;
+  historical.formulae[0]!.installed[0]!.version = "9.0.2_1";
+  historical.formulae[0]!.bottle.stable.files.arm64_sequoia.sha256 =
+    "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c";
+  expect(() => admitBrewFormula(historical, false)).toThrow(/Homebrew/u);
+  expect(() => admitBrewFormula(historical, true)).toThrow(/Homebrew/u);
+});
+
+it("binds the admitted macOS tool pin to its reviewed static provenance", () => {
+  const pin = JSON.parse(
+    readFileSync("fixtures/render-qa/toolchain.json", "utf8"),
+  ).tools["darwin-arm64"];
+  const review = JSON.parse(
+    readFileSync("fixtures/render-qa/darwin-ffmpeg-full-review.json", "utf8"),
+  );
+  expect(pin.version).toBe("9.0.2");
+  expect(pin.revision).toBe(3);
+  expect(review.formula).toMatchObject({
+    name: pin.formula,
+    packageVersion: pin.packageVersion,
+    revision: pin.revision,
+    reviewCommit: pin.formulaCommit,
+    reviewSha256: pin.formulaSha256,
+    license: "GPL-3.0-or-later",
+  });
+  expect(review.bottle).toMatchObject({
+    tag: pin.bottleTag,
+    sha256: pin.sha256,
+    manifestSha256:
+      "9e342a981161284a92efd02c4d7dc7bfa9947091718bbc1a13e157032bfe0b86",
+  });
+  expect(review.bottle.bytes).toBeLessThanOrEqual(pin.maxBytes);
+  expect(review.runtimeDependencies).toHaveLength(102);
+  expect(
+    review.runtimeDependencies.filter(
+      (dependency: { declaredDirectly: boolean }) =>
+        dependency.declaredDirectly,
+    ),
+  ).toHaveLength(47);
+  expect(review.selectedMachO).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: "libavfilter.12.1.102.dylib",
+        architecture: "arm64",
+        minimumMacOS: "15.0.0",
+        zscaleNamePresent: true,
+        tonemapNamePresent: true,
+      }),
+    ]),
+  );
 });
 
 it("installs the admitted Homebrew formula rather than treating its cache path as a formula", () => {

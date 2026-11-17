@@ -114,8 +114,11 @@ attribute its outputs to the installer.
       the existing Silence/interchange fixtures with seeded acoustic boundaries,
       decaying music and 30 / 30000/1001 decoded MP4/WAV sync references. See
       [Cloud validation and decoded frames](docs/validation/acoustic-sync-boundaries-2026-11-17.md).
-      This completes bounded source regression coverage, not Issue #144
-      listening or Issue #7 Resolve/device acceptance.
+      Both limiter cases also run in the existing strict three-platform finishing
+      selection. The macOS CI bottle revision was refreshed only after inspecting
+      official source, bytes and licensing; FFmpeg remains 9.0.2. This completes
+      bounded source regression coverage, not Issue #144 listening or Issue #7
+      Resolve/device acceptance.
 - [x] Cancel and drain the acceptance fixture's owned Pipeline actions before
       closing Catalog or removing temporary media. Preserve all four journeys,
       original assertions, 10s 1080p30 output and 120s budgets. See

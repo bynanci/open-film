@@ -431,3 +431,47 @@ Post-merge main6cdaa4f gates are separate and running. No formal stable release,
 installer/source-admission, physical workstation, hardware/Resolve/4K or listening
 verification is implied. Historical failure/diagnostic records above remain
 intact; the old Windows font observation is not called a causal fix.
+
+## macOS CI tool admission refresh — 2026-11-17
+
+PR #168 head `ef46b08086fb080a1b8f11ca4a52d302a297aefe`, Render QA run
+`44073895574`, stopped at macOS tool admission before any output or finishing
+checks ran. The retained `ffmpeg-full` pin was `9.0.2_1`, while the official
+Homebrew metadata had advanced to `9.0.2_3`. The exact identity check correctly
+refused the changed formula and bottle. Missing-artifact upload errors were
+secondary; this run provides no macOS rendering result.
+
+The CI-only refresh retains FFmpeg **9.0.2**, its source URL and SHA-256, the
+ARM64 Sequoia platform, exact admission, maximum download size, license checks
+and required `zscale` / `tonemap` filters. Homebrew revisions 2 and 3 rebuild
+against JPEG XL 0.13.0 and ggml 1.0.0. The reviewed formula differs from revision 1
+only in the revision and bottle digests, plus `deny_network_access!`; its FFmpeg
+configure flags remain unchanged.
+
+The new official formula commit is
+`129d0424414469583477054264c980ed7131c9e7`, with SHA-256
+`8d8bf3817e76df43e02c1028666c87bf71220edc19357e88645fab47fab52894`.
+The downloaded ARM64 Sequoia bottle is 24,272,752 bytes and hashes to
+`64d139fb62d60e85fd92874bbc63a147db212c9db4658e08ca8ec538ef8059f5`.
+Its exact OCI manifest is 111,868 bytes, SHA-256
+`9e342a981161284a92efd02c4d7dc7bfa9947091718bbc1a13e157032bfe0b86`.
+
+Static inspection on Linux independently hashed the complete bottle and selected
+Mach-O files. Both the reviewed formula and manifest build recipe match the
+embedded recipe after removing generated bottle blocks. Selected binaries remain
+ARM64 with macOS 15.0 minimum and SDK 15.4; `libavfilter` contains the exact
+`zscale` and `tonemap` names. All five retained license-text hashes are unchanged,
+including GPL v3; all 102 build dependencies (47 direct) retain their exact
+versions, bottle digests and upstream SBOM license conclusions in
+`fixtures/render-qa/darwin-ffmpeg-full-review.json`. The replaced revision and
+original replacement are recorded as historical identities rather than relabeled
+as new observations.
+
+A focused regression rejects the complete historical revision-1 identity, and a
+static consistency check binds the active pin to the reviewed formula, bottle,
+manifest and dependency inventory. The new tests failed before the pin refresh.
+Actual macOS execution, dependency relocation, filter admission, decoded output
+and finishing remain required on the new exact candidate SHA. No macOS binary
+was executed during the Linux inspection; this review provides no runtime
+redistribution, workstation, Resolve, signing or release approval. Future live
+Homebrew drift must continue to fail admission until separately reviewed.
