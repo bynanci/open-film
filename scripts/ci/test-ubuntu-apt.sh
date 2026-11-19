@@ -148,6 +148,7 @@ pass 'sourcing the helper has no privileged side effects'
 cat > "$test_root/mirrors.txt" <<'TEXT'
 http://azure.archive.ubuntu.com/ubuntu
 https://azure.archive.ubuntu.com/ubuntu
+http://us-east-2.ec2.archive.ubuntu.com/ubuntu
 https://security.ubuntu.com/ubuntu
 https://example.invalid/ubuntu
 Suites: noble noble-updates noble-backports noble-security
@@ -155,6 +156,7 @@ Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 TEXT
 cat > "$test_root/expected-mirrors.txt" <<'TEXT'
+https://archive.ubuntu.com/ubuntu
 https://archive.ubuntu.com/ubuntu
 https://archive.ubuntu.com/ubuntu
 https://security.ubuntu.com/ubuntu
@@ -165,8 +167,8 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 TEXT
 expect_status 0 bash -euo pipefail -c 'source "$1"; ubuntu_apt_prepare "$2"; ubuntu_apt_prepare "$2"' _ "$helper" "$test_root/mirrors.txt"
 cmp "$test_root/expected-mirrors.txt" "$test_root/mirrors.txt"
-has_log "sudo <-n> <sed> <-i> <-E> <s#https?://azure[.]archive[.]ubuntu[.]com/ubuntu#https://archive.ubuntu.com/ubuntu#g> <$test_root/mirrors.txt>"
-pass 'mirror substitution is idempotent and preserves other mirrors/suites/components/signing metadata'
+has_log "sudo <-n> <sed> <-i> <-E> <s#https?://(azure|[A-Za-z0-9-]+[.]ec2)[.]archive[.]ubuntu[.]com/ubuntu#https://archive.ubuntu.com/ubuntu#g> <$test_root/mirrors.txt>"
+pass 'Azure and AWS regional mirrors normalize idempotently while other mirrors, suites, components and signing metadata stay intact'
 
 clear_log
 expect_status 0 bash -euo pipefail -c 'source "$1"; ubuntu_apt_prepare "$2"' _ "$helper" "$test_root/absent.txt"
