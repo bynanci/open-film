@@ -163,6 +163,61 @@ describe("source-clock audio activity", () => {
     }
   });
 
+  it.each([6, 8])(
+    "keeps activity confined to the final channel in %i-channel sources",
+    async (channels) => {
+      const source = await wav(
+        `last-channel-${channels}.wav`,
+        2.2,
+        channels,
+        (t, channel) =>
+          ((t >= 0.4 && t < 0.8) || (t >= 1.2 && t < 1.6)) &&
+          channel === channels - 1
+            ? 0.5
+            : 0,
+      );
+
+      const result = await analyzeAudioActivity(source, source.contentHash!, {
+        minimumSilenceSeconds: 0.3,
+      });
+
+      expect(result.silenceIntervals).toEqual([
+        { start: 0, end: 0.4 },
+        { start: 0.8, end: 1.2 },
+        { start: 1.6, end: 2.2 },
+      ]);
+      expect(await hashFile(join(root, source.name))).toBe(source.contentHash);
+    },
+  );
+
+  it.each([6, 8])(
+    "does not cancel anti-phase activity between outer channels in %i-channel sources",
+    async (channels) => {
+      const source = await wav(
+        `anti-phase-${channels}.wav`,
+        2.2,
+        channels,
+        (t, channel) => {
+          if (!((t >= 0.4 && t < 0.8) || (t >= 1.2 && t < 1.6))) return 0;
+          if (channel === 0) return 0.5;
+          if (channel === channels - 1) return -0.5;
+          return 0;
+        },
+      );
+
+      const result = await analyzeAudioActivity(source, source.contentHash!, {
+        minimumSilenceSeconds: 0.3,
+      });
+
+      expect(result.silenceIntervals).toEqual([
+        { start: 0, end: 0.4 },
+        { start: 0.8, end: 1.2 },
+        { start: 1.6, end: 2.2 },
+      ]);
+      expect(await hashFile(join(root, source.name))).toBe(source.contentHash);
+    },
+  );
+
   it("keeps audible high-frequency content instead of treating an 8 kHz tone as silence", async () => {
     const source = await wav(
       "high-frequency.wav",

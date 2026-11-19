@@ -185,10 +185,10 @@ attribute its outputs to the installer.
       it nor the earlier comparison/Export warning closes Issue #144 or the
       distribution gates.
 
-## Open GitHub issues checked 2026-11-14
+## Open GitHub issues checked 2026-11-19
 
-At the start of this audit, GitHub had zero pre-existing open PRs. These eight
-issues remain open because they require
+On main `3ac21da04a38765793ac0d70642c0841c4945af9`, GitHub has zero open PRs.
+These eight issues remain open because they require
 candidate-bound native inputs, a privileged repository action, or external
 human/workstation evidence; keep each gate open until its evidence is recorded.
 
@@ -202,6 +202,12 @@ human/workstation evidence; keep each gate open until its evidence is recorded.
 | [#141](https://github.com/bynanci/open-film/issues/141) | Intake, staging, provenance and source/license review tooling exist.                                                                                                                                                                                                                                                                                                                                                                                                                                 | Actual per-target runtime binaries and reviewed manifest/run IDs with complete license, source-offer/relink and SPDX closure; then owned target launch/close.                                                                                                                                                                                                                                                                                                   |
 | [#140](https://github.com/bynanci/open-film/issues/140) | Versioned pre-trust/final-byte receipt contracts and source replay exist. PR [#163](https://github.com/bynanci/open-film/pull/163) integrated exact Tauri-build Cargo capture in main `a335b09`; its 20 exact-head hosted checks passed.                                                                                                                                                                                                                                                             | After Issue #141 supplies reviewed runtime inputs, run the native workflow on a reviewed target and collect same-candidate final shell/installer/runtime/contribution/security/trust/lifecycle receipts and independent acceptance. The workflow has not run.                                                                                                                                                                                                   |
 | [#7](https://github.com/bynanci/open-film/issues/7)     | Hosted CI and synthetic regression suites cover the software contracts.                                                                                                                                                                                                                                                                                                                                                                                                                              | Resolve round trip, ASR/LLM reference quality, real camera/HDR/Motion Photo, external media, GPU/4K, long-form performance, listening, platform installers, and candidate-bound Windows/macOS owner-recovery observations for live/dead/reused-PID/foreign/unknown owners.                                                                                                                                                                                      |
+
+The 2026-11-19 update adds deterministic FFmpeg regressions for synthetic
+6/8-channel activity on the last channel and across anti-phase outer channels.
+See [validation](docs/validation/silence-multichannel-2026-11-19.md). This is
+software coverage only; captured media, routing and listening remain open for
+[#144](https://github.com/bynanci/open-film/issues/144).
 
 Roundtable follow-up is sequenced by dependency: close #141 runtime provenance
 and rights; then use #140's integrated exact-build capture to produce and review
