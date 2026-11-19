@@ -90,6 +90,25 @@ it("keeps live processes mutually exclusive and recovers a SIGKILL owner", async
   await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
+it("leaves a lock untouched when its owner scope cannot be verified", async () => {
+  const path = await fixture();
+  const bytes = JSON.stringify({
+    version: 1,
+    owner: {
+      host: "unverified-foreign-scope",
+      pid: process.pid + 1,
+      token: "00000000-0000-4000-8000-000000000001",
+    },
+    fingerprint,
+  });
+  await writeFile(path, bytes, { mode: 0o600 });
+
+  expect(() => acquireExportRequestLock(path, fingerprint)).toThrow(
+    /owner cannot be verified/u,
+  );
+  expect(await readFile(path, "utf8")).toBe(bytes);
+});
+
 it.skipIf(process.platform !== "linux")(
   "recognizes a reused PID by its process start identity",
   async () => {
