@@ -173,6 +173,18 @@ Resolve is absent and the Cloud host has no GPU/OpenCL platform; actual Resolve,
 subjective listening and native workstation gates remain open. Published
 versions and the deferred NLE/SDK roadmap scope are unchanged.
 
+**2026-11-19:** The existing Silence analyzer gained four deterministic
+FFmpeg-decoded synthetic regressions for six- and eight-channel PCM: activity
+isolated to the last channel and anti-phase activity across the outer channels.
+The analyzer implementation itself already preserved channels, so this change
+adds regression coverage without changing detection behavior. The 14-test
+focused media suite passed, and an intentionally forced-mono mutation made all
+four new cases fail before it was removed. See the
+[multichannel validation](docs/validation/silence-multichannel-2026-11-19.md).
+This improves objective software coverage only; captured multichannel sources,
+physical routing/listening, the known 24 ms export tail and platform acceptance
+remain open under Issue #144.
+
 The automation-clock implementation and hosted validation are complete. Next
 acceptance is real dialogue/music listening and candidate-bound workstation
 observations. Additional providers remain a separate admission scope whose
