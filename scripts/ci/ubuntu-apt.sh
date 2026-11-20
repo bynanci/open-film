@@ -11,7 +11,7 @@ ubuntu_apt_prepare() {
   local mirrors_file=${1-/etc/apt/apt-mirrors.txt}
   if [[ -f "$mirrors_file" ]]; then
     sudo -n sed -i -E \
-      's#https?://azure[.]archive[.]ubuntu[.]com/ubuntu#https://archive.ubuntu.com/ubuntu#g' \
+      's#https?://(azure|[A-Za-z0-9-]+[.]ec2)[.]archive[.]ubuntu[.]com/ubuntu#https://archive.ubuntu.com/ubuntu#g' \
       "$mirrors_file" || return
   fi
 }

@@ -1506,7 +1506,7 @@ describe("professional profile exports", () => {
   });
 
   it.each(["staged", "completed"] as const)(
-    "retries an actual WAV request after its process dies while %s",
+    "recovers or preserves an actual WAV request after its process exits while %s",
     async (phase) => {
       const { app, composition, projectPath, close } = await fixture(1);
       close();
@@ -1570,17 +1570,35 @@ describe("professional profile exports", () => {
       const crashedLock = JSON.parse(
         await readFile(join(lockDirectory, locks[0]!), "utf8"),
       );
-      expect(
-        reviewOwnerState(crashedLock.owner),
-        JSON.stringify({
-          scopeMatches: crashedLock.owner.host === createReviewOwner().host,
-          platform: process.platform,
-          ownerHost: crashedLock.owner.host,
-          currentHost: createReviewOwner().host,
-        }),
-      ).toBe("dead");
+      const ownerState = reviewOwnerState(crashedLock.owner);
+      const currentOwner = createReviewOwner();
+      const scopeMatches = crashedLock.owner.host === currentOwner.host;
+      const lockPath = join(lockDirectory, locks[0]!);
       const reopened = await OpenFilmApplication.openForExport(projectPath);
       cleanup.push(() => reopened.close());
+      if (!scopeMatches) {
+        expect(ownerState, JSON.stringify({ platform: process.platform })).toBe(
+          "unknown",
+        );
+        process.stdout.write(
+          "Owner scope unverified; preserving the export request lock.\n",
+        );
+        const lockBytes = await readFile(lockPath);
+        await expect(reopened.exportProfileAudio(input)).rejects.toThrow(
+          /owner cannot be verified/u,
+        );
+        expect(await readFile(lockPath)).toEqual(lockBytes);
+        if (winner)
+          expect(
+            await Promise.all([
+              hashFile(path),
+              hashFile(`${path}.manifest.json`),
+            ]),
+          ).toEqual(winner);
+        expect(await readdir(lockDirectory)).toEqual(locks);
+        return;
+      }
+      expect(ownerState).not.toBe("unknown");
       const result = await reopened.exportProfileAudio(input);
       expect(result.files[0]!.sampleCount).toBe(48_000);
       if (winner)
