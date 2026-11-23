@@ -1534,6 +1534,9 @@ export class FFmpegRenderer {
         }
       }
       if (!audioOnly) {
+        // The composed frame can inherit full range from a source. Convert its
+        // sample values, not just the encoder tag, so independently rendered
+        // segments share the same SDR range when joined without re-encoding.
         const finalVideoFilters = exportProfile
           ? [
               // Pad before fps rounds the composed EOF: FFmpeg 6 can otherwise
@@ -1541,10 +1544,11 @@ export class FFmpegRenderer {
               "tpad=stop_mode=clone:stop=-1",
               `fps=${number(outputFrameRate)}:round=near`,
               ...outputFrameFilters(exportProfile),
+              "scale=in_range=auto:out_range=tv",
               "format=yuv420p",
               `trim=end_frame=${outputFrameCount}`,
             ]
-          : ["format=yuv420p"];
+          : ["scale=in_range=auto:out_range=tv", "format=yuv420p"];
         filters.push(`[${videoLabel}]${finalVideoFilters.join(",")}[vout]`);
       }
       if (audioPlan) {
@@ -1610,6 +1614,12 @@ export class FFmpegRenderer {
           String(encoding.crf),
           "-pix_fmt",
           "yuv420p",
+          "-color_range",
+          "tv",
+          // libx264 can omit the limited-range VUI field when color primaries
+          // are unspecified. Signal the converted range without inventing them.
+          "-bsf:v",
+          "h264_metadata=video_full_range_flag=0",
           "-r",
           number(outputFrameRate),
         );
